@@ -70,6 +70,17 @@ export function recommendedSetting(db: ContentDb, patient: Patient): Setting {
   return best;
 }
 
+/**
+ * Может ли у пациента быть этот фактор риска — по полу и возрасту из базы. О беременности
+ * не спрашивают мужчину и женщину 64 лет, и оценка не ставит этого в вину (отзыв на 0.0.8:
+ * мужчине — «не спросили о беременности»).
+ */
+export function possibleFor(db: ContentDb, id: Id, patient: Pick<Patient, 'sex' | 'age'>): boolean {
+  const r = db.risks[id];
+  if (!r) return true;
+  return r.p[patient.sex] > 0 && patient.age >= (r.ageMin ?? 0) && patient.age <= (r.ageMax ?? 200);
+}
+
 /** Признаки, которыми противопоказание становится известно врачу (ответ на вопрос). */
 function tellingFindings(db: ContentDb, id: Id): Id[] {
   return (db.risks[id]?.findings ?? db.conditions[id]?.findings ?? []).map(l => l.f).filter(f => f.startsWith('hx.'));
@@ -86,7 +97,7 @@ export function evaluatePlan(db: ContentDb, patient: Patient, plan: Plan, observ
   for (const tx of plan.treatments) {
     for (const k of db.treatments[tx]?.contraindications ?? []) {
       const asked = tellingFindings(db, k.id).some(f => askedF.has(f));
-      if (!asked && !unaskedRisk.includes(k.id)) unaskedRisk.push(k.id);
+      if (!asked && possibleFor(db, k.id, patient) && !unaskedRisk.includes(k.id)) unaskedRisk.push(k.id);
       if (truly.has(k.id)) violations.push({ tx, by: k.id, level: k.level, known: knownIds.has(k.id), asked });
     }
   }

@@ -137,6 +137,20 @@ describe('противопоказания', () => {
     expect(s.notes).toContainEqual({ code: 'safety.notAsked', by: 'risk.allergy_penicillin' });
   });
 
+  test('о беременности не спрашивают мужчину и женщину старше 44 — это не ставится в вину', () => {
+    const ibu: Plan = { treatments: ['tx.ibuprofen'], setting: 'home' };
+    const unasked = (p: Patient) => evaluatePlan(db, p, ibu, complaintObservations(p)).unaskedRisk;
+    const man = find('cond.low_back_pain', p => p.sex === 'm');
+    const older = find('cond.low_back_pain', p => p.sex === 'f' && p.age > 44);
+    const young = find('cond.low_back_pain', p => p.sex === 'f' && p.age >= 18 && p.age <= 44 && !p.truth.risks.includes('risk.pregnancy'));
+    expect(unasked(man)).not.toContain('risk.pregnancy');
+    expect(unasked(older)).not.toContain('risk.pregnancy');
+    expect(unasked(young)).toContain('risk.pregnancy');
+    // у мужчины замечание «не спросили» остаётся только про то, что у него может быть
+    const s = scoreCase(input({ plan: evaluatePlan(db, man, ibu, complaintObservations(man)) }));
+    expect(s.notes).not.toContainEqual({ code: 'safety.notAsked', by: 'risk.pregnancy' });
+  });
+
   test('реакция при нарушенном противопоказании — с вероятностью из записи (often = 50 %)', () => {
     const ev = evaluatePlan(db, allergic, amox, complaintObservations(allergic));
     let reactions = 0;

@@ -1,5 +1,7 @@
-# Проверки на каждый PR; на main — ещё APK и AAB, подписанные постоянным ключом, и
-# публикация в Releases (docs/08-process.md «Сборка и выкладывание», ADR 0015).
+# Проверки на каждый PR; на main — ещё APK, подписанный постоянным ключом, и публикация в
+# Releases (docs/08-process.md «Сборка и выкладывание», ADR 0015). AAB для Google Play — пока
+# только вручную («Run workflow» с галочкой «aab»): до выхода в магазины он не нужен, а
+# вторая сборка удваивает минуты Actions (решение владельца, 26.09.2026).
 #
 # Без секретов ключа релиза нет никогда: APK собирается только на проверку (манифест,
 # разрешения, 16 КБ, размер) и выбрасывается — подписанный отладочным ключом файл не должен
@@ -18,6 +20,11 @@ on:
   pull_request:
   # Вручную — с любой ветки; публикация в Releases — только с main.
   workflow_dispatch:
+    inputs:
+      aab:
+        description: 'Собрать и AAB для Google Play'
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -57,8 +64,11 @@ jobs:
 
   # Веб-сборка и сценарий Playwright по всем экранам (docs/09-testing.md §4). Здесь же
   # проверяется, что движок в V8 даёт тот же отпечаток тысячи пациентов, что в Bun.
+  # Только после мёржа (на main и вручную), не на PR: сценарий гоняется локально перед
+  # пушем, а в CI он — ворота релиза, которые берегут минуты Actions (решение владельца).
   web:
     name: Веб-сборка и сценарий
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -99,6 +109,7 @@ jobs:
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           CERT: ${{ vars.ANDROID_CERT_SHA256 }}
+          WANT_AAB: ${{ github.event_name == 'workflow_dispatch' && inputs.aab }}
         run: |
           set -euo pipefail
           APK='{"target":"apk","store":"","task":"assembleRelease","file":"android/app/build/outputs/apk/release/app-release.apk"}'
@@ -118,11 +129,15 @@ jobs:
             exit 1
           fi
           echo "ready=yes" >> "$GITHUB_OUTPUT"
-          echo "matrix={\"include\":[$APK,$AAB]}" >> "$GITHUB_OUTPUT"
+          if [ "$WANT_AAB" = "true" ]; then
+            echo "matrix={\"include\":[$APK,$AAB]}" >> "$GITHUB_OUTPUT"
+          else
+            echo "matrix={\"include\":[$APK]}" >> "$GITHUB_OUTPUT"
+          fi
 
-  # Две сборки из одного коммита, параллельно: APK — Releases и RuStore, AAB — Google Play.
-  # В одном задании нельзя: Gradle не считает переменные окружения входом сборки JS, и
-  # вторая сборка тихо взяла бы бандл первой.
+  # APK — Releases и RuStore; AAB — Google Play, когда заказан: тогда две сборки из одного
+  # коммита, параллельно. В одном задании нельзя: Gradle не считает переменные окружения
+  # входом сборки JS, и вторая сборка тихо взяла бы бандл первой.
   build:
     name: Сборка ${{ matrix.target }}
     needs: [key]
@@ -290,7 +305,7 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
-  # Одна публикация на обе сборки. Первая сборка новой версии (номер из app.json, релиза
+  # Одна публикация на все сборки. Первая сборка новой версии (номер из app.json, релиза
   # vX.Y.Z ещё нет) — релиз «Latest» с разделом версии из README; прочие — пре-релизы build-N.
   release:
     name: Релиз
@@ -334,8 +349,12 @@ jobs:
             echo
             echo "---"
             echo "**anamnez-${{ github.run_number }}.apk** — для телефона: скачайте и откройте. Этот же файл — для RuStore."
-            echo "**anamnez-${{ github.run_number }}.aab** — только для загрузки в Google Play Console (на телефон не ставится)."
-            echo "Подписаны ${{ steps.sig.outputs.label }}, SHA-256 сертификата: \`${{ steps.sig.outputs.sha }}\`."
+            if compgen -G 'dist/*.aab' > /dev/null; then
+              echo "**anamnez-${{ github.run_number }}.aab** — только для загрузки в Google Play Console (на телефон не ставится)."
+              echo "Подписаны ${{ steps.sig.outputs.label }}, SHA-256 сертификата: \`${{ steps.sig.outputs.sha }}\`."
+            else
+              echo "Подписан ${{ steps.sig.outputs.label }}, SHA-256 сертификата: \`${{ steps.sig.outputs.sha }}\`."
+            fi
             echo "Собрано из коммита ${{ github.sha }}, сборка ${{ github.run_number }}."
           } > release.md
           cat release.md
