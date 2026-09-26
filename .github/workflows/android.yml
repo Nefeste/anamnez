@@ -1,0 +1,364 @@
+# Проверки на каждый PR; на main — ещё APK и AAB, подписанные постоянным ключом, и
+# публикация в Releases (docs/08-process.md «Сборка и выкладывание», ADR 0015).
+#
+# Без секретов ключа релиза нет никогда: APK собирается только на проверку (манифест,
+# разрешения, 16 КБ, размер) и выбрасывается — подписанный отладочным ключом файл не должен
+# попасть ни на чей телефон. AAB без ключа не собирается вовсе: Google Play его не примет.
+name: Android
+
+on:
+  push:
+    branches: [main]
+    # Правки, которые приложение не меняют, сборку не запускают. Тесты и «виртуальный врач»
+    # запускают: они и есть проверка перед сборкой.
+    paths-ignore:
+      - 'docs/**'
+      - 'store/**'
+      - '**.md'
+  pull_request:
+  # Вручную — с любой ветки; публикация в Releases — только с main.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Проверки
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.11
+      - run: npm ci
+      - name: Медицинская база — сборка и валидатор
+        run: bun tools/content/build.ts
+      - name: Типы приложения
+        run: npx tsc --noEmit
+      - name: Типы инструментов и тестов
+        run: npx tsc --noEmit -p tools
+      - name: Линтер
+        run: npm run lint
+      - name: Тесты
+        run: bun test tools/test
+      # Пороги — docs/05-content.md §6; полный прогон по всем отделениям — отдельно.
+      - name: Виртуальный врач, 3000 пациентов
+        run: bun tools/sim/doctor.ts --n 3000
+
+  # Веб-сборка и сценарий Playwright по всем экранам (docs/09-testing.md §4). Здесь же
+  # проверяется, что движок в V8 даёт тот же отпечаток тысячи пациентов, что в Bun.
+  web:
+    name: Веб-сборка и сценарий
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.11
+      - run: npm ci
+      - run: npm run export:web
+      - name: Chromium для Playwright
+        run: npx playwright install --with-deps chromium
+      - name: Сценарий
+        run: bun tools/e2e/smoke.ts
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screens-${{ github.run_number }}
+          path: tools/e2e/out/
+          if-no-files-found: ignore
+
+  # Есть ли постоянный ключ — решается один раз, до сборок: от этого зависит, что собирать.
+  key:
+    name: Ключ подписи
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.k.outputs.ready }}
+      matrix: ${{ steps.k.outputs.matrix }}
+    steps:
+      - id: k
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          CERT: ${{ vars.ANDROID_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          APK='{"target":"apk","store":"","task":"assembleRelease","file":"android/app/build/outputs/apk/release/app-release.apk"}'
+          AAB='{"target":"aab","store":"play","task":"bundleRelease","file":"android/app/build/outputs/bundle/release/app-release.aab"}'
+          if [ -z "$KEYSTORE_B64$KEYSTORE_PASSWORD$KEY_ALIAS$KEY_PASSWORD" ]; then
+            echo "ready=no" >> "$GITHUB_OUTPUT"
+            echo "matrix={\"include\":[$APK]}" >> "$GITHUB_OUTPUT"
+            echo "::warning::Секретов ключа подписи нет: APK собирается только на проверку и выбрасывается, релиза не будет. Как завести ключ — docs/08-process.md."
+            exit 0
+          fi
+          if [ -z "$KEYSTORE_B64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "::error::Секреты ключа заданы не все: нужны ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS и ANDROID_KEY_PASSWORD."
+            exit 1
+          fi
+          if [ -z "$CERT" ]; then
+            echo "::error::Ключ есть, а переменной репозитория ANDROID_CERT_SHA256 нет — не с чем сверить подпись. Отпечаток: keytool -list -v -keystore anamnez-release.jks -alias anamnez | grep SHA256"
+            exit 1
+          fi
+          echo "ready=yes" >> "$GITHUB_OUTPUT"
+          echo "matrix={\"include\":[$APK,$AAB]}" >> "$GITHUB_OUTPUT"
+
+  # Две сборки из одного коммита, параллельно: APK — Releases и RuStore, AAB — Google Play.
+  # В одном задании нельзя: Gradle не считает переменные окружения входом сборки JS, и
+  # вторая сборка тихо взяла бы бандл первой.
+  build:
+    name: Сборка ${{ matrix.target }}
+    needs: [key]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.key.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.11
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v5
+      - run: npm ci
+      # Бандл JS берёт базу из src/content/generated — её собирают скрипты (ADR 0007).
+      - name: Медицинская база
+        run: bun tools/content/build.ts
+      - name: Нативный проект (expo prebuild)
+        run: npx expo prebuild --platform android --no-install
+      - name: Больше памяти Gradle
+        # в созданном файле нет перевода строки в конце — начинаем с него; действует последнее значение
+        run: printf '\norg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g -Dfile.encoding=UTF-8\n' >> android/gradle.properties
+
+      - name: Файл ключа
+        if: needs.key.outputs.ready == 'yes'
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/anamnez-release.jks"
+          echo "ORG_GRADLE_PROJECT_ANAMNEZ_UPLOAD_STORE_FILE=$RUNNER_TEMP/anamnez-release.jks" >> "$GITHUB_ENV"
+
+      - name: Сборка ${{ matrix.target }}
+        working-directory: android
+        env:
+          NODE_ENV: production
+          # для какого магазина: play — Google Play, без экрана «Поддержать» (docs/08-process.md)
+          EXPO_PUBLIC_STORE: ${{ matrix.store }}
+          # пароли нужны Gradle, только если выше подложен файл ключа; в файлы они не пишутся
+          ORG_GRADLE_PROJECT_ANAMNEZ_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ORG_GRADLE_PROJECT_ANAMNEZ_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ORG_GRADLE_PROJECT_ANAMNEZ_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        # Только 64-битный ARM: игра — для современных телефонов (NFR-PRF-1), 32-битные
+        # библиотеки почти вдвое увеличили бы APK ради телефонов, которые мы не поддерживаем.
+        run: ./gradlew ${{ matrix.task }} --no-daemon --stacktrace -PreactNativeArchitectures=arm64-v8a
+
+      # Подпись проверяется на готовом файле, а не по настройкам: «должен был подписаться»
+      # и «подписан» — разные вещи. Отпечаток постоянного ключа закреплён переменной
+      # ANDROID_CERT_SHA256 — чужой ключ в секретах остановит сборку.
+      - name: Подпись
+        id: cert
+        env:
+          READY: ${{ needs.key.outputs.ready }}
+          EXPECTED: ${{ vars.ANDROID_CERT_SHA256 }}
+          FILE: ${{ matrix.file }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          rm -f "$RUNNER_TEMP/anamnez-release.jks"
+          BT="$ANDROID_HOME/build-tools/$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -printf '%f\n' | sort -V | tail -n1)"
+          # APK подписан схемой v2+ — её читает apksigner; AAB — JAR-подписью, её читает keytool.
+          if [ "$TARGET" = "apk" ]; then
+            OUT="$("$BT/apksigner" verify --print-certs "$FILE" 2>&1)"
+          else
+            OUT="$(keytool -printcert -jarfile "$FILE" 2>&1)"
+          fi
+          echo "$OUT"
+          hex() { tr '[:upper:]' '[:lower:]' | sed -E 's/^[[:space:]]*sha-?256:?//' | tr -d ': \t'; }
+          CERT="$(printf '%s\n' "$OUT" | grep -iE 'sha-?256( digest)?:' | head -n1 | sed -E 's/.*([Dd]igest|SHA-?256):?[[:space:]]*//' | hex || true)"
+          # общеизвестный отладочный ключ шаблона React Native
+          DEBUG=fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c
+          EXPECTED="$(printf '%s' "$EXPECTED" | hex)"
+          if ! printf '%s' "$CERT" | grep -qE '^[0-9a-f]{64}$'; then echo "::error::Не нашёл отпечаток SHA-256 в выводе (см. выше)."; exit 1; fi
+          if [ "$READY" = "yes" ]; then
+            if [ "$CERT" = "$DEBUG" ]; then echo "::error::Ключ подложен, а $TARGET подписан отладочным: плагин подписи не сработал."; exit 1; fi
+            if [ "$CERT" != "$EXPECTED" ]; then echo "::error::Отпечаток $CERT не совпал с ANDROID_CERT_SHA256."; exit 1; fi
+            LABEL="постоянным ключом"
+          else
+            LABEL="отладочным ключом — только проверка, файл не выкладывается"
+          fi
+          echo "sha256=$CERT" >> "$GITHUB_OUTPUT"
+          echo "label=$LABEL" >> "$GITHUB_OUTPUT"
+          { echo "### Подпись $TARGET"; echo ""; echo "Подписан $LABEL; SHA-256 сертификата: \`$CERT\`"; } >> "$GITHUB_STEP_SUMMARY"
+
+      # Что внутри: 16 КБ (Google Play требует для Android 15+), разрешения ровно по белому
+      # списку и без сети (ADR 0006), target API, размер (NFR-SIZE-1).
+      - name: Содержимое
+        env:
+          FILE: ${{ matrix.file }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          BT="$ANDROID_HOME/build-tools/$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -printf '%f\n' | sort -V | tail -n1)"
+          WORK="$RUNNER_TEMP/contents"; rm -rf "$WORK"; mkdir -p "$WORK"; unzip -q "$FILE" -d "$WORK"
+          if [ "$TARGET" = "apk" ]; then LIBS="$WORK/lib"; else LIBS="$WORK/base/lib"; fi
+
+          # 1. 16 КБ: у каждой 64-битной .so все сегменты LOAD выровнены не меньше чем на 2^14
+          BAD=0
+          while IFS= read -r so; do
+            for a in $(readelf -lW "$so" | awk '$1=="LOAD"{print $NF}'); do
+              if [ $((a)) -lt 16384 ]; then echo "::error::$(basename "$so"): LOAD выровнен на $a, нужно 0x4000"; BAD=1; fi
+            done
+          done < <(find "$LIBS/arm64-v8a" -name '*.so')
+          [ "$BAD" = 0 ] || exit 1
+          if [ "$TARGET" = "apk" ]; then "$BT/zipalign" -c -P 16 -v 4 "$FILE" > "$RUNNER_TEMP/zipalign.log" || { tail -n 30 "$RUNNER_TEMP/zipalign.log"; echo "::error::zipalign: APK не выровнен на 16 КБ"; exit 1; }; fi
+          echo "16 КБ: выровнено ($(find "$LIBS/arm64-v8a" -name '*.so' | wc -l) библиотек)"
+          # только 64-битные библиотеки — как заказано сборке
+          OTHER="$(find "$LIBS" -mindepth 1 -maxdepth 1 -type d ! -name arm64-v8a -printf '%f ' || true)"
+          if [ -n "$OTHER" ]; then echo "::error::Лишние архитектуры: $OTHER"; exit 1; fi
+
+          SIZE="$(stat -c %s "$FILE")"
+          MB="$(awk -v s="$SIZE" 'BEGIN { printf "%.1f", s / 1048576 }')"
+          { echo "### $TARGET"; echo ""; echo "Размер: $MB МБ"; } >> "$GITHUB_STEP_SUMMARY"
+          echo "Размер $TARGET: $MB МБ"
+
+          # 2. Разрешения и target API — по готовому APK (манифест AAB тот же)
+          if [ "$TARGET" = "apk" ]; then
+            PERMS="$("$BT/aapt2" dump permissions "$FILE" | sed -nE "s/.*name='([^']+)'.*/\1/p" | sort -u)"
+            # shellcheck disable=SC2016 # обратные кавычки — разметка итогов, не подстановка
+            { echo ""; echo "Разрешения:"; printf '%s\n' "$PERMS" | sed 's/^/- `/; s/$/`/'; } >> "$GITHUB_STEP_SUMMARY"
+            printf '%s\n' "$PERMS"
+            # Сеть — ошибка: игра работает без интернета (ADR 0006), её вырезает из релиза
+            # plugins/with-release-no-internet.js. Прочие запретные — нет в политике конфиденциальности.
+            DENY='INTERNET|NETWORK_STATE|EXTERNAL_STORAGE|SYSTEM_ALERT_WINDOW|AD_ID|LOCATION|CAMERA|RECORD_AUDIO|CONTACTS|READ_PHONE|CALL_LOG|SMS|MANAGE_|QUERY_ALL_PACKAGES|ACCOUNTS|FOREGROUND_SERVICE|INSTALL_REFERRER'
+            if printf '%s\n' "$PERMS" | grep -E "$DENY"; then echo "::error::В APK запретное разрешение (выше)."; exit 1; fi
+            # Белый список: вибрация (expo-haptics), настройки звука (expo-audio, обычное
+            # разрешение без запроса) и служебное разрешение самого приложения. Всё прочее —
+            # ошибка: нужное добавить сюда и в docs/08-process.md, ненужное — в blockedPermissions.
+            ALLOW='^(android\.permission\.(VIBRATE|MODIFY_AUDIO_SETTINGS)|com\.anamnez\.game\.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION)$'
+            EXTRA="$(printf '%s\n' "$PERMS" | grep -vE "$ALLOW" || true)"
+            if [ -n "$EXTRA" ]; then echo "::error::Разрешения вне списка: $(printf '%s\n' "$EXTRA" | paste -sd ' ')."; exit 1; fi
+
+            TARGET_SDK="$("$BT/aapt2" dump badging "$FILE" | sed -nE "s/^targetSdkVersion:'([0-9]+)'.*/\1/p")"
+            echo "target API: $TARGET_SDK"
+            if [ -z "$TARGET_SDK" ] || [ "$TARGET_SDK" -lt 36 ]; then echo "::error::target API $TARGET_SDK, Google Play требует не ниже 36."; exit 1; fi
+            echo "target API: $TARGET_SDK" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Собрать
+        if: needs.key.outputs.ready == 'yes'
+        env:
+          FILE: ${{ matrix.file }}
+          TARGET: ${{ matrix.target }}
+          LABEL: ${{ steps.cert.outputs.label }}
+          SHA: ${{ steps.cert.outputs.sha256 }}
+        run: |
+          mkdir -p dist
+          cp "$FILE" "dist/anamnez-${{ github.run_number }}.$TARGET"
+          printf '%s\n%s\n' "$LABEL" "$SHA" > "dist/signature-$TARGET.txt"
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        if: needs.key.outputs.ready == 'yes'
+        with:
+          name: anamnez-${{ matrix.target }}-${{ github.run_number }}
+          path: dist/*
+          if-no-files-found: error
+
+  # Одна публикация на обе сборки. Первая сборка новой версии (номер из app.json, релиза
+  # vX.Y.Z ещё нет) — релиз «Latest» с разделом версии из README; прочие — пре-релизы build-N.
+  release:
+    name: Релиз
+    needs: [checks, web, key, build]
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.key.outputs.ready == 'yes'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: repo
+          sparse-checkout: |
+            app.json
+            README.md
+          sparse-checkout-cone-mode: false
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Подпись
+        id: sig
+        run: |
+          ls -la dist
+          echo "label=$(sed -n 1p dist/signature-apk.txt)" >> "$GITHUB_OUTPUT"
+          echo "sha=$(sed -n 2p dist/signature-apk.txt)" >> "$GITHUB_OUTPUT"
+      - name: Версия — новая или уже выпущена
+        id: ver
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V=$(node -p "require('./repo/app.json').expo.version")
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          if gh release view "v$V" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "fresh=no" >> "$GITHUB_OUTPUT"
+          else
+            echo "fresh=yes" >> "$GITHUB_OUTPUT"
+          fi
+          # «Что нового» — раздел «### X.Y.Z …» из «## Версии» README, до следующего заголовка
+          awk -v v="$V" 'index($0, "### " v) == 1 { on = 1; next } on && /^##/ { exit } on' repo/README.md > notes.md
+          {
+            cat notes.md
+            echo
+            echo "---"
+            echo "**anamnez-${{ github.run_number }}.apk** — для телефона: скачайте и откройте. Этот же файл — для RuStore."
+            echo "**anamnez-${{ github.run_number }}.aab** — только для загрузки в Google Play Console (на телефон не ставится)."
+            echo "Подписаны ${{ steps.sig.outputs.label }}, SHA-256 сертификата: \`${{ steps.sig.outputs.sha }}\`."
+            echo "Собрано из коммита ${{ github.sha }}, сборка ${{ github.run_number }}."
+          } > release.md
+          cat release.md
+      - name: Релиз vX.Y.Z
+        if: steps.ver.outputs.fresh == 'yes'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.ver.outputs.version }}
+          name: Анамнез ${{ steps.ver.outputs.version }}
+          body_path: release.md
+          files: |
+            dist/*.apk
+            dist/*.aab
+          prerelease: false
+          make_latest: true
+      - name: Пре-релиз build-N
+        if: steps.ver.outputs.fresh != 'yes'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Анамнез — сборка ${{ github.run_number }}
+          body_path: release.md
+          files: |
+            dist/*.apk
+            dist/*.aab
+          prerelease: true
