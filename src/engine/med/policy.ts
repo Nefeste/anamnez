@@ -4,7 +4,7 @@ import type { ContentDb, Id, Setting } from '../../content/types';
 import { Rng } from '../core/rng';
 import { complaintObservations, runExam } from './exams';
 import { type Belief, expectedGain, knownFacts, posterior } from './infer';
-import { type Plan, SETTING_ORDER } from './plan';
+import { type Plan, possibleFor, SETTING_ORDER } from './plan';
 import type { Observation, Patient } from './types';
 
 export type Strategy = 'rational' | 'lazy' | 'shotgun';
@@ -47,13 +47,6 @@ export function examCost(db: ContentDb, id: Id): number {
  * JSC может разниться. Разница порядка 1e-16 не должна менять выбор врача (ADR 0004).
  */
 const quantize = (x: number) => Math.round(x * 1e9);
-
-/** Может ли у этого человека быть фактор риска (по полу и возрасту). */
-function possibleFor(db: ContentDb, id: Id, patient: Patient): boolean {
-  const r = db.risks[id];
-  if (!r) return true;
-  return r.p[patient.sex] > 0 && patient.age >= (r.ageMin ?? 0) && patient.age <= (r.ageMax ?? 200);
-}
 
 /** Обследования, которые открывают противопоказание (вопрос об аллергиях), — самое дешёвое. */
 function askingExam(db: ContentDb, contraindication: Id): Id | undefined {
