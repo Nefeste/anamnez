@@ -1,0 +1,55 @@
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native (Continuous Native Generation: android/ и ios/ создаёт expo prebuild)
+/ios
+/android
+.kotlin/
+*.orig.*
+
+# signing — ключ подписи живёт только у владельца и в секретах CI (ADR 0015)
+*.jks
+*.keystore
+*.jks.b64
+*.p8
+*.p12
+*.key
+*.pem
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+
+# local env files
+.env*.local
+
+# typescript
+*.tsbuildinfo
+
+# build outputs
+dist-android/
+dist-web/
+
+# собранная медицинская база — собирается скриптами (ADR 0007)
+src/content/generated/
+
+# отчёты «виртуального врача» и e2e
+tools/sim/out/
+tools/e2e/out/
+
+# Claude Code
+.claude/worktrees/
