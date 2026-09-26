@@ -1,0 +1,369 @@
+// «Вид» приёма одного пациента — то, что знает врач (`06-architecture.md` §7): жалобы,
+// пришедшие результаты, назначенное, подсказки, черновик решения, итог и разбор закрытого
+// случая. Общий для прототипа П4 (visit.ts) и смены (session.ts): экраны карты пациента
+// работают с любым из них. Правда здесь появляется только в разборе закрытого случая.
+import { db } from '@/content';
+import { type BodySystem, type Id, type Setting, SYSTEMS } from '@/content/types';
+import { fnv1a } from '@/engine/core/hash';
+import type { Outcome } from '@/engine/med/course';
+import { complaintObservations } from '@/engine/med/exams';
+import { type Belief, knownFacts, posterior } from '@/engine/med/infer';
+import type { PlanEval } from '@/engine/med/plan';
+import type { ReviewData } from '@/engine/med/review';
+import type { CaseScore, Grade, ScoreNote } from '@/engine/med/score';
+import { complaintText, observationText } from '@/engine/med/text';
+import type { Observation, Patient } from '@/engine/med/types';
+import { T } from '@/i18n';
+
+export const DEPARTMENT = 'dept.therapy';
+
+export interface Line {
+  f: Id;
+  text: string;
+  shown: boolean;
+  exam: Id | 'complaint';
+}
+
+/** Результаты одного обследования. `fresh` — пришли за последнее действие игрока. */
+export interface ResultGroup {
+  key: string;
+  exam: Id;
+  name: string;
+  at: string;
+  fresh: boolean;
+  lines: Line[];
+}
+
+/** Справка о термине для «Что это?»: только знания из базы, не правда о пациенте. */
+export interface TermInfo {
+  title: string;
+  text: string[];
+  list?: { label: string; items: string[] };
+}
+
+export interface Decision {
+  diagnosis: Id;
+  verdict: 'correct' | 'partly' | 'wrong';
+  truthName: string;
+  /** уверенность идеального врача в поставленном диагнозе, 0–10 */
+  outOf10: number;
+  pearls: string[];
+  causes: { finding: string; cause: string }[];
+  /** что было дальше: исход за неделю или перевод */
+  outcome: string;
+  grades: { key: string; label: string; grade: Grade }[];
+  overall: Grade;
+  notes: string[];
+  plan: { name: string; role: string }[];
+  settingName: string;
+  rational: string;
+  idle: string[];
+  timeline: { label: string; truth: number; chosen: number }[];
+}
+
+/** Решение до «Завершить приём»: можно менять и дальше обследовать. */
+export interface Draft {
+  diagnosis?: Id;
+  treatments: Id[];
+  setting: Setting;
+}
+
+export interface VisitView {
+  version: number;
+  title: string;
+  /** для портрета: пол и возраст видны врачу, ключ портрета — не зерно генерации */
+  portrait: { key: number; sex: 'm' | 'f'; age: number };
+  clock: string;
+  minutesSpent: number;
+  money: number;
+  complaints: Line[];
+  /** все результаты по порядку прихода */
+  results: Line[];
+  /** те же результаты по обследованиям, новые сверху */
+  groups: ResultGroup[];
+  /** сколько результатов пришло за последнее действие */
+  freshCount: number;
+  pending: { name: string; at: string }[];
+  meanwhile: string[];
+  /** смена: за это время пришёл срочный пациент — звук «срочно», а не «готово» */
+  urgent?: boolean;
+  done: Id[];
+  hints: { id: Id; name: string; outOf10: number }[];
+  /** всё лечение базы по алфавиту; warning — противопоказание, о котором врач уже знает */
+  treatments: { id: Id; name: string; warning?: string }[];
+  /** то же лечение — по группам (антибиотики, обезболивающие…) для экрана решения */
+  treatmentGroups: { key: string; title: string; items: VisitView['treatments'] }[];
+  draft: Draft;
+  /** название выбранного, но ещё не поставленного диагноза */
+  draftDiagnosisName?: string;
+  /** смена: можно отпустить ждать результатов и принять другого */
+  canSendAway?: boolean;
+  /** смена: повторное обращение — строка для шапки */
+  returnNote?: string;
+  decision?: Decision;
+}
+
+/** Результаты, пришедшие разом: шаг — номер действия игрока, за которое они пришли. */
+export interface Arrival {
+  exam: Id;
+  step: number;
+  /** минуты от полуночи — для подписи «в 08:35» */
+  at: number;
+  obs: Observation[];
+}
+
+/** Всё, из чего строится вид приёма: у прототипа и у смены — свои источники. */
+export interface CaseInput {
+  version: number;
+  patient: Patient;
+  /** часы — минуты от полуночи */
+  clock: number;
+  minutesSpent: number;
+  money: number;
+  step: number;
+  arrived: Arrival[];
+  pending: { exam: Id; readyAt: number }[];
+  meanwhile: string[];
+  urgent?: boolean;
+  done: Id[];
+  draft: Draft;
+  decision?: Decision;
+  canSendAway?: boolean;
+  returnNote?: string;
+}
+
+export function hhmm(min: number): string {
+  const m = Math.floor(min);
+  return `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+}
+
+export function patientName(p: Patient): string {
+  const n = T.names;
+  const first = p.sex === 'm' ? n.male : n.female;
+  const surname = n.surnames[fnv1a(`${p.seed}:s`) % n.surnames.length];
+  return `${p.sex === 'm' ? surname : n.feminine(surname)} ${first[fnv1a(`${p.seed}:f`) % first.length]}`;
+}
+
+export function candidates(): Id[] {
+  return Object.keys(db.conditions).filter(id => db.conditions[id].presenting && db.conditions[id].department === DEPARTMENT);
+}
+
+/** Жалобы и всё, что пришло, — как для вывода. */
+export function observationsOfCase(patient: Patient, arrived: readonly Arrival[]): Observation[] {
+  return [...complaintObservations(patient), ...arrived.flatMap(a => a.obs)];
+}
+
+export function beliefsOf(patient: Patient, obs: readonly Observation[]): Belief[] {
+  const known = knownFacts(db, obs);
+  return posterior(db, candidates(), obs, { sex: patient.sex, age: patient.age, season: patient.season, knownRisks: known.risks, knownConditions: known.conditions });
+}
+
+/** Противопоказание — фактор риска (аллергия) или состояние. */
+export function riskName(id: Id): string {
+  return db.risks[id]?.name.ru ?? db.conditions[id]?.name.ru ?? id;
+}
+
+/** Группа лечения для списка — по классу препарата; без класса — режим и советы. */
+const TX_GROUPS: [string, string[]][] = [
+  ['antibiotics', ['antibiotic']],
+  ['antivirals', ['antiviral']],
+  ['pain', ['analgesic', 'antimigraine']],
+  ['breathing', ['bronchodilator', 'asthma', 'steroid.systemic']],
+  ['nose', ['nasal', 'steroid.intranasal', 'antihistamine']],
+  ['heart', ['antihypertensive', 'antiplatelet', 'antianginal']],
+  ['digestive', ['acid', 'rehydration']],
+  ['metabolic', ['antidiabetic', 'hormone', 'mineral']],
+];
+
+function txGroup(id: Id): string {
+  const cls = db.treatments[id].class ?? '';
+  return TX_GROUPS.find(([, prefixes]) => prefixes.some(p => cls === p || cls.startsWith(`${p}.`)))?.[0] ?? 'regimen';
+}
+
+function groupTreatments(items: VisitView['treatments']): VisitView['treatmentGroups'] {
+  const order = [...TX_GROUPS.map(([k]) => k), 'regimen'];
+  const titles = T.spikes.decision.txGroup;
+  return order
+    .map(key => ({ key, title: titles[key], items: items.filter(x => txGroup(x.id) === key) }))
+    .filter(g => g.items.length > 0);
+}
+
+export function conditionChoices(): { id: Id; name: string }[] {
+  return candidates().map(id => ({ id, name: db.conditions[id].name.ru })).sort((a, b) => (a.name < b.name ? -1 : 1));
+}
+
+/** Диагнозы по системам органов — в порядке SYSTEMS; внутри — по алфавиту. */
+export function diagnosisGroups(): { key: BodySystem; title: string; items: { id: Id; name: string }[] }[] {
+  const all = conditionChoices();
+  return SYSTEMS
+    .map(key => ({ key, title: T.spikes.decision.system[key], items: all.filter(c => db.conditions[c.id].system === key) }))
+    .filter(g => g.items.length > 0);
+}
+
+/** Выбор лечения: противопоказание, о котором пациент сказал, — предупреждение (`04` §8). */
+function treatmentChoices(obs: readonly Observation[]): VisitView['treatments'] {
+  const known = knownFacts(db, obs);
+  const knownIds = new Set([...known.risks, ...known.conditions]);
+  return Object.values(db.treatments)
+    .map(x => {
+      const by = x.contraindications.find(k => knownIds.has(k.id));
+      return { id: x.id, name: x.name.ru, warning: by ? T.spikes.patient.contraindicated(riskName(by.id)) : undefined };
+    })
+    .sort((a, b) => (a.name < b.name ? -1 : 1));
+}
+
+export function makeCaseView(c: CaseInput): VisitView {
+  const p = c.patient;
+  const line = (o: Observation): Line => ({
+    f: o.f,
+    shown: o.shown,
+    exam: o.exam,
+    text: o.exam === 'complaint' ? complaintText(db, o, p.sex, p.seed) : observationText(db, o, p.sex, p.seed),
+  });
+  const obs = observationsOfCase(p, c.arrived);
+  const treatments = treatmentChoices(obs);
+  return {
+    version: c.version,
+    title: `${patientName(p)}, ${T.spikes.patient.years(p.age)}, ${p.sex === 'm' ? T.spikes.patient.male : T.spikes.patient.female}`,
+    portrait: { key: fnv1a(`${p.seed}:portrait`), sex: p.sex, age: p.age },
+    clock: hhmm(c.clock),
+    minutesSpent: c.minutesSpent,
+    money: c.money,
+    complaints: complaintObservations(p).map(line),
+    results: c.arrived.flatMap(a => a.obs).map(line),
+    groups: c.arrived
+      .map((a, i) => ({ key: `${i}:${a.exam}`, exam: a.exam, name: db.exams[a.exam].name.ru, at: hhmm(a.at), fresh: c.step > 0 && a.step === c.step, lines: a.obs.map(line) }))
+      .reverse(),
+    freshCount: c.arrived.filter(a => c.step > 0 && a.step === c.step).reduce((n, a) => n + a.obs.length, 0),
+    pending: c.pending.map(x => ({ name: db.exams[x.exam].name.ru, at: hhmm(x.readyAt) })),
+    meanwhile: c.meanwhile,
+    ...(c.urgent ? { urgent: true } : {}),
+    done: c.done,
+    hints: beliefsOf(p, obs).slice(0, 3).map(b => ({ id: b.id, name: db.conditions[b.id].name.ru, outOf10: Math.round(b.p * 10) })),
+    treatments,
+    treatmentGroups: groupTreatments(treatments),
+    draft: c.draft,
+    draftDiagnosisName: c.draft.diagnosis ? db.conditions[c.draft.diagnosis].name.ru : undefined,
+    ...(c.canSendAway ? { canSendAway: true } : {}),
+    ...(c.returnNote ? { returnNote: c.returnNote } : {}),
+    decision: c.decision,
+  };
+}
+
+/** Итог и разбор закрытого случая — словами (`04` §10). */
+export function decisionOf(x: {
+  patient: Patient; arrived: readonly Arrival[]; diagnosis: Id; verdict: Decision['verdict']; confidence: number;
+  plan: { treatments: Id[]; setting: Setting }; ev: PlanEval; outcome: Outcome; score: CaseScore; review: ReviewData;
+}): Decision {
+  const t = T.spikes.patient;
+  const p = x.patient;
+  const cond = db.conditions[p.truth.conditions[0].id];
+  const outOf10 = (v: number) => Math.round(v * 10);
+  const seen = x.arrived.flatMap(a => a.obs);
+  const keys = ['accuracy', 'defensibility', 'thrift', 'treatment', 'setting', 'safety'] as const;
+  return {
+    diagnosis: x.diagnosis,
+    verdict: x.verdict,
+    truthName: cond.name.ru,
+    outOf10: outOf10(x.confidence),
+    pearls: (cond.pearls ?? []).map(v => v.ru),
+    causes: p.truth.findings
+      .filter(f => seen.some(o => o.f === f.f && o.shown) || p.complaints.includes(f.f))
+      .map(f => ({ finding: db.findings[f.f].name.ru, cause: f.cause === 'leak' ? t.causeLeak : (db.conditions[f.cause]?.name.ru ?? db.risks[f.cause]?.name.ru ?? f.cause) })),
+    outcome: outcomeText(x.outcome, x.plan.setting, p.sex === 'f'),
+    grades: keys.map(k => ({ key: k, label: t.grade[k], grade: x.score[k] })),
+    overall: x.score.overall,
+    notes: x.score.notes.map(noteText),
+    plan: x.ev.roles.map(r => ({ name: db.treatments[r.tx].name.ru, role: t.role[r.role] })),
+    settingName: t.setting[x.plan.setting],
+    rational: t.rationalLine(
+      x.review.rational.exams.length > 0 ? x.review.rational.exams.map(e => db.exams[e].name.ru).join(', ') : t.rationalNone,
+      x.review.rational.minutes, T.common.rub(x.review.rational.money), db.conditions[x.review.rational.diagnosis].name.ru),
+    idle: x.review.idle.map(e => db.exams[e].name.ru),
+    timeline: x.review.timeline.map(v => ({ label: v.exam === 'complaint' ? t.timelineComplaints : db.exams[v.exam].name.ru, truth: outOf10(v.truth), chosen: outOf10(v.chosen) })),
+  };
+}
+
+export function outcomeText(outcome: Outcome, setting: Setting, female: boolean): string {
+  const out = T.spikes.patient.outcome;
+  switch (outcome.kind) {
+    case 'recovered': return out.recovered(outcome.day, female);
+    case 'improved': return out.improved(female);
+    case 'unchanged': return out.unchanged;
+    case 'worse': return out.worse(outcome.day);
+    case 'reaction': return outcome.reaction ? out.reaction(db.treatments[outcome.reaction.tx].name.ru, riskName(outcome.reaction.by)) : out.unchanged;
+    case 'transferred': return setting === 'ambulance' ? out.ambulance : out.ward(female);
+  }
+}
+
+export function noteText(n: ScoreNote): string {
+  const t = T.spikes.patient.note;
+  const tx = (id: Id) => db.treatments[id].name.ru;
+  switch (n.code) {
+    case 'tx.harmful': return t.harmful(tx(n.tx));
+    case 'tx.notIndicated': return t.notIndicated(tx(n.tx));
+    case 'tx.acceptable': return t.acceptable(tx(n.tx));
+    case 'tx.noCure': return t.noCure;
+    case 'tx.none': return t.none;
+    case 'tx.preHospitalMissing': return t.preHospitalMissing(tx(n.tx));
+    case 'setting.under': return t.settingUnder(n.recommended === 'ambulance' ? 'ambulance' : 'ward');
+    case 'setting.over': return t.settingOver(n.recommended === 'home' ? 'home' : 'ward');
+    case 'safety.knownViolation': return t.knownViolation(tx(n.tx), riskName(n.by));
+    case 'safety.unaskedViolation': return t.unaskedViolation(tx(n.tx), riskName(n.by));
+    case 'safety.notAsked': return t.notAsked(riskName(n.by));
+    case 'safety.redFlagIgnored': return t.redFlagIgnored(db.findings[n.f].name.ru);
+    case 'safety.redFlagUnchecked': return t.redFlagUnchecked(db.findings[n.f].name.ru);
+    case 'thrift.over': return t.thriftOver(n.times);
+  }
+}
+
+/** Обследования по разделам действий карты пациента. */
+export function examsByAction(): Record<'ask' | 'examine' | 'order', Id[]> {
+  // по названию; в «Спросить» сначала расспрос о жалобах по системам, потом анамнез жизни
+  const byName = (a: Id, b: Id) => (db.exams[a].name.ru < db.exams[b].name.ru ? -1 : 1);
+  const history = (id: Id) => (db.exams[id].checks.every(c => c.f.startsWith('hx.')) ? 1 : 0);
+  const ids = Object.keys(db.exams).sort(byName);
+  return {
+    ask: ids.filter(id => db.exams[id].kind === 'ask').sort((a, b) => history(a) - history(b) || byName(a, b)),
+    examine: ids.filter(id => ['physical', 'bedside'].includes(db.exams[id].kind)),
+    order: ids.filter(id => ['lab', 'rapid', 'imaging', 'functional'].includes(db.exams[id].kind)),
+  };
+}
+
+export function examInfo(id: Id): { name: string; minutes: number; cost: number } {
+  const e = db.exams[id];
+  return { name: e.name.ru, minutes: e.time.procedure + (e.time.report ?? 0) + (e.time.turnaround ?? 0), cost: e.cost };
+}
+
+/** «Что это?» о признаке: объяснение и чем его выявляют. */
+export function findingInfo(id: Id): TermInfo {
+  const f = db.findings[id];
+  const by = (db.revealedBy[id] ?? []).map(e => db.exams[e].name.ru);
+  return {
+    title: f.name.ru,
+    text: f.texts.hint ? [f.texts.hint.ru] : [],
+    list: by.length > 0 ? { label: T.spikes.patient.revealedBy, items: by } : undefined,
+  };
+}
+
+/** «Что это?» об обследовании: как делают, что показывает, какие признаки проверяет. */
+export function examTerm(id: Id): TermInfo {
+  const e = db.exams[id];
+  return {
+    title: e.name.ru,
+    text: [e.texts.summary.ru, ...(e.texts.hint ? [e.texts.hint.ru] : [])],
+    list: { label: T.spikes.patient.checks, items: e.checks.map(c => db.findings[c.f].name.ru) },
+  };
+}
+
+/** «Что это?» о лечении. */
+export function treatmentTerm(id: Id): TermInfo {
+  const x = db.treatments[id];
+  return { title: x.name.ru, text: [x.texts.hint.ru] };
+}
+
+/** «Что это?» о болезни — только общее описание из энциклопедии. */
+export function conditionTerm(id: Id): TermInfo {
+  const c = db.conditions[id];
+  return { title: c.name.ru, text: [c.texts.summary.ru] };
+}

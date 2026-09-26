@@ -1,7 +1,9 @@
-// Меню прототипов этапа 1. Оговорка — при каждом запуске, пока нет настроек (11-publishing.md §3).
+// Меню: смена (этап 2, в работе) и прототипы этапа 1. Оговорка — при каждом запуске, пока нет
+// настроек (11-publishing.md §3).
 import { type Href, router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { T } from '@/i18n';
+import { loadShift, useShift } from '@/state/session';
 import { Button, Card, H, P, Screen } from '@/ui/components';
 
 const ITEMS: { href: Href; title: string; hint: string; id: string }[] = [
@@ -14,6 +16,10 @@ const ITEMS: { href: Href; title: string; hint: string; id: string }[] = [
 
 export default function Menu() {
   const [accepted, setAccepted] = useState(false);
+  const shift = useShift();
+  useEffect(() => {
+    loadShift();
+  }, []);
   return (
     <Screen>
       {!accepted && (
@@ -24,6 +30,13 @@ export default function Menu() {
         </Card>
       )}
       <P muted>{T.menu.subtitle}</P>
+      <H>{T.menu.gameTitle}</H>
+      <Button
+        testID="menu-shift"
+        title={T.menu.shift}
+        hint={shift.status === 'ready' ? T.menu.shiftContinue(shift.day, shift.clock) : T.menu.shiftNew}
+        onPress={() => router.push('/shift')}
+      />
       <H>{T.menu.spikesTitle}</H>
       {ITEMS.map(it => (
         <Button key={it.id} testID={`menu-${it.id}`} title={it.title} hint={it.hint} onPress={() => router.push(it.href)} />

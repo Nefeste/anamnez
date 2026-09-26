@@ -1,6 +1,7 @@
 id: sym.vomiting
 name: { ru: "Рвота" }
 leak: { pct: 1 }
+triage: yellow
 redFlag: true
 salience: 3
 texts:

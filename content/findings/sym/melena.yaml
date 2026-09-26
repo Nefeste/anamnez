@@ -1,6 +1,7 @@
 id: sym.melena
 name: { ru: "Чёрный дёгтеобразный стул" }
 leak: { pct: 0.2 }
+triage: red
 redFlag: true
 salience: 3
 texts:

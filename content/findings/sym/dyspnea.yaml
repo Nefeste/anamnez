@@ -1,6 +1,7 @@
 id: sym.dyspnea
 name: { ru: "Одышка" }
 leak: { pct: 3 }
+triage: yellow
 salience: 3
 texts:
   hint:

@@ -1,8 +1,11 @@
 // npm run e2e — сценарий Playwright по веб-сборке (09-testing.md §4): все пять прототипов
-// этапа 1. Сначала `npm run export:web`. Снимки экранов — в tools/e2e/out/.
+// этапа 1 и смена этапа 2. Сначала `npm run export:web`. Снимки экранов — в tools/e2e/out/.
 import { mkdirSync, readFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import { chromium, type Page } from 'playwright';
+import { apply, newShift } from '../../src/engine/shift/engine';
+import { SHIFT_SCHEMA_VERSION } from '../../src/engine/shift/types';
+import { buildDb } from '../content/load';
 
 const ROOT = join(import.meta.dir, '../..');
 const DIST = join(ROOT, 'dist-web');
@@ -29,6 +32,38 @@ const check = (ok: boolean, what: string) => {
   if (!ok) failures.push(what);
 };
 const text = async (page: Page, id: string) => (await page.getByTestId(id).innerText()).trim();
+
+/** Часы смены на ×4, пока не выполнится условие; автопаузу («срочный», «результаты») снимаем. */
+async function runClockUntil(page: Page, done: () => Promise<boolean>, ms = 60_000): Promise<boolean> {
+  const until = Date.now() + ms;
+  while (Date.now() < until) {
+    if (await done()) return true;
+    if ((await page.getByTestId('shift-pause-reason').count()) > 0) await page.getByTestId('tab-x4').click();
+    await page.waitForTimeout(250);
+  }
+  return false;
+}
+
+/**
+ * Сохранение смены в конце дня 1 — из движка, как его записала бы игра: двое приняты утром,
+ * остальные к 15:00 приняты или ушли. Чтение его — сценарий сохранения (spec first-shift).
+ */
+function endOfDaySave(): string {
+  const { db } = buildDb();
+  const s = newShift(db, { seed: 42, season: 'winter' });
+  const see = () => {
+    apply(db, s, { kind: 'call', id: s.queue[0] });
+    apply(db, s, { kind: 'exam', exam: 'exam.ask_complaints' });
+    apply(db, s, { kind: 'diagnose', id: 'cond.arvi' });
+    apply(db, s, { kind: 'toggleTreatment', id: 'tx.rest_fluids' });
+    apply(db, s, { kind: 'finish' });
+  };
+  apply(db, s, { kind: 'advance', seconds: 3600 });
+  for (let i = 0; i < 2 && s.queue.length > 0; i++) see();
+  apply(db, s, { kind: 'advance', seconds: 6 * 3600 });
+  while (s.queue.length > 0) see();
+  return JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s });
+}
 
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2 });
@@ -139,6 +174,74 @@ try {
   await page.waitForTimeout(500);
   check((await text(page, 'save-status')).includes('предыдущая копия'), 'П6: испорченный файл — читается предыдущая копия');
   await page.screenshot({ path: join(OUT, '07-save.png') });
+
+  // Этап 2: смена — часы на карте, приём, «отпустить ждать результатов», итог, продолжение
+  await page.goto(base);
+  await page.getByTestId('accept-disclaimer').click();
+  await page.getByTestId('menu-shift').click();
+  await page.getByTestId('shift-start').waitFor({ timeout: 15_000 });
+  await page.getByTestId('shift-start').click();
+  await page.getByTestId('tab-x4').click();
+  await page.getByTestId('shift-call').waitFor({ timeout: 60_000 });
+  const opened = await text(page, 'shift-clock');
+  check(/^\d\d:\d\d$/.test(opened) && opened !== '08:00', `смена: часы идут, пока в кабинете никого (${opened})`);
+  await page.screenshot({ path: join(OUT, '08-shift-queue.png') });
+  await page.getByTestId('shift-call').click();
+  await page.getByTestId('exam-exam.ask_complaints').waitFor({ timeout: 10_000 });
+  const roomClock = await text(page, 'visit-clock');
+  await page.waitForTimeout(1500);
+  check((await text(page, 'visit-clock')) === roomClock, 'смена: в кабинете часы идут только делами');
+  await page.getByTestId('exam-exam.ask_complaints').click();
+  await page.getByTestId('tab-order').click();
+  await page.getByTestId('exam-exam.cbc').click();
+  await page.screenshot({ path: join(OUT, '08-shift-card.png') });
+  await page.getByTestId('visit-send-away').click();
+  await page.getByTestId('shift-clock').waitFor({ timeout: 10_000 });
+  check((await page.locator('[data-testid^="away-"]').count()) === 1, 'смена: отпущенный ждать результатов — «на обследованиях»');
+  const back = page.locator('[data-testid^="queue-"]').filter({ hasText: 'с результатами' });
+  check(await runClockUntil(page, async () => (await back.count()) > 0), 'смена: результаты готовы — пациент снова в очереди');
+  await back.first().click();
+  await page.getByTestId('visit-fresh').first().waitFor({ timeout: 10_000 });
+  check(await page.getByTestId('visit-fresh').first().isVisible(), 'смена: пришедшее без врача — «новое» при вызове');
+  await page.getByTestId('visit-decide').click();
+  await page.locator('[data-testid^="hint-"]').first().click();
+  await page.getByTestId('decision-to-plan').click();
+  await page.getByTestId('setting-home').click();
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
+  check((await text(page, 'visit-outcome')).includes('итогах следующих дней'), 'смена: исход «домой» — в итогах следующих дней');
+  await page.screenshot({ path: join(OUT, '08-shift-outcome.png') });
+  await page.getByTestId('shift-to-queue').click();
+  await page.getByTestId('shift-counts').waitFor({ timeout: 10_000 });
+  check((await text(page, 'shift-counts')).startsWith('Принято: 1'), `смена: приём засчитан — ${await text(page, 'shift-counts')}`);
+  await page.goto(base);
+  await page.getByTestId('accept-disclaimer').click();
+  await page.waitForTimeout(500);
+  const hint = await text(page, 'menu-shift');
+  check(hint.includes('продолжить: день 1'), `смена: сохранена, в меню — «${hint.split('\n').pop()}»`);
+
+  // конец дня из сохранения: закрыть день, итоги, разбор случая из итогов, следующий день
+  const day = await browser.newContext({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2 });
+  await day.addInitScript(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/shift.json', endOfDaySave()]);
+  const p2 = await day.newPage();
+  p2.on('pageerror', e => errors.push(String(e)));
+  await p2.goto(`${base}/shift`);
+  await p2.getByTestId('shift-close-day').waitFor({ timeout: 15_000 });
+  const late = await text(p2, 'shift-clock');
+  check(late >= '15:00', `сохранение смены читается: день 1, ${late}, все приняты — «Закрыть день»`);
+  await p2.getByTestId('shift-close-day').click();
+  await p2.getByTestId('summary-seen').waitFor({ timeout: 10_000 });
+  const seen = await text(p2, 'summary-seen');
+  check(/^Принято: \d+ из \d+$/.test(seen), `итоги дня: ${seen}`);
+  await p2.screenshot({ path: join(OUT, '09-shift-summary.png'), fullPage: true });
+  await p2.locator('[data-testid^="case-"]').first().click();
+  await p2.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
+  check((await text(p2, 'visit-truth')).startsWith('На самом деле:'), 'итоги дня: разбор каждого приёма');
+  await p2.getByTestId('shift-to-summary').click();
+  await p2.getByTestId('shift-next-day').click();
+  await p2.getByTestId('shift-clock').waitFor({ timeout: 10_000 });
+  check((await text(p2, 'shift-clock')) === '08:00', 'следующий день — с 08:00');
+  await day.close();
 
   const real = errors.filter(e => !/favicon/.test(e));
   check(real.length === 0, `нет ошибок в консоли${real.length ? `: ${real.slice(0, 3).join(' | ')}` : ''}`);

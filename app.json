@@ -3,7 +3,7 @@
     "name": "Анамнез",
     "slug": "anamnez",
     "scheme": "anamnez",
-    "version": "0.0.6",
+    "version": "0.0.7",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "backgroundColor": "#F4F7F7",
@@ -13,7 +13,7 @@
     },
     "android": {
       "package": "com.anamnez.game",
-      "versionCode": 6,
+      "versionCode": 7,
       "predictiveBackGestureEnabled": false,
       "blockedPermissions": [
         "android.permission.READ_EXTERNAL_STORAGE",

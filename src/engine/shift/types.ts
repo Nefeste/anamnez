@@ -1,0 +1,171 @@
+// Смена в амбулатории (spec 2026-09-first-shift, «Движок»; `07-data-model.md` §2).
+//
+// Состояние — обычный сериализуемый объект: сохранение — снимок (ADR 0010). Случайность
+// в нём не хранится: всё берётся из именованных ветвей зерна смены (ADR 0004), поэтому
+// одинаковые зерно и команды дают одинаковую смену — на телефоне, в тестах и в повторе.
+import type { Id, Season, Setting } from '../../content/types';
+import type { Scheduled } from '../core/events';
+import type { Outcome } from '../med/course';
+import type { Grade, ScoreNote } from '../med/score';
+import type { Observation, Patient } from '../med/types';
+
+export const SHIFT_SCHEMA_VERSION = 1;
+
+/** Время — игровые секунды от полуночи первого дня. */
+export const DAY = 24 * 3600;
+export const SHIFT_START = 8 * 3600;
+/** После 14:00 новые пациенты не приходят; очередь можно допринять. */
+export const SHIFT_END = 14 * 3600;
+
+/** Срочность по сортировке: красный — сразу к врачу, не уходит, а ухудшается. */
+export type Triage = 'red' | 'yellow' | 'green';
+
+/**
+ * coming — ещё не пришёл (запланирован на сегодня); waiting — в очереди; inRoom — в
+ * кабинете; away — ушёл на анализы и ждёт результатов; done — приём завершён; left — ушёл,
+ * не дождавшись; unseen — день закрыт, а до него не дошли.
+ */
+export type PatientStatus = 'coming' | 'waiting' | 'inRoom' | 'away' | 'done' | 'left' | 'unseen';
+
+export type VisitKind = 'appointment' | 'walkIn' | 'return';
+export type ReturnReason = 'worse' | 'reaction' | 'unchanged';
+
+/** Результаты одного обследования; step — номер действия врача, за которое они пришли. */
+export interface ResultBatch {
+  exam: Id;
+  obs: Observation[];
+  at: number;
+  step: number;
+}
+
+export interface PendingResult {
+  exam: Id;
+  readyAt: number;
+  obs: Observation[];
+}
+
+export interface ShiftPatient {
+  id: string;
+  patient: Patient;
+  arriveT: number;
+  kind: VisitKind;
+  /** повторное обращение: какой приём и почему вернулся */
+  returnOf?: string;
+  returnReason?: ReturnReason;
+  triage: Triage;
+  status: PatientStatus;
+  /** с какого момента ждёт в очереди — для порядка */
+  queuedT: number;
+  /** номер ожидания: вызвали или отпустили на анализы — прежняя проверка терпения недействительна */
+  wait: number;
+  /** сколько секунд готов ждать; 0 — не уходит (красный) */
+  patience: number;
+  results: ResultBatch[];
+  pending: PendingResult[];
+  /** обследования, уже сделанные или назначенные этому пациенту */
+  done: Id[];
+  step: number;
+  spent: { seconds: number; money: number };
+  draft: { diagnosis?: Id; treatments: Id[]; setting: Setting };
+  closed?: ClosedCase;
+}
+
+export interface ClosedCase {
+  at: number;
+  diagnosis: Id;
+  verdict: 'correct' | 'partly' | 'wrong';
+  /** уверенность идеального врача в поставленном диагнозе, 0–1 */
+  confidence: number;
+  plan: { treatments: Id[]; setting: Setting };
+  outcome: Outcome;
+  grades: Record<'accuracy' | 'defensibility' | 'thrift' | 'treatment' | 'setting' | 'safety' | 'overall', Grade>;
+  notes: ScoreNote[];
+  /** цена разумного пути на этом пациенте — для итогов дня: в условных единицах и в рублях */
+  rationalCost: number;
+  rationalMoney: number;
+}
+
+export type ShiftEvent =
+  | { kind: 'arrive'; id: string }
+  /** подошёл срок результатов у пациента */
+  | { kind: 'result'; id: string }
+  /** проверить, не ушёл ли: то же ожидание (wait) — значит, терпение кончилось */
+  | { kind: 'patience'; id: string; wait: number }
+  | { kind: 'shiftEnd' };
+
+export type Command =
+  | { kind: 'call'; id: string }
+  | { kind: 'exam'; exam: Id }
+  /** в кабинете: подождать ближайший результат этого пациента */
+  | { kind: 'waitResults' }
+  /** отпустить ждать результатов, а пока принять другого */
+  | { kind: 'sendAway' }
+  | { kind: 'diagnose'; id: Id }
+  | { kind: 'toggleTreatment'; id: Id }
+  | { kind: 'setting'; setting: Setting }
+  | { kind: 'finish' }
+  /** время на карте: часы идут сами (ADR 0005) */
+  | { kind: 'advance'; seconds: number }
+  | { kind: 'closeDay' }
+  | { kind: 'nextDay' };
+
+/** Что случилось — для интерфейса: звук, автопауза, сводка «за это время». */
+export type Notice =
+  | { kind: 'arrived'; id: string; triage: Triage }
+  | { kind: 'resultsReady'; id: string }
+  | { kind: 'left'; id: string }
+  | { kind: 'shiftEnd' };
+
+export interface DaySummary {
+  day: number;
+  arrived: number;
+  seen: number;
+  left: number;
+  unseen: number;
+  correct: number;
+  partly: number;
+  wrong: number;
+  grades: Record<Grade, number>;
+  money: number;
+  /** сколько из сегодняшних случаев вернутся (запланированы повторные обращения) */
+  returnsPlanned: number;
+  /** сколько повторных обращений пришло сегодня */
+  returnsToday: number;
+}
+
+export interface PlannedReturn {
+  day: number;
+  of: string;
+  reason: ReturnReason;
+}
+
+export interface ShiftState {
+  meta: {
+    schemaVersion: number;
+    contentVersion: number;
+    rngVersion: number;
+    mode: 'shift';
+    seed: number;
+    season: Season;
+    department: Id;
+  };
+  t: number;
+  day: number;
+  /** false — день закрыт, итоги показаны, ждём «следующий день» */
+  dayOpen: boolean;
+  patients: Record<string, ShiftPatient>;
+  /** ждут врача: по срочности, затем по времени */
+  queue: string[];
+  /** кто в кабинете */
+  current?: string;
+  /** очередь событий по (t, seq); seq — сквозной номер постановки, для одинакового порядка */
+  events: Scheduled<ShiftEvent>[];
+  seq: number;
+  /** когда освободятся рентген-кабинет и кабинет ЭКГ (по одному аппарату) */
+  rooms: { xray: number; ecg: number };
+  returns: PlannedReturn[];
+  summary: DaySummary;
+  history: DaySummary[];
+  /** команды текущего дня — для отчёта об ошибке и повтора (`06-architecture.md` §8) */
+  journal: Command[];
+}

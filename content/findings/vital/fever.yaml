@@ -1,6 +1,7 @@
 id: vital.fever
 name: { ru: "Лихорадка 38 °C и выше" }
 leak: { pct: 1 }
+triage: yellow
 value:
   unit: "°C"
   ref: [36.0, 37.0]

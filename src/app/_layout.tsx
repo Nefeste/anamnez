@@ -1,12 +1,26 @@
-// Корень: стек Expo Router (ADR 0003) внутри корня жестов.
+// Корень: стек Expo Router (ADR 0003) внутри корня жестов. Здесь же смене даётся хранилище
+// сохранений платформы, и смена сохраняется, когда приложение уходит в фон.
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { useEffect } from 'react';
+import { AppState } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { T } from '@/i18n';
+import { saveNow, setStore } from '@/state/session';
+import { rawStore } from '@/state/storage';
 import { colors } from '@/ui/theme';
 
+setStore(rawStore);
+
 export default function RootLayout() {
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', state => {
+      if (state !== 'active') saveNow();
+    });
+    return () => sub.remove();
+  }, []);
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
@@ -26,6 +40,10 @@ export default function RootLayout() {
           <Stack.Screen name="spikes/outcome" options={{ title: T.spikes.decision.outcomeTitle }} />
           <Stack.Screen name="spikes/imaging" options={{ title: T.spikes.imaging.title }} />
           <Stack.Screen name="spikes/save" options={{ title: T.spikes.save.title }} />
+          <Stack.Screen name="shift/index" options={{ title: T.shift.title }} />
+          <Stack.Screen name="shift/patient" options={{ title: T.spikes.patient.title }} />
+          <Stack.Screen name="shift/decision" options={{ title: T.spikes.decision.title }} />
+          <Stack.Screen name="shift/outcome" options={{ title: T.spikes.decision.outcomeTitle }} />
         </Stack>
       </SafeAreaProvider>
     </GestureHandlerRootView>
