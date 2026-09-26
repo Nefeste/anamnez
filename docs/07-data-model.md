@@ -110,6 +110,7 @@ interface Finding {
     complaint?: TemplateSet;             // от лица пациента
     present: TemplateSet;                // строка осмотра или протокола
     absent?: TemplateSet;                // отрицательный результат
+    hint: Text;                          // «Что это?» простыми словами (05-content.md §4)
   };
   sources?: Source[]; review: Review; replacedBy?: Id;
 }
@@ -129,7 +130,7 @@ interface Exam {
   contraindications?: { id: Id; level: 'relative' | 'absolute' }[];
   checks: { f: Id; sens: P; spec: P }[];         // какие признаки проверяет и как точно
   modifiers?: { by: Id; sens?: number; spec?: number }[];  // ожирение, навык, уровень аппарата
-  texts: { summary: Text };
+  texts: { summary: Text; hint: Text };          // как делают; что показывает — простыми словами
   sources: Source[]; review: Review; replacedBy?: Id;
 }
 ```
