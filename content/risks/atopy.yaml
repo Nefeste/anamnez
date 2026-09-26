@@ -1,0 +1,8 @@
+id: risk.atopy
+name: { ru: "Атопия (аллергия на пыльцу, шерсть, пыль)" }
+prevalence: { m: 18, f: 20 }
+findings:
+  - { f: hx.atopy, band: always }
+sources:
+  - { kind: review, title: "Pawankar R et al. WAO White Book on Allergy: Update 2013. World Allergy Organization", note: "черновик: доля взрослых с аллергией на ингаляционные аллергены" }
+review: draft

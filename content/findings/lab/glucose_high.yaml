@@ -1,0 +1,17 @@
+id: lab.glucose_high
+name: { ru: "Глюкоза крови повышена" }
+leak: { pct: 2 }
+value:
+  unit: "ммоль/л"
+  ref: [3.9, 6.0]
+  present: [7.1, 16.0]
+  absent: [4.2, 5.9]
+  decimals: 1
+texts:
+  hint:
+    ru: "Глюкоза натощак 7,0 ммоль/л и выше — диабетический уровень. Одного измерения мало: диагноз подтверждают повтором или гликированным гемоглобином."
+  present:
+    - ru: "Глюкоза {value} {unit}"
+  absent:
+    - ru: "Глюкоза {value} {unit}"
+review: draft

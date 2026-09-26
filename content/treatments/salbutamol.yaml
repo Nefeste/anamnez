@@ -6,6 +6,7 @@ route: inhaled
 cost: 250
 effects:
   - { on: cond.copd_exacerbation, kind: cure, band: often, days: [1, 4] }
+  - { on: cond.asthma_exacerbation, kind: cure, band: often, days: [1, 4] }
 texts:
   hint:
     ru: "Ингалятор, быстро расширяющий бронхи: при обострении ХОБЛ и астмы облегчает дыхание за минуты."

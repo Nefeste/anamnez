@@ -1,0 +1,18 @@
+id: exam.nose_exam
+name: { ru: "Осмотр носа и пальпация пазух" }
+kind: physical
+time: { procedure: 3 }
+cost: 0
+discomfort: 1
+checks:
+  - { f: sign.pale_nasal_mucosa, sens: 80, spec: 92 }
+  - { f: sign.purulent_discharge_nose, sens: 75, spec: 92 }
+  - { f: sign.sinus_tenderness, sens: 60, spec: 80 }
+texts:
+  hint:
+    ru: "Бледная отёчная слизистая — довод за аллергию, гной в носовых ходах — за синусит. Болезненность над пазухами — признак неточный."
+  summary:
+    ru: "Передняя риноскопия с налобным осветителем, пальпация в проекции пазух."
+sources:
+  - { kind: guideline, title: "Острый синусит", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru; точность осмотра — игровая оценка" }
+review: draft

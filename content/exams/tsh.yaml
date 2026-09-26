@@ -1,0 +1,17 @@
+id: exam.tsh
+name: { ru: "ТТГ" }
+kind: lab
+room: room.lab
+time: { procedure: 5, turnaround: 120 }
+cost: 450
+discomfort: 1
+checks:
+  - { f: lab.tsh_high, sens: 97, spec: 97 }
+texts:
+  hint:
+    ru: "Тиреотропный гормон — главный анализ на функцию щитовидной железы. Высокий — железа работает слабо (гипотиреоз)."
+  summary:
+    ru: "Кровь из вены."
+sources:
+  - { kind: guideline, title: "Гипотиреоз", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru" }
+review: draft

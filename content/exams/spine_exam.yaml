@@ -1,0 +1,18 @@
+id: exam.spine_exam
+name: { ru: "Осмотр спины и мышц шеи" }
+kind: physical
+time: { procedure: 3 }
+cost: 0
+discomfort: 1
+checks:
+  - { f: sign.paraspinal_spasm, sens: 80, spec: 88 }
+  - { f: sign.slr_positive, sens: 70, spec: 92 }
+  - { f: sign.pericranial_tenderness, sens: 75, spec: 85 }
+texts:
+  hint:
+    ru: "Напряжение мышц спины и ограничение наклонов — довод за неспецифическую боль в спине; симптом Ласега — за раздражение корешка; болезненные мышцы шеи — за головную боль напряжения."
+  summary:
+    ru: "Осанка, наклоны, пальпация мышц спины, шеи и затылка, симптом Ласега."
+sources:
+  - { kind: textbook, title: "Неврология: национальное руководство", note: "черновик: точность осмотра — игровая оценка" }
+review: draft

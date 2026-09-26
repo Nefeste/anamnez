@@ -1,0 +1,69 @@
+id: cond.covid19
+name: { ru: "COVID-19" }
+icd10: U07.1
+department: dept.therapy
+group: grp.viral_respiratory
+kind: disease
+severity: moderate
+epidemiology:
+  prevalence: common
+  age: { min: 18 }
+  season: { winter: 1.3, spring: 0.9, summer: 0.9, autumn: 1.1 }
+  risks:
+    - { id: risk.sick_contact, x: 2 }
+params:
+  severity: { mild: 85, moderate: 12, severe: 3 }
+course:
+  stages:
+    - { id: onset, days: [0, 2] }
+    - { id: peak, days: [2, 7] }
+    - { id: resolution, days: [7, 14] }
+  presentation: [1, 5]
+  selfLimiting: true
+  untreated: { band: rarely, days: [5, 10] }
+findings:
+  - { f: sym.fever_hx, band: often }
+  - { f: vital.fever, band: sometimes }
+  - { f: sym.cough, band: usually, attrs: { character: { dry: 80, productive: 20 } } }
+  - { f: sym.sore_throat, band: often }
+  - { f: sym.rhinorrhea, band: often }
+  - { f: sym.nasal_congestion, band: often }
+  - { f: sym.headache, band: often }
+  - { f: sym.myalgia, band: often }
+  - { f: sym.fatigue, band: usually }
+  - { f: sym.anosmia, band: sometimes }
+  - { f: sym.chills, band: sometimes }
+  - { f: sym.abrupt_onset, band: sometimes }
+  - { f: sign.pharyngeal_hyperemia, band: often }
+  - { f: sym.dyspnea, band: rarely }
+  - { f: sym.dyspnea, band: usually, when: { severity: [moderate, severe] } }
+  - { f: vital.tachypnea, band: often, when: { severity: [moderate, severe] } }
+  - { f: vital.spo2_low, band: usually, when: { severity: [severe] } }
+  - { f: vital.spo2_low, band: rarely, when: { severity: [moderate] } }
+  - { f: sign.crackles_local, band: sometimes, when: { severity: [moderate, severe] }, attrs: { side: { both: 80, right: 10, left: 10 } } }
+  - { f: img.cxr_infiltrate, band: usually, when: { severity: [moderate, severe] }, attrs: { side: { both: 85, right: 8, left: 7 } } }
+  - { f: lab.sars_ag, band: always }
+  - { f: lab.crp_high, band: sometimes }
+  - { f: lab.crp_high, band: often, when: { severity: [moderate, severe] } }
+  - { f: lab.wbc_high, band: rarely }
+confirm: [exam.covid_rapid]
+redFlags: [vital.spo2_low]
+treatment:
+  firstLine: [tx.rest_fluids]
+  supportive: [tx.paracetamol, tx.ibuprofen, tx.nasal_saline]
+  notIndicated: [tx.amoxicillin, tx.amoxicillin_clavulanate, tx.macrolide, tx.oseltamivir, tx.steroid_systemic_short, tx.antihistamine]
+  setting: { default: home, param: { name: severity, map: { mild: home, moderate: home, severe: ward } }, redFlag: ward }
+texts:
+  summary:
+    ru: >-
+      Инфекция, вызванная коронавирусом SARS-CoV-2. Чаще протекает как простуда: кашель,
+      боль в горле, насморк, слабость, температура; иногда пропадает обоняние. У немногих,
+      чаще пожилых, развивается пневмония с падением сатурации.
+pearls:
+  - ru: "Отрицательный экспресс-тест в первые дни болезни не исключает COVID-19: тест пропускает около четверти случаев."
+  - ru: "При лёгком течении лечение — как при простуде. Гормоны нужны только тем, кому нужен кислород, — и в стационаре."
+sources:
+  - { kind: guideline, title: "Профилактика, диагностика и лечение новой коронавирусной инфекции (COVID-19). Временные методические рекомендации", org: "Минздрав РФ", note: "сверить действующую версию; частоты — черновик" }
+  - { kind: guideline, title: "Clinical management of COVID-19: living guideline", org: "ВОЗ", note: "сверить действующую редакцию" }
+  - { kind: paper, title: "The RECOVERY Collaborative Group. Dexamethasone in Hospitalized Patients with Covid-19. N Engl J Med 2021;384(8):693–704" }
+review: draft

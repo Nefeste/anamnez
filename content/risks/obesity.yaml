@@ -1,0 +1,8 @@
+id: risk.obesity
+name: { ru: "Ожирение" }
+prevalence: { m: 22, f: 26 }
+findings:
+  - { f: sign.obesity, band: always }
+sources:
+  - { kind: guideline, title: "Ожирение", org: "Минздрав РФ", note: "распространённость у взрослых в России — черновик; сверить на cr.minzdrav.gov.ru" }
+review: draft

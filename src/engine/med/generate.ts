@@ -41,7 +41,7 @@ export function generatePatient(db: ContentDb, seed: number, ctx: GenContext): P
   const risks = sortedKeys(db.risks).filter(id => {
     const r = db.risks[id];
     const roll = riskRng.fork(id).chance(r.p[sex]);
-    return roll && age >= (r.ageMin ?? 18);
+    return roll && age >= (r.ageMin ?? 18) && age <= (r.ageMax ?? 200);
   });
 
   // Хронические (сопутствующие) болезни.
@@ -100,6 +100,7 @@ export function presentingWeight(c: Condition, who: Omit<Who, 'department'>): nu
   if (!c.presenting) return 0;
   if (who.age < c.age.min || who.age > c.age.max) return 0;
   if ((c.requires ?? []).some(r => !who.chronic.includes(r))) return 0;
+  if ((c.excludes ?? []).some(r => who.chronic.includes(r))) return 0;
   let w = c.weight;
   if (c.sex) w *= who.sex === 'm' ? c.sex.m : c.sex.f;
   if (c.season) w *= c.season[who.season];
@@ -173,7 +174,33 @@ function realizeFindings(db: ContentDb, rng: Rng, conditions: ActiveCondition[],
     const attrs = realizeAttrs(db, rng.fork(`attrs>${f}`), f, causeLink, causeCond);
     out.push(attrs ? { f, cause, attrs } : { f, cause });
   }
-  return out;
+  return ensureManifest(db, rng, out, conditions[0]);
+}
+
+/**
+ * Человек пришёл, потому что с ним что-то не так: если основная болезнь по жребию не дала
+ * заметного симптома (жалобы), у неё появляется самый частый. Без этого часть пациентов
+ * (ГЭРБ без изжоги, инфаркт без боли) приходила бы с одними фоновыми жалобами и была бы
+ * неотличима от здоровых. Исключение — то, что находят без жалоб, на профосмотре
+ * (`checkup`): там достаточно любого признака. Новых бросков для остальных признаков
+ * нет — золотые случаи меняются только у таких пациентов.
+ */
+function ensureManifest(db: ContentDb, rng: Rng, out: TrueFinding[], primary: ActiveCondition): TrueFinding[] {
+  const cond = db.conditions[primary.id];
+  const salient = (f: Id) => db.findings[f]?.kind === 'sym' && db.findings[f].salience >= 2;
+  const need = cond.checkup ? () => true : salient;
+  if (out.some(x => x.cause === primary.id && need(x.f))) return out;
+  let links = cond.findings.filter(l => l.p > 0 && linkApplies(l, primary) && need(l.f));
+  if (links.length === 0) links = cond.findings.filter(l => l.p > 0 && linkApplies(l, primary));
+  if (links.length === 0 || out.some(x => x.cause === primary.id && links.some(l => l.f === x.f))) return out;
+  const link = links.reduce((best, l) => (l.p > best.p ? l : best));
+  const existing = out.find(x => x.f === link.f);
+  if (existing) {
+    existing.cause = primary.id;
+    return out;
+  }
+  const attrs = realizeAttrs(db, rng.fork(`attrs>${link.f}`), link.f, link, primary);
+  return [...out, attrs ? { f: link.f, cause: primary.id, attrs } : { f: link.f, cause: primary.id }].sort((a, b) => (a.f < b.f ? -1 : 1));
 }
 
 function realizeAttrs(db: ContentDb, rng: Rng, f: Id, link: Link | undefined, cond: ActiveCondition | undefined): Record<string, string> | undefined {
@@ -210,12 +237,16 @@ export function sampleRange(rng: Rng, [lo, hi]: [number, number], decimals: numb
   return Math.round((lo * scale + rng.int(steps + 1))) / scale;
 }
 
-/** Жалобы: заметные симптомы (заметность ≥ 2), самые заметные первыми, не больше трёх. */
+/**
+ * Жалобы: заметные симптомы (заметность ≥ 2), не больше трёх. Сначала то, с чем пришёл, —
+ * симптомы от болезней пациента, самые заметные первыми; фоновые (без причины в модели) —
+ * только после них: человек с изжогой не начнёт рассказ с того, что иногда ноет спина.
+ */
 function pickComplaints(db: ContentDb, findings: TrueFinding[]): Id[] {
+  const background = (x: TrueFinding) => (x.cause === 'leak' ? 1 : 0);
   return findings
-    .map(x => db.findings[x.f])
-    .filter(f => f && f.kind === 'sym' && f.salience >= 2)
-    .sort((a, b) => b.salience - a.salience || (a.id < b.id ? -1 : 1))
+    .filter(x => db.findings[x.f]?.kind === 'sym' && db.findings[x.f].salience >= 2)
+    .sort((a, b) => background(a) - background(b) || db.findings[b.f].salience - db.findings[a.f].salience || (a.f < b.f ? -1 : 1))
     .slice(0, 3)
-    .map(f => f.id);
+    .map(x => x.f);
 }

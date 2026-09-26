@@ -1,0 +1,20 @@
+id: exam.ask_urinary
+name: { ru: "Расспрос: мочеиспускание" }
+kind: ask
+time: { procedure: 2 }
+cost: 0
+discomfort: 0
+checks:
+  - { f: sym.dysuria, sens: 95, spec: 97 }
+  - { f: sym.frequency, sens: 92, spec: 95 }
+  - { f: sym.suprapubic_pain, sens: 85, spec: 96 }
+  - { f: sym.hematuria, sens: 92, spec: 99 }
+  - { f: sym.flank_pain, sens: 90, spec: 96 }
+texts:
+  hint:
+    ru: "Жжение и частые позывы — довод за цистит; боль в пояснице с температурой — за пиелонефрит."
+  summary:
+    ru: "Боль и жжение при мочеиспускании, частота, кровь в моче, боль над лобком и в пояснице."
+sources:
+  - { kind: paper, title: "Bent S et al. Does this woman have an acute uncomplicated urinary tract infection? JAMA 2002;287(20):2701–2710", note: "черновик: точность расспроса — игровая оценка" }
+review: draft

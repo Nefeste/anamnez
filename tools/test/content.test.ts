@@ -4,6 +4,7 @@ import { describe, expect, test } from 'bun:test';
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { txRole } from '../../src/engine/med/plan';
 import { buildDb, CONTENT_DIR } from '../content/load';
 
 function broken(mutate: (dir: string) => void): string[] {
@@ -64,14 +65,16 @@ describe('валидатор базы', () => {
   test('тактика: у всего, с чем приходят; антибиотик не показан при вирусных, выбор — при бактериальных', () => {
     const { db } = buildDb();
     for (const c of Object.values(db.conditions).filter(x => x.presenting)) {
-      expect(c.treatment?.firstLine.length ?? 0).toBeGreaterThan(0);
+      expect(c.treatment).toBeDefined();
+      // лечат дома — есть первая линия; направляют (аппендицит) — первая линия может быть пустой
+      if (c.treatment!.setting.default === 'home') expect(c.treatment!.firstLine.length).toBeGreaterThan(0);
     }
     const antibiotics = Object.values(db.treatments).filter(t => t.class?.startsWith('antibiotic.')).map(t => t.id);
-    expect(antibiotics.length).toBeGreaterThan(0);
-    for (const viral of ['cond.arvi', 'cond.acute_bronchitis', 'cond.influenza']) {
-      for (const a of antibiotics) expect(db.conditions[viral].treatment!.notIndicated).toContain(a);
+    expect(antibiotics.length).toBeGreaterThan(4);
+    for (const viral of ['cond.arvi', 'cond.acute_bronchitis', 'cond.influenza', 'cond.covid19', 'cond.sinusitis_acute', 'cond.gastroenteritis']) {
+      for (const a of antibiotics) expect(`${viral} ${a} ${txRole(db, viral, a)}`).toBe(`${viral} ${a} notIndicated`);
     }
-    for (const bacterial of ['cond.strep_pharyngitis', 'cond.pneumonia_cap']) {
+    for (const bacterial of ['cond.strep_pharyngitis', 'cond.pneumonia_cap', 'cond.sinusitis_bacterial', 'cond.cystitis', 'cond.pyelonephritis']) {
       expect(db.conditions[bacterial].treatment!.firstLine.some(t => antibiotics.includes(t))).toBe(true);
     }
     // при аллергии на пенициллины есть чем заменить: в допустимых — не пенициллин
@@ -101,6 +104,17 @@ describe('валидатор базы', () => {
       edit(d, 'conditions/therapy/pneumonia_cap.yaml', 'supportive: [tx.paracetamol, tx.rest_fluids]', 'supportive: [tx.paracetamol, tx.amoxicillin]');
     });
     expect(useless.some(e => e.includes('cond.pneumonia_cap') && e.includes('первая линия не действует'))).toBe(true);
+  });
+
+  test('место по фактору риска, типичное назначение и «впервые выявленное» проверяются', () => {
+    const risk = broken(d => edit(d, 'conditions/therapy/pyelonephritis.yaml', '{ id: risk.pregnancy, setting: ward }', '{ id: risk.pregnant, setting: ward }'));
+    expect(risk.some(e => e.includes('неизвестного фактора risk.pregnant'))).toBe(true);
+    const plan = broken(d => edit(d, 'conditions/therapy/cystitis.yaml', 'plan: [tx.fosfomycin]', 'plan: [tx.amoxicillin]'));
+    expect(plan.some(e => e.includes('в типичном назначении tx.amoxicillin'))).toBe(true);
+    const home = broken(d => edit(d, 'conditions/therapy/appendicitis.yaml', 'setting: { default: ambulance }', 'setting: { default: home }'));
+    expect(home.some(e => e.includes('cond.appendicitis: лечат дома, а первой линии нет'))).toBe(true);
+    const excl = broken(d => edit(d, 'conditions/therapy/hypertension_new.yaml', 'excludes: [cond.hypertension]', 'excludes: [cond.acs]'));
+    expect(excl.some(e => e.includes('исключающее cond.acs'))).toBe(true);
   });
 
   test('имя файла и идентификатор должны совпадать', () => {

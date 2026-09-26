@@ -1,0 +1,56 @@
+id: cond.cystitis
+name: { ru: "Острый цистит" }
+icd10: N30.0
+department: dept.therapy
+kind: disease
+severity: minor
+epidemiology:
+  prevalence: common
+  age: { min: 18 }
+  sex: { m: 0.03, f: 1 }
+  risks:
+    - { id: risk.pregnancy, x: 1.5 }
+course:
+  stages:
+    - { id: active, days: [0, 7] }
+  presentation: [0, 3]
+  untreated: { band: rarely, days: [2, 5] }
+findings:
+  - { f: sym.dysuria, band: always }
+  - { f: sym.frequency, band: usually }
+  - { f: sym.suprapubic_pain, band: often }
+  - { f: sym.hematuria, band: sometimes }
+  - { f: sym.flank_pain, band: very_rarely, attrs: { side: { right: 40, left: 40, both: 20 } } }
+  - { f: sym.fever_hx, band: rarely }
+  - { f: vital.fever, band: very_rarely }
+  - { f: sym.nausea, band: rarely }
+  - { f: sign.suprapubic_tenderness, band: often }
+  - { f: sign.cva_tenderness, band: very_rarely }
+  - { f: lab.urine_leuk, band: always }
+  - { f: lab.urine_nitrite, band: often }
+  - { f: lab.urine_blood, band: often }
+  - { f: lab.wbc_high, band: rarely }
+  - { f: lab.crp_high, band: rarely }
+confirm: clinical
+treatment:
+  firstLine: [tx.fosfomycin, tx.nitrofurantoin]
+  acceptable: [tx.cephalosporin_oral, tx.fluoroquinolone]
+  supportive: [tx.ibuprofen, tx.rest_fluids]
+  notIndicated: [tx.amoxicillin, tx.amoxicillin_clavulanate, tx.macrolide]
+  plan: [tx.fosfomycin]
+  setting: { default: home }
+texts:
+  summary:
+    ru: >-
+      Воспаление мочевого пузыря, почти всегда у женщин и почти всегда кишечной палочкой:
+      жжение при мочеиспускании, частые позывы малыми порциями, боль над лобком, иногда
+      кровь в моче. Температуры и боли в пояснице нет — иначе думают о пиелонефрите.
+pearls:
+  - ru: "Жжение и частые позывы без выделений из влагалища у женщины — цистит с вероятностью около 90 %: анализ для диагноза не обязателен."
+  - ru: "При неосложнённом цистите — фосфомицин или нитрофурантоин. Фторхинолоны берегут для пиелонефрита."
+simplified: "Цистит у мужчин и осложнённые инфекции мочевых путей — позже, с урологией."
+sources:
+  - { kind: guideline, title: "Цистит у женщин", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru; частоты — черновик" }
+  - { kind: guideline, title: "EAU Guidelines on Urological Infections", org: "European Association of Urology", year: 2024 }
+  - { kind: paper, title: "Bent S et al. Does this woman have an acute uncomplicated urinary tract infection? JAMA 2002;287(20):2701–2710" }
+review: draft

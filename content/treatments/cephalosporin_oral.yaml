@@ -1,0 +1,17 @@
+id: tx.cephalosporin_oral
+name: { ru: "Цефалоспорины III поколения внутрь (цефиксим)" }
+kind: drug
+class: antibiotic.cephalosporin
+route: oral
+cost: 500
+effects:
+  - { on: cond.pyelonephritis, kind: cure, band: usually, days: [2, 5] }
+  - { on: cond.cystitis, kind: cure, band: often, days: [1, 3] }
+contraindications:
+  - { id: risk.allergy_penicillin, level: relative, reaction: rarely }
+texts:
+  hint:
+    ru: "Антибиотики-цефалоспорины для приёма внутрь: замена фторхинолонам при пиелонефрите, в том числе у беременных. При аллергии на пенициллины перекрёстная реакция редка, но возможна."
+sources:
+  - { kind: guideline, title: "EAU Guidelines on Urological Infections", org: "European Association of Urology", year: 2024 }
+review: draft

@@ -1,0 +1,14 @@
+id: tx.nitroglycerin
+name: { ru: "Нитроглицерин под язык" }
+kind: drug
+class: antianginal.nitrate
+route: oral
+cost: 50
+effects:
+  - { on: cond.acs, kind: relieve, band: sometimes, days: [0, 0] }
+texts:
+  hint:
+    ru: "Расширяет сосуды сердца и снимает давящую боль. Если боль прошла от нитроглицерина, инфаркт всё равно не исключён. При низком давлении его не дают."
+sources:
+  - { kind: guideline, title: "2023 ESC Guidelines for the management of acute coronary syndromes. Eur Heart J 2023;44(38):3720–3826" }
+review: draft

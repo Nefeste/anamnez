@@ -1,0 +1,16 @@
+id: exam.cva_percussion
+name: { ru: "Поколачивание по пояснице" }
+kind: physical
+time: { procedure: 1 }
+cost: 0
+discomfort: 1
+checks:
+  - { f: sign.cva_tenderness, sens: 75, spec: 90 }
+texts:
+  hint:
+    ru: "Если постукивание по пояснице отдаёт болью в почку — довод за пиелонефрит. Отрицательный результат его не исключает."
+  summary:
+    ru: "Лёгкие удары ребром ладони по поясничной области с обеих сторон."
+sources:
+  - { kind: textbook, title: "Пропедевтика внутренних болезней: исследование почек", note: "черновик: точность — игровая оценка" }
+review: draft

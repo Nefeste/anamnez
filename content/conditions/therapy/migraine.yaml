@@ -1,0 +1,47 @@
+id: cond.migraine
+name: { ru: "Мигрень" }
+icd10: G43.9
+department: dept.therapy
+kind: disease
+severity: moderate
+epidemiology:
+  prevalence: uncommon
+  age: { min: 18, peak: [18, 50] }
+  sex: { m: 0.33, f: 1 }
+course:
+  stages:
+    - { id: attack, days: [0, 3] }
+  presentation: [0, 1]
+  selfLimiting: true
+findings:
+  - { f: sym.headache, band: always }
+  - { f: sym.headache_unilateral, band: usually }
+  - { f: sym.photophobia, band: usually }
+  - { f: sym.nausea, band: usually }
+  - { f: sym.vomiting, band: sometimes }
+  - { f: sym.aura, band: sometimes }
+  - { f: sym.recurrent_headache, band: usually }
+  - { f: sym.headache_pressing, band: rarely }
+  - { f: sym.dizziness, band: sometimes }
+  - { f: sign.pericranial_tenderness, band: sometimes }
+confirm: clinical
+treatment:
+  firstLine: [tx.ibuprofen, tx.triptan]
+  acceptable: [tx.paracetamol]
+  notIndicated: [tx.amoxicillin, tx.amoxicillin_clavulanate, tx.macrolide, tx.steroid_systemic_short, tx.bed_rest]
+  plan: [tx.ibuprofen]
+  setting: { default: home }
+texts:
+  summary:
+    ru: >-
+      Повторяющиеся приступы сильной пульсирующей головной боли, чаще в одной половине
+      головы, на 4–72 часа, с тошнотой и непереносимостью света и звуков; у каждого
+      четвёртого перед приступом бывает аура. Втрое чаще у женщин.
+pearls:
+  - ru: "Пульсирующая односторонняя боль с тошнотой и светобоязнью, повторяющаяся годами, — мигрень; обследования для диагноза не нужны."
+  - ru: "Приступ снимают НПВС или триптанами — чем раньше, тем лучше. Первая в жизни внезапная сильнейшая боль — не мигрень, а повод искать опасную причину."
+simplified: "Опасные причины головной боли (кровоизлияние, менингит) и неврологический осмотр — позже, с неврологией."
+sources:
+  - { kind: guideline, title: "Мигрень", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru; частоты — черновик" }
+  - { kind: guideline, title: "Headache Classification Committee of the International Headache Society. The International Classification of Headache Disorders, 3rd edition. Cephalalgia 2018;38(1):1–211" }
+review: draft

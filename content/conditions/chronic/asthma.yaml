@@ -1,0 +1,32 @@
+id: cond.asthma
+name: { ru: "Бронхиальная астма" }
+icd10: J45.9
+department: dept.therapy
+kind: disease
+severity: moderate
+presenting: false
+epidemiology:
+  prevalence: common
+  age: { min: 18 }
+  chronic: { band: { pct: 5 }, risks: [ { id: risk.atopy, x: 3 } ] }
+course:
+  stages:
+    - { id: stable, days: [0, 36500] }
+findings:
+  - { f: hx.asthma, band: usually }
+  - { f: sym.wheezing, band: rarely }
+  - { f: sym.night_symptoms, band: rarely }
+  - { f: sign.wheezes, band: rarely }
+  - { f: vital.pef_low, band: rarely }
+confirm: clinical
+simplified: "Подтверждение спирометрией с пробой на обратимость появится вместе с кабинетом функциональной диагностики."
+texts:
+  summary:
+    ru: >-
+      Хроническое воспаление бронхов, при котором они периодически сужаются: приступы
+      свистящего дыхания, одышки, кашля и стеснения в груди, часто ночью. Нередко вместе
+      с аллергическим ринитом.
+sources:
+  - { kind: guideline, title: "Global Initiative for Asthma. Global Strategy for Asthma Management and Prevention", org: "GINA", year: 2024, note: "распространённость у взрослых — черновик" }
+  - { kind: guideline, title: "Бронхиальная астма", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru" }
+review: draft

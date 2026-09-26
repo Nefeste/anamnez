@@ -1,0 +1,17 @@
+id: exam.creatinine
+name: { ru: "Креатинин крови" }
+kind: lab
+room: room.lab
+time: { procedure: 5, turnaround: 60 }
+cost: 250
+discomfort: 1
+checks:
+  - { f: lab.creatinine_high, sens: 97, spec: 97 }
+texts:
+  hint:
+    ru: "Показывает, как работают почки. Нужен при гипертонии, перед частью лекарств и при обезвоживании."
+  summary:
+    ru: "Кровь из вены; по креатинину, полу и возрасту считают скорость клубочковой фильтрации."
+sources:
+  - { kind: textbook, title: "Клиническая лабораторная диагностика: креатинин и СКФ", note: "черновик" }
+review: draft

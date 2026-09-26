@@ -1,0 +1,17 @@
+id: lab.hba1c_high
+name: { ru: "Гликированный гемоглобин 6,5 % и выше" }
+leak: { pct: 1 }
+value:
+  unit: "%"
+  ref: [4.0, 6.0]
+  present: [6.5, 11.5]
+  absent: [4.5, 6.1]
+  decimals: 1
+texts:
+  hint:
+    ru: "Показывает средний сахар крови за последние три месяца. 6,5 % и выше — сахарный диабет."
+  present:
+    - ru: "Гликированный гемоглобин {value} {unit}"
+  absent:
+    - ru: "Гликированный гемоглобин {value} {unit}"
+review: draft

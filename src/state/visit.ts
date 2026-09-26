@@ -273,6 +273,7 @@ function noteText(n: ScoreNote): string {
     case 'tx.acceptable': return t.acceptable(tx(n.tx));
     case 'tx.noCure': return t.noCure;
     case 'tx.none': return t.none;
+    case 'tx.preHospitalMissing': return t.preHospitalMissing(tx(n.tx));
     case 'setting.under': return t.settingUnder(n.recommended === 'ambulance' ? 'ambulance' : 'ward');
     case 'setting.over': return t.settingOver(n.recommended === 'home' ? 'home' : 'ward');
     case 'safety.knownViolation': return t.knownViolation(tx(n.tx), riskName(n.by));
@@ -372,9 +373,12 @@ export function useVisit(): VisitView {
 
 /** Обследования по разделам действий карты пациента. */
 export function examsByAction(): Record<'ask' | 'examine' | 'order', Id[]> {
-  const ids = Object.keys(db.exams).sort();
+  // по названию; в «Спросить» сначала расспрос о жалобах по системам, потом анамнез жизни
+  const byName = (a: Id, b: Id) => (db.exams[a].name.ru < db.exams[b].name.ru ? -1 : 1);
+  const history = (id: Id) => (db.exams[id].checks.every(c => c.f.startsWith('hx.')) ? 1 : 0);
+  const ids = Object.keys(db.exams).sort(byName);
   return {
-    ask: ids.filter(id => db.exams[id].kind === 'ask'),
+    ask: ids.filter(id => db.exams[id].kind === 'ask').sort((a, b) => history(a) - history(b) || byName(a, b)),
     examine: ids.filter(id => ['physical', 'bedside'].includes(db.exams[id].kind)),
     order: ids.filter(id => ['lab', 'rapid', 'imaging', 'functional'].includes(db.exams[id].kind)),
   };

@@ -7,6 +7,8 @@ cost: 350
 effects:
   - { on: cond.strep_pharyngitis, kind: cure, band: usually, days: [1, 3] }
   - { on: cond.pneumonia_cap, kind: cure, band: usually, days: [2, 4] }
+  - { on: cond.sinusitis_bacterial, kind: cure, band: usually, days: [2, 5] }
+  - { on: cond.pyelonephritis, kind: cure, band: often, days: [2, 5] }
   - { on: cond.copd_exacerbation, kind: cure, band: sometimes, days: [2, 5] }
 contraindications:
   - { id: risk.allergy_penicillin, level: absolute, reaction: often }

@@ -1,0 +1,20 @@
+id: exam.urinalysis
+name: { ru: "Общий анализ мочи" }
+kind: lab
+room: room.lab
+time: { procedure: 3, turnaround: 60 }
+cost: 300
+discomfort: 0
+checks:
+  - { f: lab.urine_leuk, sens: 95, spec: 96 }
+  - { f: lab.urine_nitrite, sens: 95, spec: 99 }
+  - { f: lab.urine_blood, sens: 95, spec: 96 }
+  - { f: lab.urine_glucose, sens: 97, spec: 99 }
+texts:
+  hint:
+    ru: "Лейкоциты, нитриты и эритроциты в моче под микроскопом и на анализаторе — точнее полоски, но результат через час."
+  summary:
+    ru: "Средняя порция утренней или свежей мочи, лаборатория."
+sources:
+  - { kind: textbook, title: "Клиническая лабораторная диагностика: общий анализ мочи", note: "черновик" }
+review: draft

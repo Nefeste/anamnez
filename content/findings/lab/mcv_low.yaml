@@ -1,0 +1,17 @@
+id: lab.mcv_low
+name: { ru: "Эритроциты мелкие (микроцитоз)" }
+leak: { pct: 2 }
+value:
+  unit: "фл"
+  ref: [80, 100]
+  present: [64, 78]
+  absent: [81, 97]
+  decimals: 0
+texts:
+  hint:
+    ru: "Средний объём эритроцита снижен — клетки мелкие. Так бывает, когда для гемоглобина не хватает железа."
+  present:
+    - ru: "Средний объём эритроцита {value} {unit}"
+  absent:
+    - ru: "Средний объём эритроцита {value} {unit}"
+review: draft

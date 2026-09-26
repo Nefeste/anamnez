@@ -1,0 +1,17 @@
+id: tx.nitrofurantoin
+name: { ru: "Нитрофурантоин" }
+kind: drug
+class: antibiotic.nitrofuran
+route: oral
+cost: 250
+effects:
+  - { on: cond.cystitis, kind: cure, band: usually, days: [2, 4] }
+contraindications:
+  - { id: risk.pregnancy, level: relative, reaction: never }
+texts:
+  hint:
+    ru: "Антибиотик для неосложнённого цистита курсом на несколько дней. Действует только в мочевом пузыре — при пиелонефрите бесполезен; в конце беременности его избегают."
+sources:
+  - { kind: guideline, title: "EAU Guidelines on Urological Infections", org: "European Association of Urology", year: 2024 }
+  - { kind: guideline, title: "Urinary tract infection (lower): antimicrobial prescribing. NICE guideline NG109", org: "NICE", year: 2018 }
+review: draft

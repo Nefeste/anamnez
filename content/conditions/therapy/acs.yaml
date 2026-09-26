@@ -1,0 +1,61 @@
+id: cond.acs
+name: { ru: "Острый коронарный синдром" }
+icd10: I24.9
+department: dept.therapy
+kind: syndrome
+severity: critical
+epidemiology:
+  prevalence: rare
+  age: { min: 35, peak: [55, 85] }
+  sex: { m: 1, f: 0.5 }
+  risks:
+    - { id: risk.smoking, x: 1.5 }
+    - { id: risk.family_cad, x: 1.5 }
+    - { id: risk.obesity, x: 1.2 }
+    - { id: cond.hypertension, x: 1.5 }
+    - { id: cond.diabetes2, x: 1.5 }
+params:
+  type: { stemi: 35, nste: 65 }
+course:
+  stages:
+    - { id: acute, days: [0, 1] }
+  presentation: [0, 0]
+  untreated: { band: usually, days: [0, 1] }
+findings:
+  - { f: sym.chest_pain_pressing, band: usually }
+  - { f: sym.pain_radiation, band: often }
+  - { f: sym.sweating, band: often }
+  - { f: sym.dyspnea, band: sometimes }
+  - { f: sym.nausea, band: sometimes }
+  - { f: sym.epigastric_pain, band: rarely }
+  - { f: sym.fatigue, band: rarely }
+  - { f: vital.tachycardia, band: sometimes }
+  - { f: vital.bp_high, band: sometimes }
+  - { f: vital.spo2_low, band: rarely }
+  - { f: sign.crackles_local, band: rarely, attrs: { side: { both: 80, right: 10, left: 10 } } }
+  - { f: ecg.st_elevation, band: always, when: { type: [stemi] } }
+  - { f: ecg.st_depression, band: often, when: { type: [nste] } }
+confirm: [exam.ecg]
+redFlags: [sym.chest_pain_pressing, ecg.st_elevation, ecg.st_depression]
+treatment:
+  firstLine: [tx.aspirin_acs, tx.nitroglycerin]
+  harmful: [tx.ibuprofen]
+  notIndicated: [tx.ppi, tx.antacid, tx.amoxicillin, tx.amoxicillin_clavulanate, tx.macrolide]
+  setting: { default: ambulance }
+texts:
+  summary:
+    ru: >-
+      Внезапное нарушение кровотока в артерии сердца — нестабильная стенокардия или
+      инфаркт. Давящая боль за грудиной дольше 20 минут, отдаёт в левую руку или челюсть,
+      холодный пот, одышка. Из поликлиники — скорая: разжевать аспирин, нитроглицерин под
+      язык и ЭКГ, не дожидаясь анализов.
+pearls:
+  - ru: "Давящая боль за грудиной дольше 20 минут — скорая сразу, а не «сдайте анализы и приходите»."
+  - ru: "Нормальная ЭКГ инфаркт не исключает: у половины больных без подъёма ST она почти не изменена."
+  - ru: "Ибупрофен и другие НПВС при подозрении на инфаркт вредны; обезболивает нитроглицерин."
+simplified: "Тропонин и коронарография — в стационаре; в поликлинике задача — заподозрить, дать аспирин и вызвать скорую."
+sources:
+  - { kind: guideline, title: "2023 ESC Guidelines for the management of acute coronary syndromes. Eur Heart J 2023;44(38):3720–3826", note: "частоты — черновик" }
+  - { kind: guideline, title: "Острый коронарный синдром без подъёма сегмента ST электрокардиограммы", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru" }
+  - { kind: paper, title: "Swap CJ, Nagurney JT. Value and limitations of chest pain history in the evaluation of patients with suspected acute coronary syndromes. JAMA 2005;294(20):2623–2629" }
+review: draft

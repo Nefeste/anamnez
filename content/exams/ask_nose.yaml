@@ -1,0 +1,25 @@
+id: exam.ask_nose
+name: { ru: "Расспрос: нос и пазухи" }
+kind: ask
+time: { procedure: 2 }
+cost: 0
+discomfort: 0
+checks:
+  - { f: sym.nasal_congestion, sens: 92, spec: 95 }
+  - { f: sym.facial_pain, sens: 85, spec: 95 }
+  - { f: sym.purulent_nasal, sens: 85, spec: 92 }
+  - { f: sym.nasal_long, sens: 92, spec: 96 }
+  - { f: sym.double_worsening, sens: 75, spec: 95 }
+  - { f: sym.sneezing, sens: 90, spec: 95 }
+  - { f: sym.nasal_itch, sens: 85, spec: 95 }
+  - { f: sym.itchy_eyes, sens: 88, spec: 96 }
+  - { f: sym.recurrent_rhinitis, sens: 85, spec: 95 }
+  - { f: sym.anosmia, sens: 85, spec: 97 }
+texts:
+  hint:
+    ru: "Отличает простуду, синусит и аллергию: сколько дней насморк, было ли второе ухудшение, болит ли лицо, чешется ли нос, повторяется ли каждый год."
+  summary:
+    ru: "Заложенность и выделения, боль в лице, обоняние, чихание и зуд, как давно и было ли так раньше."
+sources:
+  - { kind: guideline, title: "Fokkens WJ et al. European Position Paper on Rhinosinusitis and Nasal Polyps 2020. Rhinology 2020;58(Suppl S29):1–464", note: "черновик: точность расспроса — игровая оценка" }
+review: draft

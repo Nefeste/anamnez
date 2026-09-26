@@ -1,0 +1,19 @@
+id: exam.ecg
+name: { ru: "ЭКГ" }
+kind: functional
+room: room.ecg
+time: { procedure: 10, report: 10 }
+cost: 400
+discomfort: 0
+checks:
+  - { f: ecg.st_elevation, sens: 92, spec: 99 }
+  - { f: ecg.st_depression, sens: 85, spec: 95 }
+  - { f: ecg.lvh, sens: 60, spec: 95 }
+texts:
+  hint:
+    ru: "Электрокардиограмма показывает ишемию и инфаркт, нарушения ритма, утолщение стенки сердца. При боли в груди её делают в первые минуты; нормальная ЭКГ инфаркт не исключает."
+  summary:
+    ru: "Двенадцать отведений в покое, описание — врачом функциональной диагностики."
+sources:
+  - { kind: guideline, title: "2023 ESC Guidelines for the management of acute coronary syndromes. Eur Heart J 2023;44(38):3720–3826", note: "черновик: точность — игровая оценка" }
+review: draft

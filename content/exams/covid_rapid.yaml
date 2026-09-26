@@ -1,0 +1,16 @@
+id: exam.covid_rapid
+name: { ru: "Экспресс-тест на COVID-19" }
+kind: rapid
+time: { procedure: 3, turnaround: 15 }
+cost: 500
+discomfort: 1
+checks:
+  - { f: lab.sars_ag, sens: 73, spec: 99 }
+texts:
+  hint:
+    ru: "Быстро ищет белки коронавируса в мазке. Положительный — почти наверняка COVID-19; отрицательный при типичной картине не исключает: тест пропускает около четверти случаев."
+  summary:
+    ru: "Мазок из носа на антиген SARS-CoV-2, результат через 15 минут."
+sources:
+  - { kind: review, title: "Dinnes J et al. Rapid, point-of-care antigen tests for diagnosis of SARS-CoV-2 infection. Cochrane Database Syst Rev 2022;7:CD013705", note: "чувствительность у людей с симптомами — около 73 %" }
+review: draft

@@ -1,0 +1,29 @@
+id: cond.diabetes2
+name: { ru: "Сахарный диабет 2 типа" }
+icd10: E11.9
+department: dept.therapy
+kind: disease
+severity: moderate
+presenting: false
+epidemiology:
+  prevalence: common
+  age: { min: 30 }
+  chronic: { band: { pct: 7 }, ageMin: 35, risks: [ { id: risk.obesity, x: 3 } ] }
+course:
+  stages:
+    - { id: stable, days: [0, 36500] }
+findings:
+  - { f: hx.diabetes, band: usually }
+  - { f: lab.glucose_high, band: often }
+  - { f: lab.hba1c_high, band: often }
+  - { f: lab.urine_glucose, band: sometimes }
+confirm: [exam.hba1c]
+simplified: "Доля людей с диабетом не растёт с возрастом — одна вероятность для всех старше 35 лет."
+texts:
+  summary:
+    ru: >-
+      Известный и леченый диабет 2 типа. Повышает риск инфаркта, инфекций мочевых путей
+      и пиелонефрита; у таких людей инфаркт бывает без типичной боли.
+sources:
+  - { kind: guideline, title: "Сахарный диабет 2 типа у взрослых", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru; распространённость — черновик" }
+review: draft

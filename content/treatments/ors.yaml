@@ -1,0 +1,13 @@
+id: tx.ors
+name: { ru: "Пероральная регидратация (солевые растворы)" }
+kind: regimen
+route: oral
+cost: 100
+effects:
+  - { on: cond.gastroenteritis, kind: relieve, band: usually, days: [0, 1] }
+texts:
+  hint:
+    ru: "Специальные растворы соли и сахара, которые пьют маленькими глотками: восполняют воду и соли, потерянные с рвотой и поносом. Главное лечение кишечной инфекции."
+sources:
+  - { kind: guideline, title: "Riddle MS et al. ACG Clinical Guideline: Diagnosis, Treatment, and Prevention of Acute Diarrheal Infections in Adults. Am J Gastroenterol 2016;111(5):602–622" }
+review: draft

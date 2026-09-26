@@ -1,0 +1,19 @@
+id: exam.ask_back
+name: { ru: "Расспрос: боль в спине" }
+kind: ask
+time: { procedure: 2 }
+cost: 0
+discomfort: 0
+checks:
+  - { f: sym.back_pain, sens: 95, spec: 97 }
+  - { f: sym.pain_movement, sens: 85, spec: 92 }
+  - { f: sym.sciatica, sens: 88, spec: 95 }
+  - { f: sym.flank_pain, sens: 90, spec: 96 }
+texts:
+  hint:
+    ru: "Где болит, отдаёт ли в ногу, меняется ли от движений. Механическая боль — мышцы и суставы; постоянная боль в боку с температурой — почка."
+  summary:
+    ru: "Место и характер боли, связь с движением, отдаёт ли в ногу, была ли травма."
+sources:
+  - { kind: guideline, title: "Low back pain and sciatica in over 16s: assessment and management. NICE guideline NG59", org: "NICE", year: 2016, note: "черновик: точность расспроса — игровая оценка" }
+review: draft

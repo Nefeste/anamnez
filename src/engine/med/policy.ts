@@ -1,6 +1,6 @@
 // «Виртуальный врач» (`docs/05-content.md` §6, `docs/09-testing.md` §3): три стратегии,
 // которыми проверяется база. Разумный врач потом станет нанятым врачом (`03` §8).
-import type { ContentDb, Id } from '../../content/types';
+import type { ContentDb, Id, Setting } from '../../content/types';
 import { Rng } from '../core/rng';
 import { complaintObservations, runExam } from './exams';
 import { type Belief, expectedGain, knownFacts, posterior } from './infer';
@@ -48,6 +48,13 @@ export function examCost(db: ContentDb, id: Id): number {
  */
 const quantize = (x: number) => Math.round(x * 1e9);
 
+/** Может ли у этого человека быть фактор риска (по полу и возрасту). */
+function possibleFor(db: ContentDb, id: Id, patient: Patient): boolean {
+  const r = db.risks[id];
+  if (!r) return true;
+  return r.p[patient.sex] > 0 && patient.age >= (r.ageMin ?? 0) && patient.age <= (r.ageMax ?? 200);
+}
+
 /** Обследования, которые открывают противопоказание (вопрос об аллергиях), — самое дешёвое. */
 function askingExam(db: ContentDb, contraindication: Id): Id | undefined {
   const telling = (db.risks[contraindication]?.findings ?? db.conditions[contraindication]?.findings ?? [])
@@ -67,14 +74,21 @@ export function choosePlan(db: ContentDb, diagnosis: Id, observations: readonly 
   const known = knownFacts(db, observations);
   const blocked = new Set([...known.risks, ...known.conditions]);
   const ok = (tx: Id) => !db.treatments[tx].contraindications.some(k => blocked.has(k.id));
-  let treatments = t.firstLine.filter(ok);
-  if (treatments.length === 0) treatments = t.acceptable.filter(ok).slice(0, 1);
+  const cures = (tx: Id) => db.treatments[tx].effects.some(e => e.on === diagnosis && e.kind === 'cure');
+  // типичное назначение; если противопоказание убрало лечение причины — замена из первой линии и допустимых
+  const treatments = (t.plan ?? t.firstLine).filter(ok);
+  if (!treatments.some(cures)) {
+    const alt = [...t.firstLine, ...t.acceptable].filter(ok).find(cures);
+    if (alt && (t.plan ?? t.firstLine).some(cures)) treatments.push(alt);
+  }
   const seen = new Set(observations.filter(o => o.shown).map(o => o.f));
   let setting = t.setting.default;
-  if (t.setting.redFlag && (db.conditions[diagnosis].redFlags ?? []).some(f => seen.has(f)) && SETTING_ORDER[t.setting.redFlag] > SETTING_ORDER[setting]) {
-    setting = t.setting.redFlag;
-  }
-  return { treatments, setting };
+  const raise = (s: Setting) => {
+    if (SETTING_ORDER[s] > SETTING_ORDER[setting]) setting = s;
+  };
+  if (t.setting.redFlag && (db.conditions[diagnosis].redFlags ?? []).some(f => seen.has(f))) raise(t.setting.redFlag);
+  for (const r of t.setting.risks ?? []) if (known.risks.includes(r.id)) raise(r.setting);
+  return { treatments: [...new Set(treatments)].sort(), setting };
 }
 
 export function runDoctor(db: ContentDb, patient: Patient, strategy: Strategy, rng: Rng, opt: DoctorOptions): DoctorResult {
@@ -96,6 +110,10 @@ export function runDoctor(db: ContentDb, patient: Patient, strategy: Strategy, r
     for (const id of opt.exams) doExam(id);
     beliefs = posterior(db, opt.candidates, obs, ctxOf());
   } else if (strategy === 'rational') {
+    // анамнез жизни спрашивают у всех: польза вопроса о хронических болезнях в модели не
+    // видна (сопутствующие считаются известными), а без него обострение ХОБЛ не узнать
+    for (const id of opt.exams) if (db.exams[id].routine) doExam(id);
+    beliefs = posterior(db, opt.candidates, obs, ctxOf());
     for (let step = 0; step < opt.exams.length; step++) {
       if (beliefs[0].p >= threshold) break;
       const ctx = ctxOf();
@@ -125,6 +143,7 @@ export function runDoctor(db: ContentDb, patient: Patient, strategy: Strategy, r
   if (strategy === 'rational') {
     const risks = [...new Set(plan.treatments.flatMap(tx => db.treatments[tx].contraindications.map(k => k.id)))].sort();
     for (const k of risks) {
+      if (!possibleFor(db, k, patient)) continue; // о беременности не спрашивают мужчину и женщину 64 лет
       const ask = askingExam(db, k);
       if (ask && !done.includes(ask) && opt.exams.includes(ask)) doExam(ask);
     }

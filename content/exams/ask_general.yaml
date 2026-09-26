@@ -1,0 +1,24 @@
+id: exam.ask_general
+name: { ru: "Расспрос: самочувствие, вес, жажда" }
+kind: ask
+time: { procedure: 2 }
+cost: 0
+discomfort: 0
+checks:
+  - { f: sym.fatigue, sens: 90, spec: 92 }
+  - { f: sym.dizziness, sens: 88, spec: 94 }
+  - { f: sym.high_bp_readings, sens: 92, spec: 98 }
+  - { f: sym.thirst, sens: 92, spec: 96 }
+  - { f: sym.polyuria, sens: 88, spec: 95 }
+  - { f: sym.weight_gain, sens: 88, spec: 95 }
+  - { f: sym.weight_loss, sens: 90, spec: 97 }
+  - { f: sym.cold_intolerance, sens: 80, spec: 94 }
+  - { f: sym.constipation, sens: 88, spec: 95 }
+texts:
+  hint:
+    ru: "Общие вопросы о силах, весе, жажде и мочеиспускании, переносимости холода. Такие жалобы сами не называют, а за ними бывают анемия, диабет, болезни щитовидной железы."
+  summary:
+    ru: "Слабость и утомляемость, изменения веса, жажда, как переносит холод, кружится ли голова."
+sources:
+  - { kind: textbook, title: "Пропедевтика внутренних болезней: расспрос больного", note: "точность расспроса — игровая оценка, не из литературы" }
+review: draft

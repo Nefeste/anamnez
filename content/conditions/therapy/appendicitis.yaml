@@ -1,0 +1,55 @@
+id: cond.appendicitis
+name: { ru: "Острый аппендицит" }
+icd10: K35.8
+department: dept.therapy
+kind: disease
+severity: critical
+epidemiology:
+  prevalence: rare
+  age: { min: 18, peak: [18, 40] }
+  sex: { m: 1, f: 0.8 }
+course:
+  stages:
+    - { id: early, days: [0, 1] }
+    - { id: late, days: [1, 3] }
+  presentation: [0, 1]
+  untreated: { band: usually, days: [1, 3] }
+findings:
+  - { f: sym.abdominal_pain, band: usually }
+  - { f: sym.rlq_pain, band: usually }
+  - { f: sym.pain_migration, band: often }
+  - { f: sym.anorexia, band: usually }
+  - { f: sym.nausea, band: usually }
+  - { f: sym.vomiting, band: often }
+  - { f: sym.epigastric_pain, band: sometimes }
+  - { f: sym.fever_hx, band: sometimes }
+  - { f: vital.fever, band: sometimes }
+  - { f: vital.fever, band: often, stages: [late] }
+  - { f: vital.tachycardia, band: sometimes }
+  - { f: sym.diarrhea, band: rarely }
+  - { f: sym.dysuria, band: rarely }
+  - { f: sign.rlq_tenderness, band: usually }
+  - { f: sign.peritoneal_signs, band: often }
+  - { f: lab.wbc_high, band: usually }
+  - { f: lab.crp_high, band: often }
+confirm: clinical
+redFlags: [sign.peritoneal_signs]
+treatment:
+  supportive: [tx.paracetamol]
+  notIndicated: [tx.amoxicillin, tx.amoxicillin_clavulanate, tx.macrolide, tx.fluoroquinolone, tx.cephalosporin_oral, tx.ors, tx.ppi, tx.antacid]
+  setting: { default: ambulance }
+texts:
+  summary:
+    ru: >-
+      Воспаление червеобразного отростка. Боль начинается около пупка или под ложечкой и
+      через несколько часов смещается вправо вниз; аппетита нет, тошнит, бывает рвота и
+      небольшая температура. Лечение — операция: из поликлиники — сразу в хирургию.
+pearls:
+  - ru: "Боль, сместившаяся от пупка вправо вниз, с тошнотой и без аппетита — аппендицит, пока не доказано обратное."
+  - ru: "Обезболивание не «смазывает картину» — это миф; опасно другое: отпустить домой с «отравлением»."
+simplified: "Шкала Альварадо, УЗИ и КТ — позже; в поликлинике задача — заподозрить и отправить к хирургу."
+sources:
+  - { kind: guideline, title: "Острый аппендицит у взрослых", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru; частоты — черновик" }
+  - { kind: guideline, title: "Di Saverio S et al. Diagnosis and treatment of acute appendicitis: 2020 update of the WSES Jerusalem guidelines. World J Emerg Surg 2020;15:27" }
+  - { kind: paper, title: "Wagner JM, McKinney WP, Carpenter JL. Does this patient have appendicitis? JAMA 1996;276(19):1589–1594" }
+review: draft

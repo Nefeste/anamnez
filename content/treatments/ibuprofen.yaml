@@ -9,9 +9,19 @@ effects:
   - { on: cond.influenza, kind: relieve, band: usually, days: [0, 1] }
   - { on: cond.strep_pharyngitis, kind: relieve, band: usually, days: [0, 1] }
   - { on: cond.acute_bronchitis, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.covid19, kind: relieve, band: usually, days: [0, 1] }
+  - { on: cond.sinusitis_acute, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.sinusitis_bacterial, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.cystitis, kind: relieve, band: often, days: [0, 2] }
+  - { on: cond.migraine, kind: cure, band: often, days: [0, 1] }
+  - { on: cond.tension_headache, kind: cure, band: usually, days: [0, 1] }
+  - { on: cond.low_back_pain, kind: relieve, band: often, days: [0, 3] }
+contraindications:
+  - { id: risk.allergy_nsaid, level: absolute, reaction: often }
+  - { id: risk.pregnancy, level: relative, reaction: never }
 texts:
   hint:
-    ru: "Нестероидный противовоспалительный препарат: снимает жар, боль в горле и ломоту. Как и парацетамол, облегчает самочувствие, а не лечит причину."
+    ru: "Нестероидный противовоспалительный препарат: снимает жар и боль — в горле, в мышцах, в спине, головную. Лечит не причину, а самочувствие. Нельзя при аллергии на НПВС; при боли в груди он вреден."
 sources:
   - { kind: guideline, title: "Острая респираторная вирусная инфекция (ОРВИ) у взрослых", org: "Минздрав РФ", note: "черновик: название и редакцию сверить на cr.minzdrav.gov.ru" }
 review: draft

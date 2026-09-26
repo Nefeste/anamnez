@@ -1,0 +1,45 @@
+id: cond.tension_headache
+name: { ru: "Головная боль напряжения" }
+icd10: G44.2
+department: dept.therapy
+kind: disease
+severity: minor
+epidemiology:
+  prevalence: uncommon
+  age: { min: 18, peak: [18, 60] }
+  sex: { m: 0.7, f: 1 }
+course:
+  stages:
+    - { id: episode, days: [0, 5] }
+  presentation: [0, 4]
+  selfLimiting: true
+findings:
+  - { f: sym.headache, band: always }
+  - { f: sym.headache_pressing, band: usually }
+  - { f: sym.recurrent_headache, band: often }
+  - { f: sign.pericranial_tenderness, band: often }
+  - { f: sym.fatigue, band: sometimes }
+  - { f: sym.photophobia, band: rarely }
+  - { f: sym.headache_unilateral, band: rarely }
+  - { f: sym.dizziness, band: rarely }
+  - { f: sym.nausea, band: very_rarely }
+confirm: clinical
+treatment:
+  firstLine: [tx.ibuprofen, tx.paracetamol]
+  supportive: [tx.lifestyle]
+  notIndicated: [tx.triptan, tx.amoxicillin, tx.amoxicillin_clavulanate, tx.macrolide, tx.steroid_systemic_short, tx.bed_rest]
+  plan: [tx.ibuprofen]
+  setting: { default: home }
+texts:
+  summary:
+    ru: >-
+      Самая частая головная боль: давящая или сжимающая, с обеих сторон, как обруч,
+      лёгкая или умеренная, от ходьбы не усиливается, тошноты нет. Связана с
+      напряжением, недосыпом, долгой работой за столом.
+pearls:
+  - ru: "Сжимающая двусторонняя боль без тошноты, которая не мешает ходить, — головная боль напряжения; триптаны при ней не помогают."
+  - ru: "Если обезболивающие нужны больше 10–15 дней в месяц, сами таблетки начинают поддерживать боль."
+sources:
+  - { kind: guideline, title: "Головная боль напряжения", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru; частоты — черновик" }
+  - { kind: guideline, title: "Headache Classification Committee of the International Headache Society. The International Classification of Headache Disorders, 3rd edition. Cephalalgia 2018;38(1):1–211" }
+review: draft

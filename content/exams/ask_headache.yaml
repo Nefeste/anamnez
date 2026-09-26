@@ -1,0 +1,21 @@
+id: exam.ask_headache
+name: { ru: "Расспрос: головная боль" }
+kind: ask
+time: { procedure: 2 }
+cost: 0
+discomfort: 0
+checks:
+  - { f: sym.headache_unilateral, sens: 88, spec: 95 }
+  - { f: sym.headache_pressing, sens: 88, spec: 93 }
+  - { f: sym.photophobia, sens: 85, spec: 94 }
+  - { f: sym.aura, sens: 85, spec: 99 }
+  - { f: sym.recurrent_headache, sens: 92, spec: 97 }
+  - { f: sym.nausea, sens: 90, spec: 95 }
+texts:
+  hint:
+    ru: "Какая боль, с одной стороны или с двух, есть ли тошнота, раздражают ли свет и звуки, была ли аура, бывало ли так раньше. Этого почти всегда хватает, чтобы отличить мигрень от головной боли напряжения."
+  summary:
+    ru: "Характер и место боли, сколько длится приступ, тошнота, свет и звук, аура, как часто повторяется."
+sources:
+  - { kind: guideline, title: "Headache Classification Committee of the International Headache Society. The International Classification of Headache Disorders, 3rd edition. Cephalalgia 2018;38(1):1–211", note: "черновик: точность расспроса — игровая оценка" }
+review: draft

@@ -1,0 +1,12 @@
+id: tx.stay_active
+name: { ru: "Сохранять активность" }
+kind: regimen
+cost: 0
+effects:
+  - { on: cond.low_back_pain, kind: cure, band: often, days: [7, 28] }
+texts:
+  hint:
+    ru: "При боли в спине лучше двигаться в пределах терпимого и не бросать привычные дела: так боль проходит быстрее, чем в постели."
+sources:
+  - { kind: guideline, title: "Low back pain and sciatica in over 16s: assessment and management. NICE guideline NG59", org: "NICE", year: 2016 }
+review: draft

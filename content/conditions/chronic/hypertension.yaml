@@ -1,0 +1,29 @@
+id: cond.hypertension
+name: { ru: "Гипертоническая болезнь" }
+icd10: I10
+department: dept.therapy
+kind: disease
+severity: moderate
+presenting: false
+epidemiology:
+  prevalence: common
+  age: { min: 30 }
+  chronic: { band: { pct: 25 }, ageMin: 35, risks: [ { id: risk.obesity, x: 1.8 }, { id: risk.alcohol, x: 1.3 } ] }
+course:
+  stages:
+    - { id: stable, days: [0, 36500] }
+findings:
+  - { f: hx.hypertension, band: usually }
+  - { f: vital.bp_high, band: often }
+  - { f: ecg.lvh, band: sometimes }
+  - { f: lab.creatinine_high, band: rarely }
+confirm: [exam.vitals]
+simplified: "Доля людей с гипертонией не растёт с возрастом — одна вероятность для всех старше 35 лет."
+texts:
+  summary:
+    ru: >-
+      Стойко повышенное давление, известное и леченое. Главный фактор риска инфаркта и
+      инсульта; у половины леченых давление всё равно выше целевого.
+sources:
+  - { kind: guideline, title: "Артериальная гипертензия у взрослых", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru; распространённость — черновик" }
+review: draft

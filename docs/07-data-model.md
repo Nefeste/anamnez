@@ -52,12 +52,15 @@ interface Condition {
   group?: Id;                            // одинаковая тактика: путаница внутри — частичная точность
   kind: 'disease' | 'injury' | 'syndrome' | 'state';
   severity: 'minor' | 'moderate' | 'serious' | 'critical';
+  checkup?: boolean;                     // бывает без жалоб — находят на профосмотре
   epidemiology: {
     prevalence: P;                      // из полосы распространённости
     age: { min: number; max?: number; peak?: [number, number] };
     sex?: { m: number; f: number };     // относительные веса
     season?: { winter: number; spring: number; summer: number; autumn: number };
     risks?: { id: Id; x: number }[];    // множители: фактор риска или состояние
+    requires?: Id[];                    // без этого не бывает (обострение ХОБЛ — при ХОБЛ)
+    excludes?: Id[];                    // не бывает у того, у кого это уже есть
     chronic?: boolean;                  // бывает сопутствующим
   };
   params?: Record<string, Record<string, number>>;       // скрытые параметры: значение → вес
@@ -84,14 +87,16 @@ interface Condition {
 
 // Тактика (04-medical-model.md §8). Назначение, не названное ни в одном списке, — «не показано».
 interface Tactics {
-  firstLine: Id[];                       // препарат или метод выбора, хотя бы один
+  firstLine: Id[];                       // препарат или метод выбора; при переводе — что до скорой
   acceptable: Id[];                      // замена при противопоказании к первой линии
   supportive: Id[];                      // облегчает самочувствие, на причину не действует
   notIndicated: Id[]; harmful: Id[];     // одно лечение — не больше чем в одном списке
+  plan?: Id[];                           // типичное назначение, если первая линия — выбор из равных
   setting: {                             // где лечить; берётся самое высокое из подходящих
     default: Setting;
     param?: { name: string; map: Record<string, Setting> };  // по скрытому параметру: тяжесть
     redFlag?: Setting;                   // если у пациента есть красный флаг состояния
+    risks?: { id: Id; setting: Setting }[];  // по фактору риска: пиелонефрит у беременной
   };
   score?: Id;                            // позже: шкала, по которой решают (CRB-65)
 }
@@ -116,12 +121,17 @@ type Cond = Record<string, string[]>;    // { severity: ['moderate', 'severe'] }
 ```ts
 interface Finding {
   id: Id; name: Text;
-  kind: 'sym' | 'sign' | 'vital' | 'lab' | 'img' | 'ecg';
-  system?: string;                       // respiratory, cardiac, …
+  kind: 'sym' | 'sign' | 'vital' | 'lab' | 'img' | 'ecg' | 'hx';   // hx — ответ об анамнезе
+  system?: string;                       // позже: respiratory, cardiac, …
   leak: P;                               // фон популяции
+  salience: 0 | 1 | 2 | 3;               // насколько заметно: 2–3 — назовёт сам, жалоба
   redFlag?: boolean;
-  attrs?: Record<string, string[]>;      // допустимые атрибуты
-  lab?: { test: Id; unit: string; ref: [number, number]; threshold: number; dir: 'high' | 'low' };
+  attrs?: Record<string, Record<string, Text>>;   // допустимые атрибуты и их подписи
+  value?: {                              // числовой показатель: давление, анализ
+    unit: string; ref: [number, number];
+    present: [number, number]; absent: [number, number]; decimals: number;
+    derived?: Record<string, number>;    // {dia} = значение × 0,62 — нижнее давление
+  };
   texts: {
     complaint?: TemplateSet;             // от лица пациента
     present: TemplateSet;                // строка осмотра или протокола
@@ -143,11 +153,24 @@ interface Exam {
   time: { procedure: Minutes; report?: Minutes; turnaround?: Minutes };
   cost: number; consumables?: number;
   discomfort: 0 | 1 | 2 | 3; radiation?: 'none' | 'low' | 'medium' | 'high';
-  contraindications?: { id: Id; level: 'relative' | 'absolute' }[];
+  routine?: boolean;                             // спрашивают каждого (анамнез жизни)
+  contraindications?: { id: Id; level: 'relative' | 'absolute' }[];   // позже: рентген при беременности
   checks: { f: Id; sens: P; spec: P }[];         // какие признаки проверяет и как точно
   modifiers?: { by: Id; sens?: number; spec?: number }[];  // ожирение, навык, уровень аппарата
   texts: { summary: Text; hint: Text };          // как делают; что показывает — простыми словами
   sources: Source[]; review: Review; replacedBy?: Id;
+}
+```
+
+### Фактор риска
+
+```ts
+interface Risk {
+  id: Id; name: Text;                    // курение, аллергия на пенициллины, беременность
+  prevalence: { m: number; f: number };  // доля людей, %
+  ageMin?: number; ageMax?: number;      // беременность — 18–44
+  findings: Link[];                      // как проявляется: ответ на вопрос, тест
+  sources: Source[]; review: Review;
 }
 ```
 

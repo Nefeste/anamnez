@@ -1,0 +1,45 @@
+id: cond.low_back_pain
+name: { ru: "Неспецифическая боль в нижней части спины" }
+icd10: M54.5
+department: dept.therapy
+kind: syndrome
+severity: minor
+epidemiology:
+  prevalence: common
+  age: { min: 18, peak: [30, 65] }
+  risks:
+    - { id: risk.obesity, x: 1.3 }
+course:
+  stages:
+    - { id: acute, days: [0, 14] }
+    - { id: resolution, days: [14, 42] }
+  presentation: [0, 7]
+  selfLimiting: true
+findings:
+  - { f: sym.back_pain, band: always }
+  - { f: sym.pain_movement, band: usually }
+  - { f: sym.sciatica, band: sometimes }
+  - { f: sym.flank_pain, band: rarely, attrs: { side: { right: 35, left: 35, both: 30 } } }
+  - { f: sign.paraspinal_spasm, band: usually }
+  - { f: sign.slr_positive, band: rarely }
+  - { f: sign.cva_tenderness, band: rarely }
+confirm: clinical
+treatment:
+  firstLine: [tx.stay_active, tx.ibuprofen]
+  notIndicated: [tx.bed_rest, tx.paracetamol, tx.steroid_systemic_short, tx.amoxicillin, tx.fluoroquinolone]
+  plan: [tx.stay_active, tx.ibuprofen]
+  setting: { default: home }
+texts:
+  summary:
+    ru: >-
+      Боль в пояснице от мышц, связок и суставов позвоночника без признаков серьёзной
+      причины. Усиливается при движении, проходит за несколько недель. Лечат активностью
+      и НПВС; снимки и постельный режим не нужны.
+pearls:
+  - ru: "Большинству с болью в спине не нужны ни снимки, ни постель: лучше двигаться, при сильной боли — НПВС."
+  - ru: "Боль в пояснице с температурой, жжением при мочеиспускании и положительным поколачиванием — это почка, а не спина."
+simplified: "Тревожные признаки (травма, онемение в промежности, похудание, онкология в анамнезе) и корешковый синдром — позже, с неврологией."
+sources:
+  - { kind: guideline, title: "Low back pain and sciatica in over 16s: assessment and management. NICE guideline NG59", org: "NICE", year: 2016, note: "частоты — черновик" }
+  - { kind: guideline, title: "Хроническая боль в спине", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru; об острой боли — сверить действующий документ" }
+review: draft

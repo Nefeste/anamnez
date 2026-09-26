@@ -1,0 +1,17 @@
+id: lab.ferritin_low
+name: { ru: "Ферритин снижен" }
+leak: { pct: 5 }
+value:
+  unit: "мкг/л"
+  ref: [30, 300]
+  present: [3, 25]
+  absent: [35, 250]
+  decimals: 0
+texts:
+  hint:
+    ru: "Ферритин показывает запасы железа. Если он низкий, железа не хватает — даже когда гемоглобин ещё нормальный."
+  present:
+    - ru: "Ферритин {value} {unit}"
+  absent:
+    - ru: "Ферритин {value} {unit}"
+review: draft

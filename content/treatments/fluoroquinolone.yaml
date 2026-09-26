@@ -1,0 +1,18 @@
+id: tx.fluoroquinolone
+name: { ru: "Фторхинолоны (ципрофлоксацин, левофлоксацин)" }
+kind: drug
+class: antibiotic.fluoroquinolone
+route: oral
+cost: 300
+effects:
+  - { on: cond.pyelonephritis, kind: cure, band: usually, days: [2, 4] }
+  - { on: cond.cystitis, kind: cure, band: usually, days: [1, 3] }
+contraindications:
+  - { id: risk.pregnancy, level: absolute, reaction: never }
+texts:
+  hint:
+    ru: "Сильные антибиотики, которые хорошо проникают в почки: выбор при нетяжёлом пиелонефрите. При простом цистите — только если другие нельзя: побочные эффекты серьёзнее. При беременности противопоказаны."
+sources:
+  - { kind: guideline, title: "EAU Guidelines on Urological Infections", org: "European Association of Urology", year: 2024 }
+  - { kind: guideline, title: "Pyelonephritis (acute): antimicrobial prescribing. NICE guideline NG111", org: "NICE", year: 2018 }
+review: draft

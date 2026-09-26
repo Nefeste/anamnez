@@ -101,6 +101,10 @@ export function priorWeight(db: ContentDb, id: Id, ctx: InferContext): number {
   for (const req of c.requires ?? []) {
     if (!ctx.knownConditions.includes(req)) w *= chronicChance(db.conditions[req], ctx.knownRisks) / P_ONE;
   }
+  // «впервые выявленная» бывает только у тех, у кого этого ещё нет
+  for (const ex of c.excludes ?? []) {
+    if (!ctx.knownConditions.includes(ex) && ctx.age >= (db.conditions[ex].chronic?.ageMin ?? 0)) w *= 1 - chronicChance(db.conditions[ex], ctx.knownRisks) / P_ONE;
+  }
   return w;
 }
 

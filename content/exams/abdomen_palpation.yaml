@@ -1,0 +1,18 @@
+id: exam.abdomen_palpation
+name: { ru: "Пальпация живота" }
+kind: physical
+time: { procedure: 3 }
+cost: 0
+discomfort: 1
+checks:
+  - { f: sign.rlq_tenderness, sens: 85, spec: 90 }
+  - { f: sign.epigastric_tenderness, sens: 75, spec: 88 }
+  - { f: sign.suprapubic_tenderness, sens: 70, spec: 92 }
+texts:
+  hint:
+    ru: "Где болит при надавливании: над лобком — мочевой пузырь, под ложечкой — желудок, справа внизу — аппендикс."
+  summary:
+    ru: "Поверхностная и глубокая пальпация живота по областям."
+sources:
+  - { kind: textbook, title: "Пропедевтика внутренних болезней: пальпация живота", note: "черновик: точность — игровая оценка" }
+review: draft

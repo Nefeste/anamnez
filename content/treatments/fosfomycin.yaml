@@ -1,0 +1,15 @@
+id: tx.fosfomycin
+name: { ru: "Фосфомицин" }
+kind: drug
+class: antibiotic.fosfomycin
+route: oral
+cost: 450
+effects:
+  - { on: cond.cystitis, kind: cure, band: usually, days: [1, 3] }
+texts:
+  hint:
+    ru: "Антибиотик для неосложнённого цистита: однократный приём, устойчивость к нему редка, при беременности допустим. До почек в нужной концентрации не доходит — при пиелонефрите не годится."
+sources:
+  - { kind: guideline, title: "EAU Guidelines on Urological Infections", org: "European Association of Urology", year: 2024 }
+  - { kind: guideline, title: "Цистит у женщин", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru" }
+review: draft

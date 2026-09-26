@@ -6,11 +6,13 @@ cost: 0
 discomfort: 0
 checks:
   - { f: hx.allergy_penicillin, sens: 95, spec: 99 }
+  - { f: hx.allergy_nsaid, sens: 95, spec: 99 }
+  - { f: hx.atopy, sens: 90, spec: 97 }
 texts:
   hint:
-    ru: "Ответ меняет выбор лечения: при аллергии на пенициллины амоксициллин заменяют другим антибиотиком."
+    ru: "Ответ меняет выбор лечения: при аллергии на пенициллины амоксициллин заменяют другим антибиотиком. Аллергия на пыльцу или шерсть — довод за аллергический ринит и астму."
   summary:
-    ru: "Были ли реакции на лекарства: какие, на что и когда."
+    ru: "Были ли реакции на лекарства: какие, на что и когда; есть ли аллергия на пыльцу, шерсть, пыль."
 sources:
   - { kind: review, title: "Shenoy ES, Macy E, Rowe T, Blumenthal KG. Evaluation and Management of Penicillin Allergy: A Review. JAMA 2019;321(2):188–199", note: "черновик: точность расспроса сверить" }
 review: draft

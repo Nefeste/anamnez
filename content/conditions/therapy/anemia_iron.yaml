@@ -1,0 +1,50 @@
+id: cond.anemia_iron
+name: { ru: "Железодефицитная анемия" }
+icd10: D50.9
+department: dept.therapy
+kind: disease
+checkup: true
+severity: moderate
+epidemiology:
+  prevalence: rare
+  age: { min: 18, peak: [18, 50] }
+  sex: { m: 0.25, f: 1 }
+  risks:
+    - { id: risk.heavy_periods, x: 4 }
+    - { id: risk.pregnancy, x: 3 }
+    - { id: risk.nsaid_use, x: 1.5 }
+course:
+  stages:
+    - { id: active, days: [0, 36500] }
+  presentation: [30, 180]
+  untreated: { band: never, days: [7, 7] }   # за неделю без лечения ничего не случится — «без изменений»
+findings:
+  - { f: lab.hb_low, band: always }
+  - { f: lab.mcv_low, band: usually }
+  - { f: lab.ferritin_low, band: always }
+  - { f: sym.fatigue, band: usually }
+  - { f: sym.dyspnea, band: sometimes }
+  - { f: sym.dizziness, band: sometimes }
+  - { f: sym.headache, band: rarely }
+  - { f: sign.pallor, band: often }
+  - { f: vital.tachycardia, band: rarely }
+  - { f: sym.melena, band: rarely }
+confirm: [exam.ferritin]
+redFlags: [sym.melena]
+treatment:
+  firstLine: [tx.iron_oral]
+  setting: { default: home, redFlag: ward }
+texts:
+  summary:
+    ru: >-
+      Гемоглобин снижен из-за нехватки железа — у женщин чаще всего от обильных
+      месячных, у мужчин и пожилых — от скрытого кровотечения из желудка или кишечника.
+      Слабость, одышка при нагрузке, бледность. Лечат железом внутрь и ищут причину.
+pearls:
+  - ru: "Анемия с мелкими эритроцитами и низким ферритином — нехватка железа; у мужчин и женщин после менопаузы ищут кровотечение из желудка и кишечника."
+  - ru: "Чёрный стул при анемии — признак кровотечения: в стационар, а не за таблетками железа."
+simplified: "Поиск источника кровопотери (гастроскопия, колоноскопия) — позже; нормы гемоглобина — одни для мужчин и женщин."
+sources:
+  - { kind: guideline, title: "Железодефицитная анемия", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru; частоты — черновик" }
+  - { kind: review, title: "Camaschella C. Iron-Deficiency Anemia. N Engl J Med 2015;372(19):1832–1843" }
+review: draft
