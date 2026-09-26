@@ -4,11 +4,16 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View, type ViewStyle } 
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, space, touch } from './theme';
 
-/** Экран с прокруткой. Смена `resetKey` возвращает прокрутку наверх (новый пациент). */
-export function Screen({ children, scroll = true, resetKey }: { children: ReactNode; scroll?: boolean; resetKey?: string | number }) {
+/**
+ * Экран с прокруткой. Смена `resetKey` возвращает прокрутку наверх (новый пациент).
+ * `footer` — полоса внизу поверх прокрутки: главная кнопка экрана всегда под большим
+ * пальцем, а не в конце длинного списка.
+ */
+export function Screen({ children, scroll = true, resetKey, footer }: { children: ReactNode; scroll?: boolean; resetKey?: string | number; footer?: ReactNode }) {
   return (
     <SafeAreaView style={styles.screen} edges={['bottom', 'left', 'right']}>
       {scroll ? <ScrollView key={resetKey} contentContainerStyle={styles.content}>{children}</ScrollView> : <View style={styles.fill}>{children}</View>}
+      {footer ? <View style={styles.footer}><View style={styles.footerInner}>{footer}</View></View> : null}
     </SafeAreaView>
   );
 }
@@ -85,7 +90,10 @@ function SheetBody({ onClose, closeTitle, children, testID }: SheetProps) {
   );
 }
 
-/** Вкладки одной полосой: подписи в одну строку даже на узком экране. */
+/**
+ * Вкладки одной полосой. Подпись всегда в одну строку: на узком экране или с крупным
+ * системным шрифтом она уменьшается, а не обрезается многоточием (отзыв на 0.0.5).
+ */
 export function Tabs<K extends string>({ items, value, onChange }: { items: { key: K; title: string }[]; value: K; onChange: (k: K) => void }) {
   return (
     <View style={styles.tabs} accessibilityRole="tablist">
@@ -99,7 +107,7 @@ export function Tabs<K extends string>({ items, value, onChange }: { items: { ke
             aria-selected={on}
             onPress={() => onChange(key)}
             style={({ pressed }) => [styles.tab, on && styles.tabOn, pressed && styles.btnPressed]}>
-            <Text numberOfLines={1} style={[styles.tabText, on && styles.tabTextOn]}>{title}</Text>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={[styles.tabText, on && styles.tabTextOn]}>{title}</Text>
           </Pressable>
         );
       })}
@@ -124,6 +132,8 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   fill: { flex: 1 },
   content: { padding: space.l, gap: space.m, maxWidth: 640, width: '100%', alignSelf: 'center' },
+  footer: { borderTopWidth: 1, borderTopColor: colors.line, backgroundColor: colors.card },
+  footerInner: { paddingHorizontal: space.l, paddingVertical: space.s, gap: space.s, maxWidth: 640, width: '100%', alignSelf: 'center' },
   card: { backgroundColor: colors.card, borderRadius: radius, padding: space.l, gap: space.s, borderWidth: 1, borderColor: colors.line },
   h: { fontSize: 18, fontWeight: '700', color: colors.ink },
   p: { fontSize: 15, lineHeight: 21, color: colors.ink },

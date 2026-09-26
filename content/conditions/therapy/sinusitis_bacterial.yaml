@@ -2,6 +2,7 @@ id: cond.sinusitis_bacterial
 name: { ru: "Острый бактериальный риносинусит" }
 icd10: J01.9
 department: dept.therapy
+system: airways
 kind: disease
 severity: moderate
 epidemiology:

@@ -2,6 +2,7 @@ id: cond.arvi
 name: { ru: "Острая респираторная вирусная инфекция (ОРВИ)" }
 icd10: J06.9
 department: dept.therapy
+system: airways
 group: grp.viral_respiratory
 kind: disease
 severity: minor

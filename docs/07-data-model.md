@@ -50,6 +50,7 @@ interface Condition {
   id: Id; name: Text; icd10?: string;
   department: Id;                       // 'dept.therapy'
   group?: Id;                            // одинаковая тактика: путаница внутри — частичная точность
+  system?: BodySystem;                   // система органов: списки диагнозов, энциклопедия
   kind: 'disease' | 'injury' | 'syndrome' | 'state';
   severity: 'minor' | 'moderate' | 'serious' | 'critical';
   checkup?: boolean;                     // бывает без жалоб — находят на профосмотре
@@ -100,6 +101,8 @@ interface Tactics {
   };
   score?: Id;                            // позже: шкала, по которой решают (CRB-65)
 }
+// Системы органов в порядке показа; у всего, с чем приходят, — обязательна (валидатор).
+type BodySystem = 'airways' | 'lungs' | 'heart' | 'digestive' | 'urinary' | 'metabolic' | 'nerves';
 // Амбулатория первой смены: дома, направить в стационар, вызвать скорую.
 // ОРИТ и операция — с палатами и операционной (этап 4).
 type Setting = 'home' | 'ward' | 'ambulance';

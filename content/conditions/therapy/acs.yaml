@@ -2,6 +2,7 @@ id: cond.acs
 name: { ru: "Острый коронарный синдром" }
 icd10: I24.9
 department: dept.therapy
+system: heart
 kind: syndrome
 severity: critical
 epidemiology:

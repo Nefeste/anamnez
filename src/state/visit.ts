@@ -5,7 +5,7 @@
 // и сказанное (06-architecture.md §7); правда показывается разбором после диагноза.
 import { useSyncExternalStore } from 'react';
 import { db } from '@/content';
-import type { Id, Setting } from '@/content/types';
+import { type BodySystem, type Id, type Setting, SYSTEMS } from '@/content/types';
 import { fnv1a } from '@/engine/core/hash';
 import { Rng } from '@/engine/core/rng';
 import { observe } from '@/engine/med/course';
@@ -101,7 +101,11 @@ export interface VisitView {
   hints: { id: Id; name: string; outOf10: number }[];
   /** всё лечение базы по алфавиту; warning — противопоказание, о котором врач уже знает */
   treatments: { id: Id; name: string; warning?: string }[];
+  /** то же лечение — по группам (антибиотики, обезболивающие…) для экрана решения */
+  treatmentGroups: { key: string; title: string; items: VisitView['treatments'] }[];
   draft: Draft;
+  /** название выбранного, но ещё не поставленного диагноза */
+  draftDiagnosisName?: string;
   decision?: Decision;
 }
 
@@ -307,6 +311,39 @@ function patientName(p: Patient): string {
   return `${p.sex === 'm' ? surname : n.feminine(surname)} ${first[fnv1a(`${p.seed}:f`) % first.length]}`;
 }
 
+/** Группа лечения для списка — по классу препарата; без класса — режим и советы. */
+const TX_GROUPS: [string, string[]][] = [
+  ['antibiotics', ['antibiotic']],
+  ['antivirals', ['antiviral']],
+  ['pain', ['analgesic', 'antimigraine']],
+  ['breathing', ['bronchodilator', 'asthma', 'steroid.systemic']],
+  ['nose', ['nasal', 'steroid.intranasal', 'antihistamine']],
+  ['heart', ['antihypertensive', 'antiplatelet', 'antianginal']],
+  ['digestive', ['acid', 'rehydration']],
+  ['metabolic', ['antidiabetic', 'hormone', 'mineral']],
+];
+
+function txGroup(id: Id): string {
+  const cls = db.treatments[id].class ?? '';
+  return TX_GROUPS.find(([, prefixes]) => prefixes.some(p => cls === p || cls.startsWith(`${p}.`)))?.[0] ?? 'regimen';
+}
+
+function groupTreatments(items: VisitView['treatments']): VisitView['treatmentGroups'] {
+  const order = [...TX_GROUPS.map(([k]) => k), 'regimen'];
+  const titles = T.spikes.decision.txGroup;
+  return order
+    .map(key => ({ key, title: titles[key], items: items.filter(x => txGroup(x.id) === key) }))
+    .filter(g => g.items.length > 0);
+}
+
+/** Диагнозы по системам органов — в порядке SYSTEMS; внутри — по алфавиту. */
+export function diagnosisGroups(): { key: BodySystem; title: string; items: { id: Id; name: string }[] }[] {
+  const all = conditionChoices();
+  return SYSTEMS
+    .map(key => ({ key, title: T.spikes.decision.system[key], items: all.filter(c => db.conditions[c.id].system === key) }))
+    .filter(g => g.items.length > 0);
+}
+
 /** Выбор лечения: противопоказание, о котором пациент сказал, — предупреждение (`04` §8). */
 function treatmentChoices(s: State): VisitView['treatments'] {
   const known = knownFacts(db, [...complaintObservations(s.patient), ...resultsOf(s)]);
@@ -345,7 +382,9 @@ function makeView(s: State): VisitView {
     done: s.done,
     hints: beliefs(s).slice(0, 3).map(b => ({ id: b.id, name: db.conditions[b.id].name.ru, outOf10: Math.round(b.p * 10) })),
     treatments: treatmentChoices(s),
+    treatmentGroups: groupTreatments(treatmentChoices(s)),
     draft: s.draft,
+    draftDiagnosisName: s.draft.diagnosis ? db.conditions[s.draft.diagnosis].name.ru : undefined,
     decision: s.decision,
   };
 }

@@ -157,8 +157,9 @@ review: draft                 # draft | checked | reviewed
 Обязательно у каждой записи состояния: `id`, `name.ru`, `department`, `kind`,
 `severity`, `epidemiology.prevalence`, хотя бы три признака с полосами, `confirm` (или
 явное `confirm: clinical` с объяснением), `texts.summary.ru`, хотя бы один источник,
-`review`. У всего, с чем приходят, — тактика `treatment` (хотя бы одна первая линия и
-место) и течение без лечения: `selfLimiting: true` или `untreated`.
+`review`. У всего, с чем приходят, — система органов `system` (по ней строится список
+диагнозов), тактика `treatment` (хотя бы одна первая линия и место) и течение без
+лечения: `selfLimiting: true` или `untreated`.
 
 **Лечение** (`treatments/`) — МНН или группа, без доз и торговых названий (ADR 0012):
 

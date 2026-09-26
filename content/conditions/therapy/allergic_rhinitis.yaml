@@ -2,6 +2,7 @@ id: cond.allergic_rhinitis
 name: { ru: "Аллергический ринит" }
 icd10: J30.4
 department: dept.therapy
+system: airways
 kind: disease
 severity: minor
 epidemiology:

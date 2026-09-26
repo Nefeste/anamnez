@@ -2,6 +2,7 @@ id: cond.acute_bronchitis
 name: { ru: "Острый бронхит" }
 icd10: J20.9
 department: dept.therapy
+system: lungs
 group: grp.viral_respiratory
 kind: disease
 severity: minor

@@ -2,6 +2,7 @@ id: cond.hypertension_new
 name: { ru: "Артериальная гипертензия, впервые выявленная" }
 icd10: I10
 department: dept.therapy
+system: heart
 kind: disease
 checkup: true
 severity: moderate

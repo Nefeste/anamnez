@@ -2,6 +2,7 @@ id: cond.sinusitis_acute
 name: { ru: "Острый риносинусит" }
 icd10: J01.9
 department: dept.therapy
+system: airways
 kind: disease
 severity: minor
 epidemiology:

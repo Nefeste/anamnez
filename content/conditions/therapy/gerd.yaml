@@ -2,6 +2,7 @@ id: cond.gerd
 name: { ru: "Гастроэзофагеальная рефлюксная болезнь" }
 icd10: K21.9
 department: dept.therapy
+system: digestive
 group: grp.acid_dyspepsia
 kind: disease
 severity: minor

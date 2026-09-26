@@ -42,6 +42,10 @@ export interface Link {
 /** Где лечить: дома, направить в стационар, вызвать скорую (перевод). */
 export type Setting = 'home' | 'ward' | 'ambulance';
 
+/** Система органов в порядке показа: простуда и ЛОР, лёгкие, сердце, живот, мочевые, обмен, голова и спина. */
+export const SYSTEMS = ['airways', 'lungs', 'heart', 'digestive', 'urinary', 'metabolic', 'nerves'] as const;
+export type BodySystem = (typeof SYSTEMS)[number];
+
 /** Тактика при состоянии (`04-medical-model.md` §8). */
 export interface Tactics {
   firstLine: Id[];
@@ -93,6 +97,8 @@ export interface Condition {
   department: Id;
   /** состояния с одинаковой тактикой: путаница внутри группы — частичная точность (`04` §10) */
   group?: Id;
+  /** система органов — для списков диагнозов и энциклопедии */
+  system?: BodySystem;
   kind: 'disease' | 'injury' | 'syndrome' | 'state';
   severity: 'minor' | 'moderate' | 'serious' | 'critical';
   /** выпадает ли основным заболеванием (false — только сопутствующим) */

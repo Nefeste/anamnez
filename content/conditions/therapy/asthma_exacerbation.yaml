@@ -2,6 +2,7 @@ id: cond.asthma_exacerbation
 name: { ru: "Обострение бронхиальной астмы" }
 icd10: J45.9
 department: dept.therapy
+system: lungs
 kind: disease
 severity: serious
 epidemiology:

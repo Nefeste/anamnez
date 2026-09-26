@@ -2,6 +2,7 @@ id: cond.low_back_pain
 name: { ru: "Неспецифическая боль в нижней части спины" }
 icd10: M54.5
 department: dept.therapy
+system: nerves
 kind: syndrome
 severity: minor
 epidemiology:

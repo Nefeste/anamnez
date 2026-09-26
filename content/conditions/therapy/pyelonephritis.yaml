@@ -2,6 +2,7 @@ id: cond.pyelonephritis
 name: { ru: "Острый пиелонефрит" }
 icd10: N10
 department: dept.therapy
+system: urinary
 kind: disease
 severity: serious
 epidemiology:
