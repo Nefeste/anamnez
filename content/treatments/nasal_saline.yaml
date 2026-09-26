@@ -1,0 +1,13 @@
+id: tx.nasal_saline
+name: { ru: "Промывание носа солевым раствором" }
+kind: procedure
+route: nasal
+cost: 150
+effects:
+  - { on: cond.arvi, kind: relieve, band: often, days: [0, 2] }
+texts:
+  hint:
+    ru: "Солевой раствор смывает слизь и облегчает дыхание через нос при насморке. Безопасно и не требует рецепта."
+sources:
+  - { kind: guideline, title: "Острая респираторная вирусная инфекция (ОРВИ) у взрослых", org: "Минздрав РФ", note: "черновик: название и редакцию сверить на cr.minzdrav.gov.ru" }
+review: draft

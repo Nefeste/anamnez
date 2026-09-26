@@ -16,6 +16,7 @@ course:
     - { id: peak, days: [2, 5] }
     - { id: resolution, days: [5, 12] }
   presentation: [1, 3]
+  untreated: { band: rarely, days: [3, 7] }
   selfLimiting: true
 findings:
   - { f: sym.abrupt_onset, band: usually }
@@ -34,6 +35,12 @@ findings:
   - { f: lab.crp_high, band: sometimes }
   - { f: img.cxr_infiltrate, band: never }
 confirm: [exam.flu_rapid]
+treatment:
+  firstLine: [tx.rest_fluids]
+  acceptable: [tx.oseltamivir]
+  supportive: [tx.paracetamol, tx.ibuprofen, tx.nasal_saline]
+  notIndicated: [tx.amoxicillin, tx.amoxicillin_clavulanate, tx.macrolide, tx.steroid_systemic_short]
+  setting: { default: home }
 texts:
   summary:
     ru: >-

@@ -1,0 +1,18 @@
+id: tx.paracetamol
+name: { ru: "Парацетамол" }
+kind: drug
+class: analgesic.paracetamol
+route: oral
+cost: 50
+effects:
+  - { on: cond.arvi, kind: relieve, band: usually, days: [0, 1] }
+  - { on: cond.influenza, kind: relieve, band: usually, days: [0, 1] }
+  - { on: cond.strep_pharyngitis, kind: relieve, band: usually, days: [0, 1] }
+  - { on: cond.acute_bronchitis, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.pneumonia_cap, kind: relieve, band: often, days: [0, 1] }
+texts:
+  hint:
+    ru: "Снижает температуру и боль. Лечит не причину болезни, а самочувствие: после него температура нормальная, а пневмония — нет."
+sources:
+  - { kind: guideline, title: "Острая респираторная вирусная инфекция (ОРВИ) у взрослых", org: "Минздрав РФ", note: "черновик: название и редакцию сверить на cr.minzdrav.gov.ru" }
+review: draft

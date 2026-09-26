@@ -34,6 +34,11 @@ findings:
   - { f: vital.tachypnea, band: very_rarely }
   - { f: img.cxr_infiltrate, band: never }
 confirm: clinical
+treatment:
+  firstLine: [tx.rest_fluids]
+  supportive: [tx.paracetamol, tx.ibuprofen]
+  notIndicated: [tx.amoxicillin, tx.amoxicillin_clavulanate, tx.macrolide, tx.oseltamivir, tx.steroid_systemic_short]
+  setting: { default: home }
 texts:
   summary:
     ru: >-

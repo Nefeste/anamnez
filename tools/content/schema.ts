@@ -52,6 +52,10 @@ const link = z.strictObject({
   attrs: z.record(z.string(), attrSpec).optional(),
 });
 const riskMultiplier = z.strictObject({ id: z.string(), x: z.number().positive() });
+const txId = z.string().regex(/^tx\.[a-z0-9_]+$/);
+/** Где лечить: дома, направить в стационар, вызвать скорую (перевод). */
+export const SETTINGS = ['home', 'ward', 'ambulance'] as const;
+const setting = z.enum(SETTINGS);
 const season = z.strictObject({ winter: z.number(), spring: z.number(), summer: z.number(), autumn: z.number() });
 
 export const conditionSchema = z.strictObject({
@@ -77,8 +81,26 @@ export const conditionSchema = z.strictObject({
     stages: z.array(z.strictObject({ id: z.string(), days: z.tuple([z.number(), z.number()]), needs: z.literal('treatment').optional() })).min(1),
     /** в какие дни болезни обычно обращаются */
     presentation: z.tuple([z.number().int().min(0), z.number().int().min(0)]).optional(),
+    /** проходит само: без лечения — выздоровление к концу стадий */
     selfLimiting: z.boolean().optional(),
+    /** без действенного лечения: с какой вероятностью и на какой день становится хуже */
+    untreated: z.strictObject({ band: probability, days: z.tuple([z.number().int().min(0), z.number().int().min(0)]) }).optional(),
   }),
+  /** тактика (`04-medical-model.md` §8): четыре списка и где лечить */
+  treatment: z.strictObject({
+    firstLine: z.array(txId).min(1),
+    acceptable: z.array(txId).default([]),
+    supportive: z.array(txId).default([]),
+    notIndicated: z.array(txId).default([]),
+    harmful: z.array(txId).default([]),
+    setting: z.strictObject({
+      default: setting,
+      /** уточнение по скрытому параметру случая: значение → место */
+      param: z.strictObject({ name: z.string(), map: z.record(z.string(), setting) }).optional(),
+      /** если у пациента есть красный флаг этого состояния */
+      redFlag: setting.optional(),
+    }),
+  }).optional(),
   findings: z.array(link).min(3),
   confirm: z.union([z.array(z.string()).min(1), z.literal('clinical')]),
   redFlags: z.array(z.string()).optional(),
@@ -125,6 +147,33 @@ export const examSchema = z.strictObject({
   review,
 });
 
+/** Лечение — группа или МНН без доз (ADR 0012). */
+export const treatmentSchema = z.strictObject({
+  id: txId,
+  name: text,
+  kind: z.enum(['drug', 'regimen', 'procedure']),
+  /** класс для аллергий и статистики: antibiotic.penicillin, antibiotic.macrolide… */
+  class: z.string().regex(/^[a-z_]+(\.[a-z_]+)*$/).optional(),
+  route: z.enum(['oral', 'inhaled', 'nasal', 'iv', 'im']).optional(),
+  cost: z.number().int().min(0),
+  /** cure — действует на причину: переводит болезнь к выздоровлению с вероятностью за столько дней */
+  effects: z.array(z.strictObject({
+    on: z.string().regex(/^cond\.[a-z0-9_]+$/),
+    kind: z.enum(['cure', 'relieve']),
+    band: probability,
+    days: z.tuple([z.number().int().min(0), z.number().int().min(0)]),
+  })).default([]),
+  /** противопоказание — фактор риска (аллергия) или состояние; reaction — вероятность вреда, если назначить */
+  contraindications: z.array(z.strictObject({
+    id: z.string().regex(/^(risk|cond)\.[a-z0-9_]+$/),
+    level: z.enum(['relative', 'absolute']),
+    reaction: probability,
+  })).default([]),
+  texts: z.strictObject({ hint }),
+  sources: z.array(source).min(1),
+  review,
+});
+
 export const riskSchema = z.strictObject({
   id: z.string().regex(/^risk\.[a-z0-9_]+$/),
   name: text,
@@ -138,6 +187,7 @@ export const riskSchema = z.strictObject({
 export const versionSchema = z.strictObject({ contentVersion: z.number().int().min(1) });
 
 export type ConditionSrc = z.infer<typeof conditionSchema>;
+export type TreatmentSrc = z.infer<typeof treatmentSchema>;
 export type FindingSrc = z.infer<typeof findingSchema>;
 export type ExamSrc = z.infer<typeof examSchema>;
 export type RiskSrc = z.infer<typeof riskSchema>;

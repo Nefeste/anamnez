@@ -1,0 +1,18 @@
+id: tx.amoxicillin
+name: { ru: "Амоксициллин" }
+kind: drug
+class: antibiotic.penicillin
+route: oral
+cost: 150
+effects:
+  - { on: cond.strep_pharyngitis, kind: cure, band: usually, days: [1, 3] }
+  - { on: cond.pneumonia_cap, kind: cure, band: usually, days: [2, 4] }
+contraindications:
+  - { id: risk.allergy_penicillin, level: absolute, reaction: often }
+texts:
+  hint:
+    ru: "Антибиотик пенициллинового ряда: препарат выбора при стрептококковой ангине и нетяжёлой пневмонии. На вирусы не действует; при аллергии на пенициллины опасен."
+sources:
+  - { kind: guideline, title: "Внебольничная пневмония у взрослых", org: "Минздрав РФ", note: "черновик: название и редакцию сверить на cr.minzdrav.gov.ru" }
+  - { kind: guideline, title: "Острый тонзиллит и фарингит (острый тонзиллофарингит)", org: "Минздрав РФ", note: "черновик: название и редакцию сверить на cr.minzdrav.gov.ru" }
+review: draft

@@ -61,6 +61,33 @@ describe('валидатор базы', () => {
     expect(errors.some(e => e.includes('cough.yaml'))).toBe(true);
   });
 
+  test('тактика: у всего, с чем приходят; антибиотик не показан при вирусных, выбор — при бактериальных', () => {
+    const { db } = buildDb();
+    for (const c of Object.values(db.conditions).filter(x => x.presenting)) {
+      expect(c.treatment?.firstLine.length ?? 0).toBeGreaterThan(0);
+    }
+    const antibiotics = Object.values(db.treatments).filter(t => t.class?.startsWith('antibiotic.')).map(t => t.id);
+    expect(antibiotics.length).toBeGreaterThan(0);
+    for (const viral of ['cond.arvi', 'cond.acute_bronchitis', 'cond.influenza']) {
+      for (const a of antibiotics) expect(db.conditions[viral].treatment!.notIndicated).toContain(a);
+    }
+    for (const bacterial of ['cond.strep_pharyngitis', 'cond.pneumonia_cap']) {
+      expect(db.conditions[bacterial].treatment!.firstLine.some(t => antibiotics.includes(t))).toBe(true);
+    }
+    // при аллергии на пенициллины есть чем заменить: в допустимых — не пенициллин
+    const penicillins = Object.values(db.treatments).filter(t => t.class === 'antibiotic.penicillin').map(t => t.id);
+    for (const bacterial of ['cond.strep_pharyngitis', 'cond.pneumonia_cap']) {
+      expect(db.conditions[bacterial].treatment!.acceptable.some(t => antibiotics.includes(t) && !penicillins.includes(t))).toBe(true);
+    }
+  });
+
+  test('ссылка на несуществующее лечение и лечение в двух списках', () => {
+    const missing = broken(d => edit(d, 'conditions/therapy/arvi.yaml', 'firstLine: [tx.rest_fluids]', 'firstLine: [tx.rest]'));
+    expect(missing.some(e => e.includes('tx.rest') && e.includes('не найдено'))).toBe(true);
+    const twice = broken(d => edit(d, 'conditions/therapy/arvi.yaml', 'firstLine: [tx.rest_fluids]', 'firstLine: [tx.rest_fluids, tx.paracetamol]'));
+    expect(twice.some(e => e.includes('в двух списках'))).toBe(true);
+  });
+
   test('имя файла и идентификатор должны совпадать', () => {
     const errors = broken(d => edit(d, 'exams/crp.yaml', 'id: exam.crp', 'id: exam.crp_blood'));
     expect(errors.some(e => e.includes('не совпадает с именем файла'))).toBe(true);

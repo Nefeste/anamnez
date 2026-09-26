@@ -21,7 +21,7 @@ const exam = (id: string, f: string, sens: number, spec: number): Exam => ({
 
 /** Числа — иллюстрация из документа: q в долях 1/10 000, априорные 45/25/15/15. */
 const db: ContentDb = {
-  contentVersion: 1, hash: 'test', risks: {}, revealedBy: {},
+  contentVersion: 1, hash: 'test', risks: {}, treatments: {}, revealedBy: {},
   conditions: {
     'cond.arvi': cond('cond.arvi', 45, 200, 100),
     'cond.bronchitis': cond('cond.bronchitis', 25, 1000, 200),
