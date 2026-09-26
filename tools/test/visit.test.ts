@@ -1,7 +1,7 @@
 // Приём пациента прототипа П4 (spec 2026-09-spikes): модуль грузится, часы идут делами,
 // результаты приходят в свой срок, правда видна только в разборе после диагноза.
 import { describe, expect, test } from 'bun:test';
-import { act, conditionChoices, conditionTerm, diagnose, examInfo, examsByAction, examTerm, findingInfo, nextPatient, visitView, waitForResults } from '../../src/state/visit';
+import { act, chooseDiagnosis, chooseSetting, conditionChoices, conditionTerm, examInfo, examsByAction, examTerm, findingInfo, finish, nextPatient, toggleTreatment, treatmentTerm, visitView, waitForResults } from '../../src/state/visit';
 
 describe('приём', () => {
   test('разделы действий делят обследования без пересечений', () => {
@@ -76,20 +76,46 @@ describe('приём', () => {
     expect(conditionTerm('cond.pneumonia_cap').text[0].length).toBeGreaterThan(20);
   });
 
-  test('диагноз закрывает приём и открывает разбор', () => {
-    const before = visitView();
-    expect(before.hints.length).toBeGreaterThan(0);
-    const guess = before.hints[0].id;
-    diagnose(guess);
+  test('решение: без диагноза приём не завершить; диагноз, лечение и место меняются до конца', () => {
+    finish(); // без диагноза — ничего
+    expect(visitView().decision).toBeUndefined();
+    const guess = visitView().hints[0].id;
+    chooseDiagnosis(guess);
+    toggleTreatment('tx.amoxicillin');
+    toggleTreatment('tx.rest_fluids');
+    toggleTreatment('tx.amoxicillin'); // снова — снимает
+    chooseSetting('ward');
+    chooseSetting('home');
+    expect(visitView().draft).toEqual({ diagnosis: guess, treatments: ['tx.rest_fluids'], setting: 'home' });
+    expect(visitView().decision).toBeUndefined();
+    act('exam.throat'); // до «Завершить» обследовать ещё можно
+    expect(visitView().done).toContain('exam.throat');
+  });
+
+  test('«Завершить приём»: правда, исход, оценки, план с ролями и разбор', () => {
+    const guess = visitView().draft.diagnosis!;
+    finish();
     const d = visitView().decision!;
     expect(d.diagnosis).toBe(guess);
     expect(['correct', 'partly', 'wrong']).toContain(d.verdict);
     expect(d.truthName.length).toBeGreaterThan(0);
-    expect(d.outOf10).toBeGreaterThanOrEqual(0);
-    expect(d.outOf10).toBeLessThanOrEqual(10);
+    expect(d.outcome.length).toBeGreaterThan(0);
+    expect(d.grades.map(g => g.key)).toEqual(['accuracy', 'defensibility', 'thrift', 'treatment', 'setting', 'safety']);
+    expect(['A', 'B', 'C', 'D']).toContain(d.overall);
+    expect(d.plan).toEqual([{ name: 'Режим и обильное питьё', role: expect.any(String) }]);
+    expect(d.timeline[0].label).toBe('Жалобы');
+    expect(d.timeline.length).toBe(visitView().groups.length + 1);
+    expect(d.rational.length).toBeGreaterThan(0);
 
-    act('exam.xray_chest'); // после диагноза обследования не проводятся
+    act('exam.xray_chest'); // после завершения обследования не проводятся
     expect(visitView().done).not.toContain('exam.xray_chest');
+    toggleTreatment('tx.macrolide'); // и план не меняется
+    expect(visitView().draft.treatments).toEqual(['tx.rest_fluids']);
+  });
+
+  test('«Что это?» у лечения; всё лечение базы в выборе', () => {
+    expect(visitView().treatments.map(x => x.id)).toContain('tx.amoxicillin');
+    expect(treatmentTerm('tx.amoxicillin').text[0]).toContain('пенициллин');
   });
 
   test('следующий пациент начинает приём заново', () => {
@@ -97,8 +123,25 @@ describe('приём', () => {
     nextPatient();
     const v = visitView();
     expect(v.decision).toBeUndefined();
+    expect(v.draft).toEqual({ treatments: [], setting: 'home' });
     expect(v.clock).toBe('08:00');
     expect(v.done).toEqual([]);
     expect(v.title).not.toBe(prev);
+  });
+
+  test('пациент сказал об аллергии — у пенициллинов предупреждение, у остального нет', () => {
+    // ищем среди следующих пациентов того, кто назовёт аллергию на расспросе (~9 % взрослых)
+    let told = false;
+    for (let i = 0; i < 200 && !told; i++) {
+      nextPatient();
+      expect(visitView().treatments.every(x => x.warning === undefined)).toBe(true); // пока не спросили
+      act('exam.ask_allergies');
+      told = visitView().results.some(l => l.f === 'hx.allergy_penicillin' && l.shown);
+    }
+    expect(told).toBe(true);
+    const warn = Object.fromEntries(visitView().treatments.map(x => [x.id, x.warning]));
+    expect(warn['tx.amoxicillin']).toBe('Противопоказано: аллергия на пенициллины');
+    expect(warn['tx.amoxicillin_clavulanate']).toBe(warn['tx.amoxicillin']);
+    expect(warn['tx.macrolide']).toBeUndefined();
   });
 });

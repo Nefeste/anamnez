@@ -95,8 +95,14 @@ try {
   await page.screenshot({ path: join(OUT, '04-patient-exams.png'), fullPage: true });
   await page.getByTestId('tab-decide').click();
   await page.getByTestId('dx-cond.pneumonia_cap').click();
+  await page.getByTestId('tx-tx.amoxicillin').click();
+  await page.getByTestId('setting-home').click();
+  await page.getByTestId('visit-finish').click();
   const truth = await text(page, 'visit-truth');
   check(truth.startsWith('На самом деле:'), `П4: разбор показывает правду — ${truth}`);
+  const outcome = await text(page, 'visit-outcome');
+  const overall = await text(page, 'visit-overall');
+  check(outcome.length > 0 && /^[ABCD]$/.test(overall), `этап 2: исход и оценка случая — «${outcome}», итог ${overall}`);
   await page.screenshot({ path: join(OUT, '05-review.png'), fullPage: true });
   await page.getByTestId('visit-next').click();
   await page.getByTestId('exam-exam.ask_complaints').waitFor({ timeout: 5000 });

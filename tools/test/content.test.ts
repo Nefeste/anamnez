@@ -88,6 +88,21 @@ describe('валидатор базы', () => {
     expect(twice.some(e => e.includes('в двух списках'))).toBe(true);
   });
 
+  test('тактика не спорит с действием лечения', () => {
+    // осельтамивир действует на грипп — «не показан» при нём быть не может
+    const denied = broken(d => {
+      edit(d, 'conditions/therapy/influenza.yaml', 'acceptable: [tx.oseltamivir]', 'acceptable: []');
+      edit(d, 'conditions/therapy/influenza.yaml', 'notIndicated: [', 'notIndicated: [tx.oseltamivir, ');
+    });
+    expect(denied.some(e => e.includes('cond.influenza') && e.includes('действует на причину'))).toBe(true);
+    // пневмония сама не проходит: первая линия, которая её не лечит, — ошибка
+    const useless = broken(d => {
+      edit(d, 'conditions/therapy/pneumonia_cap.yaml', 'firstLine: [tx.amoxicillin]', 'firstLine: [tx.rest_fluids]');
+      edit(d, 'conditions/therapy/pneumonia_cap.yaml', 'supportive: [tx.paracetamol, tx.rest_fluids]', 'supportive: [tx.paracetamol, tx.amoxicillin]');
+    });
+    expect(useless.some(e => e.includes('cond.pneumonia_cap') && e.includes('первая линия не действует'))).toBe(true);
+  });
+
   test('имя файла и идентификатор должны совпадать', () => {
     const errors = broken(d => edit(d, 'exams/crp.yaml', 'id: exam.crp', 'id: exam.crp_blood'));
     expect(errors.some(e => e.includes('не совпадает с именем файла'))).toBe(true);

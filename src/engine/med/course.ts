@@ -4,7 +4,7 @@
 //
 // Код меняет состояние партии, поэтому только целые числа и именованные ветви генератора
 // (ADR 0004): одинаковый исход на телефоне и в тестах.
-import type { ContentDb } from '../../content/types';
+import type { ContentDb, Id } from '../../content/types';
 import { P_ONE, type Rng } from '../core/rng';
 import { type Plan, type PlanEval, primaryOf, SETTING_ORDER } from './plan';
 import type { Patient } from './types';
@@ -22,6 +22,8 @@ export interface Outcome {
   returns?: { day: number; reason: 'worse' | 'reaction' | 'unchanged' };
   /** подействовало ли лечение на причину — для разбора */
   cured: boolean;
+  /** что вызвало реакцию: назначение и противопоказание к нему */
+  reaction?: { tx: Id; by: Id };
 }
 
 /** 1 − Π(1 − pᵢ) в долях 1/10 000, целыми. */
@@ -39,7 +41,9 @@ export function observe(db: ContentDb, patient: Patient, plan: Plan, ev: PlanEva
   // 1. Противопоказание, которое у пациента есть: вред с вероятностью из записи лечения.
   for (const v of ev.violations) {
     const k = db.treatments[v.tx].contraindications.find(c => c.id === v.by)!;
-    if (rng.fork(`reaction:${v.tx}:${v.by}`).chance(k.reaction)) return { kind: 'reaction', day: 1, returns: { day: 1, reason: 'reaction' }, cured: false };
+    if (rng.fork(`reaction:${v.tx}:${v.by}`).chance(k.reaction)) {
+      return { kind: 'reaction', day: 1, returns: { day: 1, reason: 'reaction' }, cured: false, reaction: { tx: v.tx, by: v.by } };
+    }
   }
 
   // 2. Лечение причины. Дома то, что надо лечить в стационаре, помогает вдвое реже.

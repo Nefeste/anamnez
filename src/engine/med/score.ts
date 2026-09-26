@@ -1,6 +1,6 @@
 // Оценка случая по категориям (`docs/04-medical-model.md` §10). Движок отдаёт буквы и коды
 // замечаний; слова к ним — в src/i18n (на экране разбора).
-import type { Id } from '../../content/types';
+import type { Id, Setting } from '../../content/types';
 import type { Outcome } from './course';
 import { type PlanEval, SETTING_ORDER } from './plan';
 
@@ -9,7 +9,7 @@ export type Grade = 'A' | 'B' | 'C' | 'D';
 export type ScoreNote =
   | { code: 'tx.harmful' | 'tx.notIndicated' | 'tx.acceptable'; tx: Id }
   | { code: 'tx.noCure' | 'tx.none' }
-  | { code: 'setting.under' | 'setting.over'; recommended: string }
+  | { code: 'setting.under' | 'setting.over'; recommended: Setting }
   | { code: 'safety.knownViolation' | 'safety.unaskedViolation'; tx: Id; by: Id }
   | { code: 'safety.notAsked'; by: Id }
   | { code: 'safety.redFlagIgnored' | 'safety.redFlagUnchecked'; f: Id }
@@ -85,6 +85,7 @@ export function scoreCase(x: CaseInput): CaseScore {
   if (x.plan.violations.length === 0) {
     for (const by of x.plan.unaskedRisk) { safety = worst(safety, 'B'); notes.push({ code: 'safety.notAsked', by }); }
   }
+  if (roles.some(r => r.role === 'harmful')) safety = worst(safety, 'C'); // вред — не только плохое лечение
   if (setting === 'D') {
     for (const r of x.redFlags) {
       if (r.seen) { safety = 'D'; notes.push({ code: 'safety.redFlagIgnored', f: r.f }); }

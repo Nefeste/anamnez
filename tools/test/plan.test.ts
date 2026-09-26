@@ -86,7 +86,13 @@ describe('противопоказания', () => {
   test('реакция при нарушенном противопоказании — с вероятностью из записи (often = 50 %)', () => {
     const ev = evaluatePlan(db, allergic, amox, complaintObservations(allergic));
     let reactions = 0;
-    for (let i = 0; i < 2000; i++) if (observe(db, allergic, amox, ev, Rng.seeded(i)).kind === 'reaction') reactions++;
+    for (let i = 0; i < 2000; i++) {
+      const o = observe(db, allergic, amox, ev, Rng.seeded(i));
+      if (o.kind !== 'reaction') continue;
+      reactions++;
+      // разбор называет, на что и почему реакция
+      expect(o.reaction).toEqual({ tx: 'tx.amoxicillin', by: 'risk.allergy_penicillin' });
+    }
     expect(reactions / 2000).toBeGreaterThan(0.45);
     expect(reactions / 2000).toBeLessThan(0.55);
   });
@@ -162,6 +168,15 @@ describe('оценка случая', () => {
     expect(s.setting).toBe('D');
     expect(s.safety).toBe('D');
     expect(s.notes).toContainEqual({ code: 'safety.redFlagIgnored', f: 'vital.spo2_low' });
+  });
+
+  test('вредное при состоянии — лечение D и безопасность не выше C', () => {
+    // в базе вредного пока нет: роль подставляется в готовую проверку плана
+    const b = base({ treatments: ['tx.rest_fluids'], setting: 'home' });
+    const s = scoreCase({ ...b, plan: { ...b.plan, roles: [{ tx: 'tx.rest_fluids', role: 'harmful' }] } });
+    expect(s.treatment).toBe('D');
+    expect(s.safety).toBe('C');
+    expect(s.notes).toContainEqual({ code: 'tx.harmful', tx: 'tx.rest_fluids' });
   });
 
   test('обоснованность меряет рассуждение, бережливость — цену против разумного врача', () => {
