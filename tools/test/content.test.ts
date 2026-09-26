@@ -61,6 +61,48 @@ describe('валидатор базы', () => {
     expect(errors.some(e => e.includes('cough.yaml'))).toBe(true);
   });
 
+  test('тактика: у всего, с чем приходят; антибиотик не показан при вирусных, выбор — при бактериальных', () => {
+    const { db } = buildDb();
+    for (const c of Object.values(db.conditions).filter(x => x.presenting)) {
+      expect(c.treatment?.firstLine.length ?? 0).toBeGreaterThan(0);
+    }
+    const antibiotics = Object.values(db.treatments).filter(t => t.class?.startsWith('antibiotic.')).map(t => t.id);
+    expect(antibiotics.length).toBeGreaterThan(0);
+    for (const viral of ['cond.arvi', 'cond.acute_bronchitis', 'cond.influenza']) {
+      for (const a of antibiotics) expect(db.conditions[viral].treatment!.notIndicated).toContain(a);
+    }
+    for (const bacterial of ['cond.strep_pharyngitis', 'cond.pneumonia_cap']) {
+      expect(db.conditions[bacterial].treatment!.firstLine.some(t => antibiotics.includes(t))).toBe(true);
+    }
+    // при аллергии на пенициллины есть чем заменить: в допустимых — не пенициллин
+    const penicillins = Object.values(db.treatments).filter(t => t.class === 'antibiotic.penicillin').map(t => t.id);
+    for (const bacterial of ['cond.strep_pharyngitis', 'cond.pneumonia_cap']) {
+      expect(db.conditions[bacterial].treatment!.acceptable.some(t => antibiotics.includes(t) && !penicillins.includes(t))).toBe(true);
+    }
+  });
+
+  test('ссылка на несуществующее лечение и лечение в двух списках', () => {
+    const missing = broken(d => edit(d, 'conditions/therapy/arvi.yaml', 'firstLine: [tx.rest_fluids]', 'firstLine: [tx.rest]'));
+    expect(missing.some(e => e.includes('tx.rest') && e.includes('не найдено'))).toBe(true);
+    const twice = broken(d => edit(d, 'conditions/therapy/arvi.yaml', 'firstLine: [tx.rest_fluids]', 'firstLine: [tx.rest_fluids, tx.paracetamol]'));
+    expect(twice.some(e => e.includes('в двух списках'))).toBe(true);
+  });
+
+  test('тактика не спорит с действием лечения', () => {
+    // осельтамивир действует на грипп — «не показан» при нём быть не может
+    const denied = broken(d => {
+      edit(d, 'conditions/therapy/influenza.yaml', 'acceptable: [tx.oseltamivir]', 'acceptable: []');
+      edit(d, 'conditions/therapy/influenza.yaml', 'notIndicated: [', 'notIndicated: [tx.oseltamivir, ');
+    });
+    expect(denied.some(e => e.includes('cond.influenza') && e.includes('действует на причину'))).toBe(true);
+    // пневмония сама не проходит: первая линия, которая её не лечит, — ошибка
+    const useless = broken(d => {
+      edit(d, 'conditions/therapy/pneumonia_cap.yaml', 'firstLine: [tx.amoxicillin]', 'firstLine: [tx.rest_fluids]');
+      edit(d, 'conditions/therapy/pneumonia_cap.yaml', 'supportive: [tx.paracetamol, tx.rest_fluids]', 'supportive: [tx.paracetamol, tx.amoxicillin]');
+    });
+    expect(useless.some(e => e.includes('cond.pneumonia_cap') && e.includes('первая линия не действует'))).toBe(true);
+  });
+
   test('имя файла и идентификатор должны совпадать', () => {
     const errors = broken(d => edit(d, 'exams/crp.yaml', 'id: exam.crp', 'id: exam.crp_blood'));
     expect(errors.some(e => e.includes('не совпадает с именем файла'))).toBe(true);

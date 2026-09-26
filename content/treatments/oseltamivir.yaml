@@ -1,0 +1,15 @@
+id: tx.oseltamivir
+name: { ru: "Осельтамивир" }
+kind: drug
+class: antiviral.neuraminidase
+route: oral
+cost: 900
+effects:
+  - { on: cond.influenza, kind: cure, band: often, days: [1, 3] }
+texts:
+  hint:
+    ru: "Противовирусное против гриппа: укорачивает болезнь примерно на сутки, если начать в первые двое суток, и важнее всего людям из групп риска. На другие вирусы не действует."
+sources:
+  - { kind: guideline, title: "Грипп у взрослых", org: "Минздрав РФ", note: "черновик: название и редакцию сверить на cr.minzdrav.gov.ru" }
+  - { kind: review, title: "Jefferson T et al. Neuraminidase inhibitors for preventing and treating influenza in adults and children. Cochrane Database Syst Rev 2014;(4):CD008965", note: "черновик: величину эффекта сверить" }
+review: draft

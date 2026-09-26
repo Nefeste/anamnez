@@ -1,0 +1,17 @@
+id: tx.macrolide
+name: { ru: "Макролиды (азитромицин, кларитромицин)" }
+kind: drug
+class: antibiotic.macrolide
+route: oral
+cost: 400
+effects:
+  - { on: cond.strep_pharyngitis, kind: cure, band: often, days: [1, 3] }
+  - { on: cond.pneumonia_cap, kind: cure, band: often, days: [2, 4] }
+  - { on: cond.copd_exacerbation, kind: cure, band: sometimes, days: [2, 5] }
+texts:
+  hint:
+    ru: "Антибиотики другой группы — замена пенициллинам при аллергии на них. Устойчивость к ним у стрептококка и пневмококка выше, поэтому они не первые в выборе."
+sources:
+  - { kind: guideline, title: "Внебольничная пневмония у взрослых", org: "Минздрав РФ", note: "черновик: название и редакцию сверить на cr.minzdrav.gov.ru" }
+  - { kind: guideline, title: "Острый тонзиллит и фарингит (острый тонзиллофарингит)", org: "Минздрав РФ", note: "черновик: название и редакцию сверить на cr.minzdrav.gov.ru" }
+review: draft

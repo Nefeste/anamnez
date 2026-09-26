@@ -3,15 +3,18 @@ import { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { buzz, play } from '@/audio/sounds';
+import type { Setting } from '@/content/types';
 import { T } from '@/i18n';
 import { Portrait } from '@/render/Portrait';
 import {
-  act, conditionChoices, conditionTerm, diagnose, examInfo, examTerm, examsByAction, findingInfo, nextPatient, type TermInfo, useVisit, waitForResults,
+  act, chooseDiagnosis, chooseSetting, conditionChoices, conditionTerm, examInfo, examTerm, examsByAction, findingInfo, finish, nextPatient,
+  type TermInfo, toggleTreatment, treatmentTerm, useVisit, waitForResults,
 } from '@/state/visit';
 import { Button, Card, Chip, Chips, H, P, Screen, Sheet, Tabs } from '@/ui/components';
 import { colors, radius, space } from '@/ui/theme';
 
 type Tab = 'ask' | 'examine' | 'order' | 'decide';
+const SETTINGS: Setting[] = ['home', 'ward', 'ambulance'];
 
 export default function PatientSpike() {
   const v = useVisit();
@@ -96,6 +99,40 @@ export default function PatientSpike() {
           <H>{v.decision.verdict === 'correct' ? t.correct : v.decision.verdict === 'partly' ? t.partly : t.wrong}</H>
           <P testID="visit-truth">{t.truth(v.decision.truthName)}</P>
           <P muted>{t.confidence(v.decision.outOf10)}</P>
+          <Text style={styles.label}>{t.outcomeLabel}</Text>
+          <P testID="visit-outcome">{v.decision.outcome}</P>
+          <Text style={styles.label}>{t.gradesLabel}</Text>
+          <View style={styles.grades}>
+            {v.decision.grades.map(g => (
+              <View key={g.key} style={styles.gradeCell}>
+                <Text style={[styles.gradeLetter, gradeColor(g.grade)]}>{g.grade}</Text>
+                <Text style={styles.gradeName}>{g.label}</Text>
+              </View>
+            ))}
+            <View style={[styles.gradeCell, styles.gradeTotal]}>
+              <Text testID="visit-overall" style={[styles.gradeLetter, gradeColor(v.decision.overall)]}>{v.decision.overall}</Text>
+              <Text style={styles.gradeName}>{t.grade.overall}</Text>
+            </View>
+          </View>
+          {v.decision.notes.length > 0 && (
+            <>
+              <Text style={styles.label}>{t.notesLabel}</Text>
+              {v.decision.notes.map((n, i) => <P key={i}>{`• ${n}`}</P>)}
+            </>
+          )}
+          <Text style={styles.label}>{t.yourPlan}</Text>
+          {v.decision.plan.length === 0 ? <P muted>{t.noTreatment}</P> : v.decision.plan.map((x, i) => <P key={i}>{`${x.name} — ${x.role}`}</P>)}
+          <P muted>{`${t.settingLabel}: ${v.decision.settingName}`}</P>
+          <Text style={styles.label}>{t.rationalLabel}</Text>
+          <P>{v.decision.rational}</P>
+          {v.decision.idle.length > 0 && (
+            <>
+              <Text style={styles.label}>{t.idleLabel}</Text>
+              <P>{v.decision.idle.join(', ')}</P>
+            </>
+          )}
+          <Text style={styles.label}>{t.timelineLabel}</Text>
+          {v.decision.timeline.map((x, i) => <P key={i} muted>{`${x.label}: ${x.truth} · ${x.chosen}`}</P>)}
           <Text style={styles.label}>{t.causes}</Text>
           {v.decision.causes.map((c, i) => <P key={i}>{`${c.finding} — ${c.cause}`}</P>)}
           <Text style={styles.label}>{t.pearls}</Text>
@@ -113,10 +150,25 @@ export default function PatientSpike() {
             {tab === 'decide'
               ? (
                 <>
-                  <P muted>{t.choose}</P>
+                  <Text style={styles.label}>{t.diagnosisLabel}</Text>
                   {conditionChoices().map(c => (
-                    <Button key={c.id} testID={`dx-${c.id}`} kind="plain" title={c.name} onPress={() => diagnose(c.id)} onInfo={() => explain(conditionTerm(c.id))} infoLabel={t.whatIsIt} />
+                    <Button key={c.id} testID={`dx-${c.id}`} kind={v.draft.diagnosis === c.id ? 'primary' : 'plain'} title={c.name}
+                      onPress={() => chooseDiagnosis(c.id)} onInfo={() => explain(conditionTerm(c.id))} infoLabel={t.whatIsIt} />
                   ))}
+                  <Text style={styles.label}>{t.treatmentLabel}</Text>
+                  {v.treatments.map(x => (
+                    <Button key={x.id} testID={`tx-${x.id}`} kind={v.draft.treatments.includes(x.id) ? 'primary' : 'plain'} title={x.name} hint={x.warning}
+                      onPress={() => toggleTreatment(x.id)} onInfo={() => explain(treatmentTerm(x.id))} infoLabel={t.whatIsIt} />
+                  ))}
+                  <Text style={styles.label}>{t.settingLabel}</Text>
+                  {/* столбиком: в ряд «В стационар» рвётся посреди слова, а шрифт на телефоне бывает крупнее */}
+                  {SETTINGS.map(k => (
+                    <Button key={k} testID={`setting-${k}`} kind={v.draft.setting === k ? 'primary' : 'plain'} title={t.setting[k]} onPress={() => chooseSetting(k)} />
+                  ))}
+                  {/* отступ: выбранное место и «Завершить» — одного цвета */}
+                  <View style={styles.finish}>
+                    <Button testID="visit-finish" title={t.finish} hint={v.draft.diagnosis ? undefined : t.finishNeedsDx} disabled={!v.draft.diagnosis} onPress={finish} />
+                  </View>
                 </>
               )
               : groups[tab].map(id => {
@@ -150,6 +202,10 @@ export default function PatientSpike() {
   );
 }
 
+function gradeColor(g: string) {
+  return { color: g === 'A' ? colors.green : g === 'B' ? colors.accent : g === 'C' ? colors.yellow : colors.red };
+}
+
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: space.m, alignItems: 'center' },
   headText: { flex: 1, gap: 2 },
@@ -161,5 +217,11 @@ const styles = StyleSheet.create({
   groupFresh: { backgroundColor: '#FFF6DE', borderColor: colors.yellow },
   groupHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.s },
   groupTitle: { flex: 1, fontSize: 13, fontWeight: '600', color: colors.muted },
+  grades: { flexDirection: 'row', flexWrap: 'wrap', gap: space.s },
+  gradeCell: { width: '30%', minWidth: 90, alignItems: 'center', paddingVertical: space.s, borderRadius: radius, backgroundColor: colors.bg },
+  gradeTotal: { backgroundColor: colors.accentSoft },
+  gradeLetter: { fontSize: 24, fontWeight: '800' },
+  gradeName: { fontSize: 12, color: colors.muted, textAlign: 'center' },
+  finish: { marginTop: space.l },
   badge: { fontSize: 12, fontWeight: '700', color: '#fff', backgroundColor: colors.yellow, borderRadius: 10, paddingHorizontal: space.s, paddingVertical: 2, overflow: 'hidden' },
 });

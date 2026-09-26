@@ -17,6 +17,7 @@ course:
     - { id: peak, days: [2, 7] }
     - { id: resolution, days: [7, 14] }
   presentation: [1, 5]
+  untreated: { band: often, days: [2, 5] }
 findings:
   - { f: sym.dyspnea, band: usually }
   - { f: sym.cough, band: usually, attrs: { character: { productive: 80, dry: 20 } } }
@@ -33,6 +34,12 @@ findings:
   - { f: img.cxr_infiltrate, band: never }
 confirm: clinical
 redFlags: [vital.spo2_low]
+treatment:
+  firstLine: [tx.salbutamol, tx.steroid_systemic_short]
+  acceptable: [tx.amoxicillin_clavulanate, tx.macrolide]
+  supportive: [tx.rest_fluids]
+  notIndicated: [tx.oseltamivir]
+  setting: { default: home, redFlag: ward }
 texts:
   summary:
     ru: >-

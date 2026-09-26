@@ -1,0 +1,8 @@
+id: risk.allergy_penicillin
+name: { ru: "Аллергия на пенициллины" }
+prevalence: { m: 8, f: 10 }
+findings:
+  - { f: hx.allergy_penicillin, band: always }
+sources:
+  - { kind: review, title: "Shenoy ES, Macy E, Rowe T, Blumenthal KG. Evaluation and Management of Penicillin Allergy: A Review. JAMA 2019;321(2):188–199", note: "около 10 % называют аллергию на пенициллины; настоящая — реже; черновик" }
+review: draft

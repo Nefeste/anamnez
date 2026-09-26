@@ -1,0 +1,15 @@
+id: tx.salbutamol
+name: { ru: "Сальбутамол" }
+kind: drug
+class: bronchodilator.saba
+route: inhaled
+cost: 250
+effects:
+  - { on: cond.copd_exacerbation, kind: cure, band: often, days: [1, 4] }
+texts:
+  hint:
+    ru: "Ингалятор, быстро расширяющий бронхи: при обострении ХОБЛ и астмы облегчает дыхание за минуты."
+sources:
+  - { kind: guideline, title: "Хроническая обструктивная болезнь лёгких", org: "Минздрав РФ", note: "черновик: название и редакцию сверить на cr.minzdrav.gov.ru" }
+  - { kind: guideline, title: "Global Strategy for the Diagnosis, Management and Prevention of COPD (GOLD) 2024", org: "GOLD", note: "черновик: сверить раздел об обострениях" }
+review: draft

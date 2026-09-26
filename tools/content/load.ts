@@ -5,9 +5,9 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, join, relative } from 'node:path';
 import { parse } from 'yaml';
 import type { z } from 'zod';
-import type { AttrSpec, Condition, ContentDb, Exam, Finding, Link, Risk } from '../../src/content/types';
+import type { AttrSpec, Condition, ContentDb, Exam, Finding, Link, Risk, Treatment } from '../../src/content/types';
 import { fingerprint } from '../../src/engine/core/hash';
-import { BANDS, type ConditionSrc, conditionSchema, type ExamSrc, examSchema, type FindingSrc, findingSchema, type LinkSrc, PREVALENCE, type ProbabilitySrc, type RiskSrc, riskSchema, versionSchema } from './schema';
+import { BANDS, type ConditionSrc, conditionSchema, type ExamSrc, examSchema, type FindingSrc, findingSchema, type LinkSrc, PREVALENCE, type ProbabilitySrc, type RiskSrc, riskSchema, type TreatmentSrc, treatmentSchema, versionSchema } from './schema';
 
 export const CONTENT_DIR = join(import.meta.dir, '../../content');
 
@@ -49,6 +49,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   const findings: Record<string, FindingSrc> = {};
   const exams: Record<string, ExamSrc> = {};
   const risks: Record<string, RiskSrc> = {};
+  const treatments: Record<string, TreatmentSrc> = {};
   let contentVersion = 0;
 
   for (const file of files) {
@@ -91,8 +92,11 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     } else if (top === 'risks') {
       const r = check(riskSchema);
       if (r) { expectId(r.id, 'risk'); put(risks, r); }
+    } else if (top === 'treatments') {
+      const t = check(treatmentSchema);
+      if (t) { expectId(t.id, 'tx'); put(treatments, t); }
     } else {
-      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks)`);
+      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, treatments)`);
     }
   }
   if (!contentVersion) errors.push('version.yaml: нет contentVersion');
@@ -129,6 +133,34 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (c.confirm !== 'clinical') for (const e of c.confirm) if (!(e in exams)) errors.push(`${owner}: подтверждающее обследование ${e} не найдено`);
     for (const f of c.redFlags ?? []) if (!hasF(f)) errors.push(`${owner}: красный флаг ${f} не найден`);
     if (!c.presenting && !c.epidemiology.chronic) errors.push(`${owner}: не бывает ни основным, ни хроническим`);
+    // тактика: у всего, с чем приходят, и только из существующих лечений, без повторов
+    const t = c.treatment;
+    if (c.presenting && !t) errors.push(`${owner}: нет тактики (treatment) — с этим состоянием приходят`);
+    if (t) {
+      const lists = [t.firstLine, t.acceptable, t.supportive, t.notIndicated, t.harmful];
+      const seen = new Set<string>();
+      for (const id of lists.flat()) {
+        if (!(id in treatments)) errors.push(`${owner}: лечение ${id} не найдено`);
+        if (seen.has(id)) errors.push(`${owner}: лечение ${id} стоит в двух списках тактики`);
+        seen.add(id);
+      }
+      if (t.setting.param) {
+        const p = c.params?.[t.setting.param.name];
+        if (!p) errors.push(`${owner}: место лечения зависит от необъявленного параметра ${t.setting.param.name}`);
+        else for (const v of Object.keys(p)) if (!t.setting.param.map[v]) errors.push(`${owner}: для ${t.setting.param.name}=${v} не сказано, где лечить`);
+      }
+      if (t.setting.redFlag && !c.redFlags?.length) errors.push(`${owner}: место при красном флаге задано, а красных флагов нет`);
+      // тактика и действие лечения не спорят: то, что лечит причину, не бывает «не показано»,
+      // а то, что само не проходит, первая линия лечит
+      const cures = (id: string) => treatments[id]?.effects.some(e => e.on === owner && e.kind === 'cure') === true;
+      for (const id of [...t.notIndicated, ...t.harmful]) if (cures(id)) errors.push(`${owner}: ${id} действует на причину, а в тактике — «не показано» или «вредно»`);
+      if (c.presenting && !c.course.selfLimiting && !t.firstLine.some(cures)) errors.push(`${owner}: само не проходит, а первая линия не действует на причину`);
+    }
+    if (!c.course.selfLimiting && c.presenting && !c.course.untreated) warnings.push(`${owner}: не проходит само, но не сказано, что будет без лечения`);
+  }
+  for (const t of Object.values(treatments)) {
+    for (const e of t.effects) if (!(e.on in conditions)) errors.push(`${t.id}: действует на неизвестное состояние ${e.on}`);
+    for (const k of t.contraindications) if (!(k.id in risks) && !(k.id in conditions)) errors.push(`${t.id}: противопоказание ${k.id} не найдено`);
   }
   for (const r of Object.values(risks)) checkLinks(r.id, r.findings);
   const revealedBy: Record<string, string[]> = {};
@@ -144,7 +176,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   }
 
   // --- сборка ---
-  const db: ContentDb = { contentVersion, hash: '', conditions: {}, findings: {}, exams: {}, risks: {}, revealedBy };
+  const db: ContentDb = { contentVersion, hash: '', conditions: {}, findings: {}, exams: {}, risks: {}, treatments: {}, revealedBy };
   for (const c of Object.values(conditions).sort((a, b) => (a.id < b.id ? -1 : 1))) {
     const e = c.epidemiology;
     const out: Condition = {
@@ -164,6 +196,9 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (c.params) out.params = c.params;
     if (c.course.presentation) out.presentation = c.course.presentation;
     if (c.redFlags) out.redFlags = c.redFlags;
+    if (c.course.selfLimiting) out.selfLimiting = true;
+    if (c.course.untreated) out.untreated = { p: prob(c.course.untreated.band), days: c.course.untreated.days };
+    if (c.treatment) out.treatment = c.treatment;
     if (c.pearls) out.pearls = c.pearls;
     db.conditions[c.id] = out;
   }
@@ -188,6 +223,17 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     const out: Risk = { id: r.id, name: r.name, p: { m: Math.round(r.prevalence.m * 100), f: Math.round(r.prevalence.f * 100) }, findings: r.findings.map(compileLink), review: r.review };
     if (r.ageMin) out.ageMin = r.ageMin;
     db.risks[r.id] = out;
+  }
+  for (const t of Object.values(treatments).sort((a, b) => (a.id < b.id ? -1 : 1))) {
+    const out: Treatment = {
+      id: t.id, name: t.name, kind: t.kind, cost: t.cost,
+      effects: t.effects.map(e => ({ on: e.on, kind: e.kind, p: prob(e.band), days: e.days })),
+      contraindications: t.contraindications.map(k => ({ id: k.id, level: k.level, reaction: prob(k.reaction) })),
+      texts: t.texts, sources: t.sources, review: t.review,
+    };
+    if (t.class) out.class = t.class;
+    if (t.route) out.route = t.route;
+    db.treatments[t.id] = out;
   }
   db.hash = fingerprint({ ...db, hash: '' });
   return { db, errors, warnings, files: files.length };

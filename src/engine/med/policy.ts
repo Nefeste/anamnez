@@ -4,6 +4,7 @@ import type { ContentDb, Id } from '../../content/types';
 import { Rng } from '../core/rng';
 import { complaintObservations, runExam } from './exams';
 import { type Belief, expectedGain, knownFacts, posterior } from './infer';
+import { type Plan, SETTING_ORDER } from './plan';
 import type { Observation, Patient } from './types';
 
 export type Strategy = 'rational' | 'lazy' | 'shotgun';
@@ -18,6 +19,10 @@ export interface DoctorResult {
   exams: Id[];
   money: number;
   minutes: number;
+  /** план лечения, который врач выбрал бы для своего диагноза */
+  plan: Plan;
+  /** всё, что врач узнал: жалобы и результаты */
+  observations: Observation[];
 }
 
 export interface DoctorOptions {
@@ -35,6 +40,41 @@ export function examCost(db: ContentDb, id: Id): number {
   const minutes = e.time.procedure + (e.time.report ?? 0) + (e.time.turnaround ?? 0) * 0.25;
   const radiation = e.radiation === 'high' ? 40 : e.radiation === 'medium' ? 20 : e.radiation === 'low' ? 8 : 0;
   return minutes + e.cost / 100 + e.discomfort * 5 + radiation;
+}
+
+/**
+ * Пользу сравниваем после округления: в ней логарифм, а его последний бит в Hermes, V8 и
+ * JSC может разниться. Разница порядка 1e-16 не должна менять выбор врача (ADR 0004).
+ */
+const quantize = (x: number) => Math.round(x * 1e9);
+
+/** Обследования, которые открывают противопоказание (вопрос об аллергиях), — самое дешёвое. */
+function askingExam(db: ContentDb, contraindication: Id): Id | undefined {
+  const telling = (db.risks[contraindication]?.findings ?? db.conditions[contraindication]?.findings ?? [])
+    .map(l => l.f).filter(f => f.startsWith('hx.'));
+  const exams = [...new Set(telling.flatMap(f => db.revealedBy[f] ?? []))];
+  return exams.sort((a, b) => examCost(db, a) - examCost(db, b) || (a < b ? -1 : 1))[0];
+}
+
+/**
+ * План для своего диагноза: препарат выбора без известных противопоказаний (иначе
+ * первая допустимая замена) и место лечения — по умолчанию или выше, если врач видел
+ * красный флаг этого состояния.
+ */
+export function choosePlan(db: ContentDb, diagnosis: Id, observations: readonly Observation[]): Plan {
+  const t = db.conditions[diagnosis]?.treatment;
+  if (!t) return { treatments: [], setting: 'home' };
+  const known = knownFacts(db, observations);
+  const blocked = new Set([...known.risks, ...known.conditions]);
+  const ok = (tx: Id) => !db.treatments[tx].contraindications.some(k => blocked.has(k.id));
+  let treatments = t.firstLine.filter(ok);
+  if (treatments.length === 0) treatments = t.acceptable.filter(ok).slice(0, 1);
+  const seen = new Set(observations.filter(o => o.shown).map(o => o.f));
+  let setting = t.setting.default;
+  if (t.setting.redFlag && (db.conditions[diagnosis].redFlags ?? []).some(f => seen.has(f)) && SETTING_ORDER[t.setting.redFlag] > SETTING_ORDER[setting]) {
+    setting = t.setting.redFlag;
+  }
+  return { treatments, setting };
 }
 
 export function runDoctor(db: ContentDb, patient: Patient, strategy: Strategy, rng: Rng, opt: DoctorOptions): DoctorResult {
@@ -65,8 +105,8 @@ export function runDoctor(db: ContentDb, patient: Patient, strategy: Strategy, r
       for (const id of opt.exams) {
         if (done.includes(id)) continue;
         const gain = expectedGain(db, id, beliefs, ctx, observed);
-        if (gain < minGain) continue;
-        const score = gain / examCost(db, id);
+        if (quantize(gain) < quantize(minGain)) continue;
+        const score = quantize(gain / examCost(db, id));
         if (score > bestScore) {
           bestScore = score;
           best = id;
@@ -79,9 +119,20 @@ export function runDoctor(db: ContentDb, patient: Patient, strategy: Strategy, r
   }
 
   const top = beliefs[0];
+  // Перед лечением с противопоказаниями разумный врач спрашивает о них (об аллергиях — перед
+  // антибиотиком); ленивый — нет; «всё подряд» уже спросил всё.
+  let plan = choosePlan(db, top.id, obs);
+  if (strategy === 'rational') {
+    const risks = [...new Set(plan.treatments.flatMap(tx => db.treatments[tx].contraindications.map(k => k.id)))].sort();
+    for (const k of risks) {
+      const ask = askingExam(db, k);
+      if (ask && !done.includes(ask) && opt.exams.includes(ask)) doExam(ask);
+    }
+    plan = choosePlan(db, top.id, obs);
+  }
   const primary = patient.truth.conditions.find(c => c.role === 'primary')!.id;
   const money = done.reduce((a, id) => a + db.exams[id].cost, 0);
   const minutes = done.reduce((a, id) => a + db.exams[id].time.procedure + (db.exams[id].time.report ?? 0) + (db.exams[id].time.turnaround ?? 0), 0);
   const group = (id: Id) => db.conditions[id]?.group ?? id;
-  return { diagnosis: top.id, correct: top.id === primary, correctGroup: group(top.id) === group(primary), confidence: top.p, exams: done, money, minutes };
+  return { diagnosis: top.id, correct: top.id === primary, correctGroup: group(top.id) === group(primary), confidence: top.p, exams: done, money, minutes, plan, observations: obs };
 }

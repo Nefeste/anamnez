@@ -3,9 +3,10 @@
 Три вида данных: **медицинская база** (одинакова у всех, едет в приложении), **состояние
 партии** (сохранение), **профиль и настройки** (общие для всех партий). Правила
 наполнения базы — [`05-content.md`](05-content.md); смысл полей — в
-[`04-medical-model.md`](04-medical-model.md). Типы ниже — договор; при появлении кода
-источником правды станут `src/content/types.ts` и `src/engine/core/state.ts`, а этот
-документ будет ссылаться на них и объяснять «почему».
+[`04-medical-model.md`](04-medical-model.md). Типы ниже — договор. Где код уже есть,
+источник правды — он: `tools/content/schema.ts` (что пишут в YAML),
+`src/content/types.ts` (что получает движок), позже `src/engine/core/state.ts`; этот
+документ объясняет «почему», а ещё не сделанное помечает «позже».
 
 ## 1. Медицинская база
 
@@ -61,27 +62,42 @@ interface Condition {
   };
   params?: Record<string, Record<string, number>>;       // скрытые параметры: значение → вес
   course: {
-    stages: { id: string; days: [number, number]; needs?: 'effective_treatment' }[];
-    untreated?: { after: [number, number]; when?: Cond; add: Id; p: P }[];
-    selfLimiting?: boolean;
+    stages: { id: string; days: [number, number]; needs?: 'treatment' }[];
+    presentation?: [number, number];    // в какие дни болезни обычно обращаются
+    selfLimiting?: boolean;             // проходит само к концу последней стадии
+    untreated?: { p: P; days: [number, number] };  // без действенного лечения: ухудшение и на какой день
+    // позже (приёмное и скорая, этап 4) — осложнения новыми состояниями:
+    // complications?: { after: [number, number]; when?: Cond; add: Id; p: P }[];
   };
   findings: Link[];                     // связи «состояние → признак»
   vitals?: VitalShift[];                // сдвиги витальных по стадиям и тяжести
   confirm: Id[] | 'clinical';
   redFlags?: Id[];
   expect?: { exam?: Id; treatment?: Id; within: Minutes | 'day' }[];
-  treatment: {
-    firstLine: Id[]; acceptable: Id[]; supportive: Id[];
-    notIndicated: Id[]; harmful: Id[];
-    setting: Partial<Record<'mild' | 'moderate' | 'severe', 'home' | 'ward' | 'icu' | 'surgery' | 'transfer'>>;
-    score?: Id;
-  };
+  treatment: Tactics;                   // обязательно у всех, с чем приходят (валидатор)
   texts: { summary: Text; lay?: Text };  // lay — как называют пациенты
   pearls?: Text[];                       // «что запомнить»: 2–3 вывода для разбора и энциклопедии
   simplified?: string;                   // что упрощено и почему
   sources: Source[]; review: Review;
   replacedBy?: Id;
 }
+
+// Тактика (04-medical-model.md §8). Назначение, не названное ни в одном списке, — «не показано».
+interface Tactics {
+  firstLine: Id[];                       // препарат или метод выбора, хотя бы один
+  acceptable: Id[];                      // замена при противопоказании к первой линии
+  supportive: Id[];                      // облегчает самочувствие, на причину не действует
+  notIndicated: Id[]; harmful: Id[];     // одно лечение — не больше чем в одном списке
+  setting: {                             // где лечить; берётся самое высокое из подходящих
+    default: Setting;
+    param?: { name: string; map: Record<string, Setting> };  // по скрытому параметру: тяжесть
+    redFlag?: Setting;                   // если у пациента есть красный флаг состояния
+  };
+  score?: Id;                            // позже: шкала, по которой решают (CRB-65)
+}
+// Амбулатория первой смены: дома, направить в стационар, вызвать скорую.
+// ОРИТ и операция — с палатами и операционной (этап 4).
+type Setting = 'home' | 'ward' | 'ambulance';
 
 interface Link {
   f: Id;                                 // признак
@@ -156,14 +172,19 @@ interface ClinicalTask {
 ```ts
 interface Treatment {
   id: Id; name: Text;                    // МНН или группа, без доз (ADR 0012)
-  kind: 'drug' | 'procedure' | 'surgery' | 'regimen';
+  kind: 'drug' | 'regimen' | 'procedure'; // позже: 'surgery'
   class?: string;                        // 'antibiotic.penicillin'
-  route?: 'oral' | 'iv' | 'im' | 'inhaled' | 'topical';
-  room?: Id; staff?: Id[]; time?: Minutes; cost: number;
-  effects: { on: Id; kind: 'cure' | 'relieve'; p?: P; days?: [number, number]; findings?: Id[] }[];
-  contraindications?: { id: Id; level: 'relative' | 'absolute' }[];
-  sideEffects?: { add: Id; p: P; if?: Id }[];
+  route?: 'oral' | 'inhaled' | 'nasal' | 'iv' | 'im';
+  cost: number;
+  // cure — на причину: к выздоровлению с вероятностью p за days дней; relieve — облегчает
+  effects: { on: Id; kind: 'cure' | 'relieve'; p: P; days: [number, number] }[];
+  // противопоказание — фактор риска (аллергия) или состояние; reaction — вероятность
+  // вреда, если назначить, когда оно у пациента есть (знал врач или нет)
+  contraindications: { id: Id; level: 'relative' | 'absolute'; reaction: P }[];
+  texts: { hint: Text };                 // «Что это?» простыми словами (05-content.md §4)
   sources: Source[]; review: Review; replacedBy?: Id;
+  // позже: room?, staff?, time? (процедуры в кабинетах), findings в effects
+  // (жаропонижающее снимает температуру), sideEffects: { add: Id; p: P; if?: Id }[]
 }
 
 interface RoomType {

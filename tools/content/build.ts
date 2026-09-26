@@ -16,5 +16,5 @@ if (errors.length) {
 mkdirSync(OUT, { recursive: true });
 writeFileSync(join(OUT, 'bundle.json'), JSON.stringify(db));
 const n = (r: object) => Object.keys(r).length;
-const drafts = [...Object.values(db.conditions), ...Object.values(db.findings), ...Object.values(db.exams)].filter(x => x.review === 'draft').length;
-console.log(`База ${db.contentVersion} (${db.hash}): состояний ${n(db.conditions)}, признаков ${n(db.findings)}, обследований ${n(db.exams)}, факторов риска ${n(db.risks)}; черновиков ${drafts}.`);
+const drafts = [...Object.values(db.conditions), ...Object.values(db.findings), ...Object.values(db.exams), ...Object.values(db.treatments)].filter(x => x.review === 'draft').length;
+console.log(`База ${db.contentVersion} (${db.hash}): состояний ${n(db.conditions)}, признаков ${n(db.findings)}, обследований ${n(db.exams)}, факторов риска ${n(db.risks)}, лечений ${n(db.treatments)}; черновиков ${drafts}.`);

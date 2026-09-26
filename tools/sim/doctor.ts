@@ -2,8 +2,11 @@
 // Три стратегии на одних и тех же пациентах: разумный, ленивый, «всё подряд».
 // Флаги: --n 10000 (пациентов), --season winter|spring|summer|autumn|all, --json (для CI).
 import { Rng } from '../../src/engine/core/rng';
+import { observe, type OutcomeKind } from '../../src/engine/med/course';
 import { generatePatient } from '../../src/engine/med/generate';
-import { runDoctor, type Strategy } from '../../src/engine/med/policy';
+import { evaluatePlan } from '../../src/engine/med/plan';
+import { type DoctorResult, examCost, runDoctor, type Strategy } from '../../src/engine/med/policy';
+import { type Grade, scoreCase } from '../../src/engine/med/score';
 import { buildDb } from '../content/load';
 
 const arg = (name: string, def: string) => {
@@ -30,8 +33,20 @@ if (seasons.length === 0) {
   process.exit(1);
 }
 
-interface Tally { n: number; correct: number; correctGroup: number; money: number; minutes: number; exams: number; confusion: Record<string, number>; perCondition: Record<string, { n: number; correct: number; correctGroup: number }> }
-const empty = (): Tally => ({ n: 0, correct: 0, correctGroup: 0, money: 0, minutes: 0, exams: 0, confusion: {}, perCondition: {} });
+interface Tally {
+  n: number; correct: number; correctGroup: number; money: number; minutes: number; exams: number;
+  confusion: Record<string, number>; perCondition: Record<string, { n: number; correct: number; correctGroup: number }>;
+  /** оценки случая и исходы (`04-medical-model.md` §9–10) */
+  overall: Record<Grade, number>; treatment: Record<Grade, number>; outcomes: Record<OutcomeKind, number>;
+  /** антибиотик там, где он не показан (ОРВИ, бронхит, грипп) */
+  needlessAntibiotic: number;
+}
+const grades = (): Record<Grade, number> => ({ A: 0, B: 0, C: 0, D: 0 });
+const empty = (): Tally => ({
+  n: 0, correct: 0, correctGroup: 0, money: 0, minutes: 0, exams: 0, confusion: {}, perCondition: {},
+  overall: grades(), treatment: grades(), outcomes: { recovered: 0, improved: 0, unchanged: 0, worse: 0, reaction: 0, transferred: 0 }, needlessAntibiotic: 0,
+});
+const costOf = (r: DoctorResult) => r.exams.reduce((a, id) => a + examCost(db, id), 0);
 const strategies: Strategy[] = ['rational', 'lazy', 'shotgun'];
 const tally: Record<Strategy, Tally> = { rational: empty(), lazy: empty(), shotgun: empty() };
 const timing: Record<Strategy, number> = { rational: 0, lazy: 0, shotgun: 0 };
@@ -41,11 +56,26 @@ for (let i = 0; i < N; i++) {
   const season = seasons[i % seasons.length];
   const patient = generatePatient(db, 9_000_000 + i, { department, season });
   const truth = patient.truth.conditions[0].id;
+  const cond = db.conditions[truth];
+  const present = new Set(patient.truth.findings.map(f => f.f));
+  let rationalCost = 0;
   for (const s of strategies) {
     const t = performance.now();
     const r = runDoctor(db, patient, s, Rng.seeded(patient.seed).fork(`doctor:${s}`), { candidates, exams, threshold });
     timing[s] += performance.now() - t;
+    if (s === 'rational') rationalCost = costOf(r);
     const x = tally[s];
+    const ev = evaluatePlan(db, patient, r.plan, r.observations);
+    const outcome = observe(db, patient, r.plan, ev, Rng.seeded(patient.seed).fork(`outcome:${s}`));
+    const score = scoreCase({
+      verdict: r.correct ? 'correct' : r.correctGroup ? 'partly' : 'wrong',
+      confidence: r.confidence, cost: costOf(r), rationalCost, plan: ev, outcome, selfLimiting: cond.selfLimiting === true,
+      redFlags: (cond.redFlags ?? []).filter(f => present.has(f)).map(f => ({ f, seen: r.observations.some(o => o.f === f && o.shown) })),
+    });
+    x.overall[score.overall]++;
+    x.treatment[score.treatment]++;
+    x.outcomes[outcome.kind]++;
+    if (cond.selfLimiting && ev.roles.some(v => v.role === 'notIndicated' && db.treatments[v.tx].class?.startsWith('antibiotic.'))) x.needlessAntibiotic++;
     x.n++;
     x.money += r.money;
     x.minutes += r.minutes;
@@ -77,6 +107,10 @@ const report = strategies.map(s => {
     exams: x.exams / x.n,
     msPerPatient: timing[s] / x.n,
     perCondition: Object.fromEntries(Object.entries(x.perCondition).sort().map(([k, v]) => [k, { n: v.n, accuracy: pct(v.correct, v.n), groupAccuracy: pct(v.correctGroup, v.n) }])),
+    overall: Object.fromEntries(Object.entries(x.overall).map(([g, v]) => [g, pct(v, x.n)])) as Record<Grade, number>,
+    treatment: Object.fromEntries(Object.entries(x.treatment).map(([g, v]) => [g, pct(v, x.n)])) as Record<Grade, number>,
+    outcomes: Object.fromEntries(Object.entries(x.outcomes).map(([k, v]) => [k, pct(v, x.n)])) as Record<OutcomeKind, number>,
+    needlessAntibiotic: pct(x.needlessAntibiotic, x.n),
     topConfusions: Object.entries(x.confusion).sort((a, b) => b[1] - a[1]).slice(0, 5),
   };
 });
@@ -89,6 +123,9 @@ const thresholds = {
   rationalBalanced: { value: rational.balanced, need: '≥ 85', ok: rational.balanced >= 85 },
   lazyGap: { value: rational.balanced - lazy.balanced, need: '≥ 25 п. п. ниже разумного', ok: rational.balanced - lazy.balanced >= 25 },
   shotgunCostRatio: { value: shotgun.money / Math.max(1, rational.money), need: '≥ 3', ok: shotgun.money >= 3 * rational.money },
+  // лечение (spec 2026-09-first-shift): разумный врач почти не вредит и не даёт антибиотик без показаний
+  rationalReactions: { value: rational.outcomes.reaction, need: '≤ 1 %', ok: rational.outcomes.reaction <= 1 },
+  rationalNeedlessAntibiotic: { value: rational.needlessAntibiotic, need: '≤ 3 %', ok: rational.needlessAntibiotic <= 3 },
 };
 
 if (asJson) {
@@ -99,6 +136,12 @@ if (asJson) {
   const names: Record<Strategy, string> = { rational: 'разумный', lazy: 'ленивый', shotgun: 'всё подряд' };
   for (const r of report) {
     console.log(`${names[r.strategy].padEnd(11)} точность ${r.accuracy.toFixed(1).padStart(5)} %  до группы ${r.groupAccuracy.toFixed(1).padStart(5)} %  сбалансированная ${r.balanced.toFixed(1).padStart(5)} %   ${r.money.toFixed(0).padStart(5)} ₽   ${r.minutes.toFixed(0).padStart(4)} мин   обследований ${r.exams.toFixed(1)}   ${r.msPerPatient.toFixed(2)} мс/пациент`);
+  }
+  const abcd = (g: Record<Grade, number>) => (['A', 'B', 'C', 'D'] as Grade[]).map(k => g[k].toFixed(0)).join('/');
+  console.log('\nЛечение и исходы (оценки A/B/C/D, %):');
+  for (const r of report) {
+    const o = r.outcomes;
+    console.log(`${names[r.strategy].padEnd(11)} случай ${abcd(r.overall).padEnd(12)} лечение ${abcd(r.treatment).padEnd(12)} выздоровел ${(o.recovered + o.improved).toFixed(1).padStart(5)} %  хуже ${o.worse.toFixed(1).padStart(4)} %  реакция ${o.reaction.toFixed(1).padStart(4)} %  переведён ${o.transferred.toFixed(1).padStart(4)} %  без изменений ${o.unchanged.toFixed(1).padStart(4)} %  антибиотик без показаний ${r.needlessAntibiotic.toFixed(1).padStart(4)} %`);
   }
   console.log('\nТочность разумного врача по болезням:');
   for (const [id, v] of Object.entries(rational.perCondition)) console.log(`  ${id.padEnd(28)} ${v.accuracy.toFixed(1).padStart(5)} %  до группы ${v.groupAccuracy.toFixed(1).padStart(5)} %  (n=${v.n})`);

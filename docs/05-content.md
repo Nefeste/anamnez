@@ -110,9 +110,10 @@ course:
   stages:
     - { id: onset, days: [0, 2] }
     - { id: peak, days: [2, 7] }
-    - { id: resolution, days: [5, 21], needs: effective_treatment }
-  untreated:
-    - { after: [3, 7], when: { severity: [moderate, severe] }, add: cond.sepsis, band: sometimes }
+    - { id: resolution, days: [7, 21], needs: treatment }
+  presentation: [2, 7]        # в какие дни болезни обычно приходят
+  untreated: { band: usually, days: [2, 5] }   # без лечения причины — хуже, на какой день
+  # selfLimiting: true        # у того, что проходит само (ОРВИ), — вместо untreated
 findings:
   - { f: sym.cough, band: usually, attrs: { character: { productive: 70, dry: 30 } } }
   - { f: sym.fever, band: usually, age65: { band: often } }
@@ -130,14 +131,15 @@ confirm: [exam.xray_chest]
 redFlags: [vital.spo2_low, sign.confusion, vital.hypotension]
 expect:                       # чего ждут от врача и за какое время
   - { exam: exam.xray_chest, within: day }
-treatment:
+treatment:                    # тактика; не названное ни в одном списке — «не показано»
   firstLine: [tx.amoxicillin]
   acceptable: [tx.amoxicillin_clavulanate, tx.macrolide]
-  supportive: [tx.antipyretic]
-  notIndicated: [tx.oseltamivir]
-  harmful: []
-  setting: { mild: home, moderate: ward, severe: icu }
-  score: exam.score_crb65
+  supportive: [tx.paracetamol, tx.rest_fluids]
+  notIndicated: [tx.oseltamivir, tx.steroid_systemic_short]
+  setting:                    # где лечить: самое высокое из подходящего
+    default: home
+    param: { name: severity, map: { mild: home, moderate: home, severe: ward } }
+    redFlag: ward             # при красном флаге — не дома
 texts:
   summary:
     ru: >
@@ -154,14 +156,42 @@ review: draft                 # draft | checked | reviewed
 
 Обязательно у каждой записи состояния: `id`, `name.ru`, `department`, `kind`,
 `severity`, `epidemiology.prevalence`, хотя бы три признака с полосами, `confirm` (или
-явное `confirm: clinical` с объяснением), `treatment` хотя бы с одним непустым списком,
-`texts.summary.ru`, хотя бы один источник, `review`.
+явное `confirm: clinical` с объяснением), `texts.summary.ru`, хотя бы один источник,
+`review`. У всего, с чем приходят, — тактика `treatment` (хотя бы одна первая линия и
+место) и течение без лечения: `selfLimiting: true` или `untreated`.
+
+**Лечение** (`treatments/`) — МНН или группа, без доз и торговых названий (ADR 0012):
+
+```yaml
+# content/treatments/amoxicillin.yaml
+id: tx.amoxicillin
+name: { ru: "Амоксициллин" }
+kind: drug                    # drug | regimen | procedure
+class: antibiotic.penicillin
+route: oral                   # oral | inhaled | nasal | iv | im
+cost: 150
+effects:                      # cure — на причину, relieve — облегчает самочувствие
+  - { on: cond.strep_pharyngitis, kind: cure, band: usually, days: [1, 3] }
+  - { on: cond.pneumonia_cap, kind: cure, band: usually, days: [2, 4] }
+contraindications:            # reaction — как часто вред, если назначить при нём
+  - { id: risk.allergy_penicillin, level: absolute, reaction: often }
+texts:
+  hint: { ru: "Антибиотик пенициллинового ряда: препарат выбора при… На вирусы не действует; при аллергии на пенициллины опасен." }
+sources: [ … ]
+review: draft
+```
+
+`days` у действия на причину — до дня, когда пациенту явно лучше и игра считает его
+поправившимся; полное восстановление бывает дольше, это не записывается. Противопоказание
+— фактор риска (`risk.*`: аллергия) или состояние (`cond.*`: беременность — позже); чтобы
+врач мог о нём узнать, у фактора есть признак-ответ (`hx.allergy_penicillin`) и
+обследование, которое его открывает (`exam.ask_allergies`).
 
 Статья энциклопедии собирается **из той же записи**, разделами в одном порядке для
 всех болезней: что это (`texts.summary`); признаки с частотой словами (из полос);
 причины и факторы риска (`epidemiology.risks`); как подтвердить (`confirm`); с чем
 спутать (вычисляется валидатором: болезни с похожим набором признаков); лечение
-(`treatment`); осложнения (`course.untreated`); красные флаги; что запомнить
+(`treatment`); что будет без лечения (`course.untreated`); красные флаги; что запомнить
 (`pearls`); источники; код МКБ-10. Отдельного текста энциклопедии нет — значит, она не
 может разойтись с игрой.
 
@@ -204,10 +234,16 @@ review: draft                 # draft | checked | reviewed
 
 Три слоя, от быстрого к медленному. Все три идут в CI (`09-testing.md`).
 
-**Валидатор** (секунды) — `tools/content/validate.ts`:
+**Валидатор** (секунды) — `tools/content/load.ts`, идёт при каждой сборке базы
+(`npm run content`):
 
 - схема каждой записи (типы, обязательные поля, допустимые полосы);
 - ссылки: все идентификаторы существуют, `replacedBy` указывает на живую запись;
+- тактика: есть у всего, с чем приходят; одно лечение — не больше чем в одном списке;
+  место по параметру описано для всех его значений, место при красном флаге — только
+  если красные флаги есть; то, что действует на причину, не стоит в «не показано» и
+  «вредно»; у того, что само не проходит, первая линия лечит причину, а что будет без
+  лечения, сказано (`untreated`, иначе предупреждение);
 - у каждого признака есть хотя бы одно обследование, которое его открывает;
 - у каждого состояния есть `confirm`, и это обследование достижимо в отделении
   (есть помещение, оборудование и роль в каталоге больницы);
@@ -236,6 +272,12 @@ review: draft                 # draft | checked | reviewed
 без неё ленивый врач, который всем ставит «ОРВИ», «набирает» больше половины просто
 потому, что ОРВИ — больше половины обращений. Так пороги и сформулированы после
 прогона прототипа (spec 2026-09-spikes, «Что изменилось»).
+
+С этапа 2 врачи ещё и лечат: первая линия поставленного диагноза, при известном
+противопоказании — замена из допустимых; разумный врач и «всё подряд» перед назначением
+спрашивают о противопоказаниях. Отчёт показывает исходы за неделю и оценки случаев
+(`04` §9–§10), пороги — у разумного врача реакций на противопоказанное ≤ 1 % и
+антибиотика без показаний ≤ 3 %.
 
 Пороги означают: игра **требует** обследовать, но **не награждает** обследовать всё.
 Если разумный врач не дотягивает — в отделении есть болезнь, которую нельзя честно

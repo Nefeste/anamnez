@@ -1,0 +1,17 @@
+id: tx.ibuprofen
+name: { ru: "Ибупрофен" }
+kind: drug
+class: analgesic.nsaid
+route: oral
+cost: 80
+effects:
+  - { on: cond.arvi, kind: relieve, band: usually, days: [0, 1] }
+  - { on: cond.influenza, kind: relieve, band: usually, days: [0, 1] }
+  - { on: cond.strep_pharyngitis, kind: relieve, band: usually, days: [0, 1] }
+  - { on: cond.acute_bronchitis, kind: relieve, band: often, days: [0, 1] }
+texts:
+  hint:
+    ru: "Нестероидный противовоспалительный препарат: снимает жар, боль в горле и ломоту. Как и парацетамол, облегчает самочувствие, а не лечит причину."
+sources:
+  - { kind: guideline, title: "Острая респираторная вирусная инфекция (ОРВИ) у взрослых", org: "Минздрав РФ", note: "черновик: название и редакцию сверить на cr.minzdrav.gov.ru" }
+review: draft

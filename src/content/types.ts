@@ -39,6 +39,42 @@ export interface Link {
   attrs?: Record<string, AttrSpec>;
 }
 
+/** Где лечить: дома, направить в стационар, вызвать скорую (перевод). */
+export type Setting = 'home' | 'ward' | 'ambulance';
+
+/** Тактика при состоянии (`04-medical-model.md` §8). */
+export interface Tactics {
+  firstLine: Id[];
+  acceptable: Id[];
+  supportive: Id[];
+  notIndicated: Id[];
+  harmful: Id[];
+  setting: {
+    default: Setting;
+    /** уточнение по скрытому параметру случая */
+    param?: { name: string; map: Record<string, Setting> };
+    /** если у пациента есть красный флаг этого состояния */
+    redFlag?: Setting;
+  };
+}
+
+/** Лечение — группа или МНН без доз (ADR 0012). */
+export interface Treatment {
+  id: Id;
+  name: Text;
+  kind: 'drug' | 'regimen' | 'procedure';
+  class?: string;
+  route?: 'oral' | 'inhaled' | 'nasal' | 'iv' | 'im';
+  cost: number;
+  /** cure — действует на причину: к выздоровлению с вероятностью p за days дней */
+  effects: { on: Id; kind: 'cure' | 'relieve'; p: P; days: [number, number] }[];
+  /** reaction — вероятность вреда, если назначить при этом противопоказании */
+  contraindications: { id: Id; level: 'relative' | 'absolute'; reaction: P }[];
+  texts: { hint: Text };
+  sources: Source[];
+  review: Review;
+}
+
 export interface Stage {
   id: string;
   days: [number, number];
@@ -75,6 +111,12 @@ export interface Condition {
   findings: Link[];
   confirm: Id[] | 'clinical';
   redFlags?: Id[];
+  /** проходит само, без лечения */
+  selfLimiting?: boolean;
+  /** без действенного лечения: вероятность ухудшения и на какой день */
+  untreated?: { p: P; days: [number, number] };
+  /** тактика; есть у всех, с чем приходят (валидатор) */
+  treatment?: Tactics;
   texts: { summary: Text };
   pearls?: Text[];
   sources: Source[];
@@ -153,6 +195,7 @@ export interface ContentDb {
   findings: Record<Id, Finding>;
   exams: Record<Id, Exam>;
   risks: Record<Id, Risk>;
+  treatments: Record<Id, Treatment>;
   /** производное: какие обследования проверяют признак */
   revealedBy: Record<Id, Id[]>;
 }

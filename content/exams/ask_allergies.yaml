@@ -1,0 +1,16 @@
+id: exam.ask_allergies
+name: { ru: "Аллергии" }
+kind: ask
+time: { procedure: 1 }
+cost: 0
+discomfort: 0
+checks:
+  - { f: hx.allergy_penicillin, sens: 95, spec: 99 }
+texts:
+  hint:
+    ru: "Ответ меняет выбор лечения: при аллергии на пенициллины амоксициллин заменяют другим антибиотиком."
+  summary:
+    ru: "Были ли реакции на лекарства: какие, на что и когда."
+sources:
+  - { kind: review, title: "Shenoy ES, Macy E, Rowe T, Blumenthal KG. Evaluation and Management of Penicillin Allergy: A Review. JAMA 2019;321(2):188–199", note: "черновик: точность расспроса сверить" }
+review: draft

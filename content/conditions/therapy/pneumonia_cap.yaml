@@ -20,6 +20,7 @@ course:
     - { id: peak, days: [2, 7] }
     - { id: resolution, days: [7, 21], needs: treatment }
   presentation: [2, 7]
+  untreated: { band: usually, days: [2, 5] }
 findings:
   - { f: sym.cough, band: usually, attrs: { character: { productive: 70, dry: 30 } } }
   - { f: sym.fever_hx, band: usually }
@@ -44,6 +45,12 @@ findings:
   - { f: sym.abrupt_onset, band: sometimes }
 confirm: [exam.xray_chest]
 redFlags: [vital.spo2_low]
+treatment:
+  firstLine: [tx.amoxicillin]
+  acceptable: [tx.amoxicillin_clavulanate, tx.macrolide]
+  supportive: [tx.paracetamol, tx.rest_fluids]
+  notIndicated: [tx.oseltamivir, tx.steroid_systemic_short]
+  setting: { default: home, param: { name: severity, map: { mild: home, moderate: home, severe: ward } }, redFlag: ward }
 texts:
   summary:
     ru: >-
