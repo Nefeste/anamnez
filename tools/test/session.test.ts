@@ -6,7 +6,7 @@ import type { ShiftState } from '../../src/engine/shift/types';
 import { loadSlot, memoryStore } from '../../src/state/saves';
 import {
   callPatient, chooseDiagnosis, chooseSetting, closeDay, examine, finishCase, forgetShift, leaveCase, loadShift, nextDay, openCase,
-  pauseClock, saved, sendAway, setSpeed, setStore, shiftCaseView, shiftState, shiftView, startShift, tick, toggleTreatment,
+  pauseClock, saved, sendAway, setSpeed, setStore, shiftCaseView, shiftState, shiftView, skipIdle, startShift, tick, toggleTreatment,
 } from '../../src/state/session';
 
 let store = memoryStore();
@@ -52,6 +52,32 @@ describe('смена на экране: часы', () => {
     expect(shiftView().clock).toBe(at);
     examine('exam.ask_complaints');
     expect(shiftView().clock).not.toBe(at);
+  });
+
+  test('«промотать до следующего»: часы — до прихода, журнал — одной командой', () => {
+    startShift(4, 'winter');
+    const skipped = skipIdle();
+    const v = shiftView();
+    expect(v.queue.length).toBeGreaterThan(0);
+    expect(skipped.some(n => n.kind === 'arrived')).toBe(true);
+    expect(shiftState()!.journal).toEqual([{ kind: 'advance', seconds: shiftState()!.t - 8 * 3600 }]);
+    // в очереди есть кто-то — промотать нельзя
+    const at = v.clock;
+    expect(skipIdle()).toEqual([]);
+    expect(shiftView().clock).toBe(at);
+  });
+
+  test('промотанное — то же, что прожитое на ×1: та же смена', () => {
+    startShift(8, 'winter');
+    skipIdle();
+    const skipped = JSON.stringify({ ...shiftState(), journal: [] });
+    const t = shiftState()!.t;
+    forgetShift();
+    startShift(8, 'winter');
+    setSpeed(1);
+    for (let i = 0; i < 1000 && shiftState()!.t < t; i++) tick(1000);
+    expect(shiftState()!.t).toBe(t);
+    expect(JSON.stringify({ ...shiftState(), journal: [] })).toBe(skipped);
   });
 
   test('ходы времени сливаются в журнале в один', () => {
@@ -185,6 +211,7 @@ describe('смена на экране: сохранение', () => {
 
   test('текущий файл испорчен — продолжаем с предыдущей копии и говорим об этом', async () => {
     startShift(5, 'winter');
+    await saved(); // первая запись — будущая предыдущая копия
     untilQueue();
     callPatient(shiftView().queue[0].id);
     sendAway(); // без назначений не отпустить — ничего не меняет
@@ -210,6 +237,18 @@ describe('смена на экране: сохранение', () => {
     forgetShift();
     await loadShift();
     expect(shiftView().status).toBe('none');
+  });
+
+  test('просьбы сохранить подряд дают одну запись — после касания, а не посреди него', async () => {
+    startShift(5, 'winter');
+    untilQueue();
+    callPatient(shiftView().queue[0].id);
+    examine('exam.cbc');
+    sendAway();
+    expect(store.files.has('shift.json')).toBe(false); // ещё не записано: отложено
+    await saved();
+    expect(store.files.has('shift.json')).toBe(true);
+    expect(store.files.has('shift.prev-1.json')).toBe(false); // одна запись, а не три
   });
 
   test('сохранения нет — статус «нет», новая смена его создаёт', async () => {

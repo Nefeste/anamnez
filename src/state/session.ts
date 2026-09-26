@@ -169,7 +169,7 @@ export function loadShift(): Promise<void> {
   changed();
   loading = loadSlot<ShiftState>(st, SLOT, e => e.schemaVersion === SHIFT_SCHEMA_VERSION && compatible(e.data))
     .then(r => {
-      if (r && !session) session = fresh(r.envelope.data, r.from !== 'current');
+      if (r && !session) session = fresh(r.envelope.data, r.from === 'prev-1' || r.from === 'prev-2');
     })
     .catch(() => undefined)
     .finally(() => {
@@ -180,25 +180,40 @@ export function loadShift(): Promise<void> {
   return loading;
 }
 
-function save(): Promise<unknown> {
-  const sess = session;
+/** Отложенная запись, если она уже назначена. */
+let deferred: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * Сохранить. Обычно — следующей задачей, а не посреди касания: экран успевает смениться
+ * («Завершить приём» → итог), а несколько просьб подряд дают одну запись. Уходя в фон —
+ * сразу (`now`): отложенная запись могла бы не успеть. Записи идут строго по очереди.
+ */
+function save(now = false): Promise<unknown> {
+  if (!session || !store) return saving;
+  session.savedT = session.s.t;
+  if (now) return flush();
+  deferred ??= setTimeout(flush, 0);
+  return saving;
+}
+
+function flush(): Promise<unknown> {
+  if (deferred) clearTimeout(deferred);
+  deferred = null;
   const st = store;
-  if (!sess || !st) return saving;
-  sess.savedT = sess.s.t;
   saving = saving
-    .then(() => saveSlot(st, SLOT, sess.s, SHIFT_SCHEMA_VERSION, new Date().toISOString()))
+    .then(() => (session && st ? saveSlot(st, SLOT, session.s, SHIFT_SCHEMA_VERSION, new Date().toISOString()) : undefined))
     .catch(() => undefined); // не записалось — попробуем в следующий раз; игра продолжается
   return saving;
 }
 
 /** Сохранить сейчас — приложение уходит в фон. */
 export function saveNow(): Promise<unknown> {
-  return save();
+  return save(true);
 }
 
-/** Дождаться записи — для тестов. */
+/** Дождаться записи, в том числе отложенной, — для тестов. */
 export function saved(): Promise<unknown> {
-  return saving;
+  return deferred ? flush() : saving;
 }
 
 function fresh(s: ShiftState, restored: boolean): Session {
@@ -222,6 +237,8 @@ export function startShift(seed?: number, season?: Season) {
 
 /** Для тестов: забыть смену в памяти, как после перезапуска приложения. */
 export function forgetShift() {
+  if (deferred) clearTimeout(deferred);
+  deferred = null;
   session = null;
   status = 'idle';
   loading = null;
@@ -265,6 +282,29 @@ export function tick(ms: number = TICK_MS): Notice[] {
 function pause(sess: Session, reason?: string) {
   sess.paused = true;
   sess.pauseReason = reason;
+}
+
+/** Не дольше этого проматываем за раз — четыре игровых часа. */
+const SKIP_MAX = 4 * 3600;
+
+/**
+ * Промотать пустое время: кабинет свободен, в очереди никого — часы идут поминутно, пока
+ * кто-нибудь не придёт, не вернётся с результатами или не кончится приём (отзыв на 0.0.7:
+ * следующего пациента ждали 40 секунд). Те же события, что на ×1, только без ожидания.
+ */
+export function skipIdle(): Notice[] {
+  const sess = session;
+  if (!sess || !sess.s.dayOpen || sess.s.current || sess.s.queue.length > 0 || allDone(sess.s)) return [];
+  const out: Notice[] = [];
+  for (let spent = 0; spent < SKIP_MAX && !allDone(sess.s); spent += 60) {
+    const notices = run(sess, { kind: 'advance', seconds: 60 });
+    out.push(...notices);
+    if (sess.s.queue.length > 0 || notices.some(n => n.kind === 'shiftEnd')) break;
+  }
+  sess.paused = false;
+  sess.pauseReason = undefined;
+  changed();
+  return out;
 }
 
 export function setSpeed(speed: Speed) {

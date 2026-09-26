@@ -18,11 +18,13 @@ export const rawStore: RawStore = {
     if (!f.exists) f.create();
     f.write(text);
   },
+  // синхронно: переименование — дело метаданных, а асинхронная версия каждый раз ходит в
+  // фоновый поток и обратно
   async move(from, to) {
-    await file(from).move(file(to), { overwrite: true });
+    file(from).moveSync(file(to), { overwrite: true });
   },
   async copy(from, to) {
-    await file(from).copy(file(to), { overwrite: true });
+    file(from).copySync(file(to), { overwrite: true });
   },
   async exists(name) {
     return file(name).exists;

@@ -201,7 +201,7 @@ export const spikes = {
     saveBtn: 'Сохранить 60 пациентов',
     loadBtn: 'Прочитать',
     corruptBtn: 'Испортить текущий файл',
-    saved: (kb: number, ms: number) => `Записано ${kb} КБ за ${ms} мс`,
+    saved: (kb: number, ms: number, json: number, files: number) => `Записано ${kb} КБ за ${ms} мс: JSON — ${json} мс, файлы — ${files} мс`,
     loaded: (n: number, from: string) => `Прочитано ${n} пациентов (${from})`,
     fromCurrent: 'текущий файл',
     fromBackup: 'предыдущая копия — текущий испорчен',
