@@ -14,7 +14,7 @@ const SOURCES: Record<SoundName | 'ambient', number> = {
 };
 
 const players: Partial<Record<SoundName | 'ambient', AudioPlayer>> = {};
-const volume = { ui: 0.6, events: 0.9, ambient: 0.35 };
+const volume = { ui: 0.6, events: 0.9, ambient: 0.2 };
 
 function player(name: SoundName | 'ambient'): AudioPlayer {
   let p = players[name];
