@@ -48,6 +48,7 @@ type Review = 'draft' | 'checked' | 'reviewed';
 interface Condition {
   id: Id; name: Text; icd10?: string;
   department: Id;                       // 'dept.therapy'
+  group?: Id;                            // одинаковая тактика: путаница внутри — частичная точность
   kind: 'disease' | 'injury' | 'syndrome' | 'state';
   severity: 'minor' | 'moderate' | 'serious' | 'critical';
   epidemiology: {

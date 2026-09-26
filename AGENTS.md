@@ -74,19 +74,23 @@ removed. Before writing any code that touches an Expo, EAS, or React Native API:
 
 Notable: `expo-av` is removed (use `expo-audio`); Skia on web needs CanvasKit (`setup-skia-web`).
 
-## Commands (from stage 1)
+## Commands
 
 ```bash
 npx expo install <package>  # ALWAYS instead of npm add — resolves SDK-compatible versions
-npx expo start              # dev server
+npm start                   # dev server (builds the medical database first)
+npm run content             # build + validate the medical database → src/content/generated
 npm run lint                # zero warnings
-npx tsc --noEmit            # typecheck (also -p tools)
-bun test                    # engine tests (tools/test)
-npm run content             # build + validate the medical database
-npm run doctor              # "virtual doctor" over the database
+npm run typecheck           # app and tools (tools/tsconfig.json)
+npm test                    # Bun tests in tools/test (builds the database first)
+npm run doctor              # "virtual doctor" over the database; thresholds in docs/05-content.md §6
+npm run export:web && npm run e2e   # web build + Playwright scenario, screenshots in tools/e2e/out
 ```
 
-Run lint, typecheck, tests and the content validator before declaring any task done.
+Run lint, typecheck, tests and the content validator before declaring any task done; for UI
+changes also the web scenario. Screens live in `src/app/` (Expo Router). On web, CanvasKit
+must load before any Skia module runs — `index.web.ts` loads it and only then requires the
+router; do not import Skia-dependent modules from it.
 
 ## Rules
 
