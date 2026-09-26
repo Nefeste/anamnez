@@ -29,8 +29,9 @@ export default function PatientSpike() {
     }
   }, [v.meanwhile]);
 
+  // касание — вибрацией: звук касания на телефоне не понравился (отзыв на 0.0.2)
   const doExam = (id: string) => {
-    play('tap');
+    buzz('tap');
     act(id);
   };
   const explain = (info: TermInfo) => {
