@@ -137,6 +137,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     // тактика: у всего, с чем приходят, и только из существующих лечений, без повторов
     const t = c.treatment;
     if (c.presenting && !t) errors.push(`${owner}: нет тактики (treatment) — с этим состоянием приходят`);
+    if (c.presenting && !c.system) errors.push(`${owner}: не указана система органов (system) — без неё болезнь не попадёт в список диагнозов`);
     if (t) {
       const lists = [t.firstLine, t.acceptable, t.supportive, t.notIndicated, t.harmful];
       const seen = new Set<string>();
@@ -193,6 +194,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (c.icd10) out.icd10 = c.icd10;
     if (c.checkup) out.checkup = true;
     if (c.group) out.group = c.group;
+    if (c.system) out.system = c.system;
     if (e.sex) out.sex = e.sex;
     if (e.season) out.season = e.season;
     if (e.risks) out.risks = e.risks;

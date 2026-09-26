@@ -2,6 +2,7 @@ id: cond.pneumonia_cap
 name: { ru: "Внебольничная пневмония" }
 icd10: J18.9
 department: dept.therapy
+system: lungs
 kind: disease
 severity: serious
 epidemiology:

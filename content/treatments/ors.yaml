@@ -1,6 +1,7 @@
 id: tx.ors
 name: { ru: "Пероральная регидратация (солевые растворы)" }
 kind: regimen
+class: rehydration.oral
 route: oral
 cost: 100
 effects:

@@ -2,6 +2,7 @@ id: cond.migraine
 name: { ru: "Мигрень" }
 icd10: G43.9
 department: dept.therapy
+system: nerves
 kind: disease
 severity: moderate
 epidemiology:

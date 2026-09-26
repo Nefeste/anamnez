@@ -1,0 +1,102 @@
+// Итог приёма и разбор (03-game-design.md §5): что было на самом деле, что было дальше,
+// оценки по категориям, затем разбор. «Следующий пациент» — внизу, под большим пальцем.
+import { useRouter } from 'expo-router';
+import { StyleSheet, Text, View } from 'react-native';
+import { T } from '@/i18n';
+import { nextPatient, useVisit } from '@/state/visit';
+import { Button, Card, H, P, Screen } from '@/ui/components';
+import { colors, radius, space } from '@/ui/theme';
+
+export default function Outcome() {
+  const v = useVisit();
+  const router = useRouter();
+  const t = T.spikes.patient;
+  const d = T.spikes.decision;
+  const x = v.decision;
+
+  // к приёму: экран итога открывают поверх него, поэтому «назад»; прямой адрес — заменой
+  const toVisit = () => (router.canGoBack() ? router.back() : router.replace('/spikes/patient'));
+
+  if (!x) {
+    return (
+      <Screen footer={<Button testID="outcome-back" title={d.backToVisit} onPress={toVisit} />}>
+        <Card>
+          <P muted>{d.noDecision}</P>
+        </Card>
+      </Screen>
+    );
+  }
+
+  const next = () => {
+    nextPatient();
+    toVisit();
+  };
+
+  return (
+    <Screen footer={<Button testID="visit-next" title={t.next} onPress={next} />}>
+      <Card>
+        <H>{x.verdict === 'correct' ? t.correct : x.verdict === 'partly' ? t.partly : t.wrong}</H>
+        <P testID="visit-truth">{t.truth(x.truthName)}</P>
+        <P muted>{t.confidence(x.outOf10)}</P>
+        <Text style={styles.label}>{t.outcomeLabel}</Text>
+        <P testID="visit-outcome">{x.outcome}</P>
+      </Card>
+
+      <Card>
+        <Text style={styles.label}>{t.gradesLabel}</Text>
+        <View style={styles.grades}>
+          {x.grades.map(g => (
+            <View key={g.key} style={styles.gradeCell}>
+              <Text style={[styles.gradeLetter, gradeColor(g.grade)]}>{g.grade}</Text>
+              <Text style={styles.gradeName}>{g.label}</Text>
+            </View>
+          ))}
+          <View style={[styles.gradeCell, styles.gradeTotal]}>
+            <Text testID="visit-overall" style={[styles.gradeLetter, gradeColor(x.overall)]}>{x.overall}</Text>
+            <Text style={styles.gradeName}>{t.grade.overall}</Text>
+          </View>
+        </View>
+        {x.notes.length > 0 && (
+          <>
+            <Text style={styles.label}>{t.notesLabel}</Text>
+            {x.notes.map((n, i) => <P key={i}>{`• ${n}`}</P>)}
+          </>
+        )}
+        <Text style={styles.label}>{t.yourPlan}</Text>
+        {x.plan.length === 0 ? <P muted>{t.noTreatment}</P> : x.plan.map((p, i) => <P key={i}>{`${p.name} — ${p.role}`}</P>)}
+        <P muted>{`${t.settingLabel}: ${x.settingName}`}</P>
+      </Card>
+
+      <Card>
+        <H>{d.reviewLabel}</H>
+        <Text style={styles.label}>{t.rationalLabel}</Text>
+        <P>{x.rational}</P>
+        {x.idle.length > 0 && (
+          <>
+            <Text style={styles.label}>{t.idleLabel}</Text>
+            <P>{x.idle.join(', ')}</P>
+          </>
+        )}
+        <Text style={styles.label}>{t.timelineLabel}</Text>
+        {x.timeline.map((p, i) => <P key={i} muted>{`${p.label}: ${p.truth} · ${p.chosen}`}</P>)}
+        <Text style={styles.label}>{t.causes}</Text>
+        {x.causes.map((c, i) => <P key={i}>{`${c.finding} — ${c.cause}`}</P>)}
+        <Text style={styles.label}>{t.pearls}</Text>
+        {x.pearls.map((p, i) => <P key={i}>{`• ${p}`}</P>)}
+      </Card>
+    </Screen>
+  );
+}
+
+function gradeColor(g: string) {
+  return { color: g === 'A' ? colors.green : g === 'B' ? colors.accent : g === 'C' ? colors.yellow : colors.red };
+}
+
+const styles = StyleSheet.create({
+  label: { fontSize: 13, fontWeight: '700', color: colors.muted, textTransform: 'uppercase', marginTop: space.s },
+  grades: { flexDirection: 'row', flexWrap: 'wrap', gap: space.s },
+  gradeCell: { width: '30%', minWidth: 90, alignItems: 'center', paddingVertical: space.s, borderRadius: radius, backgroundColor: colors.bg },
+  gradeTotal: { backgroundColor: colors.accentSoft },
+  gradeLetter: { fontSize: 24, fontWeight: '800' },
+  gradeName: { fontSize: 12, color: colors.muted, textAlign: 'center' },
+});

@@ -2,6 +2,7 @@ id: cond.strep_pharyngitis
 name: { ru: "Острый стрептококковый тонзиллофарингит" }
 icd10: J02.0
 department: dept.therapy
+system: airways
 kind: disease
 severity: moderate
 epidemiology:

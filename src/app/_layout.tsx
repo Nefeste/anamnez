@@ -22,6 +22,8 @@ export default function RootLayout() {
           <Stack.Screen name="spikes/engine" options={{ title: T.spikes.engine.title }} />
           <Stack.Screen name="spikes/map" options={{ title: T.spikes.map.title, gestureEnabled: false }} />
           <Stack.Screen name="spikes/patient" options={{ title: T.spikes.patient.title }} />
+          <Stack.Screen name="spikes/decision" options={{ title: T.spikes.decision.title }} />
+          <Stack.Screen name="spikes/outcome" options={{ title: T.spikes.decision.outcomeTitle }} />
           <Stack.Screen name="spikes/imaging" options={{ title: T.spikes.imaging.title }} />
           <Stack.Screen name="spikes/save" options={{ title: T.spikes.save.title }} />
         </Stack>

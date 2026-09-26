@@ -2,6 +2,7 @@ id: cond.covid19
 name: { ru: "COVID-19" }
 icd10: U07.1
 department: dept.therapy
+system: airways
 group: grp.viral_respiratory
 kind: disease
 severity: moderate

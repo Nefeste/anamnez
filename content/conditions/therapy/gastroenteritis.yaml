@@ -2,6 +2,7 @@ id: cond.gastroenteritis
 name: { ru: "Острый гастроэнтерит" }
 icd10: A09
 department: dept.therapy
+system: digestive
 kind: disease
 severity: moderate
 epidemiology:

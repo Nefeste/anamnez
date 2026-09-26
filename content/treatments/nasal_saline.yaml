@@ -1,6 +1,7 @@
 id: tx.nasal_saline
 name: { ru: "Промывание носа солевым раствором" }
 kind: procedure
+class: nasal.saline
 route: nasal
 cost: 150
 effects:

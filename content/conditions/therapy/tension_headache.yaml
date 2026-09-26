@@ -2,6 +2,7 @@ id: cond.tension_headache
 name: { ru: "Головная боль напряжения" }
 icd10: G44.2
 department: dept.therapy
+system: nerves
 kind: disease
 severity: minor
 epidemiology:

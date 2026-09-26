@@ -2,6 +2,7 @@ id: cond.appendicitis
 name: { ru: "Острый аппендицит" }
 icd10: K35.8
 department: dept.therapy
+system: digestive
 kind: disease
 severity: critical
 epidemiology:

@@ -2,6 +2,7 @@ id: cond.cystitis
 name: { ru: "Острый цистит" }
 icd10: N30.0
 department: dept.therapy
+system: urinary
 kind: disease
 severity: minor
 epidemiology:

@@ -2,6 +2,7 @@ id: cond.anemia_iron
 name: { ru: "Железодефицитная анемия" }
 icd10: D50.9
 department: dept.therapy
+system: metabolic
 kind: disease
 checkup: true
 severity: moderate

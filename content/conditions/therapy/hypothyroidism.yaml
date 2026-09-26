@@ -2,6 +2,7 @@ id: cond.hypothyroidism
 name: { ru: "Гипотиреоз" }
 icd10: E03.9
 department: dept.therapy
+system: metabolic
 kind: disease
 checkup: true
 severity: minor

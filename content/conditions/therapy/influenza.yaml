@@ -2,6 +2,7 @@ id: cond.influenza
 name: { ru: "Грипп" }
 icd10: J11.1
 department: dept.therapy
+system: airways
 kind: disease
 severity: moderate
 epidemiology:

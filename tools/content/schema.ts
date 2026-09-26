@@ -1,6 +1,7 @@
 // Схема исходных записей медицинской базы (YAML в content/, `docs/05-content.md` §4).
 // Строгие объекты: опечатка в имени поля — ошибка сборки, а не молча пропущенное поле.
 import { z } from 'zod';
+import { SYSTEMS } from '../../src/content/types';
 
 export const BANDS = {
   always: 9500,
@@ -64,6 +65,8 @@ export const conditionSchema = z.strictObject({
   icd10: z.string().optional(),
   department: z.string(),
   group: z.string().regex(/^grp\.[a-z0-9_]+$/).optional(),
+  /** система органов — для списков диагнозов и энциклопедии; обязательна у того, с чем приходят */
+  system: z.enum(SYSTEMS).optional(),
   kind: z.enum(['disease', 'injury', 'syndrome', 'state']),
   severity: z.enum(['minor', 'moderate', 'serious', 'critical']),
   presenting: z.boolean().default(true),

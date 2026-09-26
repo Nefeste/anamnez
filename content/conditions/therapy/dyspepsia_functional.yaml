@@ -2,6 +2,7 @@ id: cond.dyspepsia_functional
 name: { ru: "Функциональная диспепсия" }
 icd10: K30
 department: dept.therapy
+system: digestive
 group: grp.acid_dyspepsia
 kind: syndrome
 severity: minor

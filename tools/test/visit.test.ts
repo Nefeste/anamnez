@@ -1,7 +1,7 @@
 // Приём пациента прототипа П4 (spec 2026-09-spikes): модуль грузится, часы идут делами,
 // результаты приходят в свой срок, правда видна только в разборе после диагноза.
 import { describe, expect, test } from 'bun:test';
-import { act, chooseDiagnosis, chooseSetting, conditionChoices, conditionTerm, examInfo, examsByAction, examTerm, findingInfo, finish, nextPatient, toggleTreatment, treatmentTerm, visitView, waitForResults } from '../../src/state/visit';
+import { act, chooseDiagnosis, chooseSetting, conditionChoices, conditionTerm, diagnosisGroups, examInfo, examsByAction, examTerm, findingInfo, finish, nextPatient, toggleTreatment, treatmentTerm, visitView, waitForResults } from '../../src/state/visit';
 
 describe('приём', () => {
   test('разделы действий делят обследования без пересечений', () => {
@@ -111,6 +111,24 @@ describe('приём', () => {
     expect(visitView().done).not.toContain('exam.xray_chest');
     toggleTreatment('tx.macrolide'); // и план не меняется
     expect(visitView().draft.treatments).toEqual(['tx.rest_fluids']);
+  });
+
+  test('решение: диагнозы по системам органов, лечение по группам — каждый ровно один раз', () => {
+    const dx = diagnosisGroups();
+    expect(dx.map(g => g.key)).toEqual(['airways', 'lungs', 'heart', 'digestive', 'urinary', 'metabolic', 'nerves']);
+    const dxIds = dx.flatMap(g => g.items.map(c => c.id));
+    expect(dxIds.sort()).toEqual(conditionChoices().map(c => c.id).sort());
+    expect(dx.find(g => g.key === 'lungs')!.items.map(c => c.id)).toContain('cond.pneumonia_cap');
+    const v = visitView();
+    const txIds = v.treatmentGroups.flatMap(g => g.items.map(x => x.id));
+    expect(txIds.sort()).toEqual(v.treatments.map(x => x.id).sort());
+    const group = (tx: string) => v.treatmentGroups.find(g => g.items.some(x => x.id === tx))!.key;
+    expect(group('tx.amoxicillin')).toBe('antibiotics');
+    expect(group('tx.fosfomycin')).toBe('antibiotics');
+    expect(group('tx.nasal_saline')).toBe('nose');
+    expect(group('tx.aspirin_acs')).toBe('heart');
+    expect(group('tx.rest_fluids')).toBe('regimen');
+    expect(v.treatmentGroups.every(g => g.title.length > 0)).toBe(true);
   });
 
   test('«Что это?» у лечения; всё лечение базы в выборе', () => {

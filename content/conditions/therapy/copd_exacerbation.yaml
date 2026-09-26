@@ -2,6 +2,7 @@ id: cond.copd_exacerbation
 name: { ru: "Обострение ХОБЛ" }
 icd10: J44.1
 department: dept.therapy
+system: lungs
 kind: disease
 severity: serious
 epidemiology:

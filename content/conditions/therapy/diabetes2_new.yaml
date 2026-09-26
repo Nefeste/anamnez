@@ -2,6 +2,7 @@ id: cond.diabetes2_new
 name: { ru: "Сахарный диабет 2 типа, впервые выявленный" }
 icd10: E11.9
 department: dept.therapy
+system: metabolic
 kind: disease
 checkup: true
 severity: moderate
