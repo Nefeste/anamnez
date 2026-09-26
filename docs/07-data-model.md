@@ -76,6 +76,7 @@ interface Condition {
     score?: Id;
   };
   texts: { summary: Text; lay?: Text };  // lay — как называют пациенты
+  pearls?: Text[];                       // «что запомнить»: 2–3 вывода для разбора и энциклопедии
   simplified?: string;                   // что упрощено и почему
   sources: Source[]; review: Review;
   replacedBy?: Id;
@@ -128,6 +129,22 @@ interface Exam {
   checks: { f: Id; sens: P; spec: P }[];         // какие признаки проверяет и как точно
   modifiers?: { by: Id; sens?: number; spec?: number }[];  // ожирение, навык, уровень аппарата
   texts: { summary: Text };
+  sources: Source[]; review: Review; replacedBy?: Id;
+}
+```
+
+### Клиническая задача
+
+```ts
+interface ClinicalTask {
+  id: Id; title: Text; department: Id; difficulty: 1 | 2 | 3;
+  patient: { sex: 'm' | 'f'; age: number; name?: string; risks: Id[]; allergies: Id[]; traits?: Id[] };
+  truth: { conditions: { id: Id; role: 'primary' | 'comorbid'; stage: string;
+                         params?: Record<string, string> }[] };
+  pinned: { f: Id; present: boolean; attrs?: Record<string, string> }[];  // то, что есть в истории
+  story: Text;                           // история пациента или сопроводительный лист
+  budget?: number;                       // лимит на обследования
+  pearls: Text[];
   sources: Source[]; review: Review; replacedBy?: Id;
 }
 ```

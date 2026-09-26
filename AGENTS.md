@@ -1,5 +1,6 @@
 This is an Expo/React Native mobile game (Android first). Prioritize mobile-first patterns,
-performance on budget Android phones, and a pure, deterministic game engine.
+smoothness on modern Android phones (no freezes; budget phones are not a target), and a pure,
+deterministic game engine.
 
 **Current stage: documents only (stage 0).** There is no application code yet. The first code
 is written by the spike specification `docs/specs/2026-09-spikes.md`.
