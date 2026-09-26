@@ -1,0 +1,19 @@
+id: exam.urine_dipstick
+name: { ru: "Тест-полоска мочи" }
+kind: rapid
+time: { procedure: 2, turnaround: 3 }
+cost: 100
+discomfort: 0
+checks:
+  - { f: lab.urine_leuk, sens: 85, spec: 88 }
+  - { f: lab.urine_nitrite, sens: 90, spec: 98 }
+  - { f: lab.urine_blood, sens: 90, spec: 85 }
+  - { f: lab.urine_glucose, sens: 90, spec: 98 }
+texts:
+  hint:
+    ru: "За пару минут показывает лейкоциты, нитриты и кровь в моче. Нитриты — сильный довод за инфекцию; отрицательная полоска при типичных жалобах цистит не исключает."
+  summary:
+    ru: "Полоска в свежей порции мочи, цвет полей сравнивают со шкалой."
+sources:
+  - { kind: paper, title: "Devillé WL et al. The urine dipstick test useful to rule out infections. A meta-analysis of the accuracy. BMC Urol 2004;4:4", note: "черновик: точность относительно анализа мочи — игровая оценка" }
+review: draft

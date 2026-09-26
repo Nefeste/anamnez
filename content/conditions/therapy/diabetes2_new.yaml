@@ -1,0 +1,47 @@
+id: cond.diabetes2_new
+name: { ru: "Сахарный диабет 2 типа, впервые выявленный" }
+icd10: E11.9
+department: dept.therapy
+kind: disease
+checkup: true
+severity: moderate
+epidemiology:
+  prevalence: uncommon
+  age: { min: 30, peak: [45, 75] }
+  excludes: [cond.diabetes2]
+  risks:
+    - { id: risk.obesity, x: 3 }
+    - { id: cond.hypertension, x: 1.5 }
+course:
+  stages:
+    - { id: active, days: [0, 36500] }
+  presentation: [0, 365]
+  untreated: { band: never, days: [7, 7] }   # за неделю без лечения ничего не случится — «без изменений»
+findings:
+  - { f: lab.glucose_high, band: always }
+  - { f: lab.hba1c_high, band: usually }
+  - { f: lab.urine_glucose, band: often }
+  - { f: sym.thirst, band: often }
+  - { f: sym.polyuria, band: often }
+  - { f: sym.fatigue, band: often }
+  - { f: sym.weight_loss, band: rarely }
+  - { f: sym.dizziness, band: rarely }
+confirm: [exam.hba1c]
+treatment:
+  firstLine: [tx.lifestyle, tx.metformin]
+  notIndicated: [tx.steroid_systemic_short]
+  setting: { default: home }
+texts:
+  summary:
+    ru: >-
+      Стойко высокий сахар крови из-за нечувствительности тканей к инсулину — чаще у людей
+      с лишним весом после 40 лет. Долго протекает незаметно, иногда — жажда, частое
+      мочеиспускание, слабость. Лечат изменением образа жизни и метформином.
+pearls:
+  - ru: "Диабет 2 типа годами не болит: сахар проверяют всем с лишним весом и после 40 лет, даже без жалоб."
+  - ru: "Глюкометр — для отбора; диагноз ставят по лабораторной глюкозе натощак или гликированному гемоглобину."
+simplified: "Осложнения диабета, другие группы сахароснижающих и инсулин — позже, с эндокринологией."
+sources:
+  - { kind: guideline, title: "Сахарный диабет 2 типа у взрослых", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru; частоты — черновик" }
+  - { kind: guideline, title: "American Diabetes Association. 2. Diagnosis and Classification of Diabetes: Standards of Care in Diabetes — 2024. Diabetes Care 2024;47(Suppl 1):S20–S42" }
+review: draft

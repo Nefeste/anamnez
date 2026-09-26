@@ -10,6 +10,14 @@ effects:
   - { on: cond.strep_pharyngitis, kind: relieve, band: usually, days: [0, 1] }
   - { on: cond.acute_bronchitis, kind: relieve, band: often, days: [0, 1] }
   - { on: cond.pneumonia_cap, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.covid19, kind: relieve, band: usually, days: [0, 1] }
+  - { on: cond.sinusitis_acute, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.sinusitis_bacterial, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.pyelonephritis, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.gastroenteritis, kind: relieve, band: sometimes, days: [0, 1] }
+  - { on: cond.appendicitis, kind: relieve, band: sometimes, days: [0, 1] }
+  - { on: cond.migraine, kind: cure, band: sometimes, days: [0, 1] }
+  - { on: cond.tension_headache, kind: cure, band: often, days: [0, 1] }
 texts:
   hint:
     ru: "Снижает температуру и боль. Лечит не причину болезни, а самочувствие: после него температура нормальная, а пневмония — нет."

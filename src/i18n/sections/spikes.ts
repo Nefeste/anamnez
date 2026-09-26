@@ -47,6 +47,8 @@ export const spikes = {
     clock: (hh: string) => `Время ${hh}`,
     spent: (min: number, rub: string) => `Потрачено: ${min} мин, ${rub}`,
     complaints: 'Жалобы',
+    // гипертензию и диабет часто находят у тех, кто ни на что не жалуется
+    checkup: (female: boolean) => `Жалоб нет: ${female ? 'пришла' : 'пришёл'} на профилактический осмотр`,
     known: 'Известно',
     none: 'Пока ничего',
     ask: 'Спросить',
@@ -127,6 +129,7 @@ export const spikes = {
       acceptable: (tx: string) => `${tx}: допустимая замена — без противопоказаний лучше препарат выбора`,
       noCure: 'Не назначено лечение причины болезни',
       none: 'Ничего не рекомендовано — даже при простуде пациенту нужен совет',
+      preHospitalMissing: (tx: string) => `До приезда скорой не дали: ${tx.toLowerCase()}`,
       settingUnder: (need: 'ward' | 'ambulance') => `Недооценили тяжесть: нужно было ${need === 'ward' ? 'направить в стационар' : 'вызвать скорую'}`,
       settingOver: (enough: 'home' | 'ward') => `Перестраховка: хватило бы ${enough === 'home' ? 'лечения дома' : 'направления в стационар'}`,
       knownViolation: (tx: string, by: string) => `${tx}: противопоказано (${by.toLowerCase()}), и вы об этом знали`,

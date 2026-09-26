@@ -1,0 +1,18 @@
+id: vital.bp_high
+name: { ru: "Давление 140/90 и выше" }
+leak: { pct: 8 }
+value:
+  unit: "мм рт. ст."
+  ref: [100, 139]
+  present: [141, 185]
+  absent: [105, 136]
+  decimals: 0
+  derived: { dia: 0.62 }
+texts:
+  hint:
+    ru: "Давление на приёме 140/90 и выше. Одно измерение — ещё не гипертония: давление поднимается от волнения и боли, поэтому его перемеряют."
+  present:
+    - ru: "Давление {value}/{dia} {unit}"
+  absent:
+    - ru: "Давление {value}/{dia} {unit}"
+review: draft

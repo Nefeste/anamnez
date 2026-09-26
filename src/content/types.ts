@@ -49,12 +49,16 @@ export interface Tactics {
   supportive: Id[];
   notIndicated: Id[];
   harmful: Id[];
+  /** типичное назначение целиком, если первая линия — выбор из равных; нет — вся первая линия */
+  plan?: Id[];
   setting: {
     default: Setting;
     /** уточнение по скрытому параметру случая */
     param?: { name: string; map: Record<string, Setting> };
     /** если у пациента есть красный флаг этого состояния */
     redFlag?: Setting;
+    /** если у пациента есть фактор риска */
+    risks?: { id: Id; setting: Setting }[];
   };
 }
 
@@ -93,6 +97,8 @@ export interface Condition {
   severity: 'minor' | 'moderate' | 'serious' | 'critical';
   /** выпадает ли основным заболеванием (false — только сопутствующим) */
   presenting: boolean;
+  /** бывает без жалоб — находят на профосмотре; остальные приходят с заметным симптомом */
+  checkup?: boolean;
   /** относительный вес распространённости (из полосы) */
   weight: number;
   age: { min: number; max: number; peak?: [number, number] };
@@ -102,6 +108,8 @@ export interface Condition {
   risks?: { id: Id; x: number }[];
   /** без этих состояний не бывает (обострение ХОБЛ — только при ХОБЛ) */
   requires?: Id[];
+  /** не бывает у того, у кого уже есть эти (впервые выявленная гипертензия — не у гипертоника) */
+  excludes?: Id[];
   /** как часто бывает сопутствующим (хроническим) */
   chronic?: { p: P; ageMin?: number; risks?: { id: Id; x: number }[] };
   params?: Record<string, Record<string, number>>;
@@ -130,6 +138,8 @@ export interface NumericSpec {
   present: [number, number];
   absent: [number, number];
   decimals: number;
+  /** производные числа для шаблона: {dia} = значение × множитель */
+  derived?: Record<string, number>;
 }
 
 export interface Finding {
@@ -169,6 +179,8 @@ export interface Exam {
   cost: number;
   discomfort: 0 | 1 | 2 | 3;
   radiation?: 'none' | 'low' | 'medium' | 'high';
+  /** спрашивают каждого (анамнез жизни) */
+  routine?: boolean;
   checks: ExamCheck[];
   /** summary — как делают; hint — что показывает, простыми словами */
   texts: { summary: Text; hint?: Text };
@@ -182,6 +194,7 @@ export interface Risk {
   /** распространённость по полу */
   p: { m: P; f: P };
   ageMin?: number;
+  ageMax?: number;
   findings: Link[];
   review: Review;
 }

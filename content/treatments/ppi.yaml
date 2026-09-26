@@ -1,0 +1,16 @@
+id: tx.ppi
+name: { ru: "Ингибиторы протонной помпы (омепразол, пантопразол)" }
+kind: drug
+class: acid.ppi
+route: oral
+cost: 250
+effects:
+  - { on: cond.gerd, kind: cure, band: usually, days: [3, 10] }
+  - { on: cond.dyspepsia_functional, kind: cure, band: often, days: [7, 21] }
+texts:
+  hint:
+    ru: "Снижают выработку кислоты в желудке. Основное лечение рефлюксной болезни и диспепсии: изжога проходит за несколько дней. Долго без показаний их не принимают."
+sources:
+  - { kind: guideline, title: "Гастроэзофагеальная рефлюксная болезнь", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru" }
+  - { kind: guideline, title: "Katz PO et al. ACG Clinical Guideline for the Diagnosis and Management of Gastroesophageal Reflux Disease. Am J Gastroenterol 2022;117(1):27–56" }
+review: draft

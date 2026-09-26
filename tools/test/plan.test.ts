@@ -6,7 +6,7 @@ import { observe } from '../../src/engine/med/course';
 import { complaintObservations, runExam } from '../../src/engine/med/exams';
 import { generatePatient } from '../../src/engine/med/generate';
 import { evaluatePlan, type Plan, recommendedSetting, txRole } from '../../src/engine/med/plan';
-import { choosePlan } from '../../src/engine/med/policy';
+import { choosePlan, runDoctor } from '../../src/engine/med/policy';
 import { buildReview } from '../../src/engine/med/review';
 import { type CaseInput, scoreCase } from '../../src/engine/med/score';
 import type { Observation, Patient } from '../../src/engine/med/types';
@@ -42,6 +42,60 @@ describe('тактика и место лечения', () => {
     expect(recommendedSetting(db, mild)).toBe('home');
     const hypoxic = find('cond.pneumonia_cap', p => p.truth.conditions[0].params.severity !== 'severe' && has(p, 'vital.spo2_low'));
     expect(recommendedSetting(db, hypoxic)).toBe('ward');
+  });
+
+  test('пиелонефрит у беременной — в стационар, хотя сам он нетяжёлый', () => {
+    const mild = (p: Patient) => p.truth.conditions[0].params.severity === 'mild' && !has(p, 'sym.vomiting');
+    expect(recommendedSetting(db, find('cond.pyelonephritis', p => mild(p) && !p.truth.risks.includes('risk.pregnancy')))).toBe('home');
+    expect(recommendedSetting(db, find('cond.pyelonephritis', p => mild(p) && p.truth.risks.includes('risk.pregnancy')))).toBe('ward');
+  });
+
+  test('ОКС — скорая; до её приезда — аспирин, ибупрофен вреден', () => {
+    const p = find('cond.acs');
+    expect(recommendedSetting(db, p)).toBe('ambulance');
+    const withAspirin = scoreCase(base({ treatments: ['tx.aspirin_acs', 'tx.nitroglycerin'], setting: 'ambulance' }, p));
+    expect(withAspirin.treatment).toBe('A');
+    expect(withAspirin.setting).toBe('A');
+    const nothing = scoreCase(base({ treatments: [], setting: 'ambulance' }, p));
+    expect(nothing.treatment).toBe('B');
+    expect(nothing.notes).toContainEqual({ code: 'tx.preHospitalMissing', tx: 'tx.aspirin_acs' });
+    const nsaid = scoreCase(base({ treatments: ['tx.ibuprofen'], setting: 'ambulance' }, p));
+    expect(nsaid.treatment).toBe('D');
+    expect(nsaid.notes).toContainEqual({ code: 'tx.harmful', tx: 'tx.ibuprofen' });
+    // аппендицит: направить — и всё; лечения причины в поликлинике не ждут
+    const app = find('cond.appendicitis');
+    expect(scoreCase(base({ treatments: [], setting: 'ambulance' }, app)).treatment).toBe('A');
+    expect(scoreCase(base({ treatments: ['tx.ors'], setting: 'home' }, app)).notes).toContainEqual({ code: 'tx.noCure' });
+  });
+
+  test('типичное назначение: одно из равных, замена при известном противопоказании', () => {
+    expect(choosePlan(db, 'cond.cystitis', []).treatments).toEqual(['tx.fosfomycin']);
+    expect(choosePlan(db, 'cond.hypertension_new', []).treatments).toEqual(['tx.ace_inhibitor', 'tx.ccb', 'tx.lifestyle']);
+    const pregnant: Observation[] = [{ f: 'hx.pregnancy', shown: true, exam: 'exam.ask_pregnancy' }];
+    expect(choosePlan(db, 'cond.hypertension_new', pregnant).treatments).toEqual(['tx.ccb', 'tx.lifestyle']);
+    expect(choosePlan(db, 'cond.pyelonephritis', pregnant)).toEqual({ treatments: ['tx.cephalosporin_oral'], setting: 'ward' });
+    expect(choosePlan(db, 'cond.appendicitis', [])).toEqual({ treatments: [], setting: 'ambulance' });
+  });
+
+  function base(plan: Plan, patient: Patient): CaseInput {
+    const cond = db.conditions[patient.truth.conditions[0].id];
+    return { verdict: 'correct', confidence: 0.9, cost: 10, rationalCost: 10, plan: evaluatePlan(db, patient, plan, []), outcome: { kind: 'transferred', day: 0, cured: false }, selfLimiting: cond.selfLimiting === true, redFlags: [] };
+  }
+});
+
+describe('виртуальный врач', () => {
+  const candidates = Object.keys(db.conditions).filter(id => db.conditions[id].presenting);
+  const exams = Object.keys(db.exams).sort();
+
+  test('начинает с анамнеза жизни и не спрашивает о беременности мужчину и пожилую женщину', () => {
+    for (const primary of ['cond.hypertension_new', 'cond.pyelonephritis']) {
+      for (const who of [(p: Patient) => p.sex === 'm', (p: Patient) => p.sex === 'f' && p.age > 50]) {
+        const p = find(primary, who);
+        const r = runDoctor(db, p, 'rational', Rng.seeded(p.seed), { candidates, exams });
+        expect(r.exams[0]).toBe('exam.ask_chronic');
+        expect(r.exams).not.toContain('exam.ask_pregnancy');
+      }
+    }
   });
 });
 

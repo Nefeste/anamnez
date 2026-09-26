@@ -1,0 +1,8 @@
+id: risk.travel
+name: { ru: "Недавняя поездка" }
+prevalence: { m: 5, f: 5 }
+findings:
+  - { f: hx.travel, band: always }
+sources:
+  - { kind: guideline, title: "Riddle MS et al. ACG Clinical Guideline: Diagnosis, Treatment, and Prevention of Acute Diarrheal Infections in Adults. Am J Gastroenterol 2016;111(5):602–622", note: "черновик: доля недавно путешествовавших — оценка" }
+review: draft

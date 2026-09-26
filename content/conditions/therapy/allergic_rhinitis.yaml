@@ -1,0 +1,52 @@
+id: cond.allergic_rhinitis
+name: { ru: "Аллергический ринит" }
+icd10: J30.4
+department: dept.therapy
+kind: disease
+severity: minor
+epidemiology:
+  prevalence: uncommon
+  age: { min: 18, peak: [18, 44] }
+  season: { winter: 0.4, spring: 2.0, summer: 1.6, autumn: 0.8 }
+  risks:
+    - { id: risk.atopy, x: 6 }
+course:
+  stages:
+    - { id: active, days: [0, 60] }
+  presentation: [3, 30]
+  untreated: { band: never, days: [7, 7] }   # без лечения не хуже, но и не проходит — «без изменений»
+findings:
+  - { f: sym.rhinorrhea, band: usually }
+  - { f: sym.sneezing, band: usually }
+  - { f: sym.nasal_congestion, band: usually }
+  - { f: sym.nasal_itch, band: often }
+  - { f: sym.itchy_eyes, band: often }
+  - { f: sym.recurrent_rhinitis, band: usually }
+  - { f: sym.nasal_long, band: usually }
+  - { f: sym.cough, band: sometimes, attrs: { character: { dry: 90, productive: 10 } } }
+  - { f: sym.headache, band: sometimes }
+  - { f: sym.fatigue, band: sometimes }
+  - { f: sym.anosmia, band: rarely }
+  - { f: sym.sore_throat, band: rarely }
+  - { f: sign.pale_nasal_mucosa, band: usually }
+  - { f: sign.pharyngeal_hyperemia, band: rarely }
+confirm: clinical
+treatment:
+  firstLine: [tx.nasal_steroid, tx.antihistamine]
+  supportive: [tx.nasal_saline]
+  notIndicated: [tx.amoxicillin, tx.amoxicillin_clavulanate, tx.macrolide, tx.oseltamivir, tx.steroid_systemic_short]
+  setting: { default: home }
+texts:
+  summary:
+    ru: >-
+      Аллергическое воспаление слизистой носа — на пыльцу, шерсть, клещей домашней пыли:
+      водянистый насморк, приступы чихания, зуд в носу и глазах, заложенность. Без
+      температуры; сезонный повторяется каждый год в одно и то же время.
+pearls:
+  - ru: "Зуд, чихание приступами, водянистые выделения и повторение каждый год в одно время — признаки аллергии, а не простуды."
+  - ru: "Температуры при аллергическом рините не бывает; самое действенное лечение — гормональный спрей в нос."
+simplified: "Кожные пробы и анализ на аллергены делает аллерголог; в игре диагноз клинический."
+sources:
+  - { kind: guideline, title: "Brożek JL et al. Allergic Rhinitis and its Impact on Asthma (ARIA) guidelines — 2016 revision. J Allergy Clin Immunol 2017;140(4):950–958", note: "частоты — черновик" }
+  - { kind: guideline, title: "Аллергический ринит", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru" }
+review: draft

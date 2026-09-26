@@ -1,14 +1,18 @@
 id: exam.ask_chronic
 name: { ru: "Хронические болезни" }
 kind: ask
+routine: true
 time: { procedure: 1 }
 cost: 0
 discomfort: 0
 checks:
   - { f: hx.copd, sens: 95, spec: 99 }
+  - { f: hx.asthma, sens: 95, spec: 99 }
+  - { f: hx.hypertension, sens: 95, spec: 99 }
+  - { f: hx.diabetes, sens: 95, spec: 99 }
 texts:
   hint:
-    ru: "Хронические болезни меняют картину: у человека с ХОБЛ одышка может быть её обострением, а не новой болезнью."
+    ru: "Хронические болезни меняют картину: у человека с ХОБЛ или астмой одышка может быть обострением, а не новой болезнью."
   summary:
     ru: "Какие болезни уже известны, чем лечится постоянно."
 sources:

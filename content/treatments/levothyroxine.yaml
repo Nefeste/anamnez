@@ -1,0 +1,14 @@
+id: tx.levothyroxine
+name: { ru: "Левотироксин" }
+kind: drug
+class: hormone.thyroid
+route: oral
+cost: 150
+effects:
+  - { on: cond.hypothyroidism, kind: cure, band: usually, days: [30, 90] }
+texts:
+  hint:
+    ru: "Гормон щитовидной железы в таблетках — заменяет недостающий. Самочувствие улучшается за несколько недель; дозу подбирают по ТТГ."
+sources:
+  - { kind: guideline, title: "Гипотиреоз", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru" }
+review: draft

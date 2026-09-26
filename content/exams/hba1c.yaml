@@ -1,0 +1,18 @@
+id: exam.hba1c
+name: { ru: "Гликированный гемоглобин" }
+kind: lab
+room: room.lab
+time: { procedure: 5, turnaround: 90 }
+cost: 500
+discomfort: 1
+checks:
+  - { f: lab.hba1c_high, sens: 95, spec: 98 }
+texts:
+  hint:
+    ru: "Средний сахар крови за три месяца; не зависит от того, ел ли человек. 6,5 % и выше подтверждает диабет."
+  summary:
+    ru: "Кровь из вены в любое время дня."
+sources:
+  - { kind: guideline, title: "Алгоритмы специализированной медицинской помощи больным сахарным диабетом", org: "Российская ассоциация эндокринологов", note: "черновик" }
+  - { kind: guideline, title: "American Diabetes Association. 2. Diagnosis and Classification of Diabetes: Standards of Care in Diabetes — 2024. Diabetes Care 2024;47(Suppl 1):S20–S42" }
+review: draft

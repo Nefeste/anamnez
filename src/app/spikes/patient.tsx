@@ -57,7 +57,9 @@ export default function PatientSpike() {
           </View>
         </View>
         <Text style={styles.label}>{t.complaints}</Text>
-        <Chips>{v.complaints.map(c => <Chip key={c.f} testID={`complaint-${c.f}`} text={`«${c.text}»`} strong onPress={() => explain(findingInfo(c.f))} />)}</Chips>
+        {v.complaints.length > 0
+          ? <Chips>{v.complaints.map(c => <Chip key={c.f} testID={`complaint-${c.f}`} text={`«${c.text}»`} strong onPress={() => explain(findingInfo(c.f))} />)}</Chips>
+          : <P muted testID="visit-checkup">{t.checkup(v.portrait.sex === 'f')}</P>}
       </Card>
 
       {v.meanwhile.length > 0 && (

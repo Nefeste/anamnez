@@ -67,6 +67,8 @@ export const conditionSchema = z.strictObject({
   kind: z.enum(['disease', 'injury', 'syndrome', 'state']),
   severity: z.enum(['minor', 'moderate', 'serious', 'critical']),
   presenting: z.boolean().default(true),
+  /** бывает без жалоб — находят на профосмотре (гипертония, диабет); остальные приходят с симптомом */
+  checkup: z.boolean().optional(),
   epidemiology: z.strictObject({
     prevalence: z.enum(Object.keys(PREVALENCE) as [keyof typeof PREVALENCE, ...(keyof typeof PREVALENCE)[]]),
     age: z.strictObject({ min: z.number().int(), max: z.number().int().optional(), peak: z.tuple([z.number(), z.number()]).optional() }),
@@ -74,6 +76,8 @@ export const conditionSchema = z.strictObject({
     season: season.optional(),
     risks: z.array(riskMultiplier).optional(),
     requires: z.array(z.string()).optional(),
+    /** не бывает у того, у кого уже есть это (впервые выявленная гипертензия — не у гипертоника) */
+    excludes: z.array(z.string()).optional(),
     chronic: z.strictObject({ band: probability, ageMin: z.number().int().optional(), risks: z.array(riskMultiplier).optional() }).optional(),
   }),
   params: z.record(z.string(), weights).optional(),
@@ -86,19 +90,24 @@ export const conditionSchema = z.strictObject({
     /** без действенного лечения: с какой вероятностью и на какой день становится хуже */
     untreated: z.strictObject({ band: probability, days: z.tuple([z.number().int().min(0), z.number().int().min(0)]) }).optional(),
   }),
-  /** тактика (`04-medical-model.md` §8): четыре списка и где лечить */
+  /** тактика (`04-medical-model.md` §8): пять списков и где лечить */
   treatment: z.strictObject({
-    firstLine: z.array(txId).min(1),
+    /** при лечении дома — хотя бы одно (валидатор); при переводе — что сделать до приезда скорой */
+    firstLine: z.array(txId).default([]),
     acceptable: z.array(txId).default([]),
     supportive: z.array(txId).default([]),
     notIndicated: z.array(txId).default([]),
     harmful: z.array(txId).default([]),
+    /** типичное назначение целиком, если первая линия — выбор из равных (цистит: одно из двух) */
+    plan: z.array(txId).min(1).optional(),
     setting: z.strictObject({
       default: setting,
       /** уточнение по скрытому параметру случая: значение → место */
       param: z.strictObject({ name: z.string(), map: z.record(z.string(), setting) }).optional(),
       /** если у пациента есть красный флаг этого состояния */
       redFlag: setting.optional(),
+      /** если у пациента есть фактор риска: пиелонефрит у беременной — в стационар */
+      risks: z.array(z.strictObject({ id: z.string().regex(/^risk\.[a-z0-9_]+$/), setting })).optional(),
     }),
   }).optional(),
   findings: z.array(link).min(3),
@@ -124,6 +133,8 @@ export const findingSchema = z.strictObject({
     present: z.tuple([z.number(), z.number()]),
     absent: z.tuple([z.number(), z.number()]),
     decimals: z.number().int().min(0).max(3),
+    /** производные числа для шаблона: {dia} = значение × множитель (давление: нижнее из верхнего) */
+    derived: z.record(z.string().regex(/^[a-z]+$/), z.number().positive()).optional(),
   }).optional(),
   texts: z.strictObject({ complaint: texts.optional(), present: texts, absent: texts.optional(), hint }),
   sources: z.array(source).optional(),
@@ -140,6 +151,8 @@ export const examSchema = z.strictObject({
   cost: z.number().int().min(0),
   discomfort: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]),
   radiation: z.enum(['none', 'low', 'medium', 'high']).optional(),
+  /** спрашивают каждого (анамнез жизни): «виртуальный врач» делает это первым */
+  routine: z.boolean().optional(),
   /** чувствительность и специфичность — в процентах */
   checks: z.array(z.strictObject({ f: z.string(), sens: accuracy, spec: accuracy })).min(1),
   texts: z.strictObject({ summary: text, hint }),
@@ -179,6 +192,7 @@ export const riskSchema = z.strictObject({
   name: text,
   prevalence: z.strictObject({ m: z.number().min(0).max(100), f: z.number().min(0).max(100) }),
   ageMin: z.number().int().optional(),
+  ageMax: z.number().int().optional(),
   findings: z.array(link),
   sources: z.array(source).min(1),
   review,

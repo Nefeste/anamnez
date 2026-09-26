@@ -5,9 +5,13 @@ route: nasal
 cost: 150
 effects:
   - { on: cond.arvi, kind: relieve, band: often, days: [0, 2] }
+  - { on: cond.covid19, kind: relieve, band: often, days: [0, 2] }
+  - { on: cond.sinusitis_acute, kind: relieve, band: often, days: [0, 2] }
+  - { on: cond.sinusitis_bacterial, kind: relieve, band: sometimes, days: [0, 2] }
+  - { on: cond.allergic_rhinitis, kind: relieve, band: sometimes, days: [0, 2] }
 texts:
   hint:
-    ru: "Солевой раствор смывает слизь и облегчает дыхание через нос при насморке. Безопасно и не требует рецепта."
+    ru: "Солевой раствор смывает слизь и облегчает дыхание через нос при насморке, синусите и аллергии. Безопасно и не требует рецепта."
 sources:
   - { kind: guideline, title: "Острая респираторная вирусная инфекция (ОРВИ) у взрослых", org: "Минздрав РФ", note: "черновик: название и редакцию сверить на cr.minzdrav.gov.ru" }
 review: draft

@@ -1,0 +1,8 @@
+id: risk.allergy_nsaid
+name: { ru: "Аллергия на НПВС и аспирин" }
+prevalence: { m: 1, f: 1.5 }
+findings:
+  - { f: hx.allergy_nsaid, band: always }
+sources:
+  - { kind: review, title: "Kowalski ML et al. Classification and practical approach to the diagnosis and management of hypersensitivity to nonsteroidal anti-inflammatory drugs. Allergy 2013;68(10):1219–1232", note: "черновик: распространённость — оценка" }
+review: draft

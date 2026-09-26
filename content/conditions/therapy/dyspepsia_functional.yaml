@@ -1,0 +1,44 @@
+id: cond.dyspepsia_functional
+name: { ru: "Функциональная диспепсия" }
+icd10: K30
+department: dept.therapy
+group: grp.acid_dyspepsia
+kind: syndrome
+severity: minor
+epidemiology:
+  prevalence: uncommon
+  age: { min: 18 }
+  sex: { m: 0.8, f: 1 }
+course:
+  stages:
+    - { id: active, days: [0, 365] }
+  presentation: [14, 90]
+  untreated: { band: never, days: [7, 7] }   # без лечения не хуже, но и не проходит
+findings:
+  - { f: sym.epigastric_pain, band: usually }
+  - { f: sym.early_satiety, band: often }
+  - { f: sym.nausea, band: sometimes }
+  - { f: sym.heartburn, band: sometimes }
+  - { f: sym.regurgitation, band: rarely }
+  - { f: sym.anorexia, band: rarely }
+  - { f: sign.epigastric_tenderness, band: often }
+confirm: clinical
+treatment:
+  firstLine: [tx.ppi]
+  supportive: [tx.lifestyle, tx.antacid]
+  notIndicated: [tx.amoxicillin, tx.amoxicillin_clavulanate, tx.macrolide, tx.fluoroquinolone]
+  setting: { default: home }
+texts:
+  summary:
+    ru: >-
+      Боль или жжение под ложечкой, тяжесть и быстрое насыщение после еды без язвы и
+      других находок при обследовании. Очень частая причина жалоб на желудок; лечат ИПП
+      и режимом питания.
+pearls:
+  - ru: "Диспепсия — это боль под ложечкой и тяжесть после еды; изжога и отрыжка кислым больше говорят о рефлюксе, но тактика почти одинаковая."
+  - ru: "Регулярный приём обезболивающих — частая причина болей в желудке: спросите о лекарствах."
+simplified: "Тест на хеликобактер и эрадикационная терапия — позже; в игре диспепсия без тревожных признаков лечится ИПП."
+sources:
+  - { kind: guideline, title: "Функциональная диспепсия", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru; частоты — черновик" }
+  - { kind: guideline, title: "Moayyedi PM et al. ACG and CAG Clinical Guideline: Management of Dyspepsia. Am J Gastroenterol 2017;112(7):988–1013" }
+review: draft

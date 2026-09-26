@@ -1,0 +1,20 @@
+id: exam.ask_chest_pain
+name: { ru: "Расспрос: боль в груди" }
+kind: ask
+time: { procedure: 2 }
+cost: 0
+discomfort: 0
+checks:
+  - { f: sym.chest_pain_pressing, sens: 92, spec: 96 }
+  - { f: sym.pain_radiation, sens: 85, spec: 97 }
+  - { f: sym.sweating, sens: 80, spec: 96 }
+  - { f: sym.pleuritic_pain, sens: 90, spec: 97 }
+  - { f: sym.heartburn, sens: 88, spec: 95 }
+texts:
+  hint:
+    ru: "Какая боль, где, куда отдаёт, связана ли с дыханием или едой. Давящая боль за грудиной с холодным потом — повод сразу сделать ЭКГ."
+  summary:
+    ru: "Характер, место и длительность боли, куда отдаёт, что её вызывает и что снимает, потливость."
+sources:
+  - { kind: paper, title: "Swap CJ, Nagurney JT. Value and limitations of chest pain history in the evaluation of patients with suspected acute coronary syndromes. JAMA 2005;294(20):2623–2629", note: "черновик: точность расспроса — игровая оценка" }
+review: draft

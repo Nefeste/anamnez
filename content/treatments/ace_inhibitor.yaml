@@ -1,0 +1,17 @@
+id: tx.ace_inhibitor
+name: { ru: "Ингибиторы АПФ (эналаприл, периндоприл)" }
+kind: drug
+class: antihypertensive.acei
+route: oral
+cost: 150
+effects:
+  - { on: cond.hypertension_new, kind: cure, band: usually, days: [14, 60] }
+contraindications:
+  - { id: risk.pregnancy, level: absolute, reaction: never }
+texts:
+  hint:
+    ru: "Снижают давление и защищают сердце и почки; одна из основных групп при гипертонии. Иногда вызывают сухой кашель. При беременности противопоказаны."
+sources:
+  - { kind: guideline, title: "Артериальная гипертензия у взрослых", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru" }
+  - { kind: guideline, title: "2023 ESH Guidelines for the management of arterial hypertension. J Hypertens 2023;41(12):1874–2071" }
+review: draft

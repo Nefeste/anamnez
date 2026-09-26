@@ -1,0 +1,17 @@
+id: exam.glucose_lab
+name: { ru: "Глюкоза крови натощак" }
+kind: lab
+room: room.lab
+time: { procedure: 5, turnaround: 40 }
+cost: 150
+discomfort: 1
+checks:
+  - { f: lab.glucose_high, sens: 97, spec: 97 }
+texts:
+  hint:
+    ru: "Сахар крови натощак в лаборатории: 7,0 ммоль/л и выше дважды — сахарный диабет."
+  summary:
+    ru: "Кровь из вены натощак."
+sources:
+  - { kind: guideline, title: "Алгоритмы специализированной медицинской помощи больным сахарным диабетом", org: "Российская ассоциация эндокринологов", note: "черновик" }
+review: draft

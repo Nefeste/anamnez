@@ -1,0 +1,17 @@
+id: lab.tsh_high
+name: { ru: "ТТГ повышен" }
+leak: { pct: 3 }
+value:
+  unit: "мМЕ/л"
+  ref: [0.4, 4.0]
+  present: [6.0, 40.0]
+  absent: [0.6, 3.8]
+  decimals: 1
+texts:
+  hint:
+    ru: "ТТГ — гормон, которым мозг «подгоняет» щитовидную железу. Если железа работает слабо, ТТГ растёт: высокий ТТГ — главный признак гипотиреоза."
+  present:
+    - ru: "ТТГ {value} {unit}"
+  absent:
+    - ru: "ТТГ {value} {unit}"
+review: draft

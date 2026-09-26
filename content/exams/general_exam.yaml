@@ -1,0 +1,19 @@
+id: exam.general_exam
+name: { ru: "Общий осмотр" }
+kind: physical
+time: { procedure: 3 }
+cost: 0
+discomfort: 0
+checks:
+  - { f: sign.dehydration, sens: 80, spec: 92 }
+  - { f: sign.obesity, sens: 95, spec: 97 }
+  - { f: sign.pallor, sens: 70, spec: 90 }
+  - { f: sign.dry_skin, sens: 65, spec: 88 }
+texts:
+  hint:
+    ru: "Кожа, слизистые, питание, отёки: видно обезвоживание, бледность, ожирение, сухость кожи. Многое заметно ещё до расспроса."
+  summary:
+    ru: "Сознание, кожа и слизистые, тургор, питание (рост, вес, индекс массы тела), отёки."
+sources:
+  - { kind: textbook, title: "Пропедевтика внутренних болезней: общий осмотр", note: "черновик: точность — игровая оценка" }
+review: draft

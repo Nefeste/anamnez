@@ -1,0 +1,16 @@
+id: exam.peak_flow
+name: { ru: "Пикфлоуметрия" }
+kind: bedside
+time: { procedure: 3 }
+cost: 0
+discomfort: 0
+checks:
+  - { f: vital.pef_low, sens: 85, spec: 90 }
+texts:
+  hint:
+    ru: "Показывает, насколько сужены бронхи: пациент резко выдыхает в трубку. Помогает понять тяжесть приступа астмы — ощущениям верить мало."
+  summary:
+    ru: "Три резких выдоха в пикфлоуметр, лучший результат — в процентах от должного по росту, полу и возрасту."
+sources:
+  - { kind: guideline, title: "Global Initiative for Asthma. Global Strategy for Asthma Management and Prevention", org: "GINA", year: 2024, note: "черновик: точность — игровая оценка" }
+review: draft

@@ -1,0 +1,10 @@
+id: risk.heavy_periods
+name: { ru: "Обильные менструации" }
+prevalence: { m: 0, f: 12 }
+ageMin: 18
+ageMax: 50
+findings:
+  - { f: hx.heavy_periods, band: always }
+sources:
+  - { kind: guideline, title: "Heavy menstrual bleeding: assessment and management. NICE guideline NG88", org: "NICE", year: 2018, note: "черновик: доля женщин с обильными менструациями — оценка" }
+review: draft

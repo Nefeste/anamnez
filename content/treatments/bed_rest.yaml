@@ -1,0 +1,10 @@
+id: tx.bed_rest
+name: { ru: "Постельный режим" }
+kind: regimen
+cost: 0
+texts:
+  hint:
+    ru: "Лежать несколько дней. При боли в спине это не помогает и задерживает выздоровление; при простуде достаточно просто больше отдыхать."
+sources:
+  - { kind: review, title: "Dahm KT et al. Advice to rest in bed versus advice to stay active for acute low-back pain and sciatica. Cochrane Database Syst Rev 2010;(6):CD007612" }
+review: draft

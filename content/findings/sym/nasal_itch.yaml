@@ -1,0 +1,14 @@
+id: sym.nasal_itch
+name: { ru: "Зуд в носу" }
+leak: { pct: 1 }
+salience: 1
+texts:
+  hint:
+    ru: "Зуд в носу почти всегда говорит об аллергии: при простуде нос болит и заложен, но редко чешется."
+  complaint:
+    - ru: "Чешется в носу"
+  present:
+    - ru: "Зуд в носу"
+  absent:
+    - ru: "Зуда в носу нет"
+review: draft

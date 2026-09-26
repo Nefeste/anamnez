@@ -1,0 +1,10 @@
+id: risk.nsaid_use
+name: { ru: "Регулярный приём НПВС" }
+prevalence: { m: 8, f: 10 }
+findings:
+  - { f: hx.nsaid_use, band: always }
+  - { f: sym.epigastric_pain, band: sometimes }
+  - { f: sym.heartburn, band: rarely }
+sources:
+  - { kind: review, title: "Bhala N et al. (CNT Collaboration). Vascular and upper gastrointestinal effects of non-steroidal anti-inflammatory drugs: meta-analyses of individual participant data from randomised trials. Lancet 2013;382(9894):769–779", note: "черновик: доля регулярно принимающих — оценка" }
+review: draft

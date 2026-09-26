@@ -1,0 +1,13 @@
+id: risk.pregnancy
+name: { ru: "Беременность" }
+prevalence: { m: 0, f: 4 }
+ageMin: 18
+ageMax: 44
+findings:
+  - { f: hx.pregnancy, band: usually }
+  - { f: lab.hcg_positive, band: always }
+  - { f: sym.nausea, band: sometimes }
+  - { f: sym.frequency, band: rarely }
+sources:
+  - { kind: dataset, title: "Естественное движение населения: число родившихся и женщин 18–44 лет", org: "Росстат", note: "черновик: доля беременных среди обращающихся женщин детородного возраста — оценка" }
+review: draft

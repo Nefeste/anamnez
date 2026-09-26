@@ -1,0 +1,43 @@
+id: cond.hypothyroidism
+name: { ru: "Гипотиреоз" }
+icd10: E03.9
+department: dept.therapy
+kind: disease
+checkup: true
+severity: minor
+epidemiology:
+  prevalence: rare
+  age: { min: 18, peak: [40, 75] }
+  sex: { m: 0.2, f: 1 }
+course:
+  stages:
+    - { id: active, days: [0, 36500] }
+  presentation: [30, 365]
+  untreated: { band: never, days: [7, 7] }   # за неделю без лечения ничего не случится — «без изменений»
+findings:
+  - { f: lab.tsh_high, band: always }
+  - { f: sym.fatigue, band: usually }
+  - { f: sym.weight_gain, band: often }
+  - { f: sym.cold_intolerance, band: often }
+  - { f: sign.dry_skin, band: often }
+  - { f: sym.constipation, band: sometimes }
+  - { f: sym.dizziness, band: rarely }
+  - { f: lab.hb_low, band: rarely }
+confirm: [exam.tsh]
+treatment:
+  firstLine: [tx.levothyroxine]
+  setting: { default: home }
+texts:
+  summary:
+    ru: >-
+      Щитовидная железа вырабатывает мало гормонов — чаще из-за аутоиммунного тиреоидита,
+      почти всегда у женщин. Всё замедляется: слабость, сонливость, зябкость, прибавка
+      веса, сухая кожа, запоры. Диагноз — по высокому ТТГ, лечение — левотироксин.
+pearls:
+  - ru: "Слабость, зябкость и прибавка веса у женщины средних лет — повод проверить ТТГ."
+  - ru: "Один анализ решает: ТТГ повышен — функция железы снижена."
+simplified: "Субклинический гипотиреоз и свободный Т4 — позже, с эндокринологией."
+sources:
+  - { kind: guideline, title: "Гипотиреоз", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru; частоты — черновик" }
+  - { kind: review, title: "Chaker L et al. Hypothyroidism. Lancet 2017;390(10101):1550–1562" }
+review: draft

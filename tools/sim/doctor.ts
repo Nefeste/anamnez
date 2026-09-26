@@ -143,8 +143,13 @@ if (asJson) {
     const o = r.outcomes;
     console.log(`${names[r.strategy].padEnd(11)} случай ${abcd(r.overall).padEnd(12)} лечение ${abcd(r.treatment).padEnd(12)} выздоровел ${(o.recovered + o.improved).toFixed(1).padStart(5)} %  хуже ${o.worse.toFixed(1).padStart(4)} %  реакция ${o.reaction.toFixed(1).padStart(4)} %  переведён ${o.transferred.toFixed(1).padStart(4)} %  без изменений ${o.unchanged.toFixed(1).padStart(4)} %  антибиотик без показаний ${r.needlessAntibiotic.toFixed(1).padStart(4)} %`);
   }
-  console.log('\nТочность разумного врача по болезням:');
-  for (const [id, v] of Object.entries(rational.perCondition)) console.log(`  ${id.padEnd(28)} ${v.accuracy.toFixed(1).padStart(5)} %  до группы ${v.groupAccuracy.toFixed(1).padStart(5)} %  (n=${v.n})`);
+  console.log('\nТочность разумного врача по болезням (доля среди пациентов; с чем путает чаще всего):');
+  const mixedUp = (id: string) => Object.entries(tally.rational.confusion)
+    .filter(([k]) => k.startsWith(`${id} → `)).sort((a, b) => b[1] - a[1]).slice(0, 2)
+    .map(([k, v]) => `${k.slice(id.length + 3)} ${v}`).join(', ');
+  for (const [id, v] of Object.entries(rational.perCondition)) {
+    console.log(`  ${id.padEnd(28)} ${v.accuracy.toFixed(1).padStart(5)} %  до группы ${v.groupAccuracy.toFixed(1).padStart(5)} %  ${pct(v.n, N).toFixed(1).padStart(4)} % пациентов${mixedUp(id) ? `  → ${mixedUp(id)}` : ''}`);
+  }
   console.log('\nЧастые путаницы разумного врача:');
   for (const [k, v] of rational.topConfusions) console.log(`  ${k}: ${v}`);
   console.log('\nПороги (05-content.md §6):');

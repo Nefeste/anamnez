@@ -130,6 +130,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     for (const r of c.epidemiology.risks ?? []) if (!(r.id in risks) && !(r.id in conditions)) errors.push(`${owner}: фактор ${r.id} не найден`);
     for (const r of c.epidemiology.chronic?.risks ?? []) if (!(r.id in risks)) errors.push(`${owner}: фактор ${r.id} не найден`);
     for (const r of c.epidemiology.requires ?? []) if (!conditions[r]?.epidemiology.chronic) errors.push(`${owner}: требуемое ${r} не найдено или не хроническое`);
+    for (const r of c.epidemiology.excludes ?? []) if (!conditions[r]?.epidemiology.chronic) errors.push(`${owner}: исключающее ${r} не найдено или не хроническое`);
     if (c.confirm !== 'clinical') for (const e of c.confirm) if (!(e in exams)) errors.push(`${owner}: подтверждающее обследование ${e} не найдено`);
     for (const f of c.redFlags ?? []) if (!hasF(f)) errors.push(`${owner}: красный флаг ${f} не найден`);
     if (!c.presenting && !c.epidemiology.chronic) errors.push(`${owner}: не бывает ни основным, ни хроническим`);
@@ -150,11 +151,14 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
         else for (const v of Object.keys(p)) if (!t.setting.param.map[v]) errors.push(`${owner}: для ${t.setting.param.name}=${v} не сказано, где лечить`);
       }
       if (t.setting.redFlag && !c.redFlags?.length) errors.push(`${owner}: место при красном флаге задано, а красных флагов нет`);
+      for (const r of t.setting.risks ?? []) if (!(r.id in risks)) errors.push(`${owner}: место лечения зависит от неизвестного фактора ${r.id}`);
+      if (t.setting.default === 'home' && t.firstLine.length === 0) errors.push(`${owner}: лечат дома, а первой линии нет`);
+      for (const id of t.plan ?? []) if (![...t.firstLine, ...t.acceptable, ...t.supportive].includes(id)) errors.push(`${owner}: в типичном назначении ${id} — не из первой линии, допустимых или облегчающих`);
       // тактика и действие лечения не спорят: то, что лечит причину, не бывает «не показано»,
       // а то, что само не проходит, первая линия лечит
       const cures = (id: string) => treatments[id]?.effects.some(e => e.on === owner && e.kind === 'cure') === true;
       for (const id of [...t.notIndicated, ...t.harmful]) if (cures(id)) errors.push(`${owner}: ${id} действует на причину, а в тактике — «не показано» или «вредно»`);
-      if (c.presenting && !c.course.selfLimiting && !t.firstLine.some(cures)) errors.push(`${owner}: само не проходит, а первая линия не действует на причину`);
+      if (c.presenting && !c.course.selfLimiting && t.setting.default === 'home' && !t.firstLine.some(cures)) errors.push(`${owner}: само не проходит, а первая линия не действует на причину`);
     }
     if (!c.course.selfLimiting && c.presenting && !c.course.untreated) warnings.push(`${owner}: не проходит само, но не сказано, что будет без лечения`);
   }
@@ -187,11 +191,13 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       texts: c.texts, sources: c.sources, review: c.review,
     };
     if (c.icd10) out.icd10 = c.icd10;
+    if (c.checkup) out.checkup = true;
     if (c.group) out.group = c.group;
     if (e.sex) out.sex = e.sex;
     if (e.season) out.season = e.season;
     if (e.risks) out.risks = e.risks;
     if (e.requires) out.requires = e.requires;
+    if (e.excludes) out.excludes = e.excludes;
     if (e.chronic) out.chronic = { p: prob(e.chronic.band), ...(e.chronic.ageMin ? { ageMin: e.chronic.ageMin } : {}), ...(e.chronic.risks ? { risks: e.chronic.risks } : {}) };
     if (c.params) out.params = c.params;
     if (c.course.presentation) out.presentation = c.course.presentation;
@@ -217,11 +223,13 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     };
     if (e.room) out.room = e.room;
     if (e.radiation) out.radiation = e.radiation;
+    if (e.routine) out.routine = true;
     db.exams[e.id] = out;
   }
   for (const r of Object.values(risks).sort((a, b) => (a.id < b.id ? -1 : 1))) {
     const out: Risk = { id: r.id, name: r.name, p: { m: Math.round(r.prevalence.m * 100), f: Math.round(r.prevalence.f * 100) }, findings: r.findings.map(compileLink), review: r.review };
     if (r.ageMin) out.ageMin = r.ageMin;
+    if (r.ageMax) out.ageMax = r.ageMax;
     db.risks[r.id] = out;
   }
   for (const t of Object.values(treatments).sort((a, b) => (a.id < b.id ? -1 : 1))) {

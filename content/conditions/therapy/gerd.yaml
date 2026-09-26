@@ -1,0 +1,51 @@
+id: cond.gerd
+name: { ru: "Гастроэзофагеальная рефлюксная болезнь" }
+icd10: K21.9
+department: dept.therapy
+group: grp.acid_dyspepsia
+kind: disease
+severity: minor
+epidemiology:
+  prevalence: uncommon
+  age: { min: 18 }
+  risks:
+    - { id: risk.obesity, x: 2 }
+    - { id: risk.pregnancy, x: 3 }
+    - { id: risk.smoking, x: 1.3 }
+    - { id: risk.alcohol, x: 1.3 }
+course:
+  stages:
+    - { id: active, days: [0, 365] }
+  presentation: [14, 90]
+  untreated: { band: never, days: [7, 7] }   # без лечения не хуже, но и не проходит
+findings:
+  - { f: sym.heartburn, band: usually }
+  - { f: sym.regurgitation, band: often }
+  - { f: sym.epigastric_pain, band: sometimes }
+  - { f: sym.cough, band: sometimes, attrs: { character: { dry: 90, productive: 10 } } }
+  - { f: sym.chronic_cough, band: rarely }
+  - { f: sym.sore_throat, band: rarely }
+  - { f: sym.nausea, band: rarely }
+  - { f: sym.early_satiety, band: rarely }
+  - { f: sign.epigastric_tenderness, band: sometimes }
+confirm: clinical
+treatment:
+  firstLine: [tx.ppi]
+  supportive: [tx.antacid, tx.lifestyle]
+  notIndicated: [tx.amoxicillin, tx.amoxicillin_clavulanate, tx.macrolide, tx.fluoroquinolone]
+  plan: [tx.ppi, tx.lifestyle]
+  setting: { default: home }
+texts:
+  summary:
+    ru: >-
+      Заброс кислого содержимого желудка в пищевод: изжога, особенно после еды и лёжа,
+      отрыжка кислым, иногда кашель и боль за грудиной. Лечат ингибиторами протонной
+      помпы и изменением привычек; при тревожных признаках нужна гастроскопия.
+pearls:
+  - ru: "Изжога и отрыжка кислым — главные признаки рефлюксной болезни; если после ИПП они прошли, диагноз подтверждён."
+  - ru: "Затруднённое глотание, похудание, рвота кровью и анемия — тревожные признаки: нужна гастроскопия, а не ещё один курс таблеток."
+simplified: "Гастроскопия и тревожные признаки — позже, с эндоскопией; в игре ГЭРБ без тревожных признаков."
+sources:
+  - { kind: guideline, title: "Гастроэзофагеальная рефлюксная болезнь", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru; частоты — черновик" }
+  - { kind: guideline, title: "Katz PO et al. ACG Clinical Guideline for the Diagnosis and Management of Gastroesophageal Reflux Disease. Am J Gastroenterol 2022;117(1):27–56" }
+review: draft

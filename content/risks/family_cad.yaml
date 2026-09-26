@@ -1,0 +1,8 @@
+id: risk.family_cad
+name: { ru: "Ранняя ишемическая болезнь сердца у родственников" }
+prevalence: { m: 10, f: 10 }
+findings:
+  - { f: hx.family_cad, band: always }
+sources:
+  - { kind: guideline, title: "2021 ESC Guidelines on cardiovascular disease prevention in clinical practice. Eur Heart J 2021;42(34):3227–3337", note: "черновик: доля людей с отягощённой наследственностью — оценка" }
+review: draft

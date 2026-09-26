@@ -1,0 +1,27 @@
+id: exam.ask_abdomen
+name: { ru: "Расспрос: живот и пищеварение" }
+kind: ask
+time: { procedure: 3 }
+cost: 0
+discomfort: 0
+checks:
+  - { f: sym.abdominal_pain, sens: 95, spec: 96 }
+  - { f: sym.rlq_pain, sens: 90, spec: 97 }
+  - { f: sym.pain_migration, sens: 70, spec: 97 }
+  - { f: sym.epigastric_pain, sens: 90, spec: 95 }
+  - { f: sym.anorexia, sens: 85, spec: 92 }
+  - { f: sym.nausea, sens: 90, spec: 95 }
+  - { f: sym.vomiting, sens: 95, spec: 98 }
+  - { f: sym.diarrhea, sens: 95, spec: 98 }
+  - { f: sym.heartburn, sens: 92, spec: 96 }
+  - { f: sym.regurgitation, sens: 88, spec: 95 }
+  - { f: sym.early_satiety, sens: 80, spec: 92 }
+  - { f: sym.melena, sens: 92, spec: 99 }
+texts:
+  hint:
+    ru: "Где болит и куда сместилась боль, есть ли тошнота, рвота, жидкий стул, изжога, тяжесть после еды. Отличает кишечную инфекцию, аппендицит и болезни желудка."
+  summary:
+    ru: "Боль в животе: где, как началась, куда сместилась; аппетит, тошнота, рвота, стул, изжога, отрыжка, тяжесть после еды."
+sources:
+  - { kind: textbook, title: "Пропедевтика внутренних болезней: расспрос больного", note: "точность расспроса — игровая оценка, не из литературы" }
+review: draft

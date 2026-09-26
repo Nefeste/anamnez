@@ -1,0 +1,15 @@
+id: tx.antacid
+name: { ru: "Антациды и альгинаты" }
+kind: drug
+class: acid.antacid
+route: oral
+cost: 200
+effects:
+  - { on: cond.gerd, kind: relieve, band: usually, days: [0, 1] }
+  - { on: cond.dyspepsia_functional, kind: relieve, band: sometimes, days: [0, 1] }
+texts:
+  hint:
+    ru: "Нейтрализуют кислоту и создают защитный слой над содержимым желудка: изжога проходит за минуты, но ненадолго. Для редкой изжоги — хорошо, для лечения рефлюксной болезни — мало."
+sources:
+  - { kind: guideline, title: "Гастроэзофагеальная рефлюксная болезнь", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru" }
+review: draft

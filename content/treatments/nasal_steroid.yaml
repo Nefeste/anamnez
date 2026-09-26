@@ -1,0 +1,17 @@
+id: tx.nasal_steroid
+name: { ru: "Интраназальные глюкокортикостероиды (мометазон, флутиказон)" }
+kind: drug
+class: steroid.intranasal
+route: nasal
+cost: 450
+effects:
+  - { on: cond.allergic_rhinitis, kind: cure, band: usually, days: [2, 7] }
+  - { on: cond.sinusitis_acute, kind: cure, band: often, days: [3, 7] }
+  - { on: cond.sinusitis_bacterial, kind: relieve, band: often, days: [2, 5] }
+texts:
+  hint:
+    ru: "Гормональный спрей в нос снимает отёк слизистой. Самое действенное средство при аллергическом рините и затянувшемся синусите; в крови его почти нет, поэтому он безопасен."
+sources:
+  - { kind: guideline, title: "Brożek JL et al. Allergic Rhinitis and its Impact on Asthma (ARIA) guidelines — 2016 revision. J Allergy Clin Immunol 2017;140(4):950–958" }
+  - { kind: guideline, title: "Fokkens WJ et al. European Position Paper on Rhinosinusitis and Nasal Polyps 2020. Rhinology 2020;58(Suppl S29):1–464" }
+review: draft

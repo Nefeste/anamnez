@@ -1,0 +1,16 @@
+id: exam.ask_family
+name: { ru: "Болезни у родственников" }
+kind: ask
+time: { procedure: 1 }
+cost: 0
+discomfort: 0
+checks:
+  - { f: hx.family_cad, sens: 90, spec: 98 }
+texts:
+  hint:
+    ru: "Ранний инфаркт или инсульт у родителей, братьев и сестёр повышает риск ишемической болезни сердца — это учитывают при боли в груди и высоком давлении."
+  summary:
+    ru: "Инфаркты, инсульты, диабет, гипертония у близких родственников и в каком возрасте."
+sources:
+  - { kind: guideline, title: "2021 ESC Guidelines on cardiovascular disease prevention in clinical practice. Eur Heart J 2021;42(34):3227–3337", note: "точность расспроса — игровая оценка" }
+review: draft

@@ -1,0 +1,14 @@
+id: tx.ics_laba
+name: { ru: "Ингаляционный глюкокортикостероид с формотеролом (будесонид/формотерол)" }
+kind: drug
+class: asthma.ics_laba
+route: inhaled
+cost: 900
+effects:
+  - { on: cond.asthma_exacerbation, kind: cure, band: often, days: [2, 7] }
+texts:
+  hint:
+    ru: "Ингалятор с гормоном и бронхолитиком длительного действия: лечит воспаление в бронхах при астме. По современным рекомендациям им же снимают и лёгкие приступы."
+sources:
+  - { kind: guideline, title: "Global Initiative for Asthma. Global Strategy for Asthma Management and Prevention", org: "GINA", year: 2024 }
+review: draft

@@ -1,0 +1,17 @@
+id: tx.aspirin_acs
+name: { ru: "Ацетилсалициловая кислота (разжевать)" }
+kind: drug
+class: antiplatelet.aspirin
+route: oral
+cost: 50
+effects:
+  - { on: cond.acs, kind: cure, band: sometimes, days: [3, 7] }
+contraindications:
+  - { id: risk.allergy_nsaid, level: absolute, reaction: often }
+texts:
+  hint:
+    ru: "Разжёванная таблетка аспирина при подозрении на инфаркт мешает тромбу расти и снижает смертность. Дают сразу, до приезда скорой, если нет аллергии на аспирин."
+sources:
+  - { kind: guideline, title: "2023 ESC Guidelines for the management of acute coronary syndromes. Eur Heart J 2023;44(38):3720–3826" }
+  - { kind: guideline, title: "Острый инфаркт миокарда с подъёмом сегмента ST электрокардиограммы", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru" }
+review: draft

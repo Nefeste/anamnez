@@ -4,6 +4,7 @@ import { describe, expect, test } from 'bun:test';
 import { Rng } from '../../src/engine/core/rng';
 import { complaintObservations, runExam } from '../../src/engine/med/exams';
 import { generatePatient } from '../../src/engine/med/generate';
+import { observationText } from '../../src/engine/med/text';
 import type { Patient } from '../../src/engine/med/types';
 import { buildDb } from '../content/load';
 
@@ -90,6 +91,47 @@ describe('случай согласован', () => {
     }
     const obs = complaintObservations(patients[0]);
     expect(obs.every(o => o.shown && o.exam === 'complaint')).toBe(true);
+  });
+
+  test('с чем пришёл, на то и жалуется; без жалоб приходят только с тем, что находят на профосмотре', () => {
+    let checkups = 0;
+    for (const p of patients) {
+      const primary = db.conditions[p.truth.conditions[0].id];
+      const cause = (f: string) => p.truth.findings.find(x => x.f === f)?.cause;
+      if (primary.checkup) {
+        if (p.complaints.length === 0) checkups++;
+        continue;
+      }
+      // первая жалоба — от болезней пациента, а не фоновая
+      expect(`${p.seed} ${primary.id} ${p.complaints[0]} ${cause(p.complaints[0])}`).not.toMatch(/ (undefined|leak)$/);
+      expect(p.complaints.some(f => cause(f) === primary.id)).toBe(true);
+    }
+    expect(checkups).toBeGreaterThan(10); // гипертонию и диабет находят и у тех, кто ни на что не жалуется
+  });
+
+  test('беременность — только у женщин 18–44 лет; «впервые выявленное» — только у тех, у кого этого ещё нет', () => {
+    let pregnant = 0;
+    for (const p of patients) {
+      const ids = p.truth.conditions.map(c => c.id);
+      if (p.truth.risks.includes('risk.pregnancy')) {
+        pregnant++;
+        expect(p.sex).toBe('f');
+        expect(p.age).toBeLessThanOrEqual(44);
+      }
+      if (p.truth.risks.includes('risk.heavy_periods')) expect(p.sex === 'f' && p.age <= 50).toBe(true);
+      if (ids[0] === 'cond.hypertension_new') expect(ids).not.toContain('cond.hypertension');
+      if (ids[0] === 'cond.diabetes2_new') expect(ids).not.toContain('cond.diabetes2');
+    }
+    expect(pregnant).toBeGreaterThan(20);
+  });
+
+  test('давление показывается двумя числами: нижнее — из верхнего', () => {
+    const p = patients.find(x => x.truth.findings.some(f => f.f === 'vital.bp_high'))!;
+    const o = runExam(db, p, 'exam.vitals', Rng.seeded(1)).find(x => x.f === 'vital.bp_high')!;
+    const text = observationText(db, o, p.sex, p.seed);
+    expect(text).toMatch(/^Давление \d{2,3}\/\d{2,3} мм рт\. ст\.$/);
+    const [sys, dia] = text.match(/\d+/g)!.map(Number);
+    expect(dia).toBe(Math.round(sys * 0.62));
   });
 
   test('зимой грипп встречается чаще, чем летом', () => {

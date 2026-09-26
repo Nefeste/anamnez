@@ -6,9 +6,10 @@ route: oral
 cost: 100
 effects:
   - { on: cond.copd_exacerbation, kind: cure, band: often, days: [2, 5] }
+  - { on: cond.asthma_exacerbation, kind: cure, band: usually, days: [2, 5] }
 texts:
   hint:
-    ru: "Гормон (например, преднизолон), снимающий воспаление в бронхах: короткий курс при обострении ХОБЛ ускоряет выздоровление. При простуде и бронхите у здоровых не нужен."
+    ru: "Гормон (например, преднизолон), снимающий воспаление в бронхах: короткий курс при обострении ХОБЛ и астмы ускоряет выздоровление. При простуде, бронхите и лёгком COVID-19 не нужен."
 sources:
   - { kind: guideline, title: "Хроническая обструктивная болезнь лёгких", org: "Минздрав РФ", note: "черновик: название и редакцию сверить на cr.minzdrav.gov.ru" }
   - { kind: guideline, title: "Global Strategy for the Diagnosis, Management and Prevention of COPD (GOLD) 2024", org: "GOLD", note: "черновик: сверить раздел об обострениях" }

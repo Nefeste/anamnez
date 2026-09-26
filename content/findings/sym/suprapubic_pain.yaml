@@ -1,0 +1,14 @@
+id: sym.suprapubic_pain
+name: { ru: "Боль внизу живота над лобком" }
+leak: { pct: 1 }
+salience: 2
+texts:
+  hint:
+    ru: "Тянущая боль над лобком, где мочевой пузырь, — частый спутник цистита."
+  complaint:
+    - ru: "Тянет внизу живота"
+  present:
+    - ru: "Боль внизу живота над лобком"
+  absent:
+    - ru: "Внизу живота не болит"
+review: draft

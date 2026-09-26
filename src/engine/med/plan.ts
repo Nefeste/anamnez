@@ -39,6 +39,8 @@ export interface PlanEval {
   unaskedRisk: Id[];
   /** к препарату выбора есть противопоказание, о котором врач знает, — замена оправдана */
   firstLineBlocked: boolean;
+  /** что сделать до приезда скорой: первая линия состояния, которое лечат не дома (ОКС) */
+  preHospital: Id[];
 }
 
 export function primaryOf(patient: Patient) {
@@ -64,6 +66,7 @@ export function recommendedSetting(db: ContentDb, patient: Patient): Setting {
   if (rule.param) raise(rule.param.map[primary.params[rule.param.name]]);
   const has = new Set(patient.truth.findings.map(f => f.f));
   if (rule.redFlag && (cond.redFlags ?? []).some(f => has.has(f))) raise(rule.redFlag);
+  for (const r of rule.risks ?? []) if (patient.truth.risks.includes(r.id)) raise(r.setting);
   return best;
 }
 
@@ -88,7 +91,8 @@ export function evaluatePlan(db: ContentDb, patient: Patient, plan: Plan, observ
     }
   }
   const effective = plan.treatments.some(tx => db.treatments[tx]?.effects.some(e => e.on === primary && e.kind === 'cure'));
-  const firstLineBlocked = (db.conditions[primary].treatment?.firstLine ?? [])
+  const tactics = db.conditions[primary].treatment;
+  const firstLineBlocked = (tactics?.firstLine ?? [])
     .some(tx => db.treatments[tx]?.contraindications.some(k => knownIds.has(k.id)));
   return {
     primary,
@@ -98,5 +102,6 @@ export function evaluatePlan(db: ContentDb, patient: Patient, plan: Plan, observ
     effective,
     unaskedRisk: unaskedRisk.sort(),
     firstLineBlocked,
+    preHospital: tactics && tactics.setting.default !== 'home' ? tactics.firstLine : [],
   };
 }

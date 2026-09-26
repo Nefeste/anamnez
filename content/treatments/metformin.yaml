@@ -1,0 +1,16 @@
+id: tx.metformin
+name: { ru: "Метформин" }
+kind: drug
+class: antidiabetic.biguanide
+route: oral
+cost: 150
+effects:
+  - { on: cond.diabetes2_new, kind: cure, band: usually, days: [30, 90] }
+contraindications:
+  - { id: risk.pregnancy, level: relative, reaction: never }
+texts:
+  hint:
+    ru: "Основное лекарство при диабете 2 типа: снижает сахар, не вызывая гипогликемий и не прибавляя вес. Начинают вместе с изменением образа жизни."
+sources:
+  - { kind: guideline, title: "Сахарный диабет 2 типа у взрослых", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru" }
+review: draft

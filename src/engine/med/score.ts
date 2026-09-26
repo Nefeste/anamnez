@@ -9,6 +9,7 @@ export type Grade = 'A' | 'B' | 'C' | 'D';
 export type ScoreNote =
   | { code: 'tx.harmful' | 'tx.notIndicated' | 'tx.acceptable'; tx: Id }
   | { code: 'tx.noCure' | 'tx.none' }
+  | { code: 'tx.preHospitalMissing'; tx: Id }
   | { code: 'setting.under' | 'setting.over'; recommended: Setting }
   | { code: 'safety.knownViolation' | 'safety.unaskedViolation'; tx: Id; by: Id }
   | { code: 'safety.notAsked'; by: Id }
@@ -62,7 +63,14 @@ export function scoreCase(x: CaseInput): CaseScore {
     if (r.role === 'notIndicated') { treatment = worst(treatment, x.plan.effective ? 'B' : 'C'); notes.push({ code: 'tx.notIndicated', tx: r.tx }); }
   }
   if (x.plan.violations.length > 0) treatment = 'D';
-  if (!x.plan.effective && !x.selfLimiting) { treatment = 'D'; notes.push({ code: 'tx.noCure' }); }
+  // направленного лечат дальше в стационаре: лечения причины здесь не ждут, а то, что
+  // делают до приезда скорой (ОКС — ацетилсалициловая кислота), — ждут
+  const referred = SETTING_ORDER[x.plan.setting.chosen] > SETTING_ORDER.home;
+  if (!x.plan.effective && !x.selfLimiting && !referred) { treatment = 'D'; notes.push({ code: 'tx.noCure' }); }
+  if (referred && x.plan.preHospital.length > 0 && !roles.some(r => x.plan.preHospital.includes(r.tx))) {
+    treatment = worst(treatment, 'B');
+    notes.push({ code: 'tx.preHospitalMissing', tx: x.plan.preHospital[0] });
+  }
   if (roles.length === 0 && x.selfLimiting) { treatment = worst(treatment, 'B'); notes.push({ code: 'tx.none' }); }
   if (x.plan.effective && !roles.some(r => r.role === 'firstLine')) {
     // замена препарата выбора оправдана, если о противопоказании к нему врач знал

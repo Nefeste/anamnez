@@ -1,0 +1,17 @@
+id: lab.creatinine_high
+name: { ru: "Креатинин повышен" }
+leak: { pct: 3 }
+value:
+  unit: "мкмоль/л"
+  ref: [60, 110]
+  present: [120, 260]
+  absent: [58, 105]
+  decimals: 0
+texts:
+  hint:
+    ru: "Креатинин — продукт обмена мышц, его выводят почки. Если он повышен, почки работают хуже: при обезвоживании, тяжёлой инфекции, давней гипертонии."
+  present:
+    - ru: "Креатинин {value} {unit}"
+  absent:
+    - ru: "Креатинин {value} {unit}"
+review: draft

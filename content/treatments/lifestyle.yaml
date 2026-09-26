@@ -1,0 +1,16 @@
+id: tx.lifestyle
+name: { ru: "Изменение образа жизни" }
+kind: regimen
+cost: 0
+effects:
+  - { on: cond.gerd, kind: relieve, band: often, days: [7, 30] }
+  - { on: cond.dyspepsia_functional, kind: relieve, band: sometimes, days: [7, 30] }
+  - { on: cond.hypertension_new, kind: cure, band: sometimes, days: [30, 90] }
+  - { on: cond.diabetes2_new, kind: cure, band: sometimes, days: [60, 180] }
+  - { on: cond.tension_headache, kind: relieve, band: sometimes, days: [7, 30] }
+texts:
+  hint:
+    ru: "Питание, снижение веса, физическая активность, отказ от курения, меньше алкоголя и соли. Основа лечения гипертонии и диабета 2 типа; при рефлюксе — не есть на ночь и поднять изголовье."
+sources:
+  - { kind: guideline, title: "Гастроэзофагеальная рефлюксная болезнь", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru" }
+review: draft
