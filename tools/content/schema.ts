@@ -28,6 +28,8 @@ const probability = z.union([band, z.strictObject({ pct: z.number().min(0).max(1
 
 const text = z.strictObject({ ru: z.string().min(1), en: z.string().optional() });
 const texts = z.array(text).min(1);
+/** «Что это?»: одна-две фразы простыми словами, без доз и торговых названий. */
+const hint = z.strictObject({ ru: z.string().min(20).max(320), en: z.string().optional() });
 const review = z.enum(['draft', 'checked', 'reviewed']);
 const source = z.strictObject({
   kind: z.enum(['guideline', 'textbook', 'paper', 'review', 'dataset', 'score']),
@@ -101,7 +103,7 @@ export const findingSchema = z.strictObject({
     absent: z.tuple([z.number(), z.number()]),
     decimals: z.number().int().min(0).max(3),
   }).optional(),
-  texts: z.strictObject({ complaint: texts.optional(), present: texts, absent: texts.optional() }),
+  texts: z.strictObject({ complaint: texts.optional(), present: texts, absent: texts.optional(), hint }),
   sources: z.array(source).optional(),
   review,
 });
@@ -118,7 +120,7 @@ export const examSchema = z.strictObject({
   radiation: z.enum(['none', 'low', 'medium', 'high']).optional(),
   /** чувствительность и специфичность — в процентах */
   checks: z.array(z.strictObject({ f: z.string(), sens: accuracy, spec: accuracy })).min(1),
-  texts: z.strictObject({ summary: text }),
+  texts: z.strictObject({ summary: text, hint }),
   sources: z.array(source).min(1),
   review,
 });

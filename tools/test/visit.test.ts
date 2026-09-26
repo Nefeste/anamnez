@@ -1,7 +1,7 @@
 // Приём пациента прототипа П4 (spec 2026-09-spikes): модуль грузится, часы идут делами,
 // результаты приходят в свой срок, правда видна только в разборе после диагноза.
 import { describe, expect, test } from 'bun:test';
-import { act, conditionChoices, diagnose, examInfo, examsByAction, nextPatient, visitView, waitForResults } from '../../src/state/visit';
+import { act, conditionChoices, conditionTerm, diagnose, examInfo, examsByAction, examTerm, findingInfo, nextPatient, visitView, waitForResults } from '../../src/state/visit';
 
 describe('приём', () => {
   test('разделы действий делят обследования без пересечений', () => {
@@ -44,6 +44,36 @@ describe('приём', () => {
     expect(c.results.some(l => l.exam === 'exam.cbc')).toBe(true);
     expect(c.minutesSpent).toBeGreaterThan(b.minutesSpent);
     expect(c.meanwhile.join(' ')).toContain(examInfo('exam.cbc').name);
+  });
+
+  test('новые результаты — сверху и помечены, до следующего действия', () => {
+    act('exam.vitals');
+    const a = visitView();
+    expect(a.groups[0].exam).toBe('exam.vitals');
+    expect(a.groups[0].fresh).toBe(true);
+    expect(a.groups.slice(1).every(g => !g.fresh)).toBe(true);
+    expect(a.freshCount).toBe(a.groups[0].lines.length);
+
+    act('exam.crp'); // результат позже — нового пока ничего
+    const b = visitView();
+    expect(b.freshCount).toBe(0);
+    expect(b.groups.every(g => !g.fresh)).toBe(true);
+
+    waitForResults();
+    const c = visitView();
+    expect(c.groups[0].exam).toBe('exam.crp');
+    expect(c.groups[0].fresh).toBe(true);
+    expect(new Set(c.groups.map(g => g.key)).size).toBe(c.groups.length);
+  });
+
+  test('«Что это?»: признак, обследование и болезнь объясняются из базы', () => {
+    const f = findingInfo('sign.crackles_local');
+    expect(f.text[0]).toContain('треск');
+    expect(f.list?.items).toContain(examInfo('exam.lung_auscultation').name);
+    const e = examTerm('exam.cbc');
+    expect(e.text.length).toBe(2);
+    expect(e.list?.items.length).toBeGreaterThan(0);
+    expect(conditionTerm('cond.pneumonia_cap').text[0].length).toBeGreaterThan(20);
   });
 
   test('диагноз закрывает приём и открывает разбор', () => {
