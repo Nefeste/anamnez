@@ -67,9 +67,23 @@ try {
   await page.goto(`${base}/spikes/patient`);
   await page.getByTestId('exam-exam.ask_complaints').waitFor({ timeout: 30_000 });
   await page.screenshot({ path: join(OUT, '04-patient-start.png') });
+  // «Что это?» у обследования и у жалобы
+  await page.getByTestId('exam-exam.ask_complaints-info').click();
+  await page.getByTestId('term-sheet').waitFor({ timeout: 5000 });
+  // innerText учитывает text-transform: заголовки справки — прописными
+  check((await page.getByTestId('term-sheet').innerText()).toLowerCase().includes('что проверяет'), 'П4: «Что это?» объясняет обследование');
+  await page.waitForTimeout(600); // карточка выезжает снизу
+  await page.screenshot({ path: join(OUT, '04-term.png') });
+  await page.getByTestId('term-sheet-close').click();
+  await page.getByTestId('term-sheet').waitFor({ state: 'detached', timeout: 5000 });
   await page.getByTestId('exam-exam.ask_complaints').click();
   await page.getByTestId('tab-examine').click();
   await page.getByTestId('exam-exam.lung_auscultation').click();
+  await page.getByTestId('visit-fresh').first().waitFor({ timeout: 5000 });
+  check(await page.getByTestId('visit-fresh').first().isVisible(), `П4: новые результаты выделены — ${await text(page, 'visit-fresh-count')}`);
+  await page.getByTestId('visit-fresh').first().scrollIntoViewIfNeeded();
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(OUT, '04-fresh.png') });
   await page.getByTestId('exam-exam.vitals').click();
   await page.getByTestId('tab-order').click();
   await page.getByTestId('exam-exam.xray_chest').click();
@@ -84,6 +98,9 @@ try {
   const truth = await text(page, 'visit-truth');
   check(truth.startsWith('На самом деле:'), `П4: разбор показывает правду — ${truth}`);
   await page.screenshot({ path: join(OUT, '05-review.png'), fullPage: true });
+  await page.getByTestId('visit-next').click();
+  await page.getByTestId('exam-exam.ask_complaints').waitFor({ timeout: 5000 });
+  check((await page.getByTestId('tab-ask').getAttribute('aria-selected')) === 'true', 'П4: у следующего пациента открыта вкладка «Спросить»');
 
   // П5: снимки, ЭКГ, портреты
   await page.goto(`${base}/spikes/imaging`);

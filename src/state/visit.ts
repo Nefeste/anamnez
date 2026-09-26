@@ -31,6 +31,23 @@ export interface Line {
   exam: Id | 'complaint';
 }
 
+/** Результаты одного обследования. `fresh` — пришли за последнее действие игрока. */
+export interface ResultGroup {
+  key: string;
+  exam: Id;
+  name: string;
+  at: string;
+  fresh: boolean;
+  lines: Line[];
+}
+
+/** Справка о термине для «Что это?»: только знания из базы, не правда о пациенте. */
+export interface TermInfo {
+  title: string;
+  text: string[];
+  list?: { label: string; items: string[] };
+}
+
 export interface Decision {
   diagnosis: Id;
   verdict: 'correct' | 'partly' | 'wrong';
@@ -50,7 +67,12 @@ export interface VisitView {
   minutesSpent: number;
   money: number;
   complaints: Line[];
+  /** все результаты по порядку прихода */
   results: Line[];
+  /** те же результаты по обследованиям, новые сверху */
+  groups: ResultGroup[];
+  /** сколько результатов пришло за последнее действие */
+  freshCount: number;
   pending: { name: string; at: string }[];
   meanwhile: string[];
   done: Id[];
@@ -58,12 +80,21 @@ export interface VisitView {
   decision?: Decision;
 }
 
+/** Результаты, пришедшие разом: шаг — номер действия игрока, за которое они пришли. */
+interface Arrival {
+  exam: Id;
+  step: number;
+  at: number;
+  obs: Observation[];
+}
+
 interface State {
   patient: Patient;
   rng: Rng;
   clock: number;
   money: number;
-  results: Observation[];
+  step: number;
+  arrived: Arrival[];
   pending: Pending[];
   meanwhile: string[];
   done: Id[];
@@ -73,7 +104,7 @@ interface State {
 
 function start(seed: number): State {
   const patient = generatePatient(db, seed, { department: DEPARTMENT, season: 'winter' });
-  return { patient, rng: Rng.seeded(seed).fork('visit'), clock: START, money: 0, results: [], pending: [], meanwhile: [], done: [], version: 0 };
+  return { patient, rng: Rng.seeded(seed).fork('visit'), clock: START, money: 0, step: 0, arrived: [], pending: [], meanwhile: [], done: [], version: 0 };
 }
 
 function changed() {
@@ -86,10 +117,12 @@ function hhmm(min: number) {
   return `${String(Math.floor(min / 60) % 24).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
 }
 
+const resultsOf = (s: State): Observation[] => s.arrived.flatMap(a => a.obs);
+
 function flush(s: State) {
   const ready = s.pending.filter(p => p.readyAt <= s.clock).sort((a, b) => a.readyAt - b.readyAt);
   for (const p of ready) {
-    s.results.push(...p.obs);
+    s.arrived.push({ exam: p.exam, step: s.step, at: p.readyAt, obs: p.obs });
     s.meanwhile.push(T.spikes.patient.ready(db.exams[p.exam].name.ru));
   }
   s.pending = s.pending.filter(p => p.readyAt > s.clock);
@@ -100,6 +133,7 @@ export function act(examId: Id) {
   const s = state;
   if (s.decision || s.done.includes(examId)) return;
   const e = db.exams[examId];
+  s.step++;
   s.meanwhile = [];
   s.clock += e.time.procedure;
   s.money += e.cost;
@@ -107,7 +141,7 @@ export function act(examId: Id) {
   const obs = runExam(db, s.patient, examId, s.rng.fork(`order:${s.done.length}:${examId}`));
   const wait = (e.time.turnaround ?? 0) + (e.time.report ?? 0);
   if (wait > 0) s.pending.push({ exam: examId, readyAt: s.clock + wait, obs });
-  else s.results.push(...obs);
+  else s.arrived.push({ exam: examId, step: s.step, at: s.clock, obs });
   flush(s);
   changed();
 }
@@ -116,6 +150,7 @@ export function act(examId: Id) {
 export function waitForResults() {
   const s = state;
   if (s.pending.length === 0) return;
+  s.step++;
   s.meanwhile = [];
   s.clock = Math.min(...s.pending.map(p => p.readyAt));
   flush(s);
@@ -135,7 +170,7 @@ export function diagnose(id: Id) {
     outOf10: Math.round((b?.p ?? 0) * 10),
     pearls: (db.conditions[truth].pearls ?? []).map(p => p.ru),
     causes: s.patient.truth.findings
-      .filter(f => s.results.some(o => o.f === f.f && o.shown) || s.patient.complaints.includes(f.f))
+      .filter(f => resultsOf(s).some(o => o.f === f.f && o.shown) || s.patient.complaints.includes(f.f))
       .map(f => ({ finding: db.findings[f.f].name.ru, cause: f.cause === 'leak' ? T.spikes.patient.causeLeak : (db.conditions[f.cause]?.name.ru ?? db.risks[f.cause]?.name.ru ?? f.cause) })),
   };
   changed();
@@ -151,7 +186,7 @@ function candidates(): Id[] {
 }
 
 function beliefs(s: State): Belief[] {
-  const obs = [...complaintObservations(s.patient), ...s.results];
+  const obs = [...complaintObservations(s.patient), ...resultsOf(s)];
   const known = knownFacts(db, obs);
   return posterior(db, candidates(), obs, { sex: s.patient.sex, age: s.patient.age, season: s.patient.season, knownRisks: known.risks, knownConditions: known.conditions });
 }
@@ -179,7 +214,11 @@ function makeView(s: State): VisitView {
     minutesSpent: s.clock - START,
     money: s.money,
     complaints: complaintObservations(p).map(line),
-    results: s.results.map(line),
+    results: resultsOf(s).map(line),
+    groups: s.arrived
+      .map((a, i) => ({ key: `${i}:${a.exam}`, exam: a.exam, name: db.exams[a.exam].name.ru, at: hhmm(a.at), fresh: s.step > 0 && a.step === s.step, lines: a.obs.map(line) }))
+      .reverse(),
+    freshCount: s.arrived.filter(a => s.step > 0 && a.step === s.step).reduce((n, a) => n + a.obs.length, 0),
     pending: s.pending.map(x => ({ name: db.exams[x.exam].name.ru, at: hhmm(x.readyAt) })),
     meanwhile: s.meanwhile,
     done: s.done,
@@ -222,6 +261,33 @@ export function examsByAction(): Record<'ask' | 'examine' | 'order', Id[]> {
 export function examInfo(id: Id): { name: string; minutes: number; cost: number } {
   const e = db.exams[id];
   return { name: e.name.ru, minutes: e.time.procedure + (e.time.report ?? 0) + (e.time.turnaround ?? 0), cost: e.cost };
+}
+
+/** «Что это?» о признаке: объяснение и чем его выявляют. */
+export function findingInfo(id: Id): TermInfo {
+  const f = db.findings[id];
+  const by = (db.revealedBy[id] ?? []).map(e => db.exams[e].name.ru);
+  return {
+    title: f.name.ru,
+    text: f.texts.hint ? [f.texts.hint.ru] : [],
+    list: by.length > 0 ? { label: T.spikes.patient.revealedBy, items: by } : undefined,
+  };
+}
+
+/** «Что это?» об обследовании: как делают, что показывает, какие признаки проверяет. */
+export function examTerm(id: Id): TermInfo {
+  const e = db.exams[id];
+  return {
+    title: e.name.ru,
+    text: [e.texts.summary.ru, ...(e.texts.hint ? [e.texts.hint.ru] : [])],
+    list: { label: T.spikes.patient.checks, items: e.checks.map(c => db.findings[c.f].name.ru) },
+  };
+}
+
+/** «Что это?» о болезни — только общее описание из энциклопедии. */
+export function conditionTerm(id: Id): TermInfo {
+  const c = db.conditions[id];
+  return { title: c.name.ru, text: [c.texts.summary.ru] };
 }
 
 export function conditionChoices(): { id: Id; name: string }[] {

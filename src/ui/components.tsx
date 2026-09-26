@@ -1,13 +1,14 @@
 // Общие элементы интерфейса. Без системного Alert: в веб-сборке он не работает (AGENTS.md).
 import type { ReactNode } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View, type ViewStyle } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radius, space, touch } from './theme';
 
-export function Screen({ children, scroll = true }: { children: ReactNode; scroll?: boolean }) {
+/** Экран с прокруткой. Смена `resetKey` возвращает прокрутку наверх (новый пациент). */
+export function Screen({ children, scroll = true, resetKey }: { children: ReactNode; scroll?: boolean; resetKey?: string | number }) {
   return (
     <SafeAreaView style={styles.screen} edges={['bottom', 'left', 'right']}>
-      {scroll ? <ScrollView contentContainerStyle={styles.content}>{children}</ScrollView> : <View style={styles.fill}>{children}</View>}
+      {scroll ? <ScrollView key={resetKey} contentContainerStyle={styles.content}>{children}</ScrollView> : <View style={styles.fill}>{children}</View>}
     </SafeAreaView>
   );
 }
@@ -24,19 +25,50 @@ export function P({ children, muted, testID }: { children: ReactNode; muted?: bo
   return <Text testID={testID} style={[styles.p, muted && styles.muted]}>{children}</Text>;
 }
 
-export function Button({ title, onPress, hint, kind = 'primary', disabled, testID }: {
+/** Кнопка; `onInfo` добавляет справа «?» — справку «Что это?» (нажимается отдельно). */
+export function Button({ title, onPress, hint, kind = 'primary', disabled, testID, onInfo, infoLabel }: {
   title: string; onPress: () => void; hint?: string; kind?: 'primary' | 'plain'; disabled?: boolean; testID?: string;
+  onInfo?: () => void; infoLabel?: string;
 }) {
   return (
-    <Pressable
-      testID={testID}
-      accessibilityRole="button"
-      disabled={disabled}
-      onPress={onPress}
-      style={({ pressed }) => [styles.btn, kind === 'plain' && styles.btnPlain, disabled && styles.btnDisabled, pressed && styles.btnPressed]}>
-      <Text style={[styles.btnText, kind === 'plain' && styles.btnTextPlain]}>{title}</Text>
-      {hint ? <Text style={[styles.btnHint, kind === 'plain' && styles.muted]}>{hint}</Text> : null}
-    </Pressable>
+    <View style={styles.btnRow}>
+      <Pressable
+        testID={testID}
+        accessibilityRole="button"
+        disabled={disabled}
+        onPress={onPress}
+        style={({ pressed }) => [styles.btn, styles.fill, kind === 'plain' && styles.btnPlain, disabled && styles.btnDisabled, pressed && styles.btnPressed]}>
+        <Text style={[styles.btnText, kind === 'plain' && styles.btnTextPlain]}>{title}</Text>
+        {hint ? <Text style={[styles.btnHint, kind === 'plain' && styles.muted]}>{hint}</Text> : null}
+      </Pressable>
+      {onInfo ? (
+        <Pressable
+          testID={testID ? `${testID}-info` : undefined}
+          accessibilityRole="button"
+          accessibilityLabel={infoLabel}
+          hitSlop={8}
+          onPress={onInfo}
+          style={({ pressed }) => [styles.info, pressed && styles.btnPressed]}>
+          <Text style={styles.infoText}>?</Text>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+/** Карточка поверх экрана: закрывается кнопкой, касанием фона и «назад» Android. */
+export function Sheet({ visible, onClose, closeTitle, children, testID }: {
+  visible: boolean; onClose: () => void; closeTitle: string; children: ReactNode; testID?: string;
+}) {
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.backdrop} onPress={onClose}>
+        <Pressable testID={testID} style={styles.sheet} onPress={() => undefined}>
+          {children}
+          <Button testID={testID ? `${testID}-close` : undefined} title={closeTitle} onPress={onClose} />
+        </Pressable>
+      </Pressable>
+    </Modal>
   );
 }
 
@@ -51,7 +83,7 @@ export function Tabs<K extends string>({ items, value, onChange }: { items: { ke
             key={key}
             testID={`tab-${key}`}
             accessibilityRole="tab"
-            accessibilityState={{ selected: on }}
+            aria-selected={on}
             onPress={() => onChange(key)}
             style={({ pressed }) => [styles.tab, on && styles.tabOn, pressed && styles.btnPressed]}>
             <Text numberOfLines={1} style={[styles.tabText, on && styles.tabTextOn]}>{title}</Text>
@@ -67,9 +99,9 @@ export function Chips({ children }: { children: ReactNode }) {
   return <View style={styles.chips}>{children}</View>;
 }
 
-export function Chip({ text, strong, onPress }: { text: string; strong?: boolean; onPress?: () => void }) {
+export function Chip({ text, strong, onPress, testID }: { text: string; strong?: boolean; onPress?: () => void; testID?: string }) {
   return (
-    <Pressable onPress={onPress} disabled={!onPress} style={[styles.chip, strong ? styles.chipStrong : styles.chipWeak]}>
+    <Pressable testID={testID} onPress={onPress} disabled={!onPress} style={({ pressed }) => [styles.chip, strong ? styles.chipStrong : styles.chipWeak, pressed && styles.btnPressed]}>
       <Text style={[styles.chipText, !strong && styles.muted]}>{text}</Text>
     </Pressable>
   );
@@ -90,6 +122,11 @@ const styles = StyleSheet.create({
   btnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   btnTextPlain: { color: colors.ink },
   btnHint: { color: '#E4F4F2', fontSize: 13, marginTop: 2 },
+  btnRow: { flexDirection: 'row', alignItems: 'center', gap: space.s },
+  info: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' },
+  infoText: { fontSize: 17, fontWeight: '700', color: colors.accent },
+  backdrop: { flex: 1, backgroundColor: 'rgba(12,24,26,0.45)', justifyContent: 'flex-end' },
+  sheet: { backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: space.xl, gap: space.m, maxWidth: 640, width: '100%', alignSelf: 'center' },
   tabs: { flexDirection: 'row', backgroundColor: colors.card, borderRadius: radius, borderWidth: 1, borderColor: colors.line, padding: space.xs, gap: space.xs },
   tab: { flex: 1, minHeight: touch - 2 * space.xs, borderRadius: radius - space.xs, alignItems: 'center', justifyContent: 'center', paddingHorizontal: space.xs },
   tabOn: { backgroundColor: colors.accent },

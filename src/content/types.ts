@@ -105,6 +105,8 @@ export interface Finding {
     complaint?: Text[];
     present: Text[];
     absent?: Text[];
+    /** «Что это?» простыми словами — для тех, кто не медик (05-content.md §4) */
+    hint?: Text;
   };
   review: Review;
 }
@@ -126,7 +128,8 @@ export interface Exam {
   discomfort: 0 | 1 | 2 | 3;
   radiation?: 'none' | 'low' | 'medium' | 'high';
   checks: ExamCheck[];
-  texts: { summary: Text };
+  /** summary — как делают; hint — что показывает, простыми словами */
+  texts: { summary: Text; hint?: Text };
   sources: Source[];
   review: Review;
 }

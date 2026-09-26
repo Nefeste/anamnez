@@ -53,6 +53,14 @@ describe('валидатор базы', () => {
     expect(errors.some(e => e.includes('arvi.yaml'))).toBe(true);
   });
 
+  test('у признака и обследования есть «Что это?» простыми словами', () => {
+    const { db } = buildDb();
+    for (const f of Object.values(db.findings)) expect(f.texts.hint?.ru.length ?? 0).toBeGreaterThan(20);
+    for (const e of Object.values(db.exams)) expect(e.texts.hint?.ru.length ?? 0).toBeGreaterThan(20);
+    const errors = broken(d => edit(d, 'findings/sym/cough.yaml', '  hint:\n', '  hint_draft:\n'));
+    expect(errors.some(e => e.includes('cough.yaml'))).toBe(true);
+  });
+
   test('имя файла и идентификатор должны совпадать', () => {
     const errors = broken(d => edit(d, 'exams/crp.yaml', 'id: exam.crp', 'id: exam.crp_blood'));
     expect(errors.some(e => e.includes('не совпадает с именем файла'))).toBe(true);

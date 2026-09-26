@@ -9,6 +9,8 @@ checks:
   - { f: sign.pharyngeal_hyperemia, sens: 90, spec: 85 }
   - { f: sign.tender_cervical_nodes, sens: 80, spec: 90 }
 texts:
+  hint:
+    ru: "Налёты на миндалинах и болезненные лимфоузлы — доводы за стрептококковую ангину, насморк и кашель — против."
   summary:
     ru: "Миндалины, задняя стенка глотки, шейные лимфоузлы."
 sources:
