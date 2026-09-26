@@ -1,0 +1,10 @@
+id: sym.chronic_cough
+name: { ru: "Кашель много месяцев" }
+leak: { pct: 3 }
+salience: 1
+texts:
+  present:
+    - ru: "Кашляю по утрам уже много лет"
+  absent:
+    - ru: "Постоянного кашля раньше не было"
+review: draft

@@ -53,3 +53,6 @@ tools/e2e/out/
 
 # Claude Code
 .claude/worktrees/
+
+# CanvasKit для веб-сборки: кладёт setup-skia-web (npm run export:web)
+public/canvaskit.wasm

@@ -1,0 +1,10 @@
+id: hx.smoking
+name: { ru: "Курит" }
+leak: never
+texts:
+  present:
+    - ru: "Курю, около пачки в день"
+    - ru: "Курю, бросить не получается"
+  absent:
+    - ru: "Не курю"
+review: draft

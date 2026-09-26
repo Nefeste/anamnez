@@ -1,0 +1,16 @@
+id: exam.ask_onset
+name: { ru: "Как началась болезнь и сколько длится" }
+kind: ask
+time: { procedure: 2 }
+cost: 0
+discomfort: 0
+checks:
+  - { f: sym.abrupt_onset, sens: 85, spec: 90 }
+  - { f: sym.chronic_cough, sens: 88, spec: 95 }
+  - { f: sym.cough_long, sens: 92, spec: 95 }
+texts:
+  summary:
+    ru: "Остро или постепенно, что было до этого, бывало ли так раньше."
+sources:
+  - { kind: textbook, title: "Пропедевтика внутренних болезней: расспрос больного", note: "точность расспроса — игровая оценка, не из литературы" }
+review: draft

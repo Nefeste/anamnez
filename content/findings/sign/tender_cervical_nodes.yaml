@@ -1,0 +1,9 @@
+id: sign.tender_cervical_nodes
+name: { ru: "Болезненные переднешейные лимфоузлы" }
+leak: { pct: 3 }
+texts:
+  present:
+    - ru: "Переднешейные лимфоузлы увеличены, болезненны"
+  absent:
+    - ru: "Шейные лимфоузлы не увеличены"
+review: draft

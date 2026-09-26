@@ -1,0 +1,15 @@
+id: vital.fever
+name: { ru: "Лихорадка 38 °C и выше" }
+leak: { pct: 1 }
+value:
+  unit: "°C"
+  ref: [36.0, 37.0]
+  present: [38.0, 40.2]
+  absent: [36.2, 37.7]
+  decimals: 1
+texts:
+  present:
+    - ru: "Температура {value} {unit}"
+  absent:
+    - ru: "Температура {value} {unit}"
+review: draft

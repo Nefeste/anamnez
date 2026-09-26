@@ -1,0 +1,15 @@
+id: exam.lung_auscultation
+name: { ru: "Аускультация лёгких" }
+kind: physical
+time: { procedure: 2 }
+cost: 0
+discomfort: 0
+checks:
+  - { f: sign.crackles_local, sens: 80, spec: 95 }
+  - { f: sign.wheezes, sens: 85, spec: 95 }
+texts:
+  summary:
+    ru: "Выслушать лёгкие фонендоскопом с обеих сторон, сверху вниз."
+sources:
+  - { kind: paper, title: "Metlay JP, Kapoor WN, Fine MJ. Does this patient have community-acquired pneumonia? JAMA 1997;278(17):1440–1445", note: "черновик: сверить согласие врачей в выслушивании хрипов" }
+review: draft

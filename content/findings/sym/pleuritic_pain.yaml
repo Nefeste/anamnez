@@ -1,0 +1,17 @@
+id: sym.pleuritic_pain
+name: { ru: "Боль в груди при дыхании" }
+leak: { pct: 1 }
+salience: 3
+attrs:
+  side:
+    right: { ru: "справа" }
+    left: { ru: "слева" }
+    both: { ru: "с обеих сторон" }
+texts:
+  complaint:
+    - ru: "Колет в груди {side}, когда вдыхаю или кашляю"
+  present:
+    - ru: "Боль в грудной клетке {side}, усиливается при вдохе и кашле"
+  absent:
+    - ru: "Боли в груди при дыхании нет"
+review: draft

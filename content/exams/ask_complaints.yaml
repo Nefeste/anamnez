@@ -1,0 +1,23 @@
+id: exam.ask_complaints
+name: { ru: "Расспросить о жалобах" }
+kind: ask
+time: { procedure: 3 }
+cost: 0
+discomfort: 0
+checks:
+  - { f: sym.cough, sens: 95, spec: 98 }
+  - { f: sym.fever_hx, sens: 92, spec: 95 }
+  - { f: sym.sore_throat, sens: 95, spec: 98 }
+  - { f: sym.rhinorrhea, sens: 92, spec: 96 }
+  - { f: sym.myalgia, sens: 88, spec: 94 }
+  - { f: sym.headache, sens: 92, spec: 94 }
+  - { f: sym.dyspnea, sens: 88, spec: 94 }
+  - { f: sym.pleuritic_pain, sens: 90, spec: 97 }
+  - { f: sym.chills, sens: 88, spec: 94 }
+  - { f: sym.purulent_sputum, sens: 85, spec: 94 }
+texts:
+  summary:
+    ru: "Что беспокоит, с каких пор, что ещё — подробно о каждой жалобе."
+sources:
+  - { kind: textbook, title: "Пропедевтика внутренних болезней: расспрос больного", note: "точность расспроса — игровая оценка, не из литературы" }
+review: draft

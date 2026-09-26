@@ -1,0 +1,15 @@
+id: lab.crp_high
+name: { ru: "С-реактивный белок выше 30 мг/л" }
+leak: { pct: 3 }
+value:
+  unit: "мг/л"
+  ref: [0, 5]
+  present: [31.0, 240.0]
+  absent: [0.4, 29.0]
+  decimals: 1
+texts:
+  present:
+    - ru: "С-реактивный белок {value} {unit}"
+  absent:
+    - ru: "С-реактивный белок {value} {unit}"
+review: draft

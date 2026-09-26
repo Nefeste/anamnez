@@ -1,0 +1,12 @@
+{
+  "contentHash": "fd6577e5",
+  "hash": "b8d4350c",
+  "primaries": {
+    "cond.acute_bronchitis": 158,
+    "cond.arvi": 541,
+    "cond.copd_exacerbation": 7,
+    "cond.influenza": 168,
+    "cond.pneumonia_cap": 53,
+    "cond.strep_pharyngitis": 73
+  }
+}

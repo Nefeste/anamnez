@@ -1,0 +1,14 @@
+id: sign.dullness
+name: { ru: "Притупление перкуторного звука" }
+leak: { pct: 1 }
+attrs:
+  side:
+    right: { ru: "справа" }
+    left: { ru: "слева" }
+    both: { ru: "с обеих сторон" }
+texts:
+  present:
+    - ru: "Притупление перкуторного звука в нижних отделах {side}"
+  absent:
+    - ru: "Перкуторный звук лёгочный"
+review: draft

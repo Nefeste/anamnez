@@ -1,0 +1,47 @@
+// П5 · Снимки, ЭКГ и портреты кодом.
+import { useWindowDimensions, View } from 'react-native';
+import { T } from '@/i18n';
+import { Ecg } from '@/render/Ecg';
+import { Portrait } from '@/render/Portrait';
+import { Xray } from '@/render/Xray';
+import { Card, H, P, Screen } from '@/ui/components';
+
+const PEOPLE: { seed: number; sex: 'm' | 'f'; age: number }[] = [
+  { seed: 1, sex: 'm', age: 67 }, { seed: 2, sex: 'f', age: 34 }, { seed: 3, sex: 'm', age: 22 }, { seed: 4, sex: 'f', age: 71 },
+  { seed: 5, sex: 'm', age: 45 }, { seed: 6, sex: 'f', age: 58 }, { seed: 7, sex: 'm', age: 81 }, { seed: 8, sex: 'f', age: 19 },
+  { seed: 9, sex: 'm', age: 52 }, { seed: 10, sex: 'f', age: 40 },
+];
+
+export default function ImagingSpike() {
+  const { width } = useWindowDimensions();
+  const w = Math.min(width, 640) - 64;
+  const half = (w - 12) / 2;
+  return (
+    <Screen>
+      <Card>
+        <H>{T.spikes.imaging.xrayNormal}</H>
+        <Xray width={w} seed={1} />
+        <P muted>{T.spikes.imaging.sideNote}</P>
+      </Card>
+      <Card>
+        <H>{`${T.spikes.imaging.xrayRight} · ${T.spikes.imaging.xrayLeft}`}</H>
+        <View style={{ flexDirection: 'row', gap: 12 }}>
+          <Xray width={half} seed={2} findings={{ infiltrate: { side: 'right', density: 0.8 } }} />
+          <Xray width={half} seed={3} findings={{ infiltrate: { side: 'left', density: 0.5 } }} />
+        </View>
+      </Card>
+      <Card>
+        <H>{T.spikes.imaging.ecgSinus}</H>
+        <Ecg width={w} spec={{ rhythm: 'sinus', rate: 72, seconds: 10, seed: 1 }} />
+        <H>{T.spikes.imaging.ecgAf}</H>
+        <Ecg width={w} spec={{ rhythm: 'af', rate: 110, seconds: 10, seed: 2 }} />
+      </Card>
+      <Card>
+        <H>{T.spikes.imaging.portraits}</H>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {PEOPLE.map(p => <Portrait key={p.seed} seed={p.seed} sex={p.sex} age={p.age} size={64} />)}
+        </View>
+      </Card>
+    </Screen>
+  );
+}

@@ -1,0 +1,9 @@
+id: hx.copd
+name: { ru: "Известный диагноз ХОБЛ" }
+leak: never
+texts:
+  present:
+    - ru: "У меня ХОБЛ, пользуюсь ингалятором"
+  absent:
+    - ru: "Хронических болезней лёгких у меня нет"
+review: draft

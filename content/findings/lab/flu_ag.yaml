@@ -1,0 +1,9 @@
+id: lab.flu_ag
+name: { ru: "Антиген вируса гриппа A/B" }
+leak: { pct: 0.2 }
+texts:
+  present:
+    - ru: "Экспресс-тест на грипп A/B: положительный"
+  absent:
+    - ru: "Экспресс-тест на грипп A/B: отрицательный"
+review: draft

@@ -1,0 +1,14 @@
+id: exam.ask_contacts
+name: { ru: "Контакты с больными" }
+kind: ask
+time: { procedure: 1 }
+cost: 0
+discomfort: 0
+checks:
+  - { f: hx.sick_contact, sens: 90, spec: 97 }
+texts:
+  summary:
+    ru: "Болеет ли кто-то дома или на работе."
+sources:
+  - { kind: textbook, title: "Пропедевтика внутренних болезней: расспрос больного", note: "точность расспроса — игровая оценка, не из литературы" }
+review: draft

@@ -1,0 +1,11 @@
+id: risk.smoking
+name: { ru: "Курение" }
+prevalence: { m: 40, f: 12 }
+ageMin: 18
+findings:
+  - { f: hx.smoking, band: always }
+  - { f: sym.chronic_cough, band: sometimes }
+  - { f: sym.cough_long, band: sometimes }
+sources:
+  - { kind: dataset, title: "Global Adult Tobacco Survey (GATS), Российская Федерация", org: "ВОЗ", note: "черновик: сверить год и доли по полу" }
+review: draft

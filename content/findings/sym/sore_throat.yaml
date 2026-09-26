@@ -1,0 +1,13 @@
+id: sym.sore_throat
+name: { ru: "Боль в горле" }
+leak: { pct: 3 }
+salience: 3
+texts:
+  complaint:
+    - ru: "Горло болит, глотать больно"
+    - ru: "Сильно болит горло"
+  present:
+    - ru: "Боль в горле"
+  absent:
+    - ru: "Горло не болит"
+review: draft

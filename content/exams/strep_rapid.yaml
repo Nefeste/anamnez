@@ -1,0 +1,14 @@
+id: exam.strep_rapid
+name: { ru: "Экспресс-тест на стрептококк группы А" }
+kind: rapid
+time: { procedure: 3, turnaround: 12 }
+cost: 450
+discomfort: 1
+checks:
+  - { f: lab.strep_ag, sens: 86, spec: 95 }
+texts:
+  summary:
+    ru: "Мазок с миндалин, результат через 10–15 минут."
+sources:
+  - { kind: review, title: "Cohen JF et al. Rapid antigen detection test for group A streptococcus in children with pharyngitis. Cochrane Database Syst Rev 2016", note: "данные у детей; у взрослых сверить" }
+review: draft

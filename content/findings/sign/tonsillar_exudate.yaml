@@ -1,0 +1,9 @@
+id: sign.tonsillar_exudate
+name: { ru: "Налёты на миндалинах" }
+leak: { pct: 0.5 }
+texts:
+  present:
+    - ru: "На миндалинах — гнойные налёты"
+  absent:
+    - ru: "Налётов на миндалинах нет"
+review: draft

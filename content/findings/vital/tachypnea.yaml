@@ -1,0 +1,15 @@
+id: vital.tachypnea
+name: { ru: "Частота дыхания больше 20 в минуту" }
+leak: { pct: 2 }
+value:
+  unit: "в минуту"
+  ref: [12, 20]
+  present: [21, 32]
+  absent: [13, 20]
+  decimals: 0
+texts:
+  present:
+    - ru: "Частота дыхания {value} {unit}"
+  absent:
+    - ru: "Частота дыхания {value} {unit}"
+review: draft

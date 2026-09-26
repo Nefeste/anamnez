@@ -1,0 +1,16 @@
+id: exam.throat
+name: { ru: "Осмотр зева и шеи" }
+kind: physical
+time: { procedure: 2 }
+cost: 0
+discomfort: 1
+checks:
+  - { f: sign.tonsillar_exudate, sens: 90, spec: 95 }
+  - { f: sign.pharyngeal_hyperemia, sens: 90, spec: 85 }
+  - { f: sign.tender_cervical_nodes, sens: 80, spec: 90 }
+texts:
+  summary:
+    ru: "Миндалины, задняя стенка глотки, шейные лимфоузлы."
+sources:
+  - { kind: paper, title: "Ebell MH et al. Does this patient have strep throat? JAMA 2000;284(22):2912–2918", note: "черновик: чувствительность осмотра — игровая оценка" }
+review: draft

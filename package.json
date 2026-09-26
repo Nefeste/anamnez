@@ -1,0 +1,49 @@
+{
+  "name": "anamnez",
+  "version": "0.0.1",
+  "main": "index",
+  "private": true,
+  "scripts": {
+    "start": "npm run content && expo start",
+    "android": "npm run content && expo run:android",
+    "web": "npm run content && setup-skia-web public && expo start --web",
+    "content": "bun tools/content/build.ts",
+    "doctor": "bun tools/sim/doctor.ts",
+    "typecheck": "npm run content && tsc --noEmit && tsc --noEmit -p tools",
+    "lint": "expo lint src --max-warnings 0",
+    "test": "npm run content && bun test tools/test",
+    "export:web": "npm run content && setup-skia-web public && expo export --platform web --output-dir dist-web",
+    "e2e": "bun tools/e2e/smoke.ts"
+  },
+  "dependencies": {
+    "@shopify/react-native-skia": "2.6.2",
+    "expo": "~57.0.25",
+    "expo-audio": "~57.0.5",
+    "expo-constants": "~57.0.19",
+    "expo-file-system": "~57.0.7",
+    "expo-haptics": "~57.0.3",
+    "expo-linking": "~57.0.11",
+    "expo-router": "~57.0.23",
+    "expo-status-bar": "~57.0.1",
+    "expo-system-ui": "~57.0.4",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-gesture-handler": "~2.32.0",
+    "react-native-reanimated": "4.5.1",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-screens": "~4.26.0",
+    "react-native-web": "~0.21.0",
+    "react-native-worklets": "0.10.1"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "bun-types": "^1.4.2",
+    "eslint": "^9.39.5",
+    "eslint-config-expo": "~57.0.2",
+    "playwright": "^1.56.1",
+    "typescript": "~6.0.3",
+    "yaml": "^2.9.1",
+    "zod": "^4.6.5"
+  }
+}

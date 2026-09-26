@@ -1,0 +1,14 @@
+id: exam.ask_lifestyle
+name: { ru: "Курение и работа" }
+kind: ask
+time: { procedure: 1 }
+cost: 0
+discomfort: 0
+checks:
+  - { f: hx.smoking, sens: 95, spec: 99 }
+texts:
+  summary:
+    ru: "Курит ли, сколько лет, где работает."
+sources:
+  - { kind: textbook, title: "Пропедевтика внутренних болезней: расспрос больного", note: "точность расспроса — игровая оценка, не из литературы" }
+review: draft

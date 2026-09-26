@@ -1,0 +1,59 @@
+id: cond.pneumonia_cap
+name: { ru: "Внебольничная пневмония" }
+icd10: J18.9
+department: dept.therapy
+kind: disease
+severity: serious
+epidemiology:
+  prevalence: uncommon
+  age: { min: 18, peak: [65, 100] }
+  season: { winter: 1.5, spring: 1.1, summer: 0.7, autumn: 1.0 }
+  risks:
+    - { id: risk.smoking, x: 1.5 }
+    - { id: cond.copd, x: 2 }
+params:
+  side: { right: 55, left: 35, both: 10 }
+  severity: { mild: 55, moderate: 35, severe: 10 }
+course:
+  stages:
+    - { id: onset, days: [0, 2] }
+    - { id: peak, days: [2, 7] }
+    - { id: resolution, days: [7, 21], needs: treatment }
+  presentation: [2, 7]
+findings:
+  - { f: sym.cough, band: usually, attrs: { character: { productive: 70, dry: 30 } } }
+  - { f: sym.fever_hx, band: usually }
+  - { f: vital.fever, band: often }
+  - { f: sym.chills, band: often }
+  - { f: sym.dyspnea, band: often }
+  - { f: sym.purulent_sputum, band: often }
+  - { f: sym.cough_long, band: rarely }
+  - { f: sym.pleuritic_pain, band: sometimes, attrs: { side: $side } }
+  - { f: sign.crackles_local, band: often, attrs: { side: $side } }
+  - { f: sign.dullness, band: sometimes, attrs: { side: $side } }
+  - { f: vital.tachycardia, band: often }
+  - { f: vital.tachypnea, band: often }
+  - { f: vital.spo2_low, band: usually, when: { severity: [severe] } }
+  - { f: vital.spo2_low, band: sometimes, when: { severity: [moderate] } }
+  - { f: lab.wbc_high, band: often }
+  - { f: lab.crp_high, band: usually }
+  - { f: img.cxr_infiltrate, band: always, attrs: { side: $side } }
+  - { f: sym.rhinorrhea, band: rarely }
+  - { f: sym.headache, band: sometimes }
+  - { f: sym.myalgia, band: sometimes }
+  - { f: sym.abrupt_onset, band: sometimes }
+confirm: [exam.xray_chest]
+redFlags: [vital.spo2_low]
+texts:
+  summary:
+    ru: >-
+      Воспаление лёгочной ткани, начавшееся вне больницы: кашель, лихорадка, одышка, боль в
+      груди при дыхании. Чаще у пожилых, курящих и людей с хроническими болезнями лёгких.
+      Подтверждается рентгеном; лечится антибиотиком.
+pearls:
+  - ru: "Чистые лёгкие при аускультации не исключают пневмонию — решает рентген."
+  - ru: "Нормальные температура, пульс и частота дыхания делают пневмонию маловероятной."
+sources:
+  - { kind: guideline, title: "Внебольничная пневмония у взрослых", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru; частоты — черновик прототипа" }
+  - { kind: paper, title: "Metlay JP, Kapoor WN, Fine MJ. Does this patient have community-acquired pneumonia? JAMA 1997;278(17):1440–1445" }
+review: draft
