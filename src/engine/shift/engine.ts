@@ -13,7 +13,7 @@ import { generatePatient } from '../med/generate';
 import { knownFacts, posterior } from '../med/infer';
 import { evaluatePlan } from '../med/plan';
 import { examCost } from '../med/policy';
-import { buildReview } from '../med/review';
+import { buildReview, type ReviewData } from '../med/review';
 import { scoreCase } from '../med/score';
 import type { Observation } from '../med/types';
 import {
@@ -57,9 +57,15 @@ export function newShift(db: ContentDb, opts: { seed: number; season: Season; de
   return s;
 }
 
-/** Действие врача или ход времени. Недопустимая команда ничего не меняет (но пишется в журнал). */
+/**
+ * Действие врача или ход времени. Недопустимая команда ничего не меняет (но пишется в журнал).
+ * Ходы времени подряд журнал сливает в один: прожить a, затем b — то же, что прожить a + b,
+ * а часы на карте тикают по четыре раза в секунду.
+ */
 export function apply(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
-  s.journal.push(cmd);
+  const last = s.journal[s.journal.length - 1];
+  if (cmd.kind === 'advance' && last?.kind === 'advance') last.seconds += cmd.seconds;
+  else s.journal.push({ ...cmd });
   switch (cmd.kind) {
     case 'advance':
       return s.dayOpen ? advanceBy(db, s, cmd.seconds) : [];
@@ -79,6 +85,7 @@ export function apply(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
       if (!p || p.pending.length === 0) return [];
       p.status = 'away';
       p.wait++;
+      p.step++; // что придёт, пока его нет, — «новое» при следующем вызове, а прежнее — нет
       s.current = undefined;
       return spend(db, s, p, MIN);
     }
@@ -204,12 +211,16 @@ function nextDay(db: ContentDb, s: ShiftState) {
   prune(s);
 }
 
-/** Старые случаи не нужны: храним неделю и тех, к кому ещё вернутся. */
+/**
+ * Старое не храним: принятых — неделю (их исходы — в итогах следующих дней) и тех, к кому
+ * ещё вернутся; ушедших и не принятых в прошлые дни — нет: их числа уже в итогах дня.
+ */
 function prune(s: ShiftState) {
   const keep = new Set(s.returns.filter(r => r.day >= s.day).map(r => r.of));
-  for (const id of Object.keys(s.patients)) {
+  for (const [id, p] of Object.entries(s.patients)) {
     const day = Number(id.split('-')[0]);
-    if (day < s.day - 7 && !keep.has(id)) delete s.patients[id];
+    if (keep.has(id) || day >= s.day) continue;
+    if (day < s.day - 7 || p.status === 'left' || p.status === 'unseen') delete s.patients[id];
   }
   s.returns = s.returns.filter(r => r.day >= s.day);
 }
@@ -260,6 +271,8 @@ function addPending(s: ShiftState, p: ShiftPatient, examId: Id, readyAt: number,
 function finish(db: ContentDb, s: ShiftState): Notice[] {
   const p = current(s);
   if (!p || !p.draft.diagnosis) return [];
+  // не дождались — результат приходит в пустоту: случай решён тем, что было известно
+  p.pending = [];
   const closed = closeCase(db, s, p);
   p.closed = closed;
   p.status = 'done';
@@ -301,7 +314,7 @@ function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
   const plan = { treatments: [...p.draft.treatments], setting: p.draft.setting };
   const ev = evaluatePlan(db, patient, plan, obs);
   const outcome = observe(db, patient, plan, ev, branch(s, `outcome:${p.id}`));
-  const review = buildReview(db, patient, p.results.map(r => ({ exam: r.exam, obs: r.obs })), dx, candidates, Object.keys(db.exams).sort(), branch(s, `review:${p.id}`));
+  const review = reviewOf(db, s, p, dx);
   const present = new Set(patient.truth.findings.map(f => f.f));
   const verdict = dx === truth ? 'correct' : group(dx) === group(truth) ? 'partly' : 'wrong';
   const score = scoreCase({
@@ -310,7 +323,16 @@ function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
     redFlags: (cond.redFlags ?? []).filter(f => present.has(f)).map(f => ({ f, seen: obs.some(o => o.f === f && o.shown) })),
   });
   const { notes, ...grades } = score;
-  return { at: s.t, diagnosis: dx, verdict, confidence, plan, outcome, grades, notes, rationalCost: review.rational.cost };
+  return { at: s.t, diagnosis: dx, verdict, confidence, plan, outcome, grades, notes, rationalCost: review.rational.cost, rationalMoney: review.rational.money };
+}
+
+/**
+ * Разбор случая: как менялась уверенность, что ничего не добавило, как прошёл бы его разумный
+ * врач. Та же ветвь зерна, что при закрытии, — поэтому экран разбора пересчитывает его, а не
+ * хранит в сохранении.
+ */
+export function reviewOf(db: ContentDb, s: ShiftState, p: ShiftPatient, diagnosis: Id): ReviewData {
+  return buildReview(db, p.patient, p.results.map(r => ({ exam: r.exam, obs: r.obs })), diagnosis, candidatesOf(db, s.meta.department), Object.keys(db.exams).sort(), branch(s, `review:${p.id}`));
 }
 
 // --- время --------------------------------------------------------------------------

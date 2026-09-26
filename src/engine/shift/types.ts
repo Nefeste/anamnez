@@ -80,8 +80,9 @@ export interface ClosedCase {
   outcome: Outcome;
   grades: Record<'accuracy' | 'defensibility' | 'thrift' | 'treatment' | 'setting' | 'safety' | 'overall', Grade>;
   notes: ScoreNote[];
-  /** цена разумного пути на этом пациенте — для итогов дня */
+  /** цена разумного пути на этом пациенте — для итогов дня: в условных единицах и в рублях */
   rationalCost: number;
+  rationalMoney: number;
 }
 
 export type ShiftEvent =

@@ -57,6 +57,8 @@ export const spikes = {
     hypotheses: 'Гипотезы',
     decide: 'Диагноз',
     wait: 'Подождать результаты',
+    sendAway: 'Отпустить ждать результатов',
+    sendAwayHint: 'а пока принять другого: вернётся в очередь, когда всё будет готово',
     pending: (name: string, at: string) => `${name} — будет в ${at}`,
     meanwhile: 'За это время',
     ready: (name: string) => `Готово: ${name}`,

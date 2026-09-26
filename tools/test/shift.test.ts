@@ -147,6 +147,20 @@ describe('смена: приём', () => {
     expect(p.closed!.plan).toEqual({ treatments: ['tx.rest_fluids'], setting: 'home' });
     expect(s.summary.seen).toBe(1);
   });
+
+  test('завершили, не дождавшись анализа, — результат приходит в пустоту, разбор не меняется', () => {
+    const s = withPatient(6);
+    const id = s.current!;
+    apply(db, s, { kind: 'exam', exam: 'exam.ask_complaints' });
+    apply(db, s, { kind: 'exam', exam: 'exam.crp' });
+    apply(db, s, { kind: 'diagnose', id: 'cond.arvi' });
+    apply(db, s, { kind: 'finish' });
+    const results = s.patients[id].results.length;
+    apply(db, s, minutes(120));
+    expect(s.patients[id].pending).toEqual([]);
+    expect(s.patients[id].results.length).toBe(results);
+    expect(s.patients[id].results.some(r => r.exam === 'exam.crp')).toBe(false);
+  });
 });
 
 describe('смена: закрытие дня и повторные обращения', () => {
@@ -196,6 +210,21 @@ describe('смена: закрытие дня и повторные обраще
     expect(back.patient.sex).toBe(prev.patient.sex);
     expect(back.patient.age).toBe(prev.patient.age);
     expect(back.patient.truth.conditions[0].id).toBe(prev.patient.truth.conditions[0].id);
+  });
+
+  test('старое не копится: ушедших прошлых дней нет, принятых хранят неделю', () => {
+    const s = newShift(db, { seed: 12, ...winter });
+    for (let d = 1; d <= 9; d++) {
+      playDay(s);
+      apply(db, s, { kind: 'nextDay' });
+    }
+    const kept = Object.values(s.patients).filter(p => !p.id.startsWith(`${s.day}-`));
+    expect(kept.length).toBeGreaterThan(0);
+    const waiting = new Set(s.returns.map(r => r.of));
+    for (const p of kept) {
+      expect(p.status === 'done' || waiting.has(p.id)).toBe(true);
+      expect(Number(p.id.split('-')[0]) >= s.day - 7 || waiting.has(p.id)).toBe(true);
+    }
   });
 });
 
