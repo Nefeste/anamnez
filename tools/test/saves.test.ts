@@ -38,6 +38,43 @@ describe('сохранения', () => {
     expect(r?.envelope.data.day).toBe(1);
   });
 
+  test('копии сдвигаются переименованием: полных копий файла нет, временного не остаётся', async () => {
+    const s = memoryStore();
+    const copies: string[] = [];
+    const copy = s.copy;
+    s.copy = async (from, to) => {
+      copies.push(`${from}→${to}`);
+      await copy(from, to);
+    };
+    for (const day of [1, 2, 3, 4]) await saveSlot(s, 'shift', { day }, 1, `t${day}`);
+    expect(copies).toEqual([]);
+    expect([...s.files.keys()].sort()).toEqual(['shift.json', 'shift.prev-1.json', 'shift.prev-2.json']);
+  });
+
+  test('запись прервалась между сдвигом копий и заменой — читается временный, ничего не потеряно', async () => {
+    const s = memoryStore();
+    await saveSlot(s, 'shift', { day: 1 }, 1, 't1');
+    await saveSlot(s, 'shift', { day: 2 }, 1, 't2');
+    // третья запись: временный записан, копии сдвинуты, а заменить не успели
+    await s.write('shift.json.tmp', JSON.stringify({ schemaVersion: 1, savedAt: 't3', data: { day: 3 } }));
+    await s.move('shift.prev-1.json', 'shift.prev-2.json');
+    await s.move('shift.json', 'shift.prev-1.json');
+    const r = await loadSlot<{ day: number }>(s, 'shift');
+    expect(r?.from).toBe('tmp');
+    expect(r?.envelope.data.day).toBe(3);
+  });
+
+  test('недописанный временный пропускается — читается предыдущая копия', async () => {
+    const s = memoryStore();
+    await saveSlot(s, 'shift', { day: 1 }, 1, 't1');
+    await saveSlot(s, 'shift', { day: 2 }, 1, 't2');
+    await s.move('shift.json', 'shift.prev-1.json');
+    s.files.set('shift.json.tmp', '{"schemaVersion":1,"savedAt":"t3","da');
+    const r = await loadSlot<{ day: number }>(s, 'shift');
+    expect(r?.from).toBe('prev-1');
+    expect(r?.envelope.data.day).toBe(2);
+  });
+
   test('нет сохранений — null', async () => {
     expect(await loadSlot(memoryStore(), 'shift')).toBeNull();
   });

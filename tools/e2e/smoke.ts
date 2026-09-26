@@ -181,10 +181,15 @@ try {
   await page.getByTestId('menu-shift').click();
   await page.getByTestId('shift-start').waitFor({ timeout: 15_000 });
   await page.getByTestId('shift-start').click();
-  await page.getByTestId('tab-x4').click();
-  await page.getByTestId('shift-call').waitFor({ timeout: 60_000 });
+  // в очереди никого — «промотать до следующего» (отзыв на 0.0.7: ждали 40 секунд)
+  await page.getByTestId('shift-skip').click();
+  await page.getByTestId('shift-call').waitFor({ timeout: 5_000 });
   const opened = await text(page, 'shift-clock');
-  check(/^\d\d:\d\d$/.test(opened) && opened !== '08:00', `смена: часы идут, пока в кабинете никого (${opened})`);
+  check(/^\d\d:\d\d$/.test(opened) && opened > '08:00', `смена: «промотать до следующего» — пришёл первый (${opened})`);
+  await page.getByTestId('tab-x4').click();
+  await page.waitForTimeout(1500);
+  const ticking = await text(page, 'shift-clock');
+  check(ticking > opened, `смена: часы идут, пока в кабинете никого (${opened} → ${ticking})`);
   await page.screenshot({ path: join(OUT, '08-shift-queue.png') });
   await page.getByTestId('shift-call').click();
   await page.getByTestId('exam-exam.ask_complaints').waitFor({ timeout: 10_000 });

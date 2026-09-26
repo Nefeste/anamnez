@@ -9,7 +9,7 @@ import type { Triage } from '@/engine/shift/types';
 import { T } from '@/i18n';
 import {
   callPatient, closeDay, loadShift, nextDay, openCase, pauseClock, type QueueRow, type ShiftView, SPEEDS, type Speed, type SummaryView,
-  saveNow, setSpeed, startShift, TICK_MS, tick, useShift,
+  saveNow, setSpeed, skipIdle, startShift, TICK_MS, tick, useShift,
 } from '@/state/session';
 import { gradeColor } from '@/ui/case/OutcomeScreen';
 import { Button, Card, Chip, Chips, H, P, Screen, Sheet, Tabs } from '@/ui/components';
@@ -69,6 +69,16 @@ function Queue({ v }: { v: ShiftView }) {
     }, []),
   );
 
+  const skip = () => {
+    const notices = skipIdle();
+    if (notices.some(n => n.kind === 'arrived' && n.triage === 'red')) {
+      play('urgent');
+      buzz('urgent');
+    } else if (notices.some(n => n.kind === 'resultsReady' || n.kind === 'arrived')) {
+      buzz('ready');
+    }
+  };
+
   // двойное касание не открывает карту дважды: второй вызов не проходит — кабинет занят
   const call = (id: string) => {
     buzz('tap');
@@ -82,7 +92,7 @@ function Queue({ v }: { v: ShiftView }) {
       ? <Button testID="shift-call" title={`${t.call(first.name)} ▶`} hint={v.queue.length > 1 ? t.callHint : undefined} onPress={() => call(first.id)} />
       : v.allDone
         ? <Button testID="shift-close-day" title={t.closeDay} hint={t.closeDayHint(0)} onPress={closeDay} />
-        : <Button testID="shift-idle" title={t.waitingForPatients} hint={t.waitingHint} disabled onPress={() => undefined} />;
+        : <Button testID="shift-skip" title={t.skip} hint={t.skipHint(v.away.length)} onPress={skip} />;
 
   const speed: SpeedKey = v.paused ? 'pause' : speedKey(v.speed);
   const onSpeed = (k: SpeedKey) => (k === 'pause' ? pauseClock() : setSpeed(SPEEDS.find(s => speedKey(s) === k) ?? 1));

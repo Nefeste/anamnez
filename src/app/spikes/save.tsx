@@ -14,8 +14,8 @@ export default function SaveSpike() {
   const save = async () => {
     const data = spikePatients(db, 60);
     const t0 = Date.now();
-    const bytes = await saveSlot(rawStore, 'spike', data, 1, new Date().toISOString());
-    setStatus(T.spikes.save.saved(Math.round(bytes / 1024), Date.now() - t0));
+    const cost = await saveSlot(rawStore, 'spike', data, 1, new Date().toISOString());
+    setStatus(T.spikes.save.saved(Math.round(cost.bytes / 1024), Date.now() - t0, cost.jsonMs, cost.writeMs));
   };
   const load = async () => {
     const r = await loadSlot<unknown[]>(rawStore, 'spike');
