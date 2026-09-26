@@ -12,6 +12,14 @@ export interface GenContext {
   season: Season;
   /** задать основное заболевание (задания, «Случай дня», тесты) */
   primary?: Id;
+  /**
+   * Повторное обращение того же человека: пол, возраст, привычки, хронические болезни и
+   * основное заболевание — те же (то же зерно), а течение и признаки бросаются заново —
+   * это новый день болезни. 0 или нет — первое обращение.
+   */
+  visit?: number;
+  /** заменить скрытые параметры основного заболевания: вернулся хуже — тяжёлая форма */
+  params?: Record<string, string>;
 }
 
 /** Возрастная пирамида обращающихся взрослых: [от, до, вес]. Черновик для среза. */
@@ -62,17 +70,20 @@ export function generatePatient(db: ContentDb, seed: number, ctx: GenContext): P
   // Активные состояния: основное, то, без чего оно не бывает, и хронические.
   const activeIds = [primaryId, ...(primary.requires ?? []), ...chronic].filter((id, i, a) => a.indexOf(id) === i);
   const paramRng = root.fork('params');
-  const courseRng = root.fork('course');
+  // у повторного обращения — свои ветви течения, признаков и значений: новый день болезни
+  const again = (name: string) => root.fork(ctx.visit ? `${name}:visit${ctx.visit}` : name);
+  const courseRng = again('course');
   const conditions: ActiveCondition[] = activeIds.map(id => {
     const c = db.conditions[id];
     const params: Record<string, string> = {};
     for (const name of sortedKeys(c.params ?? {})) params[name] = paramRng.fork(`${id}.${name}`).weightedKey(c.params![name]);
+    if (id === primaryId) for (const [name, value] of Object.entries(ctx.params ?? {})) if (c.params?.[name]?.[value] !== undefined) params[name] = value;
     const { day, stage } = id === primaryId ? presentationDay(c, courseRng.fork(id)) : { day: 0, stage: c.stages[0].id };
     return { id, role: id === primaryId ? 'primary' : 'comorbid', day, stage, params };
   });
 
-  const findings = realizeFindings(db, root.fork('findings'), conditions, risks);
-  const values = realizeValues(db, root.fork('values'), findings);
+  const findings = realizeFindings(db, again('findings'), conditions, risks);
+  const values = realizeValues(db, again('values'), findings);
   const complaints = pickComplaints(db, findings);
 
   return { seed, sex, age, season: ctx.season, department: ctx.department, truth: { conditions, risks, findings, values }, complaints };

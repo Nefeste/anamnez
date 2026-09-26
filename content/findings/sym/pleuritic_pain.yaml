@@ -1,6 +1,7 @@
 id: sym.pleuritic_pain
 name: { ru: "Боль в груди при дыхании" }
 leak: { pct: 1 }
+triage: yellow
 salience: 3
 attrs:
   side:

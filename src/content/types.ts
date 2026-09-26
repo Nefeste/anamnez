@@ -157,6 +157,8 @@ export interface Finding {
   /** насколько заметно пациенту: 3 — назовёт первым, 0 — только на вопрос */
   salience: number;
   redFlag?: boolean;
+  /** срочность на сортировке, если медсестра видит признак (жалоба, витальные) */
+  triage?: 'red' | 'yellow';
   attrs?: Record<string, Record<string, Text>>;
   value?: NumericSpec;
   texts: {

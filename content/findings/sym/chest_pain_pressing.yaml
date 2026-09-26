@@ -1,6 +1,7 @@
 id: sym.chest_pain_pressing
 name: { ru: "Давящая боль за грудиной" }
 leak: { pct: 1 }
+triage: red
 redFlag: true
 salience: 3
 texts:

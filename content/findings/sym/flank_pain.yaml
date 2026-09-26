@@ -1,6 +1,7 @@
 id: sym.flank_pain
 name: { ru: "Боль в пояснице сбоку" }
 leak: { pct: 2 }
+triage: yellow
 salience: 3
 attrs:
   side:

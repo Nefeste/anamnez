@@ -129,6 +129,8 @@ export const findingSchema = z.strictObject({
   leak: probability,
   salience: z.number().int().min(0).max(3).default(0),
   redFlag: z.boolean().optional(),
+  /** срочность на сортировке, если медсестра видит признак (жалоба, витальные): красный — сразу к врачу */
+  triage: z.enum(['red', 'yellow']).optional(),
   attrs: z.record(z.string(), z.record(z.string(), text)).optional(),
   value: z.strictObject({
     unit: z.string(),

@@ -1,6 +1,7 @@
 id: sym.rlq_pain
 name: { ru: "Боль в правой нижней части живота" }
 leak: { pct: 1 }
+triage: yellow
 salience: 3
 texts:
   hint:

@@ -1,6 +1,7 @@
 id: vital.spo2_low
 name: { ru: "Сатурация ниже 95 %" }
 leak: { pct: 2 }
+triage: red
 redFlag: true
 value:
   unit: "%"

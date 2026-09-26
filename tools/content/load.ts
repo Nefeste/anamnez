@@ -213,6 +213,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   for (const f of Object.values(findings).sort((a, b) => (a.id < b.id ? -1 : 1))) {
     const out: Finding = { id: f.id, name: f.name, kind: f.id.split('.')[0] as Finding['kind'], leak: prob(f.leak), salience: f.salience, texts: f.texts, review: f.review };
     if (f.redFlag) out.redFlag = true;
+    if (f.triage) out.triage = f.triage;
     if (f.attrs) out.attrs = f.attrs;
     if (f.value) out.value = f.value;
     db.findings[f.id] = out;

@@ -1,6 +1,7 @@
 id: vital.tachypnea
 name: { ru: "Частота дыхания больше 20 в минуту" }
 leak: { pct: 2 }
+triage: yellow
 value:
   unit: "в минуту"
   ref: [12, 20]

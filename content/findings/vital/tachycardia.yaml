@@ -1,6 +1,7 @@
 id: vital.tachycardia
 name: { ru: "Пульс чаще 100 в минуту" }
 leak: { pct: 3 }
+triage: yellow
 value:
   unit: "уд/мин"
   ref: [60, 90]
