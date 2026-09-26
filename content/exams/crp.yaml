@@ -1,0 +1,15 @@
+id: exam.crp
+name: { ru: "С-реактивный белок" }
+kind: lab
+room: room.lab
+time: { procedure: 5, turnaround: 60 }
+cost: 400
+discomfort: 1
+checks:
+  - { f: lab.crp_high, sens: 98, spec: 98 }
+texts:
+  summary:
+    ru: "Кровь из вены; белок острой фазы воспаления."
+sources:
+  - { kind: guideline, title: "Внебольничная пневмония у взрослых", org: "Минздрав РФ", note: "черновик: пороги СРБ сверить" }
+review: draft

@@ -1,0 +1,12 @@
+id: sym.headache
+name: { ru: "Головная боль" }
+leak: { pct: 8 }
+salience: 2
+texts:
+  complaint:
+    - ru: "Голова болит"
+  present:
+    - ru: "Головная боль"
+  absent:
+    - ru: "Голова не болит"
+review: draft

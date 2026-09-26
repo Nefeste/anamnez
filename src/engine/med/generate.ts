@@ -1,0 +1,221 @@
+// Рождение пациента (`docs/04-medical-model.md` §3–4).
+//
+// Каждый бросок берётся из своей именованной ветви зерна (`fork`), поэтому добавление
+// новой записи в базу не сдвигает случайность у остальных признаков и золотые случаи
+// меняются только там, где изменилась медицина.
+import type { Condition, ContentDb, Id, Link, Risk, Season } from '../../content/types';
+import { P_ONE, Rng } from '../core/rng';
+import type { ActiveCondition, Patient, Sex, TrueFinding } from './types';
+
+export interface GenContext {
+  department: Id;
+  season: Season;
+  /** задать основное заболевание (задания, «Случай дня», тесты) */
+  primary?: Id;
+}
+
+/** Возрастная пирамида обращающихся взрослых: [от, до, вес]. Черновик для среза. */
+const AGE_BANDS: [number, number, number][] = [
+  [18, 29, 18],
+  [30, 44, 24],
+  [45, 59, 26],
+  [60, 74, 22],
+  [75, 90, 10],
+];
+
+/** Доля мужчин среди обращающихся, доли 1/10 000. */
+const MALE_SHARE = 4600;
+
+const sortedKeys = <T>(r: Record<string, T>) => Object.keys(r).sort();
+
+export function generatePatient(db: ContentDb, seed: number, ctx: GenContext): Patient {
+  const root = Rng.seeded(seed);
+  const demo = root.fork('demo');
+
+  const sex: Sex = demo.chance(MALE_SHARE) ? 'm' : 'f';
+  const band = demo.weighted(AGE_BANDS, b => b[2]);
+  const age = demo.range(band[0], band[1]);
+
+  // Факторы риска: у каждого своя ветвь.
+  const riskRng = root.fork('risks');
+  const risks = sortedKeys(db.risks).filter(id => {
+    const r = db.risks[id];
+    const roll = riskRng.fork(id).chance(r.p[sex]);
+    return roll && age >= (r.ageMin ?? 18);
+  });
+
+  // Хронические (сопутствующие) болезни.
+  const chronicRng = root.fork('chronic');
+  const chronic = sortedKeys(db.conditions).filter(id => {
+    const c = db.conditions[id];
+    if (!c.chronic) return false;
+    const roll = chronicRng.fork(id).int(P_ONE);
+    if (age < (c.chronic.ageMin ?? c.age.min)) return false;
+    return roll < chronicChance(c, risks);
+  });
+
+  // Основное заболевание.
+  const primaryId = ctx.primary ?? pickPrimary(db, root.fork('primary'), { sex, age, season: ctx.season, department: ctx.department, risks, chronic });
+  const primary = db.conditions[primaryId];
+  if (!primary) throw new Error(`generatePatient: unknown condition ${primaryId}`);
+
+  // Активные состояния: основное, то, без чего оно не бывает, и хронические.
+  const activeIds = [primaryId, ...(primary.requires ?? []), ...chronic].filter((id, i, a) => a.indexOf(id) === i);
+  const paramRng = root.fork('params');
+  const courseRng = root.fork('course');
+  const conditions: ActiveCondition[] = activeIds.map(id => {
+    const c = db.conditions[id];
+    const params: Record<string, string> = {};
+    for (const name of sortedKeys(c.params ?? {})) params[name] = paramRng.fork(`${id}.${name}`).weightedKey(c.params![name]);
+    const { day, stage } = id === primaryId ? presentationDay(c, courseRng.fork(id)) : { day: 0, stage: c.stages[0].id };
+    return { id, role: id === primaryId ? 'primary' : 'comorbid', day, stage, params };
+  });
+
+  const findings = realizeFindings(db, root.fork('findings'), conditions, risks);
+  const values = realizeValues(db, root.fork('values'), findings);
+  const complaints = pickComplaints(db, findings);
+
+  return { seed, sex, age, season: ctx.season, department: ctx.department, truth: { conditions, risks, findings, values }, complaints };
+}
+
+/** Вероятность хронической болезни с учётом факторов риска, доли 1/10 000, не выше 95 %. */
+export function chronicChance(c: Condition, risks: readonly Id[]): number {
+  if (!c.chronic) return 0;
+  let p = c.chronic.p;
+  for (const r of c.chronic.risks ?? []) if (risks.includes(r.id)) p *= r.x;
+  return Math.min(9500, Math.round(p));
+}
+
+interface Who {
+  sex: Sex;
+  age: number;
+  season: Season;
+  department: Id;
+  risks: readonly Id[];
+  chronic: readonly Id[];
+}
+
+/** Вес состояния как основного заболевания у этого человека (0 — не бывает). */
+export function presentingWeight(c: Condition, who: Omit<Who, 'department'>): number {
+  if (!c.presenting) return 0;
+  if (who.age < c.age.min || who.age > c.age.max) return 0;
+  if ((c.requires ?? []).some(r => !who.chronic.includes(r))) return 0;
+  let w = c.weight;
+  if (c.sex) w *= who.sex === 'm' ? c.sex.m : c.sex.f;
+  if (c.season) w *= c.season[who.season];
+  if (c.age.peak && who.age >= c.age.peak[0] && who.age <= c.age.peak[1]) w *= 2;
+  for (const r of c.risks ?? []) if (who.risks.includes(r.id) || who.chronic.includes(r.id)) w *= r.x;
+  return w;
+}
+
+function pickPrimary(db: ContentDb, rng: Rng, who: Who): Id {
+  const ids = sortedKeys(db.conditions).filter(id => db.conditions[id].department === who.department);
+  const weights = ids.map(id => Math.round(presentingWeight(db.conditions[id], who) * 100));
+  return rng.weighted(ids.map((id, i) => ({ id, w: weights[i] })), x => x.w).id;
+}
+
+/**
+ * День обращения: из окна `presentation` записи (когда с этой болезнью обычно приходят),
+ * иначе — первая неделя. Стадия — та, что без лечения идёт в этот день; стадии, которые
+ * наступают только при лечении (разрешение пневмонии), без лечения не наступают.
+ */
+function presentationDay(c: Condition, rng: Rng): { day: number; stage: string } {
+  const natural = c.stages.filter(s => !s.needs);
+  const first = natural[0] ?? c.stages[0];
+  const last = natural[natural.length - 1] ?? first;
+  const [lo, hi] = c.presentation ?? [first.days[0], Math.min(last.days[1], first.days[0] + 7)];
+  const day = rng.range(lo, Math.max(lo, hi));
+  const stage = natural.find(s => day >= s.days[0] && day < s.days[1]) ?? last;
+  return { day, stage: stage.id };
+}
+
+function linkApplies(link: Link, cond: ActiveCondition | undefined): boolean {
+  if (!cond) return true;
+  if (link.stages && !link.stages.includes(cond.stage)) return false;
+  if (link.when) for (const [param, allowed] of Object.entries(link.when)) if (!allowed.includes(cond.params[param])) return false;
+  return true;
+}
+
+/**
+ * Noisy-OR (ADR 0009): каждая причина пытается вызвать признак своей монетой, плюс фон.
+ * Бросаются **все** монеты — так расход случайности не зависит от исхода, — а причиной
+ * записывается первая сработавшая: основное заболевание, затем остальные, затем фон.
+ */
+function realizeFindings(db: ContentDb, rng: Rng, conditions: ActiveCondition[], risks: Id[]): TrueFinding[] {
+  type Cause = { id: Id; links: Link[]; cond?: ActiveCondition };
+  const causes: Cause[] = [
+    ...conditions.map(c => ({ id: c.id, links: db.conditions[c.id].findings, cond: c })),
+    ...risks.map(id => ({ id, links: (db.risks[id] as Risk).findings })),
+  ];
+  const candidates = new Set<Id>();
+  for (const c of causes) for (const l of c.links) candidates.add(l.f);
+  for (const id of Object.keys(db.findings)) if (db.findings[id].leak > 0) candidates.add(id);
+
+  const out: TrueFinding[] = [];
+  for (const f of [...candidates].sort()) {
+    let cause: Id | 'leak' | undefined;
+    let causeLink: Link | undefined;
+    let causeCond: ActiveCondition | undefined;
+    for (const c of causes) {
+      c.links.forEach((link, i) => {
+        if (link.f !== f || !linkApplies(link, c.cond)) return;
+        const hit = rng.fork(`${c.id}>${f}#${i}`).chance(link.p);
+        if (hit && cause === undefined) {
+          cause = c.id;
+          causeLink = link;
+          causeCond = c.cond;
+        }
+      });
+    }
+    const leakHit = rng.fork(`leak>${f}`).chance(db.findings[f]?.leak ?? 0);
+    if (cause === undefined && leakHit) cause = 'leak';
+    if (cause === undefined) continue;
+    const attrs = realizeAttrs(db, rng.fork(`attrs>${f}`), f, causeLink, causeCond);
+    out.push(attrs ? { f, cause, attrs } : { f, cause });
+  }
+  return out;
+}
+
+function realizeAttrs(db: ContentDb, rng: Rng, f: Id, link: Link | undefined, cond: ActiveCondition | undefined): Record<string, string> | undefined {
+  const options = db.findings[f]?.attrs;
+  if (!options) return undefined;
+  const attrs: Record<string, string> = {};
+  for (const name of Object.keys(options).sort()) {
+    const spec = link?.attrs?.[name];
+    const r = rng.fork(name);
+    if (spec && 'param' in spec && cond?.params[spec.param]) attrs[name] = cond.params[spec.param];
+    else if (spec && 'dist' in spec) attrs[name] = r.weightedKey(spec.dist);
+    else if (spec && 'value' in spec) attrs[name] = spec.value;
+    else attrs[name] = r.pick(Object.keys(options[name]).sort());
+  }
+  return attrs;
+}
+
+/** Истинные значения числовых показателей: из диапазона «есть» или «нет». */
+function realizeValues(db: ContentDb, rng: Rng, findings: TrueFinding[]): Record<Id, number> {
+  const present = new Set(findings.map(x => x.f));
+  const values: Record<Id, number> = {};
+  for (const id of Object.keys(db.findings).sort()) {
+    const spec = db.findings[id].value;
+    if (!spec) continue;
+    values[id] = sampleRange(rng.fork(id), present.has(id) ? spec.present : spec.absent, spec.decimals);
+  }
+  return values;
+}
+
+/** Равномерно по сетке с шагом 10^-decimals; целочисленный жребий. */
+export function sampleRange(rng: Rng, [lo, hi]: [number, number], decimals: number): number {
+  const scale = 10 ** decimals;
+  const steps = Math.round((hi - lo) * scale);
+  return Math.round((lo * scale + rng.int(steps + 1))) / scale;
+}
+
+/** Жалобы: заметные симптомы (заметность ≥ 2), самые заметные первыми, не больше трёх. */
+function pickComplaints(db: ContentDb, findings: TrueFinding[]): Id[] {
+  return findings
+    .map(x => db.findings[x.f])
+    .filter(f => f && f.kind === 'sym' && f.salience >= 2)
+    .sort((a, b) => b.salience - a.salience || (a.id < b.id ? -1 : 1))
+    .slice(0, 3)
+    .map(f => f.id);
+}

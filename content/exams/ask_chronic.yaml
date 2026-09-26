@@ -1,0 +1,14 @@
+id: exam.ask_chronic
+name: { ru: "Хронические болезни" }
+kind: ask
+time: { procedure: 1 }
+cost: 0
+discomfort: 0
+checks:
+  - { f: hx.copd, sens: 95, spec: 99 }
+texts:
+  summary:
+    ru: "Какие болезни уже известны, чем лечится постоянно."
+sources:
+  - { kind: textbook, title: "Пропедевтика внутренних болезней: расспрос больного", note: "точность расспроса — игровая оценка, не из литературы" }
+review: draft

@@ -1,0 +1,13 @@
+id: sym.dyspnea
+name: { ru: "Одышка" }
+leak: { pct: 3 }
+salience: 3
+texts:
+  complaint:
+    - ru: "Задыхаюсь, особенно когда хожу"
+    - ru: "Тяжело дышать"
+  present:
+    - ru: "Одышка"
+  absent:
+    - ru: "Одышки нет"
+review: draft

@@ -1,0 +1,15 @@
+id: exam.cbc
+name: { ru: "Общий анализ крови" }
+kind: lab
+room: room.lab
+time: { procedure: 5, turnaround: 40 }
+cost: 350
+discomfort: 1
+checks:
+  - { f: lab.wbc_high, sens: 98, spec: 98 }
+texts:
+  summary:
+    ru: "Кровь из пальца или вены; лейкоциты и формула."
+sources:
+  - { kind: textbook, title: "Клиническая лабораторная диагностика: референсные значения ОАК", note: "черновик" }
+review: draft

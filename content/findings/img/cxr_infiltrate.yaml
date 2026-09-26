@@ -1,0 +1,14 @@
+id: img.cxr_infiltrate
+name: { ru: "Инфильтрация на рентгенограмме" }
+leak: { pct: 0.5 }
+attrs:
+  side:
+    right: { ru: "справа" }
+    left: { ru: "слева" }
+    both: { ru: "с обеих сторон" }
+texts:
+  present:
+    - ru: "Инфильтрация лёгочной ткани в нижних отделах {side}"
+  absent:
+    - ru: "Очаговых и инфильтративных изменений не выявлено"
+review: draft

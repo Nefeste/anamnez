@@ -1,0 +1,9 @@
+id: sign.pharyngeal_hyperemia
+name: { ru: "Гиперемия зева" }
+leak: { pct: 12 }
+texts:
+  present:
+    - ru: "Зев гиперемирован"
+  absent:
+    - ru: "Зев спокойный"
+review: draft

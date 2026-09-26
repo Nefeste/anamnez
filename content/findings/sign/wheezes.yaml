@@ -1,0 +1,9 @@
+id: sign.wheezes
+name: { ru: "Сухие свистящие хрипы" }
+leak: { pct: 3 }
+texts:
+  present:
+    - ru: "Рассеянные сухие свистящие хрипы, выдох удлинён"
+  absent:
+    - ru: "Свистящих хрипов нет"
+review: draft

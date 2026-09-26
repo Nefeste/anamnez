@@ -1,0 +1,8 @@
+id: risk.sick_contact
+name: { ru: "Контакт с больным респираторной инфекцией" }
+prevalence: { m: 25, f: 30 }
+findings:
+  - { f: hx.sick_contact, band: always }
+sources:
+  - { kind: textbook, title: "Эпидемиология респираторных инфекций", note: "игровая оценка для прототипа" }
+review: draft

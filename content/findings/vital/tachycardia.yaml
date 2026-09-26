@@ -1,0 +1,15 @@
+id: vital.tachycardia
+name: { ru: "Пульс чаще 100 в минуту" }
+leak: { pct: 3 }
+value:
+  unit: "уд/мин"
+  ref: [60, 90]
+  present: [101, 128]
+  absent: [62, 99]
+  decimals: 0
+texts:
+  present:
+    - ru: "Пульс {value} {unit}"
+  absent:
+    - ru: "Пульс {value} {unit}"
+review: draft

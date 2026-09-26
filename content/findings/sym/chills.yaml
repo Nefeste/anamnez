@@ -1,0 +1,12 @@
+id: sym.chills
+name: { ru: "Озноб" }
+leak: { pct: 2 }
+salience: 2
+texts:
+  complaint:
+    - ru: "Знобит, трясёт"
+  present:
+    - ru: "Озноб"
+  absent:
+    - ru: "Озноба нет"
+review: draft

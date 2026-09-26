@@ -1,0 +1,17 @@
+id: exam.xray_chest
+name: { ru: "Рентгенография органов грудной клетки" }
+kind: imaging
+room: room.xray
+radiation: low
+time: { procedure: 15, report: 20 }
+cost: 900
+discomfort: 0
+checks:
+  - { f: img.cxr_infiltrate, sens: 80, spec: 93 }
+  - { f: img.cxr_hyperinflation, sens: 70, spec: 92 }
+texts:
+  summary:
+    ru: "Снимок в прямой проекции; описание делает рентгенолог."
+sources:
+  - { kind: guideline, title: "Внебольничная пневмония у взрослых", org: "Минздрав РФ", note: "черновик: чувствительность рентгена сверить по статьям" }
+review: draft

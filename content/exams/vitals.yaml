@@ -1,0 +1,17 @@
+id: exam.vitals
+name: { ru: "Температура, пульс, дыхание, сатурация" }
+kind: bedside
+time: { procedure: 5 }
+cost: 0
+discomfort: 0
+checks:
+  - { f: vital.fever, sens: 98, spec: 98 }
+  - { f: vital.tachycardia, sens: 98, spec: 98 }
+  - { f: vital.tachypnea, sens: 95, spec: 97 }
+  - { f: vital.spo2_low, sens: 95, spec: 97 }
+texts:
+  summary:
+    ru: "Медсестра измеряет температуру, пульс, частоту дыхания и сатурацию."
+sources:
+  - { kind: textbook, title: "Сестринское дело: измерение витальных показателей", note: "черновик: точность измерения — игровая оценка" }
+review: draft

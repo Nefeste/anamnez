@@ -1,0 +1,17 @@
+id: sym.cough
+name: { ru: "Кашель" }
+leak: { pct: 6 }
+salience: 3
+attrs:
+  character:
+    productive: { ru: "с мокротой" }
+    dry: { ru: "сухой" }
+texts:
+  complaint:
+    - ru: "Кашель {character}, никак не проходит"
+    - ru: "Беспокоит кашель, {character}"
+  present:
+    - ru: "Кашель {character}"
+  absent:
+    - ru: "Кашля нет"
+review: draft

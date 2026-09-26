@@ -1,0 +1,12 @@
+id: sym.purulent_sputum
+name: { ru: "Гнойная мокрота" }
+leak: { pct: 2 }
+salience: 1
+texts:
+  complaint:
+    - ru: "Мокрота жёлто-зелёная"
+  present:
+    - ru: "Мокрота гнойная, жёлто-зелёная"
+  absent:
+    - ru: "Мокрота светлая или её нет"
+review: draft

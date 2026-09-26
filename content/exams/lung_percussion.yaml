@@ -1,0 +1,14 @@
+id: exam.lung_percussion
+name: { ru: "Перкуссия лёгких" }
+kind: physical
+time: { procedure: 2 }
+cost: 0
+discomfort: 0
+checks:
+  - { f: sign.dullness, sens: 65, spec: 95 }
+texts:
+  summary:
+    ru: "Простучать грудную клетку, сравнивая симметричные участки."
+sources:
+  - { kind: paper, title: "Metlay JP, Kapoor WN, Fine MJ. JAMA 1997;278(17):1440–1445", note: "черновик" }
+review: draft

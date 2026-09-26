@@ -1,0 +1,13 @@
+id: sym.myalgia
+name: { ru: "Ломота в теле" }
+leak: { pct: 3 }
+salience: 2
+texts:
+  complaint:
+    - ru: "Всё тело ломит"
+    - ru: "Мышцы болят, ломота"
+  present:
+    - ru: "Ломота в мышцах"
+  absent:
+    - ru: "Ломоты в теле нет"
+review: draft

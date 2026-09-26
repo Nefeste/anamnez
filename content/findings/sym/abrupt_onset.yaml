@@ -1,0 +1,10 @@
+id: sym.abrupt_onset
+name: { ru: "Острое начало болезни" }
+leak: { pct: 10 }
+salience: 0
+texts:
+  present:
+    - ru: "Началось внезапно, за несколько часов"
+  absent:
+    - ru: "Развивалось постепенно, несколько дней"
+review: draft

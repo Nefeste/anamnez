@@ -1,0 +1,14 @@
+id: sign.crackles_local
+name: { ru: "Локальная крепитация" }
+leak: { pct: 2 }
+attrs:
+  side:
+    right: { ru: "справа" }
+    left: { ru: "слева" }
+    both: { ru: "с обеих сторон" }
+texts:
+  present:
+    - ru: "В нижних отделах {side} — крепитация"
+  absent:
+    - ru: "Крепитации нет"
+review: draft

@@ -1,0 +1,13 @@
+id: sym.rhinorrhea
+name: { ru: "Насморк" }
+leak: { pct: 5 }
+salience: 2
+texts:
+  complaint:
+    - ru: "Насморк, нос заложен"
+    - ru: "Из носа течёт"
+  present:
+    - ru: "Насморк"
+  absent:
+    - ru: "Насморка нет"
+review: draft

@@ -1,0 +1,16 @@
+id: vital.spo2_low
+name: { ru: "Сатурация ниже 95 %" }
+leak: { pct: 2 }
+redFlag: true
+value:
+  unit: "%"
+  ref: [95, 100]
+  present: [86, 94]
+  absent: [95, 99]
+  decimals: 0
+texts:
+  present:
+    - ru: "Сатурация {value} {unit}"
+  absent:
+    - ru: "Сатурация {value} {unit}"
+review: draft
