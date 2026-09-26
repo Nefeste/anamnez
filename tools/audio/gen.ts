@@ -81,21 +81,17 @@ function fadeOut(x: Float32Array, sec: number): Float32Array {
 }
 
 /**
- * Касание: короткий «тук» — тело 850 → 600 Гц (ниже маленький динамик почти не звучит)
- * и щелчок-шорох около 2,5 кГц, по которому касание и слышно.
+ * Касание: короткий «тик» 1800 Гц — как в 0.0.1. «Тук» из 0.0.2 владелец счёл хуже; в игре
+ * касание теперь — вибрацией, а этот звук остаётся на экране проверки до эталона.
  */
 export function makeTap(): Float32Array {
-  const out = len(0.05);
-  let phase = 0;
+  const out = len(0.03);
   for (let i = 0; i < out.length; i++) {
     const t = i / RATE;
-    const hz = 600 + 250 * Math.exp(-t / 0.006);
-    phase += (2 * Math.PI * hz) / RATE;
-    out[i] = 0.6 * Math.exp(-t / 0.01) * Math.sin(phase) * Math.min(1, t / 0.0008);
+    const attack = Math.min(1, i / (0.004 * RATE));
+    out[i] = 0.35 * attack * Math.exp(-t * 160) * Math.sin(2 * Math.PI * 1800 * t);
   }
-  const click = biquad(noise(out.length, 'tap'), 'bp', 2500, 1);
-  for (let i = 0; i < out.length; i++) out[i] += 1.2 * click[i] * Math.exp(-i / RATE / 0.003);
-  return fadeOut(normalize(out, 0.5), 0.01);
+  return out;
 }
 
 /** Обертоны деревянной пластины маримбы: основной тон держится, верхние гаснут быстро. */

@@ -1,7 +1,7 @@
 // Общие элементы интерфейса. Без системного Alert: в веб-сборке он не работает (AGENTS.md).
 import type { ReactNode } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View, type ViewStyle } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, space, touch } from './theme';
 
 /** Экран с прокруткой. Смена `resetKey` возвращает прокрутку наверх (новый пациент). */
@@ -56,19 +56,32 @@ export function Button({ title, onPress, hint, kind = 'primary', disabled, testI
   );
 }
 
-/** Карточка поверх экрана: закрывается кнопкой, касанием фона и «назад» Android. */
-export function Sheet({ visible, onClose, closeTitle, children, testID }: {
-  visible: boolean; onClose: () => void; closeTitle: string; children: ReactNode; testID?: string;
-}) {
+type SheetProps = { visible: boolean; onClose: () => void; closeTitle: string; children: ReactNode; testID?: string };
+
+/**
+ * Карточка поверх экрана: закрывается кнопкой, касанием фона и «назад» Android.
+ * Modal — отдельное окно, и системные отступы главного экрана на него не действуют:
+ * без своего SafeAreaProvider кнопка уходила под панель навигации Android (отзыв на 0.0.2).
+ */
+export function Sheet({ visible, onClose, closeTitle, children, testID }: SheetProps) {
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable testID={testID} style={styles.sheet} onPress={() => undefined}>
-          {children}
-          <Button testID={testID ? `${testID}-close` : undefined} title={closeTitle} onPress={onClose} />
-        </Pressable>
-      </Pressable>
+    <Modal visible={visible} transparent animationType="slide" statusBarTranslucent navigationBarTranslucent onRequestClose={onClose}>
+      <SafeAreaProvider>
+        <SheetBody visible={visible} onClose={onClose} closeTitle={closeTitle} testID={testID}>{children}</SheetBody>
+      </SafeAreaProvider>
     </Modal>
+  );
+}
+
+function SheetBody({ onClose, closeTitle, children, testID }: SheetProps) {
+  const insets = useSafeAreaInsets();
+  return (
+    <Pressable style={styles.backdrop} onPress={onClose}>
+      <Pressable testID={testID} style={[styles.sheet, { paddingBottom: space.xl + insets.bottom }]} onPress={() => undefined}>
+        {children}
+        <Button testID={testID ? `${testID}-close` : undefined} title={closeTitle} onPress={onClose} />
+      </Pressable>
+    </Pressable>
   );
 }
 
