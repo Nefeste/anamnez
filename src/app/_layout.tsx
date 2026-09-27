@@ -61,6 +61,8 @@ export default function RootLayout() {
           <Stack.Screen name="shift/patient" options={{ title: T.spikes.patient.title }} />
           <Stack.Screen name="shift/decision" options={{ title: T.spikes.decision.title }} />
           <Stack.Screen name="shift/outcome" options={{ title: T.spikes.decision.outcomeTitle }} />
+          <Stack.Screen name="sandbox/build" options={{ title: T.sandbox.build, gestureEnabled: false }} />
+          <Stack.Screen name="sandbox/new" options={{ title: T.sandbox.title }} />
           <Stack.Screen name="profile/index" options={{ title: T.profile.title }} />
           <Stack.Screen name="profile/doctor" options={{ title: T.profile.editTitle }} />
           <Stack.Screen name="profile/case/[key]" options={{ title: T.spikes.decision.outcomeTitle }} />

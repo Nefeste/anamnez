@@ -318,6 +318,14 @@ export interface Economy {
   corridor: { cost: number; upkeep: number };
   /** сколько процентов цены возвращают снос и продажа аппарата */
   refund: number;
+  /** песочница: участок, вход и отрезок коридора, бюджеты; с готовой амбулаторией — доля бюджета, % */
+  sandbox: {
+    plot: [number, number];
+    entrance: Cell;
+    corridor: Cell[];
+    budgets: Record<'modest' | 'normal' | 'generous', number>;
+    clinicShare: number;
+  };
 }
 
 export interface ContentDb {

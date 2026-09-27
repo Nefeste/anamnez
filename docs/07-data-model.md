@@ -267,7 +267,7 @@ interface StaffRole {
 interface GameState {
   meta: {
     schemaVersion: number; contentVersion: number; rngVersion: number;
-    mode: 'campaign' | 'shift' | 'daily' | 'sandbox';
+    mode: 'campaign' | 'shift' | 'daily' | 'sandbox';   // сейчас: 'shift' — практика, 'sandbox' — песочница (слот `sandbox`)
     difficulty: 'student' | 'resident' | 'doctor' | 'professor';
     soft: boolean;                       // «мягкий режим»
     seed: number; chapter?: Id;
@@ -288,7 +288,8 @@ interface GameState {
   patients: Record<string, Patient>;     // активные и недавние
   queue: string[];                       // порядок очереди
   orders: Order[];                       // назначенные обследования и лечение
-  economy: { cash: number; reputation: number; ledger: LedgerEntry[] };  // ledger — за текущий день
+  economy: { cash: number; reputation: number; ledger: LedgerEntry[] };  // ledger — за текущий день; 0.0.20 — только cash
+  undo?: { hospital; cash }[];           // «Отменить» на экране стройки, последние 20; «Готово» — пусто
   career?: { chapter: Id; missions: Record<Id, MissionState> };
   journal: Command[];                    // команды за текущий день (отчёт об ошибке, тесты)
 }

@@ -212,9 +212,14 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   checkHospital({ rooms, equipment, roles, exams, conditions }, errors);
 
   // --- сборка ---
+  const rects = (list: [number, number, number, number][]): Cell[] =>
+    list.flatMap(([x0, y0, x1, y1]) => Array.from({ length: (y1 - y0 + 1) * (x1 - x0 + 1) }, (_, i) => [x0 + (i % (x1 - x0 + 1)), y0 + Math.floor(i / (x1 - x0 + 1))] as Cell));
   const db: ContentDb = {
     contentVersion, hash: '', conditions: {}, findings: {}, exams: {}, risks: {}, treatments: {}, rooms: {}, equipment: {}, roles: {}, presets: {},
-    economy: economy ?? { corridor: { cost: 0, upkeep: 0 }, refund: 0 }, revealedBy,
+    economy: economy
+      ? { corridor: economy.corridor, refund: economy.refund, sandbox: { ...economy.sandbox, corridor: rects(economy.sandbox.corridor) } }
+      : { corridor: { cost: 0, upkeep: 0 }, refund: 0, sandbox: { plot: [8, 8], entrance: [0, 1], corridor: [], budgets: { modest: 0, normal: 0, generous: 0 }, clinicShare: 0 } },
+    revealedBy,
   };
   for (const c of Object.values(conditions).sort((a, b) => (a.id < b.id ? -1 : 1))) {
     const e = c.epidemiology;
@@ -317,16 +322,24 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     db.roles[r.id] = out;
   }
   for (const p of Object.values(presets).sort((a, b) => (a.id < b.id ? -1 : 1))) {
-    const corridor: Cell[] = [];
-    for (const [x0, y0, x1, y1] of p.corridor) for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) corridor.push([x, y]);
     const out: Preset = {
-      id: p.id, name: p.name, plot: p.plot, entrance: p.entrance, corridor,
+      id: p.id, name: p.name, plot: p.plot, entrance: p.entrance, corridor: rects(p.corridor),
       rooms: p.rooms.map(r => ({ type: r.type, size: r.size, x: r.x, y: r.y, rot: r.rot, ...(r.door !== undefined ? { door: r.door } : {}), equipment: r.equipment })),
       decor: p.decor.map(([kind, x, y]) => ({ kind, x, y })), staff: p.staff,
     };
     db.presets[p.id] = out;
   }
-  if (errors.length === 0) checkPresets(db, errors);
+  if (errors.length === 0) {
+    checkPresets(db, errors);
+    // готовая амбулатория помещается на участок песочницы, вход песочницы — в краю
+    const sb = db.economy.sandbox;
+    for (const p of Object.values(db.presets)) {
+      if (p.plot[0] > sb.plot[0] || p.plot[1] > sb.plot[1]) errors.push(`${p.id}: участок ${p.plot.join(' × ')} больше участка песочницы`);
+      else errors.push(...presetHospital(db, p, sb.plot).failed.map(f => `${p.id}: на участке песочницы помещение ${f.room} — ${f.error.kind}`));
+    }
+    const [ex, ey] = sb.entrance;
+    if (!(ex === 0 || ey === 0 || ex === sb.plot[0] - 1 || ey === sb.plot[1] - 1)) errors.push(`hospital/economy.yaml: вход песочницы (${ex}, ${ey}) — не в краю участка`);
+  }
   db.hash = fingerprint({ ...db, hash: '' });
   return { db, errors, warnings, files: files.length };
 }

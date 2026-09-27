@@ -320,6 +320,14 @@ export const economySchema = z.strictObject({
   corridor: z.strictObject({ cost: int, upkeep: int }),
   /** сколько процентов цены возвращают снос и продажа аппарата */
   refund: z.number().int().min(0).max(100),
+  /** песочница: участок, вход, отрезок коридора прямоугольниками, бюджеты; с готовой амбулаторией — доля бюджета, % */
+  sandbox: z.strictObject({
+    plot: z.tuple([z.number().int().min(8).max(64), z.number().int().min(8).max(64)]),
+    entrance: cellSrc,
+    corridor: z.array(z.tuple([int, int, int, int])).min(1),
+    budgets: z.strictObject({ modest: int, normal: int, generous: int }),
+    clinicShare: z.number().int().min(0).max(100),
+  }),
 });
 
 export const versionSchema = z.strictObject({ contentVersion: z.number().int().min(1) });

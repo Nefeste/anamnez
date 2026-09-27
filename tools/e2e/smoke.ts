@@ -14,6 +14,8 @@ const OUT = join(import.meta.dir, 'out');
 const golden = JSON.parse(readFileSync(join(ROOT, 'tools/test/fixtures/golden.json'), 'utf8'));
 /** План амбулатории — тот же, что рисует карта смены: куда касаться. */
 const CLINIC = clinicLayout(buildDb().db);
+/** Участок песочницы — в клетках: куда касаться на экране стройки. */
+const sandboxPlot = buildDb().db.economy.sandbox.plot;
 mkdirSync(OUT, { recursive: true });
 
 const TYPES: Record<string, string> = { '.html': 'text/html', '.js': 'text/javascript', '.wasm': 'application/wasm', '.json': 'application/json', '.png': 'image/png', '.wav': 'audio/wav', '.ttf': 'font/ttf' };
@@ -393,6 +395,71 @@ try {
   await page.getByTestId('restart-confirm').click();
   await page.getByTestId('shift-clock').waitFor({ timeout: 10_000 });
   check((await text(page, 'shift-clock')) === '08:00' && (await text(page, 'shift-counts')).startsWith('Принято: 0'), 'меню: «Начать заново» — день 1, 08:00');
+
+  // песочница: пустой участок → регистратура (призрак тянут пальцем) → коридор кистью → отмена
+  // и снова → карточка помещения → «Готово»; в меню «Продолжить» — песочница
+  await page.goto(base);
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('sandbox-start').waitFor({ timeout: 10_000 });
+  await page.getByTestId('sandbox-budget-generous').click();
+  check((await text(page, 'sandbox-cash')) === 'Касса: 12\u00a0000\u00a0000\u00a0₽', `песочница: щедрый бюджет — ${await text(page, 'sandbox-cash')}`);
+  await page.getByTestId('sandbox-budget-normal').click();
+  await page.getByTestId('sandbox-start').click();
+  await page.getByTestId('sandbox-build').waitFor({ timeout: 10_000 });
+  check((await text(page, 'sandbox-open-needs')).includes('Регистратура, Зона ожидания, Кабинет врача'), `песочница: перед открытием — ${await text(page, 'sandbox-open-needs')}`);
+  await page.getByTestId('sandbox-build').click();
+  await page.getByTestId('build-map').waitFor({ timeout: 10_000 });
+  await page.waitForTimeout(500);
+  const [plotW, plotH] = sandboxPlot;
+  const cellPoint = async (x: number, y: number) => {
+    const box = (await page.getByTestId('build-map').boundingBox())!;
+    const z = Math.min(box.width / (plotW * 16), box.height / (plotH * 16));
+    return { x: box.x + (box.width - plotW * 16 * z) / 2 + (x + 0.5) * 16 * z, y: box.y + (box.height - plotH * 16 * z) / 2 + (y + 0.5) * 16 * z };
+  };
+  const drag = async (cells: [number, number][]) => {
+    const a = await cellPoint(...cells[0]);
+    await page.mouse.move(a.x, a.y);
+    await page.mouse.down();
+    for (const c of cells.slice(1)) {
+      const b = await cellPoint(...c);
+      await page.mouse.move(b.x, b.y, { steps: 14 });
+    }
+    await page.mouse.up();
+    await page.waitForTimeout(400);
+  };
+  const cash0 = await text(page, 'build-cash');
+  await page.getByTestId('build-tool-room').click();
+  await page.getByTestId('room-type-room.reception').click();
+  await page.getByTestId('build-place').waitFor({ timeout: 5000 });
+  // призрак — посреди участка (17, 10); тянем на пять клеток влево
+  await drag([[19, 13], [14, 13]]);
+  await page.screenshot({ path: join(OUT, '12-build-ghost.png') });
+  await page.getByTestId('build-place').click();
+  await page.getByTestId('build-tool-corridor').waitFor({ timeout: 5000 });
+  const cash1 = await text(page, 'build-cash');
+  check(cash1 !== cash0 && (await page.getByTestId('build-undo').innerText()).includes('(1)'), `стройка: регистратура построена — ${cash0} → ${cash1}`);
+  await page.getByTestId('build-tool-corridor').click();
+  const corridor: [number, number][] = [[4, 13], [4, 17], [24, 17]];
+  await drag(corridor);
+  const cash2 = await text(page, 'build-cash');
+  check(cash2 !== cash1 && (await page.getByTestId('build-undo').innerText()).includes('(2)'), `стройка: коридор кистью — ${cash1} → ${cash2}`);
+  await page.getByTestId('build-undo').click();
+  check((await text(page, 'build-cash')) === cash1, 'стройка: «Отменить» — коридора нет, деньги вернулись полностью');
+  await drag(corridor);
+  await page.getByTestId('build-tool-done').click();
+  await page.screenshot({ path: join(OUT, '12-build.png') });
+  const reception = await cellPoint(14, 12);
+  await page.mouse.click(reception.x, reception.y);
+  await page.getByTestId('room-status').waitFor({ timeout: 5000 });
+  check((await text(page, 'room-status')) === 'Работает', `стройка: карточка регистратуры — ${await text(page, 'room-status')}`);
+  await page.getByTestId('room-card-close').click();
+  await page.getByTestId('build-done').click();
+  await page.getByTestId('sandbox-open-needs').waitFor({ timeout: 5000 });
+  check((await text(page, 'sandbox-open-needs')).includes('Зона ожидания, Кабинет врача') && !(await text(page, 'sandbox-open-needs')).includes('Регистратура'),
+    'песочница: регистратура есть — не хватает зоны ожидания и кабинета');
+  await page.goto(base);
+  await page.getByTestId('menu-continue').waitFor({ timeout: 10_000 });
+  check((await text(page, 'menu-continue')).includes('песочница: перед открытием'), `меню: «Продолжить» — последняя партия: ${(await text(page, 'menu-continue')).replace(/\n/g, ' · ')}`);
 
   // конец дня из сохранения: закрыть день, итоги, разбор случая из итогов, следующий день
   const day = await browser.newContext({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2 });

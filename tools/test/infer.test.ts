@@ -21,7 +21,7 @@ const exam = (id: string, f: string, sens: number, spec: number): Exam => ({
 
 /** Числа — иллюстрация из документа: q в долях 1/10 000, априорные 45/25/15/15. */
 const db: ContentDb = {
-  contentVersion: 1, hash: 'test', risks: {}, treatments: {}, rooms: {}, equipment: {}, roles: {}, presets: {}, economy: { corridor: { cost: 0, upkeep: 0 }, refund: 50 }, revealedBy: {},
+  contentVersion: 1, hash: 'test', risks: {}, treatments: {}, rooms: {}, equipment: {}, roles: {}, presets: {}, economy: { corridor: { cost: 0, upkeep: 0 }, refund: 50, sandbox: { plot: [8, 8], entrance: [0, 1], corridor: [], budgets: { modest: 0, normal: 0, generous: 0 }, clinicShare: 0 } }, revealedBy: {},
   conditions: {
     'cond.arvi': cond('cond.arvi', 45, 200, 100),
     'cond.bronchitis': cond('cond.bronchitis', 25, 1000, 200),

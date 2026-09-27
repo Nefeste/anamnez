@@ -3,22 +3,26 @@
 // кто на обследованиях, что происходит; после закрытия дня — его итоги. Часы идут, только
 // пока этот экран на виду и в кабинете никого (ADR 0005). Приглашённый идёт в кабинет, и
 // его карта открывается, когда он вошёл.
-import { router, useFocusEffect } from 'expo-router';
+import { router, Stack, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Text } from '@/ui/text';
 import { buzz, play } from '@/audio/sounds';
+import { db } from '@/content';
 import type { Difficulty, Triage } from '@/engine/shift/types';
 import { T } from '@/i18n';
+import { BuildMap } from '@/render/map/BuildMap';
 import { ClinicMap } from '@/render/map/ClinicMap';
 import { CLINIC } from '@/state/clinicMap';
+import { blockText } from '@/state/sandboxView';
 import {
   callPatient, closeDay, loadShift, nextDay, openCase, pauseClock, type QueueRow, type ShiftView, SPEEDS, type Speed, type SummaryView,
-  saveNow, setSpeed, skipIdle, startShift, TICK_MS, tick, useShift, type WhoView,
+  saveNow, setSpeed, skipIdle, startSandbox, startShift, TICK_MS, tick, useBuild, useShift, type WhoView,
 } from '@/state/session';
 import { CaseRow } from '@/ui/case/CaseRow';
 import { Button, Card, Chip, Chips, H, P, Screen, Sheet, Tabs } from '@/ui/components';
 import { DifficultyChoice } from '@/ui/difficulty';
+import { NewSandbox } from '@/ui/sandbox';
 import { colors, radius, space, touch } from '@/ui/theme';
 
 export default function ShiftScreen() {
@@ -36,8 +40,35 @@ export default function ShiftScreen() {
       </Screen>
     );
   }
-  if (v.status === 'none') return <NewPractice />;
+  if (v.status === 'none') return v.mode === 'sandbox' ? <NewSandbox onStart={opts => startSandbox(opts)} /> : <NewPractice />;
+  // песочница до первой смены — своя больница и стройка (spec 2026-09-own-hospital)
+  if (v.mode === 'sandbox' && !v.dayOpen && v.day === 0) return <Evening v={v} />;
   return v.dayOpen ? <Queue v={v} /> : <Summary v={v} />;
+}
+
+/** Своя больница между сменами: план, касса, «Стройка»; смена в ней — следующая часть этапа. */
+function Evening({ v }: { v: ShiftView }) {
+  const t = T.sandbox;
+  const b = useBuild();
+  const { width } = useWindowDimensions();
+  if (!b) return null;
+  const w = Math.min(width, 640) - 32;
+  const h = Math.round((w * b.plan.grid.h) / b.plan.grid.w);
+  const labels = b.plan.rooms.map(r => ({ id: r.id, name: db.rooms[r.type].name.ru, x: r.x, y: r.y, w: r.w, down: b.problems[r.id].length > 0 }));
+  return (
+    <Screen footer={<Button testID="sandbox-build" title={t.build} hint={t.buildHint} onPress={() => router.push('/sandbox/build')} />}>
+      <Stack.Screen options={{ title: t.title }} />
+      <Card>
+        <H>{v.day === 0 ? t.beforeOpening : t.day(v.day)}</H>
+        <P testID="sandbox-summary">{`${t.cash(T.common.rub(v.cash ?? 0))} · ${t.rooms(b.plan.rooms.length)}`}</P>
+      </Card>
+      <BuildMap testID="sandbox-plan" plan={b.plan} width={w} height={h} tool="look" labels={labels} label={t.mapLabel} still onGhostMove={() => undefined} onStroke={() => undefined} onTapCell={() => undefined} />
+      <Card>
+        <Button testID="sandbox-open" kind="plain" disabled title={t.openShift} hint={t.openSoon} onPress={() => undefined} />
+        {b.open.length > 0 && <P muted testID="sandbox-open-needs">{`${t.needToOpen} ${b.open.map(x => blockText(db, x)).join(', ')}`}</P>}
+      </Card>
+    </Screen>
+  );
 }
 
 /** Практики нет: что это и какая сложность (03-game-design.md §14); по умолчанию — «Студент». */

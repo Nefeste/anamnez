@@ -6,6 +6,7 @@
 // меняется на месте; случайность — только из именованных ветвей зерна смены (ADR 0004).
 import type { ContentDb, Id, Season } from '../../content/types';
 import { fnv1a } from '../core/hash';
+import { build, emptyPlot, presetHospital, UNDO_DEPTH } from '../hospital/build';
 import { RNG_VERSION, Rng } from '../core/rng';
 import { observe } from '../med/course';
 import { complaintObservations, runExam } from '../med/exams';
@@ -58,6 +59,41 @@ export function newShift(db: ContentDb, opts: { seed: number; season: Season; de
   };
   planDay(db, s);
   return s;
+}
+
+/**
+ * Песочница — своя больница (spec 2026-09-own-hospital): день 0, смена ещё не открыта, касса
+ * по выбранному бюджету. С готовой амбулаторией — та же амбулатория, что в практике, в углу
+ * участка, а денег — только доля бюджета.
+ */
+export function newSandbox(db: ContentDb, opts: { seed: number; season: Season; difficulty?: Difficulty; start: 'empty' | 'clinic'; budget: number }): ShiftState {
+  const sb = db.economy.sandbox;
+  const [w, h] = sb.plot;
+  const hospital = opts.start === 'clinic'
+    ? presetHospital(db, db.presets['preset.clinic'], sb.plot).hospital
+    : emptyPlot(w, h, sb.entrance, sb.corridor);
+  const cash = opts.start === 'clinic' ? Math.floor((opts.budget * sb.clinicShare) / 100) : opts.budget;
+  return {
+    meta: {
+      schemaVersion: SHIFT_SCHEMA_VERSION, contentVersion: db.contentVersion, rngVersion: RNG_VERSION, mode: 'sandbox', start: opts.start,
+      seed: opts.seed >>> 0, season: opts.season, department: 'dept.therapy', difficulty: opts.difficulty ?? 'doctor',
+    },
+    t: 0,
+    day: 0,
+    dayOpen: false,
+    patients: {},
+    queue: [],
+    events: [],
+    seq: 0,
+    rooms: { xray: 0, ecg: 0 },
+    returns: [],
+    summary: emptySummary(0),
+    history: [],
+    journal: [],
+    hospital,
+    economy: { cash },
+    undo: [],
+  };
 }
 
 /**
@@ -117,7 +153,34 @@ export function apply(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
     case 'nextDay':
       nextDay(db, s);
       return [];
+    case 'build':
+    case 'undo':
+    case 'buildEnd':
+      building(db, s, cmd);
+      return [];
   }
+}
+
+/** Стройка — только в песочнице и только между сменами (ADR 0016); ошибка — ничего не меняется. */
+function building(db: ContentDb, s: ShiftState, cmd: Extract<Command, { kind: 'build' | 'undo' | 'buildEnd' }>) {
+  if (!s.hospital || !s.economy || s.dayOpen) return;
+  if (cmd.kind === 'buildEnd') {
+    s.undo = [];
+    return;
+  }
+  if (cmd.kind === 'undo') {
+    const prev = s.undo?.pop();
+    if (prev) {
+      s.hospital = prev.hospital;
+      s.economy.cash = prev.cash;
+    }
+    return;
+  }
+  const r = build(db, { hospital: s.hospital, cash: s.economy.cash }, cmd.cmd);
+  if (!r.ok) return;
+  s.undo = [...(s.undo ?? []), { hospital: s.hospital, cash: s.economy.cash }].slice(-UNDO_DEPTH);
+  s.hospital = r.state.hospital;
+  s.economy.cash = r.state.cash;
 }
 
 export function current(s: ShiftState): ShiftPatient | undefined {

@@ -6,6 +6,7 @@
 import type { Id, Season, Setting } from '../../content/types';
 import type { Scheduled } from '../core/events';
 import type { Outcome } from '../med/course';
+import type { BuildCommand, Built, HospitalState } from '../hospital/build';
 import type { Grade, ScoreNote } from '../med/score';
 import type { Observation, Patient } from '../med/types';
 
@@ -33,6 +34,9 @@ export type Triage = 'red' | 'yellow' | 'green';
 export type Difficulty = 'student' | 'doctor';
 
 export type PatientStatus = 'coming' | 'waiting' | 'inRoom' | 'away' | 'done' | 'left' | 'unseen';
+
+/** Практика в готовой амбулатории или песочница — своя больница (spec 2026-09-own-hospital). */
+export type Mode = 'shift' | 'sandbox';
 
 export type VisitKind = 'appointment' | 'walkIn' | 'return';
 export type ReturnReason = 'worse' | 'reaction' | 'unchanged';
@@ -114,7 +118,11 @@ export type Command =
   /** время на карте: часы идут сами (ADR 0005) */
   | { kind: 'advance'; seconds: number }
   | { kind: 'closeDay' }
-  | { kind: 'nextDay' };
+  | { kind: 'nextDay' }
+  /** песочница, между сменами (ADR 0016): постройка, отмена последней, стройка закончена */
+  | { kind: 'build'; cmd: BuildCommand }
+  | { kind: 'undo' }
+  | { kind: 'buildEnd' };
 
 /** Что случилось — для интерфейса: звук, автопауза, сводка «за это время». */
 export type Notice =
@@ -151,7 +159,9 @@ export interface ShiftState {
     schemaVersion: number;
     contentVersion: number;
     rngVersion: number;
-    mode: 'shift';
+    mode: Mode;
+    /** песочница: с чего начали — пустой участок или готовая амбулатория */
+    start?: 'empty' | 'clinic';
     seed: number;
     season: Season;
     department: Id;
@@ -177,4 +187,10 @@ export interface ShiftState {
   history: DaySummary[];
   /** команды текущего дня — для отчёта об ошибке и повтора (`06-architecture.md` §8) */
   journal: Command[];
+  /** своя больница — только в песочнице; практика идёт в готовой амбулатории каталога */
+  hospital?: HospitalState;
+  /** касса песочницы, ₽ */
+  economy?: { cash: number };
+  /** «Отменить» на экране стройки: прежние больница и касса, последние UNDO_DEPTH */
+  undo?: Built[];
 }

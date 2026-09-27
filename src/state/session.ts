@@ -1,6 +1,8 @@
 // Смена в амбулатории — для экранов (spec 2026-09-first-shift). Движок смены
 // (engine/shift) плюс то, что нужно игре, а не модели: часы на карте по скорости, автопауза
-// на «красного» и на результаты, «за это время», автосохранение в слот `shift` (ADR 0010).
+// на «красного» и на результаты, «за это время», автосохранение (ADR 0010). Живая партия —
+// одна: практика (слот `shift`) или песочница — своя больница (слот `sandbox`, spec
+// 2026-09-own-hospital); между сменами в песочнице строят (buildAction, undoBuild, endBuild).
 //
 // Хранилище приходит снаружи (setStore): на телефоне — файлы, в вебе — localStorage, в
 // тестах — память. Модуль, как и saves.ts, не знает про платформу.
@@ -11,8 +13,12 @@ import { complaintObservations } from '@/engine/med/exams';
 import { evaluatePlan } from '@/engine/med/plan';
 import type { Grade } from '@/engine/med/score';
 import { complaintText } from '@/engine/med/text';
-import { apply, current, newShift, observationsOf, reviewFor } from '@/engine/shift/engine';
-import { type Command, DAY, type Difficulty, type Notice, SHIFT_END, SHIFT_SCHEMA_VERSION, type ShiftPatient, type ShiftState, type Triage } from '@/engine/shift/types';
+import { build, type BuildCommand, type BuildError, type HospitalState, type Plan, planOf } from '@/engine/hospital/build';
+import { type Block, openBlocks, type Problem, problemsOf, type Staffing, workingRooms } from '@/engine/hospital/requirements';
+import { apply, current, newSandbox, newShift, observationsOf, reviewFor } from '@/engine/shift/engine';
+import {
+  type Command, DAY, type Difficulty, type Mode, type Notice, SHIFT_END, SHIFT_SCHEMA_VERSION, type ShiftPatient, type ShiftState, type Triage,
+} from '@/engine/shift/types';
 import { T } from '@/i18n';
 import { type Arrival, type Decision, decisionOf, hhmm, makeCaseView, outcomeText, patientName, type VisitView } from './caseView';
 import { CLINIC, type Doing, type Placement, placements } from './clinicMap';
@@ -20,7 +26,10 @@ import { archivedCase, recordCases } from './profile';
 import { loadSlot, type RawStore, saveSlot } from './saves';
 import { settings } from './settings';
 
+/** Слоты сохранения: практика и песочница — у каждой своё. */
 export const SLOT = 'shift';
+export const SANDBOX_SLOT = 'sandbox';
+export const slotOf = (m: Mode) => (m === 'sandbox' ? SANDBOX_SLOT : SLOT);
 /** Скорость часов на карте — игровых минут в секунду. */
 export const SPEEDS = [1, 2, 4] as const;
 export type Speed = (typeof SPEEDS)[number];
@@ -87,6 +96,10 @@ export interface ShiftView {
   version: number;
   /** none — сохранения нет, ready — смена открыта */
   status: 'idle' | 'loading' | 'none' | 'ready';
+  /** практика или песочница: какую партию показывает (и какой нет, если status — none) */
+  mode: Mode;
+  /** касса песочницы, ₽ */
+  cash?: number;
   difficulty: Difficulty;
   day: number;
   clock: string;
@@ -132,6 +145,8 @@ interface Session {
 
 let store: RawStore | null = null;
 let session: Session | null = null;
+/** режим живой партии или той, что читается; status — про неё */
+let mode: Mode = 'shift';
 let status: ShiftView['status'] = 'idle';
 let loading: Promise<void> | null = null;
 let saving: Promise<unknown> = Promise.resolve();
@@ -158,8 +173,14 @@ export function setStore(s: RawStore) {
 
 /** Сохранение от этой базы: всё, на что оно ссылается, в ней есть (после обновления — может не быть). */
 export function compatible(s: ShiftState | undefined): boolean {
-  if (!s || s.meta?.mode !== 'shift' || typeof s.patients !== 'object') return false;
+  if (!s || (s.meta?.mode !== 'shift' && s.meta?.mode !== 'sandbox') || typeof s.patients !== 'object') return false;
   const has = (table: Record<string, unknown>) => (id: Id) => table[id] !== undefined;
+  if (s.meta.mode === 'sandbox') {
+    const h = s.hospital;
+    if (!h || !s.economy || !Array.isArray(h.rooms)) return false;
+    const ok = h.rooms.every(r => db.rooms[r.type]?.sizes.some(z => z.id === r.size) && r.equipment.every(e => e === null || has(db.equipment)(e)));
+    if (!ok) return false;
+  }
   const finding = has(db.findings);
   const exam = has(db.exams);
   const tx = has(db.treatments);
@@ -175,10 +196,21 @@ export function compatible(s: ShiftState | undefined): boolean {
     && (p.draft.diagnosis === undefined || has(db.conditions)(p.draft.diagnosis)));
 }
 
-/** Прочитать сохранение, если ещё не читали; его нет — статус 'none'. */
-export function loadShift(): Promise<void> {
-  if (session || status === 'none') return Promise.resolve();
-  if (loading) return loading;
+/**
+ * Прочитать сохранение практики или песочницы, если ещё не читали; его нет — статус 'none'.
+ * Без режима — тот, что уже выбран (сначала практика). Другой режим — живая партия
+ * записывается и уступает место.
+ */
+export function loadShift(which?: Mode): Promise<void> {
+  const want = which ?? mode;
+  if (loading) return loading.then(() => loadShift(want));
+  if (mode === want && (session || status === 'none')) return Promise.resolve();
+  if (session) {
+    save(true);
+    session = null;
+    decisions.clear();
+  }
+  mode = want;
   const st = store;
   if (!st) {
     status = 'none';
@@ -187,7 +219,7 @@ export function loadShift(): Promise<void> {
   }
   status = 'loading';
   changed();
-  loading = loadSlot<ShiftState>(st, SLOT, e => e.schemaVersion === SHIFT_SCHEMA_VERSION && compatible(e.data))
+  loading = loadSlot<ShiftState>(st, slotOf(want), e => e.schemaVersion === SHIFT_SCHEMA_VERSION && compatible(e.data) && e.data.meta.mode === want)
     .then(r => {
       if (r && !session) {
         session = fresh(r.envelope.data, r.from === 'prev-1' || r.from === 'prev-2');
@@ -224,8 +256,10 @@ function flush(): Promise<unknown> {
   if (deferred) clearTimeout(deferred);
   deferred = null;
   const st = store;
+  // партия — своя в каждой записи: сменилась на другую, пока запись ждала очереди, — пишется прежняя в свой слот
+  const s = session?.s;
   saving = saving
-    .then(() => (session && st ? saveSlot(st, SLOT, session.s, SHIFT_SCHEMA_VERSION, new Date().toISOString()) : undefined))
+    .then(() => (s && st ? saveSlot(st, slotOf(s.meta.mode), s, SHIFT_SCHEMA_VERSION, new Date().toISOString()) : undefined))
     .catch(() => undefined); // не записалось — попробуем в следующий раз; игра продолжается
   return saving;
 }
@@ -252,8 +286,23 @@ export function seasonOf(d: Date): Season {
 /** Новая практика: день 1, 08:00. Прежнее сохранение перезаписывается. */
 /** Новая практика; сложность выбирает игрок, без выбора — «Врач», как было до 0.0.16. */
 export function startShift(seed?: number, season?: Season, difficulty: Difficulty = 'doctor') {
-  const s = newShift(db, { seed: seed ?? Date.now() % 0x7fffffff, season: season ?? seasonOf(new Date()), difficulty });
+  begin(newShift(db, { seed: seed ?? Date.now() % 0x7fffffff, season: season ?? seasonOf(new Date()), difficulty }));
+}
+
+export type Budget = 'modest' | 'normal' | 'generous';
+
+/** Новая песочница: участок пустой или с готовой амбулаторией, касса — по бюджету. Прежняя перезаписывается. */
+export function startSandbox(opts: { start: 'empty' | 'clinic'; budget: Budget; difficulty: Difficulty; seed?: number; season?: Season }) {
+  begin(newSandbox(db, {
+    seed: opts.seed ?? Date.now() % 0x7fffffff, season: opts.season ?? seasonOf(new Date()), difficulty: opts.difficulty, start: opts.start,
+    budget: db.economy.sandbox.budgets[opts.budget],
+  }));
+}
+
+function begin(s: ShiftState) {
+  if (session) save(true); // прежняя партия — в свой слот
   session = fresh(s, false);
+  mode = s.meta.mode;
   status = 'ready';
   decisions.clear();
   save();
@@ -265,6 +314,7 @@ export function forgetShift() {
   if (deferred) clearTimeout(deferred);
   deferred = null;
   session = null;
+  mode = 'shift';
   status = 'idle';
   loading = null;
   decisions.clear();
@@ -454,6 +504,8 @@ export function closeDay() {
 export function nextDay() {
   const sess = session;
   if (!sess || sess.s.dayOpen) return;
+  // песочница: смена в своей больнице — следующая часть этапа (spec 2026-09-own-hospital, часть 8)
+  if (sess.s.meta.mode === 'sandbox') return;
   run(sess, { kind: 'nextDay' });
   sess.log = [];
   sess.focus = undefined;
@@ -461,6 +513,105 @@ export function nextDay() {
   sess.pauseReason = undefined;
   save();
   changed();
+}
+
+// --- стройка: песочница, между сменами (ADR 0016) ------------------------------------------
+
+/** Постройка; нельзя — почему (экран пишет причину), и ничего не меняется. */
+export function buildAction(cmd: BuildCommand): BuildError | null {
+  const sess = session;
+  const s = sess?.s;
+  if (!sess || !s?.hospital || !s.economy || s.dayOpen) return { kind: 'unknown' };
+  const r = build(db, { hospital: s.hospital, cash: s.economy.cash }, cmd);
+  if (!r.ok) return r.error;
+  run(sess, { kind: 'build', cmd });
+  save();
+  changed();
+  return null;
+}
+
+/** «Отменить» — последнее действие стройки, деньги возвращаются полностью. */
+export function undoBuild() {
+  const sess = session;
+  if (!sess?.s.undo?.length) return;
+  run(sess, { kind: 'undo' });
+  save();
+  changed();
+}
+
+/** Экран стройки закрыт: отменять больше нечего. */
+export function endBuild() {
+  const sess = session;
+  if (!sess?.s.hospital) return;
+  run(sess, { kind: 'buildEnd' });
+  save();
+  changed();
+}
+
+/** Кто работает — штата пока нет (часть 8): считаем, что люди на местах. */
+const STAFFED: Staffing = () => true;
+
+export interface BuildView {
+  version: number;
+  hospital: HospitalState;
+  plan: Plan;
+  cash: number;
+  /** сколько действий можно отменить */
+  undo: number;
+  /** чего не хватает каждому помещению; пусто — работает */
+  problems: Record<string, Problem[]>;
+  /** что мешает открыть смену */
+  open: Block[];
+}
+
+function buildBuildView(): BuildView | undefined {
+  const s = session?.s;
+  if (!s?.hospital || !s.economy) return undefined;
+  const plan = planOf(db, s.hospital);
+  const problems: Record<string, Problem[]> = {};
+  for (const r of plan.rooms) problems[r.id] = problemsOf(db, plan, r, STAFFED);
+  return { version, hospital: s.hospital, plan, cash: s.economy.cash, undo: s.undo?.length ?? 0, problems, open: openBlocks(db, plan, workingRooms(db, plan, STAFFED), STAFFED) };
+}
+
+let buildCache: { version: number; view: BuildView | undefined } | null = null;
+
+export function buildView(): BuildView | undefined {
+  if (buildCache?.version !== version) buildCache = { version, view: buildBuildView() };
+  return buildCache.view;
+}
+
+export function useBuild(): BuildView | undefined {
+  return useSyncExternalStore(subscribe, buildView, buildView);
+}
+
+// --- сохранения для меню ---------------------------------------------------------------------
+
+/** Сохранённая партия — для «Продолжить» в меню: что, когда записана, где остановились. */
+export interface GameSummary {
+  mode: Mode;
+  savedAt: string;
+  day: number;
+  clock: string;
+  difficulty: Difficulty;
+  cash?: number;
+}
+
+/** Обе партии с диска, последняя записанная — первой. Живая партия сначала записывается. */
+export async function savedGames(): Promise<GameSummary[]> {
+  const st = store;
+  if (!st) return [];
+  await saved();
+  const out: GameSummary[] = [];
+  for (const m of ['shift', 'sandbox'] as Mode[]) {
+    const r = await loadSlot<ShiftState>(st, slotOf(m), e => e.schemaVersion === SHIFT_SCHEMA_VERSION && compatible(e.data) && e.data.meta.mode === m).catch(() => null);
+    if (!r) continue;
+    const s = r.envelope.data;
+    out.push({
+      mode: m, savedAt: r.envelope.savedAt, day: s.day, clock: hhmm(minuteOfDay(s.t)), difficulty: s.meta.difficulty ?? 'doctor',
+      ...(s.economy ? { cash: s.economy.cash } : {}),
+    });
+  }
+  return out.sort((a, b) => (a.savedAt < b.savedAt ? 1 : a.savedAt > b.savedAt ? -1 : 0));
 }
 
 // --- «за это время» ------------------------------------------------------------------------
@@ -546,21 +697,24 @@ function summaryOf(s: ShiftState): SummaryView | undefined {
   };
 }
 
-const EMPTY: Omit<ShiftView, 'version' | 'status'> = {
+const EMPTY: Omit<ShiftView, 'version' | 'status' | 'mode'> = {
   difficulty: 'student', day: 0, clock: '', dayOpen: false, afterHours: false, allDone: false, speed: 1, paused: false,
   queue: [], away: [], log: [], counts: { seen: 0, left: 0, waiting: 0, unseen: 0 }, restored: false, people: [], who: {},
 };
 
 function buildShiftView(): ShiftView {
   const sess = session;
-  if (!sess) return { ...EMPTY, version, status };
+  if (!sess) return { ...EMPTY, version, status, mode };
   const s = sess.s;
   const inRoom = current(s);
   const away = Object.values(s.patients).filter(p => p.status === 'away').sort((a, b) => (a.id < b.id ? -1 : 1));
-  const people = placements(db, CLINIC, s);
+  // песочница: люди на карте своей больницы — с частью 8, пока её план рисует экран стройки
+  const people = s.meta.mode === 'sandbox' ? [] : placements(db, CLINIC, s);
   return {
     version,
     status,
+    mode: s.meta.mode,
+    ...(s.economy ? { cash: s.economy.cash } : {}),
     difficulty: s.meta.difficulty ?? 'doctor',
     day: s.day,
     clock: hhmm(minuteOfDay(s.t)),

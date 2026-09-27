@@ -5,6 +5,7 @@ export const menu = {
   practice: 'Практика в амбулатории',
   practiceHint: 'быстрая игра: смена 08:00–14:00, день за днём',
   practiceAgainHint: 'начать заново, с первого дня',
+  practiceSavedHint: (day: number, hh: string) => `день ${day}, ${hh} — продолжить или начать заново`,
   restartTitle: 'Начать практику заново?',
   restartText: (day: number) => `Сохранение одно: нынешняя практика — день ${day} — сотрётся.`,
   restart: 'Начать заново',
