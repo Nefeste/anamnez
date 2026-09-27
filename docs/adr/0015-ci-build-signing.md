@@ -1,5 +1,7 @@
 # 0015. Сборка в CI без EAS; постоянный ключ подписи с первой сборки; имя пакета — один раз
 
+*Общее правило — ADR студии [0003](https://github.com/Nefeste/gornitsa/blob/main/adr/0003-expo-stack-ci.md) и [0006](https://github.com/Nefeste/gornitsa/blob/main/adr/0006-permanent-app-id-and-key.md) в уставе «Горницы» (`Nefeste/gornitsa`). Эта записка остаётся как история решения и описание того, как оно устроено в проекте.*
+
 **Решили.**
 
 - APK и AAB собираются в GitHub Actions: `expo prebuild` + Gradle, без учётной записи

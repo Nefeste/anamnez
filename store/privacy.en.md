@@ -1,3 +1,7 @@
+> Text of the «Анамнез» (Anamnesis) section of the studio’s single privacy policy at `gornitsa.games/en/privacy`
+> (charter: [`docs/07-privacy.md`](https://github.com/Nefeste/gornitsa/blob/main/docs/07-privacy.md), in Russian). It goes to the site as a section, not a
+> separate page; once published it is edited on the site and this file is removed.
+
 # Anamnez — Privacy Policy
 
 Effective September 27, 2026.

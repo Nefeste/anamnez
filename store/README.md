@@ -8,7 +8,7 @@
 |------|---------|------|
 | [`listing.ru.md`](listing.ru.md) | название, краткое (≤ 80) и полное (≤ 4000) описание, «Что нового», подписи к снимкам, категория, возраст, контакты | RuStore; сайт |
 | [`forms.md`](forms.md) | ответы анкет: возраст 16+ с обоснованием, данные, разрешения, предзаказ; Google Play — к этапу 7 | RuStore, Play Console |
-| [`privacy.ru.md`](privacy.ru.md), [`privacy.en.md`](privacy.en.md) | политика конфиденциальности на двух языках | сайт: `/anamnez/privacy` — ссылку просят оба магазина |
+| [`privacy.ru.md`](privacy.ru.md), [`privacy.en.md`](privacy.en.md) | политика конфиденциальности на двух языках | сайт: раздел «Анамнез» в единой политике `gornitsa.games/privacy` (устав студии, `docs/07-privacy.md`) — ссылку просят оба магазина |
 | `icon/icon-512.png` | иконка 512 × 512, PNG без прозрачности | RuStore; сайт |
 | `screenshots/phone/*.png` | семь снимков экрана 1080 × 1920 с подписями | RuStore; сайт |
 | `graphics/feature-1024x500.png` | графика 1024 × 500 | Google Play; шапка сайта |

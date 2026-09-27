@@ -1,5 +1,7 @@
 # 0002. Expo / React Native / TypeScript, как у «Вотчины»; карта и изображения — Skia
 
+*Общее правило — ADR студии [0003](https://github.com/Nefeste/gornitsa/blob/main/adr/0003-expo-stack-ci.md) в уставе «Горницы» (`Nefeste/gornitsa`). Эта записка остаётся как история решения и описание того, как оно устроено в проекте.*
+
 **Решили.** Приложение — Expo (последний стабильный SDK на момент начала: 57, React
 Native 0.86; переход на SDK 58 с React Native 0.88 — после его выхода, отдельным
 коммитом), React 19, TypeScript, React Compiler, Hermes. Карта больницы, снимки, ЭКГ и
