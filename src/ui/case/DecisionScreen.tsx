@@ -56,14 +56,16 @@ export function DecisionScreen({ view: v, actions }: { view: VisitView; actions:
 
       {step === 'diagnosis' ? (
         <>
-          <Card>
-            <Text style={styles.label}>{d.likely}</Text>
-            <Chips>
-              {v.hints.map(h => (
-                <Chip key={h.id} testID={`hint-${h.id}`} strong={v.draft.diagnosis === h.id} text={`${h.name} · ${t.outOf10(h.outOf10)}`} onPress={() => actions.chooseDiagnosis(h.id)} />
-              ))}
-            </Chips>
-          </Card>
+          {v.hints.length > 0 && (
+            <Card>
+              <Text style={styles.label}>{d.likely}</Text>
+              <Chips>
+                {v.hints.map(h => (
+                  <Chip key={h.id} testID={`hint-${h.id}`} strong={v.draft.diagnosis === h.id} text={`${h.name} · ${t.outOf10(h.outOf10)}`} onPress={() => actions.chooseDiagnosis(h.id)} />
+                ))}
+              </Chips>
+            </Card>
+          )}
           {diagnosisGroups().map(g => (
             <Card key={g.key}>
               <Text style={styles.label}>{g.title}</Text>

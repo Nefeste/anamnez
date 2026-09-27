@@ -1,7 +1,7 @@
 export const menu = {
   subtitle: (version: string) => `Симулятор врача · версия ${version} · в разработке`,
   continue: 'Продолжить',
-  continueHint: (day: number, hh: string) => `практика в амбулатории: день ${day}, ${hh}`,
+  continueHint: (day: number, hh: string, level: string) => `практика в амбулатории: день ${day}, ${hh} · ${level}`,
   practice: 'Практика в амбулатории',
   practiceHint: 'быстрая игра: смена 08:00–14:00, день за днём',
   practiceAgainHint: 'начать заново, с первого дня',

@@ -64,6 +64,7 @@ export const spikes = {
     ready: (name: string) => `Готово: ${name}`,
     likely: 'Похоже на (уровень «Студент»)',
     outOf10: (n: number) => `${n} из 10`,
+    similar: (n: number) => `у ${n} из 10 похожих пациентов`,
     correct: 'Верно',
     partly: 'Почти: та же тактика',
     wrong: 'Неверно',

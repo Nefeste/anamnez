@@ -271,6 +271,8 @@ try {
   await page.goto(base);
   await page.getByTestId('menu-shift').click();
   await page.getByTestId('shift-start').waitFor({ timeout: 15_000 });
+  // сложность выбирают при начале практики; по умолчанию — «Студент» с подсказками
+  check((await page.getByTestId('difficulty-student').getAttribute('aria-selected')) === 'true' && (await text(page, 'difficulty-text')).startsWith('Подсказки'), 'смена: сложность по умолчанию — «Студент»');
   await page.getByTestId('shift-start').click();
   // в очереди никого — «промотать до следующего» (отзыв на 0.0.7: ждали 40 секунд)
   await page.getByTestId('shift-skip').click();
@@ -307,6 +309,8 @@ try {
   await page.getByTestId('exam-exam.ask_complaints').waitFor({ timeout: 10_000 });
   const walked = Date.now() - invited;
   check(walked > 800, `смена: приглашённый дошёл до кабинета — карта пациента через ${walked} мс`);
+  const likely = page.locator('[data-testid^="likely-"]');
+  check((await likely.count()) > 0 && (await likely.first().innerText()).includes('из 10 похожих пациентов'), `смена: «Студент» — «Похоже на»: ${(await likely.first().innerText()).trim()}`);
   const roomClock = await text(page, 'visit-clock');
   await page.waitForTimeout(1500);
   check((await text(page, 'visit-clock')) === roomClock, 'смена: в кабинете часы идут только делами');

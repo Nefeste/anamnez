@@ -26,9 +26,10 @@ export function effectiveCheck(sens: number, spec: number, skill: ExamSkill): { 
 
 /**
  * Проводит обследование. `rng` — ветвь именно этого назначения (например,
- * `root.fork('order:12')`): повторное обследование бросает новые монеты.
+ * `root.fork('order:12')`): повторное обследование бросает новые монеты. `exact` — без
+ * ошибок: показывает правду (сложность «Студент», 03-game-design.md §14).
  */
-export function runExam(db: ContentDb, patient: Patient, examId: Id, rng: Rng, skill: ExamSkill = NORMAL_SKILL): Observation[] {
+export function runExam(db: ContentDb, patient: Patient, examId: Id, rng: Rng, skill: ExamSkill = NORMAL_SKILL, exact = false): Observation[] {
   const exam = db.exams[examId];
   if (!exam) throw new Error(`runExam: unknown exam ${examId}`);
   const present = new Map(patient.truth.findings.map(x => [x.f, x]));
@@ -37,7 +38,7 @@ export function runExam(db: ContentDb, patient: Patient, examId: Id, rng: Rng, s
   return exam.checks.filter(check => !told.has(check.f)).map(check => {
     const r = rng.fork(check.f);
     const truth = present.get(check.f);
-    const { sens, spec } = effectiveCheck(check.sens, check.spec, skill);
+    const { sens, spec } = exact ? { sens: P_ONE, spec: P_ONE } : effectiveCheck(check.sens, check.spec, skill);
     const shown = truth ? r.chance(sens) : r.chance(P_ONE - spec);
     const finding = db.findings[check.f];
     const obs: Observation = { f: check.f, shown, exam: examId };

@@ -17,7 +17,7 @@ import { buildReview, type ReviewData } from '../med/review';
 import { scoreCase } from '../med/score';
 import type { Observation } from '../med/types';
 import {
-  type ClosedCase, type Command, DAY, type DaySummary, type Notice, type PlannedReturn, SHIFT_END, SHIFT_SCHEMA_VERSION, SHIFT_START,
+  type ClosedCase, type Command, DAY, type DaySummary, type Difficulty, type Notice, type PlannedReturn, SHIFT_END, SHIFT_SCHEMA_VERSION, SHIFT_START,
   type ShiftEvent, type ShiftPatient, type ShiftState, type Triage, type VisitKind,
 } from './types';
 
@@ -33,12 +33,15 @@ const SLOT_BOOKED = 6000;
 const WALK_INS: [number, number] = [2, 6];
 
 const branch = (s: ShiftState, name: string) => Rng.seeded(s.meta.seed).fork(name);
+/** «Студент»: обследования не ошибаются, пациенты ждут в полтора раза дольше (03-game-design.md §14). */
+const exact = (s: ShiftState) => s.meta.difficulty === 'student';
+const STUDENT_PATIENCE = 1.5;
 
-export function newShift(db: ContentDb, opts: { seed: number; season: Season; department?: Id }): ShiftState {
+export function newShift(db: ContentDb, opts: { seed: number; season: Season; department?: Id; difficulty?: Difficulty }): ShiftState {
   const s: ShiftState = {
     meta: {
       schemaVersion: SHIFT_SCHEMA_VERSION, contentVersion: db.contentVersion, rngVersion: RNG_VERSION, mode: 'shift',
-      seed: opts.seed >>> 0, season: opts.season, department: opts.department ?? 'dept.therapy',
+      seed: opts.seed >>> 0, season: opts.season, department: opts.department ?? 'dept.therapy', difficulty: opts.difficulty ?? 'doctor',
     },
     t: SHIFT_START,
     day: 1,
@@ -246,7 +249,7 @@ function exam(db: ContentDb, s: ShiftState, examId: Id): Notice[] {
   p.done.push(examId);
   p.spent.money += e.cost;
   s.summary.money += e.cost;
-  const obs = runExam(db, p.patient, examId, branch(s, `exam:${p.id}:${p.done.length}:${examId}`));
+  const obs = runExam(db, p.patient, examId, branch(s, `exam:${p.id}:${p.done.length}:${examId}`), undefined, exact(s));
   const after = (e.time.report ?? 0) + (e.time.turnaround ?? 0);
   if (e.kind === 'imaging' || e.kind === 'functional') {
     // кабинет один: следующий снимок — когда аппарат освободится
@@ -394,11 +397,11 @@ function arrive(db: ContentDb, s: ShiftState, p: ShiftPatient, notices: Notice[]
   if (p.status !== 'coming') return;
   if (db.exams['exam.vitals']) {
     p.done.push('exam.vitals');
-    p.results.push({ exam: 'exam.vitals', obs: runExam(db, p.patient, 'exam.vitals', branch(s, `vitals:${p.id}`)), at: s.t, step: 0 });
+    p.results.push({ exam: 'exam.vitals', obs: runExam(db, p.patient, 'exam.vitals', branch(s, `vitals:${p.id}`), undefined, exact(s)), at: s.t, step: 0 });
   }
   p.triage = triageOf(db, p);
   const [lo, hi] = p.triage === 'red' ? [0, 0] : PATIENCE[p.triage];
-  p.patience = branch(s, `patience:${p.id}`).range(lo, hi) * MIN;
+  p.patience = Math.round(branch(s, `patience:${p.id}`).range(lo, hi) * MIN * (s.meta.difficulty === 'student' ? STUDENT_PATIENCE : 1));
   s.summary.arrived++;
   if (p.kind === 'return') s.summary.returnsToday++;
   enqueue(s, p, s.t);

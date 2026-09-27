@@ -25,6 +25,13 @@ export type Triage = 'red' | 'yellow' | 'green';
  * кабинете; away — ушёл на анализы и ждёт результатов; done — приём завершён; left — ушёл,
  * не дождавшись; unseen — день закрыт, а до него не дошли.
  */
+/**
+ * Сложность (03-game-design.md §14): «Студент» — обследования не ошибаются, пациенты ждут
+ * в полтора раза дольше, подсказки «Похоже на» с частотой; «Врач» — всё как в жизни.
+ * Медицина — болезни, частоты, точность обследований в базе — одна на обоих уровнях.
+ */
+export type Difficulty = 'student' | 'doctor';
+
 export type PatientStatus = 'coming' | 'waiting' | 'inRoom' | 'away' | 'done' | 'left' | 'unseen';
 
 export type VisitKind = 'appointment' | 'walkIn' | 'return';
@@ -148,6 +155,8 @@ export interface ShiftState {
     seed: number;
     season: Season;
     department: Id;
+    /** сложность (03-game-design.md §14); нет — «Врач»: так играли до 0.0.16 */
+    difficulty?: Difficulty;
   };
   t: number;
   day: number;
