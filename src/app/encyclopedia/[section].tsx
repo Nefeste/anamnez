@@ -2,7 +2,8 @@
 // по группам — как в карте пациента и решении. У болезней — сколько раз встречались в
 // практике игрока (профиль).
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { StyleSheet, Text } from 'react-native';
+import { StyleSheet } from 'react-native';
+import { Text } from '@/ui/text';
 import { db } from '@/content';
 import { T } from '@/i18n';
 import { type Section, SECTIONS, sectionView } from '@/state/encyclopedia';

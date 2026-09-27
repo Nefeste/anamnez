@@ -1,6 +1,7 @@
 // Строка закрытого приёма: верен ли диагноз, кто и что поставлено, оценка. Одна — в итогах дня
 // и в архиве профиля.
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { Text } from '../text';
 import type { Grade } from '@/engine/med/score';
 import { T } from '@/i18n';
 import { colors, space } from '../theme';

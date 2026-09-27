@@ -4,21 +4,13 @@
 // доступа в интернет нет.
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Linking, Platform } from 'react-native';
+import { Linking } from 'react-native';
 import { db } from '@/content';
 import { T } from '@/i18n';
 import { PRIVACY_URL, SITE_URL, SUPPORT_EMAIL, VERSION } from '@/info';
 import { sourceGroups } from '@/state/sources';
 import { Button, Card, H, P, Screen } from '@/ui/components';
-
-/** Модель и версия Android — в письмо разработчику, чтобы было с чем искать ошибку. */
-function device(): string {
-  if (Platform.OS === 'android') {
-    const c = Platform.constants;
-    return `${c.Manufacturer} ${c.Model}, Android ${c.Release}`;
-  }
-  return Platform.OS;
-}
+import { device } from '@/ui/device';
 
 const noScheme = (url: string) => url.replace(/^https?:\/\//, '');
 

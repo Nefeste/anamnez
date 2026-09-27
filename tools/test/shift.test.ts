@@ -255,3 +255,38 @@ describe('смена: детерминизм и сохранение', () => {
     expect(JSON.stringify(saved)).toBe(JSON.stringify(a));
   });
 });
+
+describe('смена: сложность (03-game-design.md §14)', () => {
+  test('«Студент»: обследования и осмотр показывают правду, пациенты ждут в полтора раза дольше', () => {
+    for (const seed of [3, 7, 11]) {
+      const doctor = newShift(db, { seed, ...winter });
+      const student = newShift(db, { seed, ...winter, difficulty: 'student' });
+      expect(student.meta.difficulty).toBe('student');
+      // приходят те же люди: план дня от сложности не зависит
+      expect(Object.keys(student.patients).sort()).toEqual(Object.keys(doctor.patients).sort());
+      apply(db, doctor, minutes(6 * 60));
+      apply(db, student, minutes(6 * 60));
+      for (const p of Object.values(student.patients)) {
+        const d = doctor.patients[p.id];
+        if (p.triage !== 'red' && p.triage === d.triage) expect(p.patience).toBe(Math.round(d.patience * 1.5));
+      }
+      // первый в очереди — все обследования подряд: показано ровно то, что есть
+      const s = newShift(db, { seed, ...winter, difficulty: 'student' });
+      for (let i = 0; i < 300 && s.queue.length === 0; i++) apply(db, s, minutes(1));
+      const id = s.queue[0];
+      apply(db, s, { kind: 'call', id });
+      for (const exam of Object.keys(db.exams)) apply(db, s, { kind: 'exam', exam });
+      apply(db, s, minutes(24 * 60));
+      const p = s.patients[id];
+      const present = new Set(p.patient.truth.findings.map(f => f.f));
+      const all = [...p.results.flatMap(r => r.obs), ...p.pending.flatMap(x => x.obs)];
+      expect(all.length).toBeGreaterThan(20);
+      for (const o of all) expect({ f: o.f, shown: o.shown }).toEqual({ f: o.f, shown: present.has(o.f) });
+    }
+  });
+
+  test('без сложности в сохранении — «Врач»: так шла смена до 0.0.16', () => {
+    const s = newShift(db, { seed: 5, ...winter });
+    expect(s.meta.difficulty).toBe('doctor');
+  });
+});

@@ -9,6 +9,8 @@ import app from '../app.json';
  * несколько версий.
  */
 export const VERSION: string = app.expo.version;
+/** Номер сборки (versionCode) — для отчёта об ошибке. */
+export const BUILD: number = app.expo.android.versionCode;
 
 export const SITE_URL = 'https://gornitsa.games';
 export const SUPPORT_EMAIL = 'support@gornitsa.games';

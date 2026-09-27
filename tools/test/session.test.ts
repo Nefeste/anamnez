@@ -134,16 +134,27 @@ describe('смена на экране: часы', () => {
 });
 
 describe('смена на экране: приём', () => {
-  test('карта пациента — вид приёма: жалобы, витальные от медсестры, «Похоже на»', () => {
-    startShift(3, 'winter');
+  test('карта пациента — вид приёма: жалобы, витальные от медсестры, «Похоже на» — у «Студента»', () => {
+    startShift(3, 'winter', 'student');
     untilQueue();
     expect(shiftCaseView()).toBeUndefined();
     callPatient(shiftView().queue[0].id);
     const c = shiftCaseView()!;
     expect(c.groups.map(g => g.exam)).toContain('exam.vitals');
     expect(c.hints.length).toBeGreaterThan(0);
+    expect(c.hints.length).toBeLessThanOrEqual(5);
     expect(c.decision).toBeUndefined();
     expect(c.freshCount).toBe(0);
+  });
+
+  test('«Врач» — без подсказок «Похоже на»; сложность видна в смене', () => {
+    startShift(3, 'winter');
+    expect(shiftView().difficulty).toBe('doctor');
+    untilQueue();
+    callPatient(shiftView().queue[0].id);
+    expect(shiftCaseView()!.hints).toEqual([]);
+    startShift(3, 'winter', 'student');
+    expect(shiftView().difficulty).toBe('student');
   });
 
   test('отпустить на анализы: вернётся в очередь с результатами, «новое» — при вызове', () => {
@@ -168,7 +179,7 @@ describe('смена на экране: приём', () => {
   });
 
   test('завершить приём: итог и разбор; «домой» — исход в итогах следующих дней', () => {
-    startShift(6, 'winter');
+    startShift(6, 'winter', 'student');
     untilQueue();
     const id = shiftView().queue[0].id;
     callPatient(id);
@@ -215,7 +226,7 @@ describe('смена на экране: карта', () => {
 
 describe('смена на экране: день', () => {
   test('закрыть день — итоги с приёмами; следующий день — с 08:00, журнал заново', () => {
-    startShift(21, 'winter');
+    startShift(21, 'winter', 'student');
     untilQueue();
     callPatient(shiftView().queue[0].id);
     examine('exam.ask_complaints');

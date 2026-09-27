@@ -8,9 +8,11 @@ import { T } from '@/i18n';
 import { VERSION } from '@/info';
 import { loadProfile, setDoctor, useProfile } from '@/state/profile';
 import { doctorName } from '@/state/profileView';
+import type { Difficulty } from '@/engine/shift/types';
 import { loadShift, startShift, useShift } from '@/state/session';
 import { loadSettings, updateSettings, useSettings } from '@/state/settings';
 import { Button, Card, H, P, Screen, Sheet } from '@/ui/components';
+import { DifficultyChoice } from '@/ui/difficulty';
 import { DoctorForm } from '@/ui/profile';
 
 export default function Menu() {
@@ -18,6 +20,7 @@ export default function Menu() {
   const profile = useProfile();
   const shift = useShift();
   const [restart, setRestart] = useState(false);
+  const [difficulty, setDifficulty] = useState<Difficulty>('student');
   useEffect(() => {
     loadSettings();
     loadProfile();
@@ -33,19 +36,24 @@ export default function Menu() {
   const saved = shift.status === 'ready';
   const again = () => {
     setRestart(false);
-    startShift();
+    startShift(undefined, undefined, difficulty);
     router.push('/shift');
+  };
+  // заново — с той же сложностью, что сейчас, пока игрок не выберет другую
+  const askRestart = () => {
+    setDifficulty(shift.difficulty);
+    setRestart(true);
   };
   return (
     <Screen>
       <P muted>{t.subtitle(VERSION)}</P>
-      {saved && <Button testID="menu-continue" title={t.continue} hint={t.continueHint(shift.day, shift.clock)} onPress={() => router.push('/shift')} />}
+      {saved && <Button testID="menu-continue" title={t.continue} hint={t.continueHint(shift.day, shift.clock, T.shift.difficulty[shift.difficulty])} onPress={() => router.push('/shift')} />}
       <Button
         testID="menu-shift"
         kind={saved ? 'plain' : 'primary'}
         title={t.practice}
         hint={saved ? t.practiceAgainHint : t.practiceHint}
-        onPress={() => (saved ? setRestart(true) : router.push('/shift'))}
+        onPress={() => (saved ? askRestart() : router.push('/shift'))}
       />
       <Button testID="menu-encyclopedia" kind="plain" title={t.encyclopedia} hint={t.encyclopediaHint} onPress={() => router.push('/encyclopedia')} />
       <Button testID="menu-campaign" kind="plain" disabled title={t.campaign} hint={t.soon} onPress={() => undefined} />
@@ -54,6 +62,7 @@ export default function Menu() {
       <Sheet visible={restart} onClose={() => setRestart(false)} closeTitle={t.cancel} testID="restart-sheet">
         <H>{t.restartTitle}</H>
         <P>{t.restartText(shift.day)}</P>
+        <DifficultyChoice value={difficulty} onChange={setDifficulty} />
         <Button testID="restart-confirm" kind="plain" title={t.restart} onPress={again} />
       </Sheet>
     </Screen>

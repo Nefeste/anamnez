@@ -2,7 +2,8 @@
 // оговорка одной строкой (11-publishing.md §3).
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { StyleSheet, TextInput } from 'react-native';
+import { StyleSheet } from 'react-native';
+import { TextInput } from '@/ui/text';
 import { db } from '@/content';
 import { T } from '@/i18n';
 import { search, sectionsOf } from '@/state/encyclopedia';

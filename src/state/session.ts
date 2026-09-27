@@ -12,7 +12,7 @@ import { evaluatePlan } from '@/engine/med/plan';
 import type { Grade } from '@/engine/med/score';
 import { complaintText } from '@/engine/med/text';
 import { apply, current, newShift, observationsOf, reviewFor } from '@/engine/shift/engine';
-import { type Command, DAY, type Notice, SHIFT_END, SHIFT_SCHEMA_VERSION, type ShiftPatient, type ShiftState, type Triage } from '@/engine/shift/types';
+import { type Command, DAY, type Difficulty, type Notice, SHIFT_END, SHIFT_SCHEMA_VERSION, type ShiftPatient, type ShiftState, type Triage } from '@/engine/shift/types';
 import { T } from '@/i18n';
 import { type Arrival, type Decision, decisionOf, hhmm, makeCaseView, outcomeText, patientName, type VisitView } from './caseView';
 import { CLINIC, type Doing, type Placement, placements } from './clinicMap';
@@ -87,6 +87,7 @@ export interface ShiftView {
   version: number;
   /** none — сохранения нет, ready — смена открыта */
   status: 'idle' | 'loading' | 'none' | 'ready';
+  difficulty: Difficulty;
   day: number;
   clock: string;
   dayOpen: boolean;
@@ -249,8 +250,9 @@ export function seasonOf(d: Date): Season {
 }
 
 /** Новая практика: день 1, 08:00. Прежнее сохранение перезаписывается. */
-export function startShift(seed?: number, season?: Season) {
-  const s = newShift(db, { seed: seed ?? Date.now() % 0x7fffffff, season: season ?? seasonOf(new Date()) });
+/** Новая практика; сложность выбирает игрок, без выбора — «Врач», как было до 0.0.16. */
+export function startShift(seed?: number, season?: Season, difficulty: Difficulty = 'doctor') {
+  const s = newShift(db, { seed: seed ?? Date.now() % 0x7fffffff, season: season ?? seasonOf(new Date()), difficulty });
   session = fresh(s, false);
   status = 'ready';
   decisions.clear();
@@ -545,7 +547,7 @@ function summaryOf(s: ShiftState): SummaryView | undefined {
 }
 
 const EMPTY: Omit<ShiftView, 'version' | 'status'> = {
-  day: 0, clock: '', dayOpen: false, afterHours: false, allDone: false, speed: 1, paused: false,
+  difficulty: 'student', day: 0, clock: '', dayOpen: false, afterHours: false, allDone: false, speed: 1, paused: false,
   queue: [], away: [], log: [], counts: { seen: 0, left: 0, waiting: 0, unseen: 0 }, restored: false, people: [], who: {},
 };
 
@@ -559,6 +561,7 @@ function buildShiftView(): ShiftView {
   return {
     version,
     status,
+    difficulty: s.meta.difficulty ?? 'doctor',
     day: s.day,
     clock: hhmm(minuteOfDay(s.t)),
     dayOpen: s.dayOpen,
@@ -683,6 +686,7 @@ export function archiveCaseView(key: string): VisitView | undefined {
     done: p.done,
     draft: p.draft,
     decision: decisionFor(r, p, arrived, known),
+    difficulty: 'doctor',
   });
 }
 
@@ -711,6 +715,7 @@ function buildCaseView(): VisitView | undefined {
     decision: p.closed ? decisionFor(s.meta, p, arrived, outcomeKnown(s, p)) : undefined,
     canSendAway: p.status === 'inRoom' && p.pending.length > 0,
     returnNote: p.returnReason && prev?.closed ? T.shift.returnNote(p.returnReason, closedDay(prev), female(p)) : undefined,
+    difficulty: s.meta.difficulty ?? 'doctor',
   });
 }
 

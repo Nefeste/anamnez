@@ -5,8 +5,9 @@ import { encyclopedia } from './sections/encyclopedia';
 import { menu } from './sections/menu';
 import { names } from './sections/names';
 import { profile } from './sections/profile';
+import { report } from './sections/report';
 import { settings } from './sections/settings';
 import { shift } from './sections/shift';
 import { spikes } from './sections/spikes';
 
-export const ru = { common, menu, settings, about, encyclopedia, spikes, shift, names, profile };
+export const ru = { common, menu, settings, about, encyclopedia, spikes, shift, names, profile, report };

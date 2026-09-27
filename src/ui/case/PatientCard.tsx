@@ -3,7 +3,8 @@
 // внизу. Общая для прототипа П4 и смены: вид и действия приходят снаружи.
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { Text } from '../text';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { buzz, play } from '@/audio/sounds';
 import { T } from '@/i18n';
@@ -109,10 +110,12 @@ export function PatientCard({ view: v, actions }: { view: VisitView; actions: Ca
         </Card>
       ) : (
         <>
-          <Card>
-            <Text style={styles.label}>{t.likely}</Text>
-            {v.hints.map(h => <P key={h.id}>{`${h.name} — ${t.outOf10(h.outOf10)}`}</P>)}
-          </Card>
+          {v.hints.length > 0 && (
+            <Card>
+              <Text style={styles.label}>{t.likely}</Text>
+              {v.hints.map(h => <P key={h.id} testID={`likely-${h.id}`}>{`${h.name} — ${t.similar(h.outOf10)}`}</P>)}
+            </Card>
+          )}
           {/* три действия — подписи вмещаются и на узком экране; решение — отдельным шагом внизу */}
           <Tabs<Tab>
             value={tab}

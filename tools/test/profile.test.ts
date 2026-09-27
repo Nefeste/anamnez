@@ -118,7 +118,7 @@ describe('профиль и смена', () => {
 
   test('смена пишет приём в профиль; разбор из архива — тот же, что в смене; перечитанная смена не удваивает', async () => {
     await loadProfile();
-    startShift(6, 'winter');
+    startShift(6, 'winter', 'student');
     untilQueue();
     const id = shiftView().queue[0].id;
     callPatient(id);

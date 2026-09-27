@@ -13,9 +13,9 @@ beforeEach(() => {
 });
 
 describe('настройки', () => {
-  test('файла нет — умолчания: звук полный, вибрация и автопауза включены, оговорка не прочитана', async () => {
+  test('файла нет — умолчания: звук полный, вибрация и автопауза включены, оговорка не прочитана, текст обычный', async () => {
     await loadSettings();
-    expect(settings()).toEqual({ sound: 1, vibration: true, pauseOnRed: true, pauseOnResults: true, disclaimerAccepted: false });
+    expect(settings()).toEqual({ sound: 1, vibration: true, pauseOnRed: true, pauseOnResults: true, disclaimerAccepted: false, textScale: 1 });
   });
 
   test('поменяли — записано; после «перезапуска» — те же', async () => {
@@ -42,6 +42,9 @@ describe('настройки', () => {
 
   test('испорченные и чужие поля — по умолчанию, остальные на месте', () => {
     expect(sanitize({ sound: 7, vibration: 'yes', pauseOnRed: false, extra: 1 })).toEqual({ ...DEFAULTS, pauseOnRed: false });
+    // размер текста — только одна из ступеней
+    expect(sanitize({ textScale: 1.3 }).textScale).toBe(1.3);
+    expect(sanitize({ textScale: 5 }).textScale).toBe(1);
     expect(sanitize(null)).toEqual(DEFAULTS);
     expect(sanitize([1, 2])).toEqual(DEFAULTS);
   });

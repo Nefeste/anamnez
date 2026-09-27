@@ -5,9 +5,10 @@
 // его карта открывается, когда он вошёл.
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Text } from '@/ui/text';
 import { buzz, play } from '@/audio/sounds';
-import type { Triage } from '@/engine/shift/types';
+import type { Difficulty, Triage } from '@/engine/shift/types';
 import { T } from '@/i18n';
 import { ClinicMap } from '@/render/map/ClinicMap';
 import { CLINIC } from '@/state/clinicMap';
@@ -17,6 +18,7 @@ import {
 } from '@/state/session';
 import { CaseRow } from '@/ui/case/CaseRow';
 import { Button, Card, Chip, Chips, H, P, Screen, Sheet, Tabs } from '@/ui/components';
+import { DifficultyChoice } from '@/ui/difficulty';
 import { colors, radius, space, touch } from '@/ui/theme';
 
 export default function ShiftScreen() {
@@ -34,17 +36,22 @@ export default function ShiftScreen() {
       </Screen>
     );
   }
-  if (v.status === 'none') {
-    return (
-      <Screen footer={<Button testID="shift-start" title={T.shift.start} onPress={() => startShift()} />}>
-        <Card>
-          <H>{T.shift.newTitle}</H>
-          <P>{T.shift.newText}</P>
-        </Card>
-      </Screen>
-    );
-  }
+  if (v.status === 'none') return <NewPractice />;
   return v.dayOpen ? <Queue v={v} /> : <Summary v={v} />;
+}
+
+/** Практики нет: что это и какая сложность (03-game-design.md §14); по умолчанию — «Студент». */
+function NewPractice() {
+  const [difficulty, setDifficulty] = useState<Difficulty>('student');
+  return (
+    <Screen footer={<Button testID="shift-start" title={T.shift.start} onPress={() => startShift(undefined, undefined, difficulty)} />}>
+      <Card>
+        <H>{T.shift.newTitle}</H>
+        <P>{T.shift.newText}</P>
+        <DifficultyChoice value={difficulty} onChange={setDifficulty} />
+      </Card>
+    </Screen>
+  );
 }
 
 type SpeedKey = 'pause' | 'x1' | 'x2' | 'x4';

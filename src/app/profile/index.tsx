@@ -2,7 +2,8 @@
 // последних 50 приёмов — каждый открывается тем же разбором, что в итогах дня.
 import { router } from 'expo-router';
 import { useEffect } from 'react';
-import { StyleSheet, Text } from 'react-native';
+import { StyleSheet } from 'react-native';
+import { Text } from '@/ui/text';
 import { T } from '@/i18n';
 import { loadProfile, useProfile } from '@/state/profile';
 import { archiveRows, doctorName, practiceLines } from '@/state/profileView';

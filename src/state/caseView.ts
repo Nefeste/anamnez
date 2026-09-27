@@ -13,6 +13,7 @@ import type { ReviewData } from '@/engine/med/review';
 import type { CaseScore, Grade, ScoreNote } from '@/engine/med/score';
 import { complaintText, observationText } from '@/engine/med/text';
 import type { Observation, Patient } from '@/engine/med/types';
+import type { Difficulty } from '@/engine/shift/types';
 import { T } from '@/i18n';
 
 export const DEPARTMENT = 'dept.therapy';
@@ -142,6 +143,8 @@ export interface CaseInput {
   decision?: Decision;
   canSendAway?: boolean;
   returnNote?: string;
+  /** сложность: «Похоже на» — только у «Студента» (03-game-design.md §14); нет — «Студент» (прототип П4) */
+  difficulty?: Difficulty;
 }
 
 export function hhmm(min: number): string {
@@ -256,6 +259,9 @@ function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observat
   return undefined;
 }
 
+/** «Студенту» — до пяти гипотез с частотой (03-game-design.md §14). */
+const HINTS = 5;
+
 export function makeCaseView(c: CaseInput): VisitView {
   const p = c.patient;
   const line = (o: Observation): Line => ({
@@ -286,7 +292,10 @@ export function makeCaseView(c: CaseInput): VisitView {
     meanwhile: c.meanwhile,
     ...(c.urgent ? { urgent: true } : {}),
     done: c.done,
-    hints: beliefsOf(p, obs).slice(0, 3).map(b => ({ id: b.id, name: db.conditions[b.id].name.ru, outOf10: Math.round(b.p * 10) })),
+    // «0 из 10» ничего не подсказывает — такие не показываем, первую — всегда
+    hints: c.difficulty === 'doctor' ? [] : beliefsOf(p, obs).slice(0, HINTS)
+      .map(b => ({ id: b.id, name: db.conditions[b.id].name.ru, outOf10: Math.round(b.p * 10) }))
+      .filter((h, i) => i === 0 || h.outOf10 > 0),
     treatments,
     treatmentGroups: groupTreatments(treatments),
     draft: c.draft,

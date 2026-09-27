@@ -10,7 +10,8 @@ import { type Command, DAY, SHIFT_END, SHIFT_SCHEMA_VERSION, type ShiftState } f
 
 const MIN = 60;
 const SEEDS = 3000;
-const winter = { season: 'winter' as const };
+// «Студент» — как у нового игрока: на снимках видны подсказки «Похоже на» (03-game-design.md §14)
+const winter = { season: 'winter' as const, difficulty: 'student' as const };
 
 /** Сохранение слота `shift`, как его пишет игра (src/state/saves.ts). */
 export function envelope(s: ShiftState): string {

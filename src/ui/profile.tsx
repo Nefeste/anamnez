@@ -1,7 +1,8 @@
 // Имя и пол врача: при первом запуске, после оговорки, и из профиля. Имя уже подставлено — из
 // тех же списков, что у пациентов, — его можно оставить, поменять или взять другое.
 import { useState } from 'react';
-import { StyleSheet, Text, TextInput } from 'react-native';
+import { StyleSheet } from 'react-native';
+import { Text, TextInput } from './text';
 import { T } from '@/i18n';
 import type { Doctor } from '@/state/profile';
 import { suggestDoctor } from '@/state/profileView';
