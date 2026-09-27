@@ -8,8 +8,8 @@ import { walkable } from '../../src/engine/hospital/grid';
 import { apply, newShift } from '../../src/engine/shift/engine';
 import type { ShiftState } from '../../src/engine/shift/types';
 import { findPath } from '../../src/engine/sim/path';
-import { SPEED, Walkers } from '../../src/render/map/walkers';
-import { assignSeats, LEAVING, nearest, type Placement, placements, REGISTRATION, TRIAGE, type Where } from '../../src/state/clinicMap';
+import { BRISK, DWELL, SPEED, STRIDE, Walkers } from '../../src/render/map/walkers';
+import { assignSeats, type Doing, LEAVING, nearest, type Placement, placements, REGISTRATION, TRIAGE, type Where } from '../../src/state/clinicMap';
 
 const layout = clinicLayout();
 
@@ -67,6 +67,19 @@ describe('амбулатория: кто где', () => {
     expect(placements(db, layout, s).find(x => x.id === id)!.callable).toBe(true);
   });
 
+  test('не дождался — идёт к выходу и исчезает', () => {
+    const s = newShift(db, { seed: 3, season: 'winter' });
+    let left: string | undefined;
+    for (let i = 0; i < 600 && !left; i++) {
+      apply(db, s, { kind: 'advance', seconds: 60 });
+      left = Object.values(s.patients).find(p => p.status === 'left')?.id;
+    }
+    expect(left).toBeDefined();
+    expect(placements(db, layout, s).find(p => p.id === left)).toMatchObject({ where: { cell: layout.entrance }, doing: { kind: 'left' }, leaving: true });
+    apply(db, s, { kind: 'advance', seconds: LEAVING });
+    expect(whereOf(s, left!)).toBe('gone');
+  });
+
   test('пока в кабинете кто-то есть, ждущего в зале касанием не вызвать — как и из очереди', () => {
     const s = newShift(db, { seed: 5, season: 'winter' });
     for (let i = 0; i < 600 && s.queue.length < 2; i++) apply(db, s, { kind: 'advance', seconds: 60 });
@@ -102,14 +115,18 @@ describe('амбулатория: кто где', () => {
     apply(db, s, { kind: 'exam', exam: 'exam.xray_chest' });
     apply(db, s, { kind: 'sendAway' });
     const start2 = startOf(second);
+    const doingOf = (pid: string) => placements(db, layout, s).find(x => x.id === pid)!.doing;
     if (start2 > s.t) {
       expect(whereOf(s, second)).toEqual({ bench: true });
+      expect(doingOf(second)).toEqual({ kind: 'examQueue', room: 'xray' });
       apply(db, s, { kind: 'advance', seconds: start2 - s.t });
     }
     expect(whereOf(s, second)).toEqual({ cell: layout.spots.xray });
+    expect(doingOf(second)).toEqual({ kind: 'exam', room: 'xray' });
 
     // первый после снимка — на скамье, ждёт описания
     expect(whereOf(s, id)).toEqual({ bench: true });
+    expect(doingOf(id)).toEqual({ kind: 'results', readyAt: x.readyAt });
 
     // результаты готовы — снова в очереди, уже без регистратуры: сразу на стул
     apply(db, s, { kind: 'advance', seconds: x.readyAt - s.t });
@@ -145,59 +162,126 @@ describe('амбулатория: места и касание', () => {
 });
 
 describe('амбулатория: люди идут', () => {
+  const { spots, seats, benches, entrance } = layout;
   const at = (cell: [number, number]) => ({ cell });
-  const patient = (id: string, where: Placement['where'], extra: Partial<Placement> = {}): Placement => ({ id, figure: 'patient', where, ...extra });
+  const person = (id: string, where: Placement['where'], doing: Doing, extra: Partial<Placement> = {}): Placement => ({ id, figure: 'patient', where, doing, ...extra });
+  const seat = (id: string) => person(id, { seat: true }, { kind: 'waiting' }, { callable: true });
+  const bench = (id: string) => person(id, { bench: true }, { kind: 'results', readyAt: 0 });
+  const registration = (id: string) => person(id, at(spots.registration), { kind: 'registration' });
+  const triage = (id: string) => person(id, at(spots.triage), { kind: 'triage' });
+  const office = (id: string) => person(id, at(spots.office), { kind: 'office' });
+  const leaving = (id: string) => person(id, at(entrance), { kind: 'leaving' }, { leaving: true });
+  const steps = (a: [number, number], b: [number, number]) => findPath(layout.grid, a, b)!.length - 1;
+  /** Стоит ли человек в клетке `cell` в момент `t` (часы карты). */
+  const isAt = (w: Walkers, id: string, t: number, cell: [number, number]) => {
+    const p = w.where(id, t);
+    return !!p && Math.abs(p[0] - cell[0]) < 1e-6 && Math.abs(p[1] - cell[1]) < 1e-6;
+  };
 
-  test('при открытии все уже на местах; новый входит с улицы и доходит', () => {
+  test('при открытии все уже на местах; новый входит с улицы, доходит до стойки и стоит у неё', () => {
     const w = new Walkers(layout, 48);
-    w.sync([patient('p1', { seat: true }, { callable: true })], 0);
-    expect(w.where('p1', 0)).toEqual(layout.seats[0]);
-    w.sync([patient('p1', { seat: true }, { callable: true }), patient('p2', at(layout.spots.registration))], 10);
-    expect(w.where('p2', 10)).toEqual(layout.entrance);
-    const steps = findPath(layout.grid, layout.entrance, layout.spots.registration)!.length - 1;
-    expect(w.where('p2', 10 + steps / SPEED)).toEqual(layout.spots.registration);
+    w.sync([seat('p1')], 0);
+    expect(isAt(w, 'p1', 0, seats[0])).toBe(true);
+    w.sync([seat('p1'), registration('p2')], 10);
+    expect(isAt(w, 'p2', 10, entrance)).toBe(true);
+    const reached = 10 + steps(entrance, spots.registration) / SPEED;
+    expect(isAt(w, 'p2', reached, spots.registration)).toBe(true);
+    expect(w.arrivalOf('p2')).toBeCloseTo(reached + DWELL.registration!);
   });
 
   test('часы карты нужны, пока кто-то идёт; без перемен на UI-поток ничего не уходит', () => {
     const w = new Walkers(layout, 48);
-    const seated = patient('p1', { seat: true }, { callable: true });
-    expect(w.sync([seated], 0)).toMatchObject({ changed: true, until: 0 });
-    const walking = patient('p2', at(layout.spots.registration));
-    const steps = findPath(layout.grid, layout.entrance, layout.spots.registration)!.length - 1;
-    expect(w.sync([seated, walking], 10)).toMatchObject({ changed: true, until: 10 + steps / SPEED });
-    expect(w.sync([seated, walking], 11).changed).toBe(false);
+    expect(w.sync([seat('p1')], 0)).toMatchObject({ changed: true, until: 0 });
+    const frame = w.sync([seat('p1'), registration('p2')], 10);
+    expect(frame.changed).toBe(true);
+    expect(frame.until).toBeCloseTo(10 + steps(entrance, spots.registration) / SPEED + DWELL.registration!);
+    expect(w.sync([seat('p1'), registration('p2')], 11).changed).toBe(false);
     // срочность поменялась — другая фигурка
-    expect(w.sync([seated, { ...walking, figure: 'patientRed' }], 12).changed).toBe(true);
+    expect(w.sync([seat('p1'), { ...registration('p2'), figure: 'patientRed' }], 12).changed).toBe(true);
   });
 
-  test('новое место посреди пути — без скачка', () => {
+  test('смена спешит, а человек доходит до стойки и до медсестры и стоит у них, потом садится', () => {
     const w = new Walkers(layout, 48);
     w.sync([], 0);
-    w.sync([patient('p1', at(layout.spots.registration))], 0);
+    w.sync([registration('p1')], 0);
+    // на ×4 через полсекунды он по смене уже у медсестры, через полторы — в зале
+    w.sync([triage('p1')], 0.5);
+    w.sync([seat('p1')], 1.5);
+    const atDesk = steps(entrance, spots.registration) / SPEED;
+    expect(isAt(w, 'p1', atDesk, spots.registration)).toBe(true);
+    expect(isAt(w, 'p1', atDesk + DWELL.registration! - 0.05, spots.registration)).toBe(true);
+    const atNurse = atDesk + DWELL.registration! + steps(spots.registration, spots.triage) / SPEED;
+    expect(isAt(w, 'p1', atNurse, spots.triage)).toBe(true);
+    expect(isAt(w, 'p1', atNurse + DWELL.triage! - 0.05, spots.triage)).toBe(true);
+    expect(isAt(w, 'p1', 100, seats[0])).toBe(true);
+  });
+
+  test('место ожидания, до которого не дошёл, заменяет следующее', () => {
+    const w = new Walkers(layout, 48);
+    // первые скамьи заняты: ему — скамья справа, в стороне от пути в зал
+    const others = ['b1', 'b2', 'b3', 'b4'].map(bench);
+    w.sync([...others, office('p1')], 0);
+    w.sync([...others, bench('p1')], 0);
+    // результаты готовы, пока он шёл к скамье: сразу в зал, без скамьи
+    w.sync([...others, seat('p1')], 0.5);
+    expect(w.arrivalOf('p1')!).toBeLessThan((steps(spots.office, benches[4]) + steps(benches[4], seats[0])) / SPEED);
+    expect(isAt(w, 'p1', w.arrivalOf('p1')!, seats[0])).toBe(true);
+  });
+
+  test('приглашённый идёт в кабинет сразу и быстрее — даже от регистратуры', () => {
+    const w = new Walkers(layout, 48);
+    w.sync([seat('p1')], 0);
+    w.sync([office('p1')], 5);
+    expect(w.arrivalOf('p1')).toBeCloseTo(5 + steps(seats[0], spots.office) / BRISK);
+    expect(isAt(w, 'p1', w.arrivalOf('p1')!, spots.office)).toBe(true);
+
+    w.sync([office('p1'), registration('p2')], 10);
+    w.sync([office('p1'), office('p2')], 10.5);
+    // к стойке уже не идёт: от того места, где был, прямо в кабинет
+    expect(w.arrivalOf('p2')!).toBeLessThan(10.5 + (steps(entrance, spots.office) + 1) / BRISK);
+    expect(isAt(w, 'p2', w.arrivalOf('p2')!, spots.office)).toBe(true);
+  });
+
+  test('новое место посреди шага — без скачка и без шага назад', () => {
+    const w = new Walkers(layout, 48);
+    w.sync([], 0);
+    w.sync([registration('p1')], 0);
     const mid = w.where('p1', 0.6)!;
-    w.sync([patient('p1', at(layout.spots.triage))], 0.6);
-    expect(w.where('p1', 0.6)).toEqual(mid);
-    expect(w.where('p1', 100)).toEqual(layout.spots.triage);
+    w.sync([office('p1')], 0.6);
+    const now = w.where('p1', 0.6)!;
+    expect(now[0]).toBeCloseTo(mid[0]);
+    expect(now[1]).toBeCloseTo(mid[1]);
+    // шагом позже он дальше от входа, а не ближе
+    const later = w.where('p1', 0.6 + 0.05)!;
+    const d = (p: [number, number]) => Math.abs(p[0] - entrance[0]) + Math.abs(p[1] - entrance[1]);
+    expect(d(later)).toBeGreaterThan(d(now));
+    expect(isAt(w, 'p1', 100, spots.office)).toBe(true);
   });
 
   test('дошёл до выхода — исчезает и больше не появляется', () => {
     const w = new Walkers(layout, 48);
-    w.sync([patient('p1', at(layout.spots.office))], 0);
-    w.sync([patient('p1', at(layout.entrance), { leaving: true })], 0);
+    w.sync([office('p1')], 0);
+    w.sync([leaving('p1')], 0);
     expect(w.where('p1', 1)).toBeDefined();
-    const frame = w.sync([patient('p1', at(layout.entrance), { leaving: true })], 100);
+    const frame = w.sync([leaving('p1')], 100);
     expect(w.where('p1', 100)).toBeUndefined();
-    expect(frame.meta.every((v, i) => i % 3 !== 1 || v === 0)).toBe(true);
-    w.sync([patient('p1', at(layout.entrance), { leaving: true })], 101);
+    expect(frame.meta.every((v, i) => i % STRIDE !== 1 || v === 0)).toBe(true);
+    w.sync([leaving('p1')], 101);
     expect(w.where('p1', 101)).toBeUndefined();
   });
 
-  test('касание находит только ждущих в зале', () => {
+  test('касание находит любого — пациента, персонал; мимо всех — никого', () => {
     const w = new Walkers(layout, 48);
-    w.sync([patient('p1', { seat: true }, { callable: true }), patient('p2', at(layout.spots.office))], 0);
-    const [sx, sy] = layout.seats[0];
+    const nurse: Placement = { id: 'staff.nurse', figure: 'nurse', where: at(layout.staff[1].cell), doing: { kind: 'staff', role: 'nurse' } };
+    w.sync([seat('p1'), office('p2'), nurse], 0);
+    const [sx, sy] = seats[0];
     expect(w.hit(sx + 0.5, sy + 0.5, 0)).toBe('p1');
-    const [ox, oy] = layout.spots.office;
-    expect(w.hit(ox + 0.5, oy + 0.5, 0)).toBeUndefined();
+    const [ox, oy] = spots.office;
+    expect(w.hit(ox + 0.5, oy + 0.5, 0)).toBe('p2');
+    const [nx, ny] = layout.staff[1].cell;
+    expect(w.hit(nx + 0.5, ny + 0.5, 0)).toBe('staff.nurse');
+    expect(w.hit(27.5, 8.5, 0)).toBeUndefined();
+    expect(w.slotOf('p1')).toBeGreaterThanOrEqual(0);
+    expect(w.slotOf('nobody')).toBe(-1);
   });
 });

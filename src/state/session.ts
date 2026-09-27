@@ -15,7 +15,7 @@ import { apply, current, newShift, observationsOf, reviewOf } from '@/engine/shi
 import { type Command, DAY, type Notice, SHIFT_END, SHIFT_SCHEMA_VERSION, type ShiftPatient, type ShiftState, type Triage } from '@/engine/shift/types';
 import { T } from '@/i18n';
 import { type Arrival, type Decision, decisionOf, hhmm, makeCaseView, outcomeText, patientName, type VisitView } from './caseView';
-import { CLINIC, type Placement, placements } from './clinicMap';
+import { CLINIC, type Doing, type Placement, placements } from './clinicMap';
 import { loadSlot, type RawStore, saveSlot } from './saves';
 import { settings } from './settings';
 
@@ -39,6 +39,18 @@ export interface QueueRow {
   complaint: string;
   waits: string;
   badges: string[];
+}
+
+/** Кого коснулись на карте: кто это и что делает. */
+export interface WhoView {
+  /** «Волков Сергей, 45 лет» — или должность */
+  title: string;
+  complaint?: string;
+  /** что делает сейчас */
+  doing: string;
+  triage?: Triage;
+  /** ждёт приёма, кабинет свободен — можно пригласить */
+  callable: boolean;
 }
 
 export interface CaseRow {
@@ -95,6 +107,8 @@ export interface ShiftView {
   restored: boolean;
   /** кто где на карте амбулатории (clinicMap.ts) */
   people: Placement[];
+  /** кто это — для каждого на карте */
+  who: Record<string, WhoView>;
 }
 
 interface Session {
@@ -526,7 +540,7 @@ function summaryOf(s: ShiftState): SummaryView | undefined {
 
 const EMPTY: Omit<ShiftView, 'version' | 'status'> = {
   day: 0, clock: '', dayOpen: false, afterHours: false, allDone: false, speed: 1, paused: false,
-  queue: [], away: [], log: [], counts: { seen: 0, left: 0, waiting: 0, unseen: 0 }, restored: false, people: [],
+  queue: [], away: [], log: [], counts: { seen: 0, left: 0, waiting: 0, unseen: 0 }, restored: false, people: [], who: {},
 };
 
 function buildShiftView(): ShiftView {
@@ -535,6 +549,7 @@ function buildShiftView(): ShiftView {
   const s = sess.s;
   const inRoom = current(s);
   const away = Object.values(s.patients).filter(p => p.status === 'away').sort((a, b) => (a.id < b.id ? -1 : 1));
+  const people = placements(db, CLINIC, s);
   return {
     version,
     status,
@@ -553,8 +568,57 @@ function buildShiftView(): ShiftView {
     counts: { seen: s.summary.seen, left: s.summary.left, waiting: s.queue.length, unseen: s.queue.length + away.length + (inRoom ? 1 : 0) },
     summary: s.dayOpen ? undefined : summaryOf(s),
     restored: sess.restored,
-    people: placements(db, CLINIC, s),
+    people,
+    who: whoOf(s, people),
   };
+}
+
+function whoOf(s: ShiftState, people: readonly Placement[]): Record<string, WhoView> {
+  const t = T.shift.map;
+  const out: Record<string, WhoView> = {};
+  for (const x of people) {
+    const d = x.doing;
+    if (d.kind === 'staff') {
+      out[x.id] = { title: t.staff[d.role], doing: t.duty[d.role], callable: false };
+      continue;
+    }
+    const p = s.patients[x.id];
+    if (!p) continue;
+    out[x.id] = {
+      title: `${nameOf(p)}, ${T.spikes.patient.years(p.patient.age)}`,
+      complaint: complaintOf(p),
+      doing: doingText(s, p, d),
+      triage: p.triage,
+      callable: !!x.callable,
+    };
+  }
+  return out;
+}
+
+function doingText(s: ShiftState, p: ShiftPatient, d: Doing): string {
+  const t = T.shift.map.doing;
+  switch (d.kind) {
+    case 'registration':
+      return t.registration;
+    case 'triage':
+      return t.triage;
+    case 'waiting':
+      return t.waiting(Math.max(0, Math.floor((s.t - p.arriveT) / 60)));
+    case 'office':
+      return t.office;
+    case 'exam':
+      return t.exam[d.room];
+    case 'examQueue':
+      return t.examQueue[d.room];
+    case 'results':
+      return t.results(hhmm(minuteOfDay(d.readyAt)));
+    case 'leaving':
+      return t.leaving;
+    case 'left':
+      return t.left(female(p));
+    case 'staff':
+      return '';
+  }
 }
 
 /** Итог и разбор закрытого случая: разбор пересчитывается той же ветвью зерна (engine/reviewOf). */

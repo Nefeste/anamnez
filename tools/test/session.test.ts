@@ -193,6 +193,26 @@ describe('смена на экране: приём', () => {
   });
 });
 
+describe('смена на экране: карта', () => {
+  test('коснулись человека — кто это и что делает; пригласить можно, пока кабинет свободен', () => {
+    startShift(3, 'winter');
+    untilQueue();
+    const q = shiftView().queue[0];
+    const who = shiftView().who[q.id];
+    expect(who).toMatchObject({ title: `${q.name}, ${q.age}`, complaint: q.complaint, triage: q.triage, callable: true });
+    expect(who.doing).toBe('В регистратуре: заводят карту');
+    // персонал — должность и зачем он: медсестра меряет и решает, кто срочный
+    const nurse = shiftView().who['staff.nurse'];
+    expect(nurse.title).toBe('Медсестра доврачебного кабинета');
+    expect(nurse.doing).toContain('давление');
+    expect(nurse.callable).toBe(false);
+    untilQueue();
+    callPatient(q.id);
+    expect(shiftView().who[q.id]).toMatchObject({ doing: 'У вас в кабинете', callable: false });
+    for (const id of Object.keys(shiftView().who)) expect(shiftView().who[id].callable).toBe(false);
+  });
+});
+
 describe('смена на экране: день', () => {
   test('закрыть день — итоги с приёмами; следующий день — с 08:00, журнал заново', () => {
     startShift(21, 'winter');
