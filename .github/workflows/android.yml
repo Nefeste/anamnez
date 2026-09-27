@@ -261,6 +261,8 @@ jobs:
           MB="$(awk -v s="$SIZE" 'BEGIN { printf "%.1f", s / 1048576 }')"
           { echo "### $TARGET"; echo ""; echo "Размер: $MB МБ"; } >> "$GITHUB_STEP_SUMMARY"
           echo "Размер $TARGET: $MB МБ"
+          # NFR-SIZE-1 (02-requirements.md): не больше 100 МБ
+          if [ "$SIZE" -gt $((100 * 1048576)) ]; then echo "::error::$TARGET — $MB МБ, больше предела 100 МБ (NFR-SIZE-1)"; exit 1; fi
 
           # 2. Разрешения и target API — по готовому APK (манифест AAB тот же)
           if [ "$TARGET" = "apk" ]; then
