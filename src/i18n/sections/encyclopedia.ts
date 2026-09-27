@@ -8,7 +8,7 @@ export const encyclopedia = {
   disclaimer: 'Сведения упрощены для игры: это не справочник и не замена врачу.',
   search: 'Поиск: болезнь, признак, анализ, лекарство',
   nothing: 'Ничего не нашлось',
-  articles: (n: number) => `${n} ${pluralRu(n, 'статья', 'статьи', 'статей')}`,
+  articles: (n: number) => `${n}\u00a0${pluralRu(n, 'статья', 'статьи', 'статей')}`,
   sections: {
     conditions: 'Болезни',
     findings: 'Признаки',
@@ -45,8 +45,8 @@ export const encyclopedia = {
   what: 'Что это',
   signs: 'Признаки',
   who: 'У кого бывает',
-  peakAfter: (from: number) => `Чаще после ${from} лет.`,
-  peakBetween: (from: number, to: number) => `Чаще в ${from}–${to} лет.`,
+  peakAfter: (from: number) => `Чаще после ${from}\u00a0лет.`,
+  peakBetween: (from: number, to: number) => `Чаще в ${from}–${to}\u00a0лет.`,
   onlyWomen: 'Почти только у женщин.',
   moreWomen: 'Чаще у женщин.',
   onlyMen: 'Почти только у мужчин.',
@@ -54,7 +54,7 @@ export const encyclopedia = {
   season: { winter: 'Чаще зимой.', spring: 'Чаще весной.', summer: 'Чаще летом.', autumn: 'Чаще осенью.' },
   requires: 'Бывает только при',
   riskFactors: 'Факторы риска',
-  times: (x: number) => `в ${decimal(x)} раза чаще`,
+  times: (x: number) => `в ${decimal(x)}\u00a0раза чаще`,
   confirm: 'Как подтвердить',
   clinical: 'Отдельного подтверждающего обследования нет: диагноз ставят по жалобам и осмотру, исключив опасное.',
   similar: 'С чем спутать',
@@ -87,9 +87,9 @@ export const encyclopedia = {
   redFlagFor: 'Красный флаг при',
 
   // обследование
-  minutes: (n: number) => `${n} мин`,
+  minutes: (n: number) => `${n}\u00a0мин`,
   checks: 'Что проверяет',
-  accuracy: (sens: number, spec: number) => `чувствительность ${sens} %, специфичность ${spec} %`,
+  accuracy: (sens: number, spec: number) => `чувствительность ${sens}\u00a0%, специфичность ${spec}\u00a0%`,
   accuracyNote: 'Чувствительность — какую долю больных обследование находит; специфичность — какую долю здоровых не принимает за больных.',
   confirms: 'Подтверждает',
 

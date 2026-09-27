@@ -51,6 +51,18 @@ describe('строки интерфейса', () => {
     }
   });
 
+  test('между числом и единицей — неразрывный пробел (голос студии, устав docs/09-voice.md)', () => {
+    // «${n} мин», «${n} ${pluralRu(…)}» — обычный пробел, строка может разорваться: «12 | мин»
+    const plain = /\$\{[^}]+\} (мин|мс|КБ|₽|%|лет|года?|раза?|кадр|предмет|человек|пациент|\$\{pluralRu\(|\$\{Number\.isInteger\()/;
+    const bad: string[] = [];
+    for (const file of new Glob('**/*.ts').scanSync(join(SRC, 'i18n'))) {
+      stripComments(readFileSync(join(SRC, 'i18n', file), 'utf8')).split('\n').forEach((line, i) => {
+        if (plain.test(line)) bad.push(`src/i18n/${file}:${i + 1}: ${line.trim()}`);
+      });
+    }
+    expect(bad).toEqual([]);
+  });
+
   test('кириллица только в src/i18n и в комментариях', () => {
     const bad: string[] = [];
     for (const file of new Glob('**/*.{ts,tsx}').scanSync(SRC)) {

@@ -11,11 +11,12 @@ import { complaintObservations } from '@/engine/med/exams';
 import { evaluatePlan } from '@/engine/med/plan';
 import type { Grade } from '@/engine/med/score';
 import { complaintText } from '@/engine/med/text';
-import { apply, current, newShift, observationsOf, reviewOf } from '@/engine/shift/engine';
+import { apply, current, newShift, observationsOf, reviewFor } from '@/engine/shift/engine';
 import { type Command, DAY, type Notice, SHIFT_END, SHIFT_SCHEMA_VERSION, type ShiftPatient, type ShiftState, type Triage } from '@/engine/shift/types';
 import { T } from '@/i18n';
 import { type Arrival, type Decision, decisionOf, hhmm, makeCaseView, outcomeText, patientName, type VisitView } from './caseView';
 import { CLINIC, type Doing, type Placement, placements } from './clinicMap';
+import { archivedCase, recordCases } from './profile';
 import { loadSlot, type RawStore, saveSlot } from './saves';
 import { settings } from './settings';
 
@@ -187,7 +188,11 @@ export function loadShift(): Promise<void> {
   changed();
   loading = loadSlot<ShiftState>(st, SLOT, e => e.schemaVersion === SHIFT_SCHEMA_VERSION && compatible(e.data))
     .then(r => {
-      if (r && !session) session = fresh(r.envelope.data, r.from === 'prev-1' || r.from === 'prev-2');
+      if (r && !session) {
+        session = fresh(r.envelope.data, r.from === 'prev-1' || r.from === 'prev-2');
+        // приёмы, закрытые до профиля (0.0.14 и раньше) или до сбоя, — в профиль; повторы он отбросит
+        recordCases(closedCases(session.s));
+      }
     })
     .catch(() => undefined)
     .finally(() => {
@@ -412,6 +417,7 @@ export function finishCase() {
   const p = sess && current(sess.s);
   if (!sess || !p || !p.draft.diagnosis) return;
   run(sess, { kind: 'finish' });
+  recordCases(closedCases(sess.s));
   sess.focus = p.id;
   sess.meanwhile = [];
   sess.urgent = false;
@@ -621,23 +627,63 @@ function doingText(s: ShiftState, p: ShiftPatient, d: Doing): string {
   }
 }
 
-/** Итог и разбор закрытого случая: разбор пересчитывается той же ветвью зерна (engine/reviewOf). */
+/** Итог и разбор закрытого случая: разбор пересчитывается той же ветвью зерна (engine/reviewFor). */
 const decisions = new Map<string, Decision>();
 
-function decisionFor(s: ShiftState, p: ShiftPatient, arrived: Arrival[]): Decision {
+/** «Домой» — исход в итогах дня, когда он стал ясен; перевод — сразу (spec, «Что увидит игрок»). */
+function outcomeKnown(s: ShiftState, p: ShiftPatient): boolean {
   const c = p.closed!;
-  // «домой» — исход в итогах дня, когда он стал ясен; перевод — сразу (spec, «Что увидит игрок»)
   const lastClosed = s.dayOpen ? s.day - 1 : s.day;
-  const known = c.plan.setting !== 'home' || lastClosed >= closedDay(p) + c.outcome.day;
-  const key = `${s.meta.seed}:${p.id}:${known}`;
+  return c.plan.setting !== 'home' || lastClosed >= closedDay(p) + c.outcome.day;
+}
+
+function decisionFor(meta: Pick<ShiftState['meta'], 'seed' | 'department'>, p: ShiftPatient, arrived: Arrival[], known: boolean): Decision {
+  const c = p.closed!;
+  const key = `${meta.seed}:${p.id}:${known}`;
   const cached = decisions.get(key);
   if (cached) return cached;
   const ev = evaluatePlan(db, p.patient, c.plan, observationsOf(p));
-  const review = reviewOf(db, s, p, c.diagnosis);
+  const review = reviewFor(db, meta, p, c.diagnosis);
   const d = decisionOf({ patient: p.patient, arrived, diagnosis: c.diagnosis, verdict: c.verdict, confidence: c.confidence, plan: c.plan, ev, outcome: c.outcome, score: { ...c.grades, notes: c.notes }, review });
   const out = known ? d : { ...d, outcome: T.shift.outcomeLater };
   decisions.set(key, out);
   return out;
+}
+
+const arrivedOf = (p: ShiftPatient): Arrival[] => p.results.map(r => ({ exam: r.exam, step: r.step, at: minuteOfDay(r.at), obs: r.obs }));
+
+/** Закрытые приёмы смены — для профиля (profile.ts, recordCases). */
+function closedCases(s: ShiftState) {
+  return Object.values(s.patients)
+    .filter(p => p.closed)
+    .map(p => ({ seed: s.meta.seed, department: s.meta.department, day: closedDay(p), patient: p }));
+}
+
+/**
+ * Итог и разбор приёма из архива профиля — та же ветвь зерна, что в смене (engine/reviewFor).
+ * Исход «домой» в нынешней практике открывается, как в смене, — в итогах дня.
+ */
+export function archiveCaseView(key: string): VisitView | undefined {
+  const r = archivedCase(key);
+  if (!r) return undefined;
+  const p = r.patient;
+  const s = session?.s;
+  const known = s && s.meta.seed === r.seed ? outcomeKnown(s, p) : true;
+  const arrived = arrivedOf(p);
+  return makeCaseView({
+    version: 0,
+    patient: p.patient,
+    clock: minuteOfDay(p.closed!.at),
+    minutesSpent: Math.round(p.spent.seconds / 60),
+    money: p.spent.money,
+    step: p.step,
+    arrived,
+    pending: [],
+    meanwhile: [],
+    done: p.done,
+    draft: p.draft,
+    decision: decisionFor(r, p, arrived, known),
+  });
 }
 
 function buildCaseView(): VisitView | undefined {
@@ -647,7 +693,7 @@ function buildCaseView(): VisitView | undefined {
   const id = sess.focus ?? s.current;
   const p = id ? s.patients[id] : undefined;
   if (!p) return undefined;
-  const arrived: Arrival[] = p.results.map(r => ({ exam: r.exam, step: r.step, at: minuteOfDay(r.at), obs: r.obs }));
+  const arrived = arrivedOf(p);
   const prev = p.returnOf ? s.patients[p.returnOf] : undefined;
   return makeCaseView({
     version,
@@ -662,7 +708,7 @@ function buildCaseView(): VisitView | undefined {
     urgent: p.id === s.current && sess.urgent,
     done: p.done,
     draft: p.draft,
-    decision: p.closed ? decisionFor(s, p, arrived) : undefined,
+    decision: p.closed ? decisionFor(s.meta, p, arrived, outcomeKnown(s, p)) : undefined,
     canSendAway: p.status === 'inRoom' && p.pending.length > 0,
     returnNote: p.returnReason && prev?.closed ? T.shift.returnNote(p.returnReason, closedDay(prev), female(p)) : undefined,
   });

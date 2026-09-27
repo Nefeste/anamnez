@@ -332,7 +332,13 @@ function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
  * хранит в сохранении.
  */
 export function reviewOf(db: ContentDb, s: ShiftState, p: ShiftPatient, diagnosis: Id): ReviewData {
-  return buildReview(db, p.patient, p.results.map(r => ({ exam: r.exam, obs: r.obs })), diagnosis, candidatesOf(db, s.meta.department), Object.keys(db.exams).sort(), branch(s, `review:${p.id}`));
+  return reviewFor(db, s.meta, p, diagnosis);
+}
+
+/** Разбор по одной записи пациента: из смены нужны только зерно и отделение — так его строит и архив профиля. */
+export function reviewFor(db: ContentDb, meta: Pick<ShiftState['meta'], 'seed' | 'department'>, p: ShiftPatient, diagnosis: Id): ReviewData {
+  const rng = Rng.seeded(meta.seed).fork(`review:${p.id}`);
+  return buildReview(db, p.patient, p.results.map(r => ({ exam: r.exam, obs: r.obs })), diagnosis, candidatesOf(db, meta.department), Object.keys(db.exams).sort(), rng);
 }
 
 // --- время --------------------------------------------------------------------------

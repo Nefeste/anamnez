@@ -1,7 +1,7 @@
 // Смена в амбулатории (spec 2026-09-first-shift): очередь, часы, итоги дня.
 import { pluralRu } from '../plural';
 
-const patients = (n: number) => `${n} ${pluralRu(n, 'пациент', 'пациента', 'пациентов')}`;
+const patients = (n: number) => `${n}\u00a0${pluralRu(n, 'пациент', 'пациента', 'пациентов')}`;
 const ago = (female: boolean, m: string, f: string) => (female ? f : m);
 
 export const shift = {
@@ -31,7 +31,7 @@ export const shift = {
   away: 'На обследованиях',
   awayReady: (hh: string) => `результаты к ${hh}`,
   log: 'Что происходит',
-  waits: (min: number) => `ждёт ${min} мин`,
+  waits: (min: number) => `ждёт ${min}\u00a0мин`,
   arrivedAt: (hh: string) => `пришёл в ${hh}`,
   badge: { return: 'повторно', results: 'с результатами', appointment: 'по записи', walkIn: 'без записи' },
   // срочность — цветом и словом со значком: цвет один различают не все (ui/theme.ts)

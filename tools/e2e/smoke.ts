@@ -84,7 +84,20 @@ try {
   await page.screenshot({ path: join(OUT, '01-disclaimer.png') });
   check((await page.getByTestId('menu-shift').count()) === 0, 'первый запуск: оговорка — до меню');
   await page.getByTestId('accept-disclaimer').click();
+  // потом — имя и пол врача: имя уже подставлено, пол меняет подсказанное имя
+  await page.getByTestId('doctor-first').waitFor({ timeout: 5000 });
+  const suggested = await page.getByTestId('doctor-first').inputValue();
+  const other = (await page.getByTestId('doctor-sex-f').getAttribute('aria-selected')) === 'true' ? 'm' : 'f';
+  await page.getByTestId(`doctor-sex-${other}`).click();
+  const resuggested = await page.getByTestId('doctor-last').inputValue();
+  check(suggested.length > 0 && resuggested.length > 0, `первый запуск: имя врача подставлено — ${suggested}, после смены пола — ${await page.getByTestId('doctor-first').inputValue()} ${resuggested}`);
+  await page.getByTestId('doctor-sex-f').click();
+  await page.getByTestId('doctor-first').fill('Анна');
+  await page.getByTestId('doctor-last').fill('Петрова');
+  await page.screenshot({ path: join(OUT, '01-doctor.png') });
+  await page.getByTestId('doctor-submit').click();
   await page.getByTestId('menu-settings').waitFor({ timeout: 5000 });
+  check((await text(page, 'menu-profile')).includes('Анна Петрова'), `меню: профиль — «${(await text(page, 'menu-profile')).replace(/\n/g, ' · ')}»`);
   await page.screenshot({ path: join(OUT, '01-menu.png') });
   check(await page.getByTestId('menu-campaign').isDisabled(), 'меню: практика, настройки; кампания — «скоро»');
   await page.goto(base);
@@ -150,7 +163,7 @@ try {
   await page.goto(`${base}/spikes/map`);
   await page.waitForTimeout(4000);
   const fps = await text(page, 'map-fps');
-  check(/[1-9]\d* кадр/.test(fps), `П2: карта рисуется — ${fps}`);
+  check(/[1-9]\d*\u00a0кадр/.test(fps), `П2: карта рисуется — ${fps}`);
   await page.mouse.click(120, 420);
   await page.waitForTimeout(300);
   const picked = await text(page, 'map-picked');
@@ -245,7 +258,7 @@ try {
   await page.getByTestId('save-save').click();
   await page.waitForTimeout(500);
   const saved = await text(page, 'save-status');
-  check(/Записано \d+ КБ/.test(saved), `П6: ${saved}`);
+  check(/Записано \d+\u00a0КБ/.test(saved), `П6: ${saved}`);
   await page.getByTestId('save-load').click();
   await page.waitForTimeout(300);
   check((await text(page, 'save-status')).includes('текущий файл'), 'П6: читается текущий файл');
@@ -324,6 +337,22 @@ try {
   await page.getByTestId('menu-continue').waitFor({ timeout: 10_000 });
   const hint = await text(page, 'menu-continue');
   check(hint.includes('день 1'), `смена: сохранена, в меню — «Продолжить: ${hint.split('\n').pop()}»`);
+  // профиль: приём — в практике и в архиве; из архива — тот же разбор; в энциклопедии — «встречалось»
+  await page.getByTestId('menu-profile').click();
+  await page.getByTestId('profile-name').waitFor({ timeout: 5000 });
+  const cases = await text(page, 'profile-line-0');
+  const archived = page.locator('[data-testid^="archive-"]');
+  check((await text(page, 'profile-name')) === 'Анна Петрова' && cases === 'Принято: 1' && (await archived.count()) === 1, `профиль: «${cases}», в архиве — ${await archived.count()}`);
+  await page.screenshot({ path: join(OUT, '09-profile.png') });
+  await archived.first().click();
+  await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
+  check(await page.getByTestId('visit-truth').isVisible(), `профиль: приём из архива — ${await text(page, 'visit-truth')}`);
+  await page.getByTestId('visit-truth-article').click();
+  await visible(page, 'enc-practice').waitFor({ timeout: 10_000 });
+  const practice = await visibleText(page, 'enc-practice');
+  check(practice.startsWith('Встречалось в вашей практике: 1'), `энциклопедия: «${practice}»`);
+  await page.goto(base);
+  await page.getByTestId('menu-shift').waitFor({ timeout: 10_000 });
   // начать заново — только после вопроса: сохранение одно
   await page.getByTestId('menu-shift').click();
   await page.getByTestId('restart-sheet').waitFor({ timeout: 5000 });
