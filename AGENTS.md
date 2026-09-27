@@ -104,6 +104,9 @@ router; do not import Skia-dependent modules from it.
   CI whitelist consciously.
 - Never use React Native's `Alert` — it does nothing on web, where scenarios run. Use the app's
   own sheet (`Sheet` in `src/ui/components.tsx`).
+- React Compiler memoizes calls by argument identity, and the engine mutates its state in place:
+  screens read data from the view rebuilt per version (`ShiftView` in `src/state/session.ts`),
+  never compute from the live state during render (`docs/06-architecture.md` §12).
 - All user-visible strings live in `src/i18n` (UI) or `content/` (medical texts); Cyrillic
   elsewhere fails `i18n.test.ts`.
 - The signing key is permanent from the very first build that reaches any phone (ADR 0015).

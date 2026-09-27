@@ -7,11 +7,12 @@ import { colors, radius, space, touch } from './theme';
 /**
  * Экран с прокруткой. Смена `resetKey` возвращает прокрутку наверх (новый пациент).
  * `footer` — полоса внизу поверх прокрутки: главная кнопка экрана всегда под большим
- * пальцем, а не в конце длинного списка.
+ * пальцем, а не в конце длинного списка. `header` — закреплён сверху (карта смены).
  */
-export function Screen({ children, scroll = true, resetKey, footer }: { children: ReactNode; scroll?: boolean; resetKey?: string | number; footer?: ReactNode }) {
+export function Screen({ children, scroll = true, resetKey, footer, header }: { children: ReactNode; scroll?: boolean; resetKey?: string | number; footer?: ReactNode; header?: ReactNode }) {
   return (
     <SafeAreaView style={styles.screen} edges={['bottom', 'left', 'right']}>
+      {header ? <View style={styles.header}>{header}</View> : null}
       {scroll ? <ScrollView key={resetKey} contentContainerStyle={styles.content}>{children}</ScrollView> : <View style={styles.fill}>{children}</View>}
       {footer ? <View style={styles.footer}><View style={styles.footerInner}>{footer}</View></View> : null}
     </SafeAreaView>
@@ -155,6 +156,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   fill: { flex: 1 },
   content: { padding: space.l, gap: space.m, maxWidth: 640, width: '100%', alignSelf: 'center' },
+  header: { alignItems: 'center', borderBottomWidth: 1, borderBottomColor: colors.line, backgroundColor: colors.card },
   footer: { borderTopWidth: 1, borderTopColor: colors.line, backgroundColor: colors.card },
   footerInner: { paddingHorizontal: space.l, paddingVertical: space.s, gap: space.s, maxWidth: 640, width: '100%', alignSelf: 'center' },
   card: { backgroundColor: colors.card, borderRadius: radius, padding: space.l, gap: space.s, borderWidth: 1, borderColor: colors.line },
