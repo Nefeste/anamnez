@@ -290,6 +290,8 @@ export const roleSchema = z.strictObject({
 });
 
 const int = z.number().int().min(0);
+/** доля, целые проценты */
+const pct = z.number().int().min(0).max(100);
 /** Готовая больница: участок, вход, коридор прямоугольниками, помещения, скамьи, штат. */
 export const presetSchema = z.strictObject({
   id: z.string().regex(/^preset\.[a-z0-9_]+$/),
@@ -331,7 +333,7 @@ export const economySchema = z.strictObject({
   /** клетка коридора: постройка и содержание в день, ₽ */
   corridor: z.strictObject({ cost: int, upkeep: int }),
   /** сколько процентов цены возвращают снос и продажа аппарата */
-  refund: z.number().int().min(0).max(100),
+  refund: pct,
   /** персонал: кандидаты, навык, скорость и точность по навыку, рост, черты (spec 2026-09-own-hospital, часть 8) */
   staff: z.strictObject({
     candidates: z.tuple([int, int]),
@@ -344,13 +346,37 @@ export const economySchema = z.strictObject({
       careful: trait, fast: trait, novice: trait, experienced: trait,
     }),
   }),
+  /** тарифы: ОМС по тяжести диагноза, доля по обоснованности и без подтверждения; ДМС и платно — обращение и прайс, % цены */
+  tariffs: z.strictObject({
+    oms: z.strictObject({ minor: int, moderate: int, serious: int, critical: int }),
+    omsQuality: z.strictObject({ A: pct, B: pct, C: pct, D: pct }),
+    omsUnconfirmed: pct,
+    omsExam: int,
+    dms: z.strictObject({ visit: int, price: int }),
+    self: z.strictObject({ visit: int, price: int }),
+  }),
+  /** уровень амбулатории для ОМС: доля тарифа за обращение, % — базовая и прибавки за работающие помещения */
+  level: z.strictObject({ base: pct, rooms: z.record(z.string(), pct) }),
+  /** доля ДМС и платных, % — при репутации 0, 50, 100 */
+  payers: z.strictObject({ dms: z.tuple([int, int, int]), self: z.tuple([int, int, int]) }),
+  /** расходники обследования, % цены — по виду */
+  consumables: z.strictObject({ ask: int, physical: int, bedside: int, lab: int, rapid: int, functional: int, imaging: int }),
+  /** процент на долг в день, сотые доли процента */
+  interest: int,
+  /** репутация: начало, шаг к оценке дня, %; поправки оценки за ожидание и санузел */
+  reputation: z.strictObject({
+    start: pct, pull: z.number().int().min(1).max(100),
+    waitShort: z.number().int(), waitShortMin: int, waitLong: z.number().int(), waitLongMin: int, noToilet: z.number().int(),
+  }),
+  /** поток пациентов от репутации: ± % при 0 и 100 */
+  flow: z.number().int().min(0).max(90),
   /** песочница: участок, вход, отрезок коридора прямоугольниками, бюджеты; с готовой амбулаторией — доля бюджета, % */
   sandbox: z.strictObject({
     plot: z.tuple([z.number().int().min(8).max(64), z.number().int().min(8).max(64)]),
     entrance: cellSrc,
     corridor: z.array(z.tuple([int, int, int, int])).min(1),
     budgets: z.strictObject({ modest: int, normal: int, generous: int }),
-    clinicShare: z.number().int().min(0).max(100),
+    clinicShare: pct,
   }),
 });
 

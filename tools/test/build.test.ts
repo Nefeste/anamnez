@@ -78,8 +78,8 @@ describe('стройка: геометрия', () => {
     expect(build(db, START, { kind: 'corridor', cells: [[2, 13]] })).toMatchObject({ ok: false, error: { kind: 'nothing' } });
     const s = run(START, { kind: 'room', type: 'room.toilet', size: 'S', x: 10, y: 10, rot: 0 });
     expect(build(db, s, { kind: 'corridor', cells: [[12, 12]] })).toMatchObject({ ok: false, error: { kind: 'blocked' } });
-    const poor = { ...START, cash: 1000 };
-    expect(build(db, poor, { kind: 'corridor', cells: [[4, 13]] })).toMatchObject({ ok: false, error: { kind: 'money', need: db.economy.corridor.cost - 1000 } });
+    const poor = { ...START, cash: db.economy.corridor.cost - 1 };
+    expect(build(db, poor, { kind: 'corridor', cells: [[4, 13]] })).toMatchObject({ ok: false, error: { kind: 'money', need: 1 } });
   });
 });
 

@@ -20,8 +20,8 @@ export function Screen({ children, scroll = true, resetKey, footer, header }: { 
   );
 }
 
-export function Card({ children, style }: { children: ReactNode; style?: ViewStyle }) {
-  return <View style={[styles.card, style]}>{children}</View>;
+export function Card({ children, style, testID }: { children: ReactNode; style?: ViewStyle; testID?: string }) {
+  return <View testID={testID} style={[styles.card, style]}>{children}</View>;
 }
 
 export function H({ children }: { children: ReactNode }) {

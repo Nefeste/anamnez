@@ -1,6 +1,7 @@
 // Вывод уверенности (`docs/04-medical-model.md` §10–12): пример из документа, посчитанный
 // руками, — маленькая база из четырёх состояний и двух признаков.
 import { describe, expect, test } from 'bun:test';
+import { NO_ECONOMY } from '../content/load';
 import type { Condition, ContentDb, Exam, Finding } from '../../src/content/types';
 import { entropy, expectedGain, posterior } from '../../src/engine/med/infer';
 import type { Observation } from '../../src/engine/med/types';
@@ -21,7 +22,7 @@ const exam = (id: string, f: string, sens: number, spec: number): Exam => ({
 
 /** Числа — иллюстрация из документа: q в долях 1/10 000, априорные 45/25/15/15. */
 const db: ContentDb = {
-  contentVersion: 1, hash: 'test', risks: {}, treatments: {}, rooms: {}, equipment: {}, roles: {}, presets: {}, economy: { corridor: { cost: 0, upkeep: 0 }, refund: 50, staff: { candidates: [0, 0], skills: [1, 1, 1, 1, 1], speed: [100, 100, 100, 100, 100], reading: [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]], growthDays: 1, noTrait: 1, traits: { careful: { weight: 0 }, fast: { weight: 0 }, novice: { weight: 0 }, experienced: { weight: 0 } } }, sandbox: { plot: [8, 8], entrance: [0, 1], corridor: [], budgets: { modest: 0, normal: 0, generous: 0 }, clinicShare: 0 } }, revealedBy: {},
+  contentVersion: 1, hash: 'test', risks: {}, treatments: {}, rooms: {}, equipment: {}, roles: {}, presets: {}, economy: NO_ECONOMY, revealedBy: {},
   conditions: {
     'cond.arvi': cond('cond.arvi', 45, 200, 100),
     'cond.bronchitis': cond('cond.bronchitis', 25, 1000, 200),

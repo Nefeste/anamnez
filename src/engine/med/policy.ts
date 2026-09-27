@@ -30,9 +30,12 @@ export interface DoctorOptions {
   exams: Id[];
   /** при какой уверенности разумный врач ставит диагноз; 0,9 — по прогону прототипа (spec 2026-09-spikes) */
   threshold?: number;
-  /** польза ниже этой (биты) — обследование не назначается */
+  /** польза ниже этой (биты) — обследование не назначается; по умолчанию `MIN_GAIN` */
   minGain?: number;
 }
+
+/** Польза ниже этой (биты) — обследование не показано: мерка разумного врача и экспертизы страховой. */
+export const MIN_GAIN = 0.02;
 
 /** Цена обследования в условных единицах: минуты, деньги, неприятность, облучение. */
 export function examCost(db: ContentDb, id: Id): number {
@@ -84,9 +87,20 @@ export function choosePlan(db: ContentDb, diagnosis: Id, observations: readonly 
   return { treatments: [...new Set(treatments)].sort(), setting };
 }
 
+/**
+ * Показано ли обследование сейчас: польза по тому, что уже известно, не ниже `MIN_GAIN` — так
+ * решает разумный врач, так проверяет назначение страховая (spec 2026-09-own-hospital, часть 9).
+ */
+export function indicated(db: ContentDb, patient: Patient, obs: readonly Observation[], candidates: Id[], examId: Id): boolean {
+  const known = knownFacts(db, obs);
+  const ctx = { sex: patient.sex, age: patient.age, season: patient.season, knownRisks: known.risks, knownConditions: known.conditions };
+  const beliefs = posterior(db, candidates, obs, ctx);
+  return quantize(expectedGain(db, examId, beliefs, ctx, new Set(obs.map(o => o.f)))) >= quantize(MIN_GAIN);
+}
+
 export function runDoctor(db: ContentDb, patient: Patient, strategy: Strategy, rng: Rng, opt: DoctorOptions): DoctorResult {
   const threshold = opt.threshold ?? 0.9;
-  const minGain = opt.minGain ?? 0.02;
+  const minGain = opt.minGain ?? MIN_GAIN;
   const obs: Observation[] = complaintObservations(patient);
   const done: Id[] = [];
   const ctxOf = () => {

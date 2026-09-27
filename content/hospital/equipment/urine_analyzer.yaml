@@ -3,8 +3,8 @@ name: { ru: "Анализатор мочи" }
 gen: { ru: "анализатора мочи" }
 room: room.lab
 sprite: machine
-price: 300000
-upkeep: 300
+price: 30000
+upkeep: 30
 breakdown: 1
 speed: 1
 texts:

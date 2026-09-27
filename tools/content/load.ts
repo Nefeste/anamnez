@@ -18,10 +18,21 @@ import {
 
 export const CONTENT_DIR = join(import.meta.dir, '../../content');
 
-/** Баланс персонала, пока economy.yaml не прочитан (ошибка сборки всё равно будет). */
-const NO_STAFF: ContentDb['economy']['staff'] = {
-  candidates: [0, 0], skills: [1, 1, 1, 1, 1], speed: [100, 100, 100, 100, 100], reading: [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]], growthDays: 1, noTrait: 1,
-  traits: { careful: { weight: 0 }, fast: { weight: 0 }, novice: { weight: 0 }, experienced: { weight: 0 } },
+/** Баланс, пока economy.yaml не прочитан (ошибка сборки всё равно будет). */
+export const NO_ECONOMY: ContentDb['economy'] = {
+  corridor: { cost: 0, upkeep: 0 }, refund: 0,
+  staff: {
+    candidates: [0, 0], skills: [1, 1, 1, 1, 1], speed: [100, 100, 100, 100, 100], reading: [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]], growthDays: 1, noTrait: 1,
+    traits: { careful: { weight: 0 }, fast: { weight: 0 }, novice: { weight: 0 }, experienced: { weight: 0 } },
+  },
+  tariffs: { oms: { minor: 0, moderate: 0, serious: 0, critical: 0 }, omsQuality: { A: 0, B: 0, C: 0, D: 0 }, omsUnconfirmed: 0, omsExam: 0, dms: { visit: 0, price: 0 }, self: { visit: 0, price: 0 } },
+  level: { base: 100, rooms: {} },
+  payers: { dms: [0, 0, 0], self: [0, 0, 0] },
+  consumables: { ask: 0, physical: 0, bedside: 0, lab: 0, rapid: 0, functional: 0, imaging: 0 },
+  interest: 0,
+  reputation: { start: 50, pull: 1, waitShort: 0, waitShortMin: 0, waitLong: 0, waitLongMin: 0, noToilet: 0 },
+  flow: 0,
+  sandbox: { plot: [8, 8], entrance: [0, 1], corridor: [], budgets: { modest: 0, normal: 0, generous: 0 }, clinicShare: 0 },
 };
 
 export interface BuildResult {
@@ -223,11 +234,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   const db: ContentDb = {
     contentVersion, hash: '', conditions: {}, findings: {}, exams: {}, risks: {}, treatments: {}, rooms: {}, equipment: {}, roles: {}, presets: {},
     economy: economy
-      ? { corridor: economy.corridor, refund: economy.refund, staff: economy.staff, sandbox: { ...economy.sandbox, corridor: rects(economy.sandbox.corridor) } }
-      : {
-        corridor: { cost: 0, upkeep: 0 }, refund: 0, staff: NO_STAFF,
-        sandbox: { plot: [8, 8], entrance: [0, 1], corridor: [], budgets: { modest: 0, normal: 0, generous: 0 }, clinicShare: 0 },
-      },
+      ? { ...economy, sandbox: { ...economy.sandbox, corridor: rects(economy.sandbox.corridor) } }
+      : NO_ECONOMY,
     revealedBy,
   };
   for (const c of Object.values(conditions).sort((a, b) => (a.id < b.id ? -1 : 1))) {
@@ -346,6 +354,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       if (p.plot[0] > sb.plot[0] || p.plot[1] > sb.plot[1]) errors.push(`${p.id}: участок ${p.plot.join(' × ')} больше участка песочницы`);
       else errors.push(...presetHospital(db, p, sb.plot).failed.map(f => `${p.id}: на участке песочницы помещение ${f.room} — ${f.error.kind}`));
     }
+    for (const r of Object.keys(db.economy.level.rooms)) if (!db.rooms[r]) errors.push(`hospital/economy.yaml: уровень ОМС — помещение ${r} не найдено`);
     const [ex, ey] = sb.entrance;
     if (!(ex === 0 || ey === 0 || ex === sb.plot[0] - 1 || ey === sb.plot[1] - 1)) errors.push(`hospital/economy.yaml: вход песочницы (${ex}, ${ey}) — не в краю участка`);
   }

@@ -8,9 +8,10 @@ import { apply, newSandbox } from '../../src/engine/shift/engine';
 import type { ShiftState } from '../../src/engine/shift/types';
 import { memoryStore, saveSlot } from '../../src/state/saves';
 import {
-  assign, buildAction, buildView, compatible, endBuild, forgetShift, hire, loadShift, nextDay, SANDBOX_SLOT, saved, savedGames, setStore, shiftState, shiftView,
-  staffView, startSandbox, startShift, tick, undoBuild,
+  assign, buildAction, buildView, callPatient, chooseDiagnosis, closeDay, compatible, endBuild, examine, finishCase, forgetShift, hire, loadShift, nextDay, SANDBOX_SLOT,
+  saved, savedGames, setStore, shiftCaseView, shiftState, shiftView, skipIdle, staffView, startSandbox, startShift, tick, undoBuild,
 } from '../../src/state/session';
+import { T } from '../../src/i18n';
 import { SHIFT_SCHEMA_VERSION } from '../../src/engine/shift/types';
 
 let store = memoryStore();
@@ -100,6 +101,34 @@ describe('песочница', () => {
     expect([shiftView().day, shiftView().dayOpen, shiftView().clock]).toEqual([1, true, '08:00']);
     // стройка — только между сменами
     expect(buildAction({ kind: 'corridor', cells: [[5, 20]] })).toEqual({ kind: 'unknown' });
+  });
+
+  test('касса: плательщик в очереди и в карте, оплата приёма на итоге, касса и репутация в итогах дня', () => {
+    startSandbox({ start: 'clinic', budget: 'normal', difficulty: 'doctor', seed: 16, season: 'winter' });
+    expect(buildView()!.reputation).toBe(db.economy.reputation.start);
+    expect(buildView()!.level).toBe(T.sandbox.level(100));
+    nextDay();
+    skipIdle();
+    const row = shiftView().queue[0];
+    const p = shiftState()!.patients[row.id];
+    const payer = T.sandbox.payers[p.payer!];
+    expect(row.badges).toContain(payer);
+    callPatient(row.id);
+    expect(shiftCaseView()!.payerNote).toBe(T.sandbox.payerNote[p.payer!]);
+    examine('exam.ask_onset');
+    chooseDiagnosis('cond.arvi');
+    finishCase();
+    const pay = shiftCaseView()!.payment!;
+    expect(pay[0]).toBe(T.sandbox.paid(payer.charAt(0).toUpperCase() + payer.slice(1), T.common.rub(p.paid!.paid)));
+    closeDay();
+    const c = shiftView().summary!.cash!;
+    expect(c.income.map(x => x.key)).toEqual([p.payer!]);
+    expect(c.expenses.map(x => x.key)).toEqual(['salaries', 'equipment', 'rooms', 'consumables']);
+    expect(c.cash).toBe(T.sandbox.cashNow(T.common.rub(shiftView().cash!)));
+    const rep = shiftState()!.history[0].economy!.reputation;
+    expect(c.reputation.line).toBe(T.sandbox.repLine(rep.from, rep.to));
+    expect(c.reputation.reasons.map(x => x.key)).toEqual(rep.reasons.map(x => x.key));
+    expect(buildView()!.reputation).toBe(rep.to);
   });
 });
 

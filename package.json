@@ -1,6 +1,6 @@
 {
   "name": "anamnez",
-  "version": "0.0.21",
+  "version": "0.0.22",
   "main": "index",
   "private": true,
   "scripts": {
@@ -10,6 +10,7 @@
     "content": "bun tools/content/build.ts",
     "doctor": "bun tools/sim/doctor.ts",
     "shift-sim": "bun tools/sim/shift.ts",
+    "economy-sim": "bun tools/sim/economy.ts",
     "typecheck": "npm run content && tsc --noEmit && tsc --noEmit -p tools",
     "lint": "expo lint src --max-warnings 0",
     "test": "npm run content && bun test tools/test",

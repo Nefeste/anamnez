@@ -6,6 +6,9 @@
 // меняется на месте; случайность — только из именованных ветвей зерна смены (ADR 0004).
 import type { ContentDb, Id, Season } from '../../content/types';
 import { fnv1a } from '../core/hash';
+import {
+  caseIncome, consumablesOf, emptyLedger, expensesOf, flowOf, incomeOf, interestOf, type Ledger, levelOf, payerOf, reputationAfter, salariesOf, upkeepOf,
+} from '../economy/economy';
 import { build, emptyPlot, type HospitalState, type Plan, planOf, presetHospital, UNDO_DEPTH } from '../hospital/build';
 import { examWhere, openBlocks, type Staffing, workingRooms } from '../hospital/requirements';
 import { applicantsOf, grow, memberAt, presetStaff, readingOf, type StaffMember, speedOf, staffingOf } from '../hospital/staff';
@@ -15,7 +18,7 @@ import { complaintObservations, type ExamSkill, NORMAL_SKILL, runExam } from '..
 import { generatePatient } from '../med/generate';
 import { knownFacts, posterior } from '../med/infer';
 import { evaluatePlan } from '../med/plan';
-import { examCost } from '../med/policy';
+import { examCost, indicated } from '../med/policy';
 import { buildReview, type ReviewData } from '../med/review';
 import { scoreCase } from '../med/score';
 import type { Observation } from '../med/types';
@@ -145,7 +148,7 @@ export function newSandbox(db: ContentDb, opts: { seed: number; season: Season; 
     history: [],
     journal: [],
     hospital,
-    economy: { cash },
+    economy: { cash, reputation: db.economy.reputation.start, ledger: emptyLedger() },
     undo: [],
     staff,
     candidates: hired.list,
@@ -293,15 +296,17 @@ function planDay(db: ContentDb, s: ShiftState) {
   const d = s.day;
   const base = (d - 1) * DAY;
   const r = branch(s, `day:${d}`);
+  // песочница: с репутацией записываются и приходят чаще или реже (spec 2026-09-own-hospital)
+  const flow = s.economy ? flowOf(db, s.economy.reputation ?? db.economy.reputation.start) : 100;
   const plan: { t: number; kind: VisitKind; key: string; ret?: PlannedReturn }[] = [];
   for (let slot = 0; slot < SLOTS; slot++) {
     const sr = r.fork(`slot:${slot}`);
-    if (!sr.chance(SLOT_BOOKED)) continue;
+    if (!sr.chance(Math.min(10000, Math.round((SLOT_BOOKED * flow) / 100)))) continue;
     const late = sr.range(-5, 10);
     plan.push({ t: base + SHIFT_START + Math.max(0, slot * SLOT_MIN + late) * MIN, kind: 'appointment', key: `slot:${slot}` });
   }
   const wr = r.fork('walk-ins');
-  const walkIns = wr.range(WALK_INS[0], WALK_INS[1]);
+  const walkIns = Math.round((wr.range(WALK_INS[0], WALK_INS[1]) * flow) / 100);
   for (let i = 0; i < walkIns; i++) {
     const w = wr.fork(`walk:${i}`);
     const minute = Math.min(w.range(0, 330), w.range(0, 330)); // меньшее из двух — ближе к утру
@@ -320,6 +325,7 @@ function planDay(db: ContentDb, s: ShiftState) {
       id, patient, arriveT: a.t, kind: a.kind, triage: 'green', status: 'coming', queuedT: 0, wait: 0, patience: 0,
       results: [], pending: [], done: [], step: 0, spent: { seconds: 0, money: 0 }, draft: { treatments: [], setting: 'home' },
       ...(a.ret ? { returnOf: a.ret.of, returnReason: a.ret.reason } : {}),
+      ...(s.economy ? { payer: payerOf(db, s.meta.seed, id, s.economy.reputation ?? db.economy.reputation.start) } : {}),
     };
     schedule(s, a.t, { kind: 'arrive', id });
   });
@@ -353,6 +359,7 @@ function closeDay(db: ContentDb, s: ShiftState) {
   s.current = undefined;
   s.events = [];
   s.dayOpen = false;
+  if (s.economy && s.hospital) settle(db, s);
   s.history.push({ ...s.summary, grades: { ...s.summary.grades } });
   // песочница: кто работал — на смену опытнее; вечером — новые кандидаты
   if (s.staff && s.hospital) {
@@ -361,6 +368,42 @@ function closeDay(db: ContentDb, s: ShiftState) {
     s.candidates = c.list;
     s.nextStaff = c.next;
   }
+}
+
+function ledgerOf(s: ShiftState): Ledger {
+  const e = s.economy!;
+  e.ledger ??= emptyLedger();
+  return e.ledger;
+}
+
+/**
+ * Вечер в песочнице: зарплаты, содержание аппаратов и помещений, процент на долг; касса;
+ * репутация за день — и всё это в итоги дня (spec 2026-09-own-hospital, часть 9).
+ */
+function settle(db: ContentDb, s: ShiftState) {
+  const e = s.economy!;
+  const ledger = ledgerOf(s);
+  const upkeep = upkeepOf(db, s.hospital!);
+  ledger.expenses.salaries = salariesOf(s.staff ?? []);
+  ledger.expenses.equipment = upkeep.equipment;
+  ledger.expenses.rooms = upkeep.rooms;
+  const before = e.cash + incomeOf(ledger) - expensesOf(ledger);
+  ledger.expenses.interest = interestOf(db, before);
+  e.cash = before - ledger.expenses.interest;
+  const today = Object.values(s.patients).filter(p => Math.floor(p.arriveT / DAY) + 1 === s.day);
+  const waits = today.filter(p => p.calledT !== undefined).map(p => (p.calledT! - p.arriveT) / MIN);
+  const ctx = hospitalCtx(db, s);
+  const change = reputationAfter(db, e.reputation ?? db.economy.reputation.start, {
+    arrived: s.summary.arrived, correct: s.summary.correct, wrong: s.summary.wrong, left: s.summary.left, unseen: s.summary.unseen,
+    returned: today.filter(p => p.kind === 'return' && (p.returnReason === 'worse' || p.returnReason === 'reaction')).length,
+    ...(waits.length > 0 ? { meanWait: waits.reduce((a, b) => a + b, 0) / waits.length } : {}),
+    toilet: ctx.plan.rooms.some(r => r.type === 'room.toilet' && ctx.plan.connected[r.id]),
+  });
+  e.reputation = change.to;
+  s.summary.economy = {
+    ledger: { income: { ...ledger.income }, cases: { ...ledger.cases }, expenses: { ...ledger.expenses }, audit: { ...ledger.audit } },
+    cash: e.cash, reputation: change, level: levelOf(db, ctx.plan, ctx.working),
+  };
 }
 
 /** Следующий день: часы — на 08:00, кабинеты свободны, план прихода с повторными обращениями. */
@@ -375,6 +418,7 @@ function nextDay(db: ContentDb, s: ShiftState) {
   s.day++;
   s.t = (s.day - 1) * DAY + SHIFT_START;
   s.rooms = {};
+  if (s.economy) s.economy.ledger = emptyLedger();
   s.summary = emptySummary(s.day);
   s.journal = [];
   s.dayOpen = true;
@@ -403,6 +447,7 @@ function call(db: ContentDb, s: ShiftState, id: string): Notice[] {
   if (!s.dayOpen || s.current || !p || p.status !== 'waiting') return [];
   s.queue = s.queue.filter(x => x !== id);
   p.status = 'inRoom';
+  p.calledT ??= s.t;
   p.wait++; // прежняя проверка терпения недействительна
   s.current = id;
   return spend(db, s, p, MIN);
@@ -436,10 +481,13 @@ function exam(db: ContentDb, s: ShiftState, examId: Id): Notice[] {
     skill = { sens: 1, spec: 1, sensPp: (eq?.quality.sens ?? 0) + rs, specPp: (eq?.quality.spec ?? 0) + rp };
   }
 
+  // песочница: показано ли — по тому, что известно сейчас; показанные оплачивают ОМС и ДМС
+  if (s.economy && e.cost > 0 && indicated(db, p.patient, observationsOf(p), candidatesOf(db, s.meta.department), examId)) (p.indicated ??= []).push(examId);
   p.step++;
   p.done.push(examId);
   p.spent.money += e.cost;
   s.summary.money += e.cost;
+  if (s.economy) ledgerOf(s).expenses.consumables += consumablesOf(db, e);
   const obs = runExam(db, p.patient, examId, branch(s, `exam:${p.id}:${p.done.length}:${examId}`), skill, exact(s));
   const after = (e.time.report ?? 0) + (e.time.turnaround ?? 0);
   if (queued && room) {
@@ -471,6 +519,20 @@ function finish(db: ContentDb, s: ShiftState): Notice[] {
   const closed = closeCase(db, s, p);
   p.closed = closed;
   p.status = 'done';
+  // песочница: ОМС и ДМС платят после экспертизы, платный пациент — за всё сделанное
+  if (s.economy) {
+    const payer = p.payer ?? 'oms';
+    const ctx = hospitalCtx(db, s);
+    const x = caseIncome(db, payer, closed.diagnosis, p.done, p.indicated ?? [], closed.grades.defensibility, levelOf(db, ctx.plan, ctx.working).level);
+    const ledger = ledgerOf(s);
+    ledger.income[payer] += x.paid;
+    ledger.cases[payer]++;
+    ledger.audit.cut += x.cut;
+    if (x.quality < 100) ledger.audit.weak++;
+    if (x.unconfirmed) ledger.audit.unconfirmed++;
+    ledger.audit.unindicated += x.unindicated.length;
+    p.paid = x;
+  }
   s.current = undefined;
   const sum = s.summary;
   sum.seen++;

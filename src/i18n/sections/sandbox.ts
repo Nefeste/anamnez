@@ -122,4 +122,64 @@ export const sandbox = {
     experienced: 'дороже и точнее',
   },
   close: 'Закрыть',
+
+  // касса, репутация, оплата приёма (часть 9)
+  payers: { oms: 'ОМС', dms: 'ДМС', self: 'платно' },
+  payerNote: {
+    oms: 'ОМС: страховая оплатит приём по тяжести диагноза и обследования по показаниям',
+    dms: 'ДМС: страховая оплатит приём и обследования по показаниям',
+    self: 'Платно: пациент оплатит приём и всё, что сделали',
+  },
+  cashTitle: 'Касса за день',
+  income: 'Доходы',
+  payerLine: (payer: string, n: number) => `${payer} · ${n}\u00a0${pluralRu(n, 'приём', 'приёма', 'приёмов')}`,
+  audit: (rub: string) => `Экспертиза страховых не оплатила ${rub}`,
+  auditWhy: (weak: number, unconfirmed: number, unindicated: number) =>
+    [
+      weak > 0 ? `обоснованность ниже A — ${weak}` : '',
+      unconfirmed > 0 ? `без подтверждения диагноза — ${unconfirmed}` : '',
+      unindicated > 0 ? `обследований без показаний — ${unindicated}` : '',
+    ].filter(Boolean).join(', '),
+  level: (pct: number) => `Тариф ОМС за приём — ${pct}\u00a0%`,
+  levelMissing: (pct: number, gens: string) => `Тариф ОМС за приём — ${pct}\u00a0%: нет ${gens}`,
+  expensesTitle: 'Расходы',
+  expense: {
+    salaries: 'Зарплаты',
+    equipment: 'Обслуживание аппаратов',
+    rooms: 'Содержание помещений',
+    consumables: 'Расходники',
+    interest: 'Проценты по долгу',
+  },
+  net: (rub: string) => `Итог дня: ${rub}`,
+  cashNow: (rub: string) => `В кассе: ${rub}`,
+  debt: (debt: string, interest: string) => `Касса в минусе: долг ${debt}, за день начислено ${interest}. Стройка и покупки подождут денег.`,
+  repTitle: 'Репутация',
+  repLine: (from: number, to: number) => `Репутация: ${from} → ${to}`,
+  repScore: (score: number) => `Оценка дня: ${score} из\u00a0100`,
+  repNobody: 'Сегодня никто не пришёл — репутация прежняя.',
+  repReason: {
+    correct: (n: number) => `Верный диагноз: ${n}`,
+    wrong: (n: number) => `Ошибка в диагнозе: ${n}`,
+    left: (n: number) => `Ушли, не дождавшись: ${n}`,
+    unseen: (n: number) => `Не успели принять: ${n}`,
+    returned: (n: number) => `Вернулись хуже после лечения: ${n}`,
+    waitShort: (min: number) => `Ждали недолго: в среднем ${min}\u00a0мин`,
+    waitLong: (min: number) => `Ждали долго: в среднем ${min}\u00a0мин`,
+    noToilet: 'Нет санузла',
+  },
+  repHint: (pull: number) =>
+    `Каждый вечер репутация сдвигается к оценке дня на ${pull}\u00a0% разницы. От неё зависит, сколько людей придёт и сколько из них — по ДМС и платно.`,
+  reputation: (n: number) => `Репутация: ${n} из\u00a0100`,
+
+  /** «а», «а и б», «а, б и в» */
+  andList: (xs: string[]) => (xs.length <= 1 ? (xs[0] ?? '') : `${xs.slice(0, -1).join(', ')} и ${xs[xs.length - 1]}`),
+  orList: (xs: string[]) => xs.join(' или '),
+
+  // оплата закрытого приёма — на экране итога
+  payment: 'Оплата',
+  paid: (payer: string, rub: string) => `${payer}: ${rub}`,
+  payQuality: (grade: string, pct: number) => `Обоснованность ${grade} — оплачено ${pct}\u00a0% тарифа`,
+  payUnconfirmed: (exams: string, pct: number) => `Диагноз не подтверждён (подтверждает: ${exams}) — оплачено ${pct}\u00a0%`,
+  payUnindicated: (exams: string) => `Без показаний, не оплачено: ${exams}`,
+  payCut: (rub: string) => `Экспертиза не оплатила: ${rub}`,
 };

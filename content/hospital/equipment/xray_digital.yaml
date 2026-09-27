@@ -4,8 +4,8 @@ gen: { ru: "цифрового рентгеновского аппарата" }
 room: room.xray
 sprite: xray
 upgradeOf: eq.xray_analog
-price: 3500000
-upkeep: 2500
+price: 350000
+upkeep: 250
 breakdown: 1
 speed: 1
 texts:

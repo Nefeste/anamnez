@@ -93,6 +93,7 @@ npm run typecheck           # app and tools (tools/tsconfig.json)
 npm test                    # Bun tests in tools/test (builds the database first)
 npm run doctor              # "virtual doctor" over the database; thresholds in docs/05-content.md §6
 npm run shift-sim           # shift pacing: does a good doctor keep up with the queue
+npm run economy-sim         # own-hospital balance: 30 days, criteria in docs/specs/2026-09-own-hospital.md (~5 min)
 npm run export:web && npm run e2e   # web build + Playwright scenario, screenshots in tools/e2e/out
 npm run store               # after export:web: store icon, screenshots and graphics into store/ (store/README.md)
 ```

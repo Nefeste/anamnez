@@ -62,6 +62,7 @@ export function PatientCard({ view: v, actions }: { view: VisitView; actions: Ca
             <H>{v.title}</H>
             <P muted testID="visit-clock">{`${t.clock(v.clock)} · ${t.spent(v.minutesSpent, T.common.rub(v.money))}`}</P>
             {v.returnNote ? <P testID="visit-return">{v.returnNote}</P> : null}
+            {v.payerNote ? <P muted testID="visit-payer">{v.payerNote}</P> : null}
           </View>
         </View>
         <Text style={styles.label}>{t.complaints}</Text>

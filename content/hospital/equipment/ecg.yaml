@@ -3,8 +3,8 @@ name: { ru: "Электрокардиограф" }
 gen: { ru: "электрокардиографа" }
 room: room.ecg
 sprite: machine
-price: 150000
-upkeep: 150
+price: 15000
+upkeep: 15
 breakdown: 0.5
 speed: 1
 texts:

@@ -14,7 +14,7 @@ import { T } from '@/i18n';
 import { BuildMap } from '@/render/map/BuildMap';
 import { ClinicMap } from '@/render/map/ClinicMap';
 import { CLINIC } from '@/state/clinicMap';
-import { blockText } from '@/state/sandboxView';
+import { blockText, type CashView } from '@/state/sandboxView';
 import {
   callPatient, closeDay, loadShift, nextDay, openCase, pauseClock, type QueueRow, type ShiftView, SPEEDS, type Speed, type SummaryView,
   saveNow, setSpeed, skipIdle, startSandbox, startShift, TICK_MS, tick, useBuild, useShift, type WhoView,
@@ -66,6 +66,8 @@ function Evening({ v }: { v: ShiftView }) {
       <Card>
         <H>{v.day === 0 ? t.beforeOpening : t.day(v.day)}</H>
         <P testID="sandbox-summary">{`${t.cash(T.common.rub(v.cash ?? 0))} · ${t.rooms(b.plan.rooms.length)}`}</P>
+        <P muted testID="sandbox-reputation">{t.reputation(b.reputation)}</P>
+        <P muted testID="sandbox-level">{b.level}</P>
       </Card>
       <BuildMap testID="sandbox-plan" plan={b.plan} width={w} height={h} tool="look" labels={labels} label={t.mapLabel} still onGhostMove={() => undefined} onStroke={() => undefined} onTapCell={() => undefined} />
       <OwnHospital />
@@ -316,8 +318,10 @@ function Summary({ v }: { v: ShiftView }) {
         {s.confidence !== undefined && <P>{t.confidence(s.confidence)}</P>}
         {s.seen > 0 && <P>{t.money(T.common.rub(s.money), T.common.rub(s.rationalMoney))}</P>}
         <P>{t.returns(s.returnsPlanned, s.returnsToday)}</P>
-        <P muted>{t.moneyNote}</P>
+        {!own && <P muted>{t.moneyNote}</P>}
       </Card>
+
+      {s.cash && <Cash c={s.cash} />}
 
       {own && <OwnHospital next />}
 
@@ -346,6 +350,44 @@ function Summary({ v }: { v: ShiftView }) {
         }} />
       </Sheet>
     </Screen>
+  );
+}
+
+/** Песочница: касса за день и репутация — из чего сложились (spec 2026-09-own-hospital, часть 9). */
+function Cash({ c }: { c: CashView }) {
+  const t = T.sandbox;
+  return (
+    <>
+      <Card testID="summary-cash">
+        <H>{t.cashTitle}</H>
+        <Text style={styles.label}>{t.income}</Text>
+        {c.income.map(x => <Line key={x.key} testID={`cash-${x.key}`} title={x.title} sum={x.sum} />)}
+        {c.audit && <P muted testID="cash-audit">{c.audit.why ? `${c.audit.sum}: ${c.audit.why}` : c.audit.sum}</P>}
+        <P muted testID="cash-level">{c.level}</P>
+        <Text style={styles.label}>{t.expensesTitle}</Text>
+        {c.expenses.map(x => <Line key={x.key} title={x.title} sum={x.sum} />)}
+        <P testID="cash-net">{c.net}</P>
+        <P testID="cash-now">{c.cash}</P>
+        {c.debt && <P testID="cash-debt">{c.debt}</P>}
+      </Card>
+      <Card testID="summary-reputation">
+        <H>{t.repTitle}</H>
+        <P testID="rep-line">{c.reputation.line}</P>
+        {c.reputation.score && <P>{c.reputation.score}</P>}
+        {c.reputation.reasons.map(r => <Line key={r.key} title={r.text} sum={r.delta} />)}
+        <P muted>{c.reputation.hint}</P>
+      </Card>
+    </>
+  );
+}
+
+/** Строка кассы: название слева, сумма справа. */
+function Line({ title, sum, testID }: { title: string; sum: string; testID?: string }) {
+  return (
+    <View testID={testID} style={styles.line}>
+      <Text style={styles.lineTitle}>{title}</Text>
+      <Text style={styles.lineSum}>{sum}</Text>
+    </View>
   );
 }
 
@@ -378,5 +420,8 @@ const styles = StyleSheet.create({
   invite: { minHeight: touch, justifyContent: 'center', paddingHorizontal: space.l, borderRadius: radius, backgroundColor: colors.accent },
   inviteText: { fontSize: 15, fontWeight: '700', color: '#fff' },
   log: { fontSize: 14, lineHeight: 20, color: colors.ink },
+  line: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: space.m },
+  lineTitle: { flexShrink: 1, fontSize: 15, lineHeight: 22, color: colors.ink },
+  lineSum: { fontSize: 15, lineHeight: 22, fontWeight: '600', color: colors.ink, fontVariant: ['tabular-nums'] },
   logRed: { color: colors.red, fontWeight: '600' },
 });

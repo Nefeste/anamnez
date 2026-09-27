@@ -17,6 +17,7 @@ import { build, type BuildCommand, type BuildError, type HospitalState, type Pla
 import { type Block, examWhere, openBlocks, type Problem, problemsOf, workingRooms } from '@/engine/hospital/requirements';
 import { type ClinicLayout, cropPlan, layoutOf } from '@/engine/hospital/clinic';
 import { type StaffMember, staffingOf } from '@/engine/hospital/staff';
+import { levelOf } from '@/engine/economy/economy';
 import { apply, current, type HospitalCtx, hospitalCtx, newSandbox, newShift, observationsOf, reviewFor } from '@/engine/shift/engine';
 import {
   type Command, DAY, type Difficulty, type Mode, type Notice, SHIFT_END, SHIFT_SCHEMA_VERSION, type ShiftPatient, type ShiftState, type Triage,
@@ -25,7 +26,7 @@ import { T } from '@/i18n';
 import { type Arrival, type Decision, decisionOf, hhmm, makeCaseView, outcomeText, patientName, type VisitView } from './caseView';
 import { CLINIC, type Doing, type Placement, placements } from './clinicMap';
 import { archivedCase, recordCases } from './profile';
-import { examBlockText, personName } from './sandboxView';
+import { type CashView, cashView, examBlockText, levelText, paymentText, personName } from './sandboxView';
 import { loadSlot, type RawStore, saveSlot } from './saves';
 import { settings } from './settings';
 
@@ -93,6 +94,8 @@ export interface SummaryView {
   cases: CaseRow[];
   /** исходы отпущенных домой, ставшие известными в этот день */
   news: { id: string; text: string }[];
+  /** песочница: касса и репутация за день */
+  cash?: CashView;
 }
 
 export interface ShiftView {
@@ -680,6 +683,10 @@ export interface BuildView {
   problems: Record<string, Problem[]>;
   /** что мешает открыть смену */
   open: Block[];
+  /** репутация 0–100 */
+  reputation: number;
+  /** тариф ОМС за приём по уровню амбулатории — строкой */
+  level: string;
 }
 
 function buildBuildView(): BuildView | undefined {
@@ -689,7 +696,11 @@ function buildBuildView(): BuildView | undefined {
   const staffed = staffingOf(s.staff ?? []);
   const problems: Record<string, Problem[]> = {};
   for (const r of plan.rooms) problems[r.id] = problemsOf(db, plan, r, staffed);
-  return { version, hospital: s.hospital, plan, cash: s.economy.cash, undo: s.undo?.length ?? 0, problems, open: openBlocks(db, plan, workingRooms(db, plan, staffed), staffed) };
+  const working = workingRooms(db, plan, staffed);
+  return {
+    version, hospital: s.hospital, plan, cash: s.economy.cash, undo: s.undo?.length ?? 0, problems, open: openBlocks(db, plan, working, staffed),
+    reputation: s.economy.reputation ?? db.economy.reputation.start, level: levelText(db, levelOf(db, plan, working)),
+  };
 }
 
 let buildCache: { version: number; view: BuildView | undefined } | null = null;
@@ -785,6 +796,7 @@ function row(s: ShiftState, p: ShiftPatient): QueueRow {
   const badges: string[] = [];
   if (p.kind === 'return') badges.push(T.shift.badge.return);
   else badges.push(p.kind === 'appointment' ? T.shift.badge.appointment : T.shift.badge.walkIn);
+  if (p.payer) badges.push(T.sandbox.payers[p.payer]);
   if (p.step > 0) badges.push(T.shift.badge.results);
   return {
     id: p.id,
@@ -813,6 +825,7 @@ function summaryOf(s: ShiftState): SummaryView | undefined {
     rationalMoney: cases.reduce((a, p) => a + p.closed!.rationalMoney, 0),
     cases: cases.map(p => ({ id: p.id, name: nameOf(p), verdict: p.closed!.verdict, overall: p.closed!.grades.overall, diagnosis: db.conditions[p.closed!.diagnosis].name.ru })),
     news,
+    ...(h.economy ? { cash: cashView(db, h.economy) } : {}),
   };
 }
 
@@ -991,6 +1004,8 @@ function buildCaseView(): VisitView | undefined {
     returnNote: p.returnReason && prev?.closed ? T.shift.returnNote(p.returnReason, closedDay(prev), female(p)) : undefined,
     difficulty: s.meta.difficulty ?? 'doctor',
     ...(s.hospital ? { unavailable: unavailableOf(s) } : {}),
+    ...(p.payer ? { payerNote: T.sandbox.payerNote[p.payer] } : {}),
+    ...(p.paid && p.closed ? { payment: paymentText(db, p.payer ?? 'oms', p.paid, p.closed) } : {}),
   });
 }
 

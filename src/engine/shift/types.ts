@@ -7,6 +7,7 @@ import type { Id, Season, Setting } from '../../content/types';
 import type { Scheduled } from '../core/events';
 import type { Outcome } from '../med/course';
 import type { BuildCommand, Built, HospitalState } from '../hospital/build';
+import type { CaseIncome, Ledger, Payer, RepChange } from '../economy/economy';
 import type { StaffMember } from '../hospital/staff';
 import type { Grade, ScoreNote } from '../med/score';
 import type { Observation, Patient } from '../med/types';
@@ -71,6 +72,10 @@ export interface ShiftPatient {
   triage: Triage;
   /** false — доврачебного кабинета нет: срочность никто не определил, очередь — по приходу */
   triaged?: boolean;
+  /** песочница: кто платит — ОМС, ДМС или сам (spec 2026-09-own-hospital, часть 9) */
+  payer?: Payer;
+  /** когда впервые вызвали в кабинет — ожидание для репутации */
+  calledT?: number;
   status: PatientStatus;
   /** с какого момента ждёт в очереди — для порядка */
   queuedT: number;
@@ -82,6 +87,10 @@ export interface ShiftPatient {
   pending: PendingResult[];
   /** обследования, уже сделанные или назначенные этому пациенту */
   done: Id[];
+  /** песочница: какие из них были показаны, когда их назначали, — их оплачивают ОМС и ДМС */
+  indicated?: Id[];
+  /** песочница: что заплатили за закрытый приём и что сняла экспертиза */
+  paid?: CaseIncome;
   step: number;
   spent: { seconds: number; money: number };
   draft: { diagnosis?: Id; treatments: Id[]; setting: Setting };
@@ -157,6 +166,8 @@ export interface DaySummary {
   returnsPlanned: number;
   /** сколько повторных обращений пришло сегодня */
   returnsToday: number;
+  /** песочница: касса за день, остаток вечером, как изменилась репутация */
+  economy?: { ledger: Ledger; cash: number; reputation: RepChange; level: { level: number; rooms: Id[] } };
 }
 
 export interface PlannedReturn {
@@ -200,8 +211,8 @@ export interface ShiftState {
   journal: Command[];
   /** своя больница — только в песочнице; практика идёт в готовой амбулатории каталога */
   hospital?: HospitalState;
-  /** касса песочницы, ₽ */
-  economy?: { cash: number };
+  /** песочница: касса, ₽; репутация 0–100; касса текущего дня (нет — сохранение 0.0.20–0.0.21) */
+  economy?: { cash: number; reputation?: number; ledger?: Ledger };
   /** «Отменить» на экране стройки: прежние больница и касса, последние UNDO_DEPTH */
   undo?: Built[];
   /** штат песочницы; в практике — штат готовой амбулатории */

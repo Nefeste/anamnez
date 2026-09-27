@@ -336,6 +336,34 @@ export interface Economy {
       weight: number; salary?: number; speed?: number; reading?: [number, number]; skills?: [number, number]; growth?: number;
     }>;
   };
+  /**
+   * ОМС — за обращение по тяжести диагноза; экспертиза страховой: доля по обоснованности и
+   * доля, если диагноз не подтверждён. ДМС и платно — обращение и прайс, % цены обследования.
+   */
+  tariffs: {
+    oms: Record<'minor' | 'moderate' | 'serious' | 'critical', number>;
+    omsQuality: Record<'A' | 'B' | 'C' | 'D', number>;
+    omsUnconfirmed: number;
+    /** показанные обследования, % цены в базе */
+    omsExam: number;
+    dms: { visit: number; price: number };
+    self: { visit: number; price: number };
+  };
+  /** уровень амбулатории для ОМС: доля тарифа за обращение, % — базовая и прибавки за работающие помещения */
+  level: { base: number; rooms: Record<Id, number> };
+  /** доля ДМС и платных, % — при репутации 0, 50, 100 */
+  payers: { dms: [number, number, number]; self: [number, number, number] };
+  /** расходники обследования, % цены — по виду */
+  consumables: Record<Exam['kind'], number>;
+  /** процент на долг в день, сотые доли процента */
+  interest: number;
+  /** репутация 0–100: начало, на сколько % вечером сдвигается к оценке дня, поправки оценки */
+  reputation: {
+    start: number; pull: number;
+    waitShort: number; waitShortMin: number; waitLong: number; waitLongMin: number; noToilet: number;
+  };
+  /** поток пациентов от репутации: ± % при 0 и 100 */
+  flow: number;
   /** песочница: участок, вход и отрезок коридора, бюджеты; с готовой амбулаторией — доля бюджета, % */
   sandbox: {
     plot: [number, number];

@@ -36,6 +36,13 @@ export function OutcomeScreen({ view, next, back }: { view: VisitView | undefine
         <P testID="visit-outcome">{x.outcome}</P>
       </Card>
 
+      {view.payment && (
+        <Card testID="visit-payment">
+          <Text style={styles.label}>{T.sandbox.payment}</Text>
+          {view.payment.map((line, i) => <P key={i} muted={i > 0}>{line}</P>)}
+        </Card>
+      )}
+
       <Card>
         <Text style={styles.label}>{t.gradesLabel}</Text>
         <View style={styles.grades}>

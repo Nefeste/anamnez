@@ -6,8 +6,8 @@ sizes:
   - id: S
     w: 6
     h: 7
-    cost: 120000
-    upkeep: 200
+    cost: 12000
+    upkeep: 100
     door: { x: 2, width: 2 }
     objects:
       - [chair, 1, 2]
@@ -20,8 +20,8 @@ sizes:
   - id: M
     w: 9
     h: 7
-    cost: 180000
-    upkeep: 300
+    cost: 18000
+    upkeep: 150
     door: { x: 3, width: 3 }
     objects:
       - [chair, 2, 2]
@@ -39,8 +39,8 @@ sizes:
   - id: L
     w: 13
     h: 7
-    cost: 260000
-    upkeep: 450
+    cost: 26000
+    upkeep: 225
     door: { x: 5, width: 4 }
     objects:
       - [chair, 2, 2]

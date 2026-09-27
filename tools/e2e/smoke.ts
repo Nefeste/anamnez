@@ -4,7 +4,7 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import { chromium, type Page } from 'playwright';
 import { clinicLayout } from '../../src/engine/hospital/clinic';
-import { apply, newShift } from '../../src/engine/shift/engine';
+import { apply, newSandbox, newShift } from '../../src/engine/shift/engine';
 import { SHIFT_SCHEMA_VERSION } from '../../src/engine/shift/types';
 import { buildDb } from '../content/load';
 
@@ -59,6 +59,25 @@ async function runClockUntil(page: Page, done: () => Promise<boolean>, ms = 60_0
 function endOfDaySave(): string {
   const { db } = buildDb();
   const s = newShift(db, { seed: 42, season: 'winter' });
+  const see = () => {
+    apply(db, s, { kind: 'call', id: s.queue[0] });
+    apply(db, s, { kind: 'exam', exam: 'exam.ask_complaints' });
+    apply(db, s, { kind: 'diagnose', id: 'cond.arvi' });
+    apply(db, s, { kind: 'toggleTreatment', id: 'tx.rest_fluids' });
+    apply(db, s, { kind: 'finish' });
+  };
+  apply(db, s, { kind: 'advance', seconds: 3600 });
+  for (let i = 0; i < 2 && s.queue.length > 0; i++) see();
+  apply(db, s, { kind: 'advance', seconds: 6 * 3600 });
+  while (s.queue.length > 0) see();
+  return JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s });
+}
+
+/** Песочница с готовой амбулаторией в конце дня 1: все приняты — «Закрыть день». */
+function sandboxEndOfDaySave(): string {
+  const { db } = buildDb();
+  const s = newSandbox(db, { seed: 43, season: 'winter', difficulty: 'doctor', start: 'clinic', budget: db.economy.sandbox.budgets.normal });
+  apply(db, s, { kind: 'nextDay' });
   const see = () => {
     apply(db, s, { kind: 'call', id: s.queue[0] });
     apply(db, s, { kind: 'exam', exam: 'exam.ask_complaints' });
@@ -402,7 +421,7 @@ try {
   await page.getByTestId('menu-sandbox').click();
   await page.getByTestId('sandbox-start').waitFor({ timeout: 10_000 });
   await page.getByTestId('sandbox-budget-generous').click();
-  check((await text(page, 'sandbox-cash')) === 'Касса: 12\u00a0000\u00a0000\u00a0₽', `песочница: щедрый бюджет — ${await text(page, 'sandbox-cash')}`);
+  check((await text(page, 'sandbox-cash')) === 'Касса: 2\u00a0500\u00a0000\u00a0₽', `песочница: щедрый бюджет — ${await text(page, 'sandbox-cash')}`);
   await page.getByTestId('sandbox-budget-normal').click();
   await page.getByTestId('sandbox-start').click();
   await page.getByTestId('sandbox-build').waitFor({ timeout: 10_000 });
@@ -500,6 +519,28 @@ try {
   check(await tsh.isDisabled() && (await tsh.innerText()).includes('нет иммунохимического анализатора'), `песочница: ТТГ — «${(await tsh.innerText()).replace(/\n/g, ' · ')}»`);
   check(!(await page.getByTestId('exam-exam.cbc').isDisabled()), 'песочница: общий анализ крови — можно');
   await page.screenshot({ path: join(OUT, '13-sandbox-card.png') });
+  check(/^(ОМС|ДМС|Платно): /.test(await visibleText(page, 'visit-payer')), `песочница: кто платит — ${await visibleText(page, 'visit-payer')}`);
+
+  // конец дня в песочнице из сохранения: итоги — касса по плательщикам и статьям, репутация;
+  // у приёма — оплата после экспертизы
+  // сначала — в меню: живой партии в памяти нет, её сохранение уже на диске; потом подменить его
+  await page.goto(base);
+  await page.getByTestId('menu-sandbox').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', sandboxEndOfDaySave()]);
+  await page.goto(base);
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId('shift-close-day').waitFor({ timeout: 15_000 });
+  await page.getByTestId('shift-close-day').click();
+  await page.getByTestId('summary-cash').waitFor({ timeout: 10_000 });
+  check((await text(page, 'cash-now')).startsWith('В кассе: '), `песочница, итоги дня: ${await text(page, 'cash-now')}`);
+  check(/^Итог дня: [+−]?\d/.test(await text(page, 'cash-net')), `песочница, итоги дня: ${await text(page, 'cash-net')}`);
+  check(/^Репутация: \d+ → \d+$/.test(await text(page, 'rep-line')), `песочница, итоги дня: ${await text(page, 'rep-line')}`);
+  await page.waitForTimeout(1500); // лист меню «Продолжить» ещё уезжает вниз (веб)
+  await page.screenshot({ path: join(OUT, '14-sandbox-summary.png'), fullPage: true });
+  await page.locator('[data-testid^="case-"]').first().click();
+  await page.getByTestId('visit-payment').waitFor({ timeout: 10_000 });
+  check(/^оплата\n(омс|дмс|платно): \d/i.test(await text(page, 'visit-payment')), `песочница, итог приёма: ${(await text(page, 'visit-payment')).replace(/\n/g, ' · ')}`);
 
   // конец дня из сохранения: закрыть день, итоги, разбор случая из итогов, следующий день
   const day = await browser.newContext({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2 });

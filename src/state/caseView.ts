@@ -115,6 +115,10 @@ export interface VisitView {
   canSendAway?: boolean;
   /** смена: повторное обращение — строка для шапки */
   returnNote?: string;
+  /** песочница: кто платит и что оплатит — строка для шапки */
+  payerNote?: string;
+  /** песочница: оплата закрытого приёма — на экране итога */
+  payment?: string[];
   decision?: Decision;
 }
 
@@ -149,6 +153,8 @@ export interface CaseInput {
   difficulty?: Difficulty;
   /** своя больница: обследования, которых здесь не сделать, — и почему (spec 2026-09-own-hospital) */
   unavailable?: Record<Id, string>;
+  payerNote?: string;
+  payment?: string[];
 }
 
 export function hhmm(min: number): string {
@@ -307,6 +313,8 @@ export function makeCaseView(c: CaseInput): VisitView {
     draftDiagnosisName: c.draft.diagnosis ? db.conditions[c.draft.diagnosis].name.ru : undefined,
     ...(c.canSendAway ? { canSendAway: true } : {}),
     ...(c.returnNote ? { returnNote: c.returnNote } : {}),
+    ...(c.payerNote ? { payerNote: c.payerNote } : {}),
+    ...(c.payment ? { payment: c.payment } : {}),
     decision: c.decision,
   };
 }

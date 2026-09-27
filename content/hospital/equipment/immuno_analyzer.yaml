@@ -3,8 +3,8 @@ name: { ru: "Иммунохимический анализатор" }
 gen: { ru: "иммунохимического анализатора" }
 room: room.lab
 sprite: machine
-price: 2500000
-upkeep: 2000
+price: 250000
+upkeep: 200
 breakdown: 1
 speed: 1
 texts:

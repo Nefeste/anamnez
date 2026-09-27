@@ -6,8 +6,8 @@ sizes:
   - id: S
     w: 6
     h: 7
-    cost: 170000
-    upkeep: 300
+    cost: 17000
+    upkeep: 150
     door: { x: 2 }
     objects:
       - [table, 2, 3]

@@ -79,7 +79,7 @@ describe('энциклопедия', () => {
     const needs = lab.blocks.find(b => b.key === 'needs')!.rows!;
     expect(needs.map(r => r.label)).toEqual(['Люди', 'Аппарат — хотя бы один']);
     expect(article(db, 'room.procedure')!.blocks.find(b => b.key === 'collectsFor')!.refs!.map(r => r.id)).toContain('exam.cbc');
-    expect(article(db, 'room.waiting')!.blocks.find(b => b.key === 'sizes')!.text![2]).toBe('L — 13\u00a0×\u00a07\u00a0м, 260\u00a0000\u00a0₽, содержание 450\u00a0₽ в\u00a0день, 18\u00a0мест.');
+    expect(article(db, 'room.waiting')!.blocks.find(b => b.key === 'sizes')!.text![2]).toBe('L — 13\u00a0×\u00a07\u00a0м, 26\u00a0000\u00a0₽, содержание 225\u00a0₽ в\u00a0день, 18\u00a0мест.');
     const where = article(db, 'exam.cbc')!.blocks.find(b => b.key === 'where')!;
     expect(where.refs!.map(r => [r.id, r.note ?? ''])).toEqual([['room.lab', ''], ['eq.hematology_analyzer', ''], ['room.procedure', 'берут материал']]);
     // расспрос — у врача в кабинете
