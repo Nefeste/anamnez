@@ -1,0 +1,29 @@
+// Снимок и лента в результатах приёма: рисунок по тому, что показало обследование, — как
+// в спецификации карты пациента (рентген и ЭКГ кодом, ADR 0013).
+import { useWindowDimensions, View } from 'react-native';
+import { Ecg } from '@/render/Ecg';
+import { Xray } from '@/render/Xray';
+import type { ResultImage } from '@/state/caseView';
+import { space } from '@/ui/theme';
+
+/** Плотность инфильтрата на снимке — одна: вид знает сторону, а не тяжесть. */
+const DENSITY = 0.75;
+
+export function ResultPicture({ image }: { image: ResultImage }) {
+  const { width } = useWindowDimensions();
+  // ширина группы результатов: экран без отступов экрана, карточки и группы; колонка — до 640
+  const w = Math.round(Math.min(width, 640) - 2 * (space.l + space.l + space.s));
+  if (image.kind === 'xray') {
+    return (
+      <View testID="result-xray" style={{ borderRadius: 6, overflow: 'hidden' }}>
+        <Xray width={w} seed={image.seed} findings={{ ...(image.infiltrate ? { infiltrate: { side: image.infiltrate, density: DENSITY } } : {}), hyperinflation: image.hyperinflation }} />
+      </View>
+    );
+  }
+  return (
+    <View testID="result-ecg" style={{ borderRadius: 6, overflow: 'hidden' }}>
+      {/* четыре секунды — крупно: подъём ST на телефоне должен быть виден глазом */}
+      <Ecg width={w} height={Math.round(w * 0.45)} spec={{ rhythm: 'sinus', rate: image.rate, seconds: 4, seed: image.seed, st: image.st, rScale: image.rScale }} />
+    </View>
+  );
+}

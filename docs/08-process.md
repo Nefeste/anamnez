@@ -162,7 +162,8 @@ keytool -list -v -keystore anamnez-release.jks -alias anamnez | grep SHA256
 - [ ] сценарии в браузере (`09-testing.md`)
 - [ ] на современном телефоне: карта без подвисаний, звук, вибрация, обновление поверх прошлой версии
 - [ ] версия поднята во всех местах, `versionCode` +1
-- [ ] «Что нового» — в `src/i18n/sections/settings.ts` и `store/listing.*.md`
+- [ ] «Что нового» — в `src/i18n/sections/settings.ts` и `store/listing.*.md`; изменились
+      экраны — `npm run export:web && npm run store` и снимки посмотреть глазами
 - [ ] раздел версии в `README.md`
 - [ ] документы и дорожная карта поправлены
 - [ ] сборка зелёная, APK в Releases (AAB — вручную, перед выкладкой в Google Play), отпечаток ключа — ожидаемый

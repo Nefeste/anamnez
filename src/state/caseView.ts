@@ -24,6 +24,14 @@ export interface Line {
   exam: Id | 'complaint';
 }
 
+/**
+ * Картинка результата — то, что показал снимок или лента, а не правда: ложный результат
+ * нарисован так же, как настоящий. Рисует её src/render (ADR 0013).
+ */
+export type ResultImage =
+  | { kind: 'xray'; infiltrate?: 'right' | 'left' | 'both'; hyperinflation: boolean; seed: number }
+  | { kind: 'ecg'; rate: number; st: number; rScale: number; seed: number };
+
 /** Результаты одного обследования. `fresh` — пришли за последнее действие игрока. */
 export interface ResultGroup {
   key: string;
@@ -32,6 +40,7 @@ export interface ResultGroup {
   at: string;
   fresh: boolean;
   lines: Line[];
+  image?: ResultImage;
 }
 
 /** Справка о термине для «Что это?»: только знания из базы, не правда о пациенте. */
@@ -212,6 +221,31 @@ function treatmentChoices(obs: readonly Observation[]): VisitView['treatments'] 
     .sort((a, b) => (a.name < b.name ? -1 : 1));
 }
 
+/** Снимок и лента — по тому, что показало это обследование; частота на ленте — по пульсу. */
+function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observation[], seed: number): ResultImage | undefined {
+  const shown = (f: Id) => obs.find(o => o.f === f && o.shown);
+  if (exam === 'exam.xray_chest') {
+    const side = shown('img.cxr_infiltrate')?.attrs?.side;
+    return {
+      kind: 'xray',
+      ...(side === 'right' || side === 'left' || side === 'both' ? { infiltrate: side } : {}),
+      hyperinflation: shown('img.cxr_hyperinflation') !== undefined,
+      seed,
+    };
+  }
+  if (exam === 'exam.ecg') {
+    const pulse = known.find(o => o.f === 'vital.tachycardia' && o.value !== undefined)?.value;
+    return {
+      kind: 'ecg',
+      rate: pulse !== undefined ? Math.round(pulse) : 72,
+      st: shown('ecg.st_elevation') ? 0.3 : shown('ecg.st_depression') ? -0.2 : 0,
+      rScale: shown('ecg.lvh') ? 1.5 : 1,
+      seed,
+    };
+  }
+  return undefined;
+}
+
 export function makeCaseView(c: CaseInput): VisitView {
   const p = c.patient;
   const line = (o: Observation): Line => ({
@@ -232,7 +266,10 @@ export function makeCaseView(c: CaseInput): VisitView {
     complaints: complaintObservations(p).map(line),
     results: c.arrived.flatMap(a => a.obs).map(line),
     groups: c.arrived
-      .map((a, i) => ({ key: `${i}:${a.exam}`, exam: a.exam, name: db.exams[a.exam].name.ru, at: hhmm(a.at), fresh: c.step > 0 && a.step === c.step, lines: a.obs.map(line) }))
+      .map((a, i) => {
+        const image = imageOf(a.exam, a.obs, obs, fnv1a(`${p.seed}:${a.exam}`));
+        return { key: `${i}:${a.exam}`, exam: a.exam, name: db.exams[a.exam].name.ru, at: hhmm(a.at), fresh: c.step > 0 && a.step === c.step, lines: a.obs.map(line), ...(image ? { image } : {}) };
+      })
       .reverse(),
     freshCount: c.arrived.filter(a => c.step > 0 && a.step === c.step).reduce((n, a) => n + a.obs.length, 0),
     pending: c.pending.map(x => ({ name: db.exams[x.exam].name.ru, at: hhmm(x.readyAt) })),

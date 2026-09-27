@@ -11,6 +11,10 @@ export interface EcgSpec {
   rate: number;
   seconds: number;
   seed: number;
+  /** смещение сегмента ST, мВ: + подъём (инфаркт с подъёмом ST), − депрессия (ишемия) */
+  st?: number;
+  /** во сколько раз выше зубец R (гипертрофия левого желудочка) */
+  rScale?: number;
 }
 
 export const ECG_HZ = 250;
@@ -40,7 +44,10 @@ export function synthEcg(spec: EcgSpec): { mv: Float32Array; beats: number[] } {
     // синусовый — почти ровно; фибрилляция — «абсолютно неритмично»
     t += spec.rhythm === 'sinus' ? mean * (0.97 + 0.06 * rnd()) : mean * (0.55 + 0.9 * rnd());
   }
-  const waves = spec.rhythm === 'af' ? SINUS_BEAT.slice(1) : SINUS_BEAT; // при ФП зубца P нет
+  const rScale = spec.rScale ?? 1;
+  const waves = (spec.rhythm === 'af' ? SINUS_BEAT.slice(1) : SINUS_BEAT) // при ФП зубца P нет
+    .map(w => (w.at === 0 ? { ...w, amp: w.amp * rScale } : w));
+  const st = spec.st ?? 0;
   for (const r of beats) {
     for (const w of waves) {
       const c = r + w.at;
@@ -49,6 +56,21 @@ export function synthEcg(spec: EcgSpec): { mv: Float32Array; beats: number[] } {
       for (let i = from; i <= to; i++) {
         const d = (i / ECG_HZ - c) / w.width;
         mv[i] += w.amp * Math.exp(-0.5 * d * d);
+      }
+    }
+    // сегмент ST — от точки J после S до конца T: плато с мягкими краями; при подъёме
+    // он сливается с зубцом T, как на настоящей ленте
+    if (st !== 0) {
+      const j = r + 0.05;
+      const end = r + 0.34;
+      const ramp = 0.03;
+      const from = Math.max(0, Math.floor((j - ramp) * ECG_HZ));
+      const to = Math.min(n - 1, Math.ceil((end + ramp) * ECG_HZ));
+      for (let i = from; i <= to; i++) {
+        const t = i / ECG_HZ;
+        const up = Math.min(1, Math.max(0, (t - (j - ramp)) / ramp));
+        const down = Math.min(1, Math.max(0, (end + ramp - t) / ramp));
+        mv[i] += st * up * down;
       }
     }
   }
