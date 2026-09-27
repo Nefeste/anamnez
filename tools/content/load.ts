@@ -7,6 +7,7 @@ import { parse } from 'yaml';
 import type { z } from 'zod';
 import type { AttrSpec, Condition, ContentDb, Exam, Finding, Link, Risk, Treatment } from '../../src/content/types';
 import { fingerprint } from '../../src/engine/core/hash';
+import { findBrand } from './brands';
 import { BANDS, type ConditionSrc, conditionSchema, type ExamSrc, examSchema, type FindingSrc, findingSchema, type LinkSrc, PREVALENCE, type ProbabilitySrc, type RiskSrc, riskSchema, type TreatmentSrc, treatmentSchema, versionSchema } from './schema';
 
 export const CONTENT_DIR = join(import.meta.dir, '../../content');
@@ -56,8 +57,11 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     const rel = relative(dir, file);
     const top = rel.split('/')[0];
     let raw: unknown;
+    const source = readFileSync(file, 'utf8');
+    const brand = findBrand(source);
+    if (brand) errors.push(`${rel}: торговое название «${brand}» — только МНН или группа (ADR 0012)`);
     try {
-      raw = parse(readFileSync(file, 'utf8'));
+      raw = parse(source);
     } catch (e) {
       errors.push(`${rel}: не разбирается как YAML: ${(e as Error).message}`);
       continue;

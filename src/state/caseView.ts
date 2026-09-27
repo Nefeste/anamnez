@@ -43,8 +43,9 @@ export interface ResultGroup {
   image?: ResultImage;
 }
 
-/** Справка о термине для «Что это?»: только знания из базы, не правда о пациенте. */
+/** Справка о термине для «Что это?»: только знания из базы, не правда о пациенте. `id` — статья энциклопедии. */
 export interface TermInfo {
+  id?: Id;
   title: string;
   text: string[];
   list?: { label: string; items: string[] };
@@ -53,6 +54,8 @@ export interface TermInfo {
 export interface Decision {
   diagnosis: Id;
   verdict: 'correct' | 'partly' | 'wrong';
+  /** настоящая болезнь — для ссылки в энциклопедию из разбора */
+  truth: Id;
   truthName: string;
   /** уверенность идеального врача в поставленном диагнозе, 0–10 */
   outOf10: number;
@@ -184,15 +187,22 @@ const TX_GROUPS: [string, string[]][] = [
   ['metabolic', ['antidiabetic', 'hormone', 'mineral']],
 ];
 
+/** Порядок групп лечения — для решения и энциклопедии. */
+export const TX_GROUP_ORDER = [...TX_GROUPS.map(([k]) => k), 'regimen'];
+
+/** Группа по классу лечения; без класса — режим и советы. */
+export function txGroupOfClass(cls: string | undefined): string {
+  const c = cls ?? '';
+  return TX_GROUPS.find(([, prefixes]) => prefixes.some(p => c === p || c.startsWith(`${p}.`)))?.[0] ?? 'regimen';
+}
+
 function txGroup(id: Id): string {
-  const cls = db.treatments[id].class ?? '';
-  return TX_GROUPS.find(([, prefixes]) => prefixes.some(p => cls === p || cls.startsWith(`${p}.`)))?.[0] ?? 'regimen';
+  return txGroupOfClass(db.treatments[id].class);
 }
 
 function groupTreatments(items: VisitView['treatments']): VisitView['treatmentGroups'] {
-  const order = [...TX_GROUPS.map(([k]) => k), 'regimen'];
   const titles = T.spikes.decision.txGroup;
-  return order
+  return TX_GROUP_ORDER
     .map(key => ({ key, title: titles[key], items: items.filter(x => txGroup(x.id) === key) }))
     .filter(g => g.items.length > 0);
 }
@@ -301,6 +311,7 @@ export function decisionOf(x: {
   return {
     diagnosis: x.diagnosis,
     verdict: x.verdict,
+    truth: cond.id,
     truthName: cond.name.ru,
     outOf10: outOf10(x.confidence),
     pearls: (cond.pearls ?? []).map(v => v.ru),
@@ -377,6 +388,7 @@ export function findingInfo(id: Id): TermInfo {
   const f = db.findings[id];
   const by = (db.revealedBy[id] ?? []).map(e => db.exams[e].name.ru);
   return {
+    id,
     title: f.name.ru,
     text: f.texts.hint ? [f.texts.hint.ru] : [],
     list: by.length > 0 ? { label: T.spikes.patient.revealedBy, items: by } : undefined,
@@ -387,6 +399,7 @@ export function findingInfo(id: Id): TermInfo {
 export function examTerm(id: Id): TermInfo {
   const e = db.exams[id];
   return {
+    id,
     title: e.name.ru,
     text: [e.texts.summary.ru, ...(e.texts.hint ? [e.texts.hint.ru] : [])],
     list: { label: T.spikes.patient.checks, items: e.checks.map(c => db.findings[c.f].name.ru) },
@@ -396,11 +409,11 @@ export function examTerm(id: Id): TermInfo {
 /** «Что это?» о лечении. */
 export function treatmentTerm(id: Id): TermInfo {
   const x = db.treatments[id];
-  return { title: x.name.ru, text: [x.texts.hint.ru] };
+  return { id, title: x.name.ru, text: [x.texts.hint.ru] };
 }
 
 /** «Что это?» о болезни — только общее описание из энциклопедии. */
 export function conditionTerm(id: Id): TermInfo {
   const c = db.conditions[id];
-  return { title: c.name.ru, text: [c.texts.summary.ru] };
+  return { id, title: c.name.ru, text: [c.texts.summary.ru] };
 }

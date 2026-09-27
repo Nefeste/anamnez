@@ -50,7 +50,7 @@ describe('тактика и место лечения', () => {
     expect(recommendedSetting(db, find('cond.pyelonephritis', p => mild(p) && p.truth.risks.includes('risk.pregnancy')))).toBe('ward');
   });
 
-  test('ОКС — скорая; до её приезда — аспирин, ибупрофен вреден', () => {
+  test('ОКС — скорая; до её приезда — ацетилсалициловая кислота, ибупрофен вреден', () => {
     const p = find('cond.acs');
     expect(recommendedSetting(db, p)).toBe('ambulance');
     const withAspirin = scoreCase(base({ treatments: ['tx.aspirin_acs', 'tx.nitroglycerin'], setting: 'ambulance' }, p));

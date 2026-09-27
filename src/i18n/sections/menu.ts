@@ -11,6 +11,7 @@ export const menu = {
   cancel: 'Отмена',
   campaign: 'Кампания',
   encyclopedia: 'Энциклопедия',
+  encyclopediaHint: 'болезни, признаки, обследования, лечение',
   profile: 'Профиль',
   soon: 'скоро',
   settings: 'Настройки',

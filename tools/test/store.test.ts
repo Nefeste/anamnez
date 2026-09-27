@@ -5,6 +5,7 @@ import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PRIVACY_URL, SUPPORT_EMAIL } from '../../src/info';
+import { findBrand } from '../content/brands';
 import { CAPTIONS } from '../store/captions';
 
 const STORE = join(import.meta.dir, '../../store');
@@ -29,11 +30,10 @@ function png(file: string): { w: number; h: number; alpha: boolean } {
 
 const TEXTS = ['listing.ru.md', 'forms.md', 'privacy.ru.md', 'privacy.en.md', 'site/anamnez.ru.md', 'site/press.ru.md'];
 
-// чужие игры, сериалы и прошлые прототипы (11-publishing.md §2), бренды лекарств (ADR 0012)
+// чужие игры, сериалы и прошлые прототипы (11-publishing.md §2); бренды лекарств — findBrand (ADR 0012)
 const FORBIDDEN = [
   /project hospital/i, /two point/i, /theme hospital/i, /prognosis/i, /\bAda\b/, /clinicsim/i,
   /доктор хаус/i, /интерны/i, /склифосовск/i, /земский доктор/i,
-  /аспирин/i, /нурофен/i, /амоксиклав/i, /сумамед/i, /арбидол/i, /кагоцел/i, /но-?шп/i, /терафлю/i, /колдрекс/i,
 ];
 // обещания медицинского приложения (11-publishing.md §3)
 const CLAIMS = [/научит ставить диагноз/i, /тренаж[её]р для врач/i, /провер\S* свои симптом/i, /справочник болезней/i, /поставит диагноз/i];
@@ -61,6 +61,7 @@ describe('store: тексты', () => {
     for (const f of TEXTS) {
       const text = read(f);
       for (const re of [...FORBIDDEN, ...CLAIMS]) expect({ file: f, found: re.test(text) ? re.source : null }).toEqual({ file: f, found: null });
+      expect({ file: f, brand: findBrand(text) }).toEqual({ file: f, brand: null });
     }
   });
 

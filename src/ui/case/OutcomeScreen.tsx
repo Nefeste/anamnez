@@ -2,9 +2,11 @@
 // оценки по категориям, затем разбор. Главная кнопка — внизу, под большим пальцем: у
 // прототипа «Следующий пациент», у смены — к очереди или к итогам дня.
 import { StyleSheet, Text, View } from 'react-native';
+import { db } from '@/content';
 import { T } from '@/i18n';
 import type { VisitView } from '@/state/caseView';
 import { Button, Card, H, P, Screen } from '@/ui/components';
+import { openArticle } from '@/ui/encyclopedia';
 import { colors, radius, space } from '@/ui/theme';
 import type { FooterAction } from './actions';
 
@@ -74,6 +76,11 @@ export function OutcomeScreen({ view, next, back }: { view: VisitView | undefine
         {x.causes.map((c, i) => <P key={i}>{`${c.finding} — ${c.cause}`}</P>)}
         <Text style={styles.label}>{t.pearls}</Text>
         {x.pearls.map((p, i) => <P key={i}>{`• ${p}`}</P>)}
+        {/* разбор → энциклопедия: настоящая болезнь и, если ошиблись, та, что поставили */}
+        <Button testID="visit-truth-article" kind="plain" title={T.encyclopedia.truthArticle(x.truthName)} onPress={() => openArticle(x.truth)} />
+        {x.diagnosis !== x.truth && (
+          <Button testID="visit-chosen-article" kind="plain" title={T.encyclopedia.truthArticle(db.conditions[x.diagnosis].name.ru)} onPress={() => openArticle(x.diagnosis)} />
+        )}
       </Card>
     </Screen>
   );

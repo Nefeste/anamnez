@@ -1,0 +1,115 @@
+import { pluralRu } from '../plural';
+
+const decimal = (x: number) => String(x).replace('.', ',');
+
+export const encyclopedia = {
+  title: 'Энциклопедия',
+  // 11-publishing.md §3: та же мысль, что в оговорке, одной строкой вверху каждого раздела
+  disclaimer: 'Сведения упрощены для игры: это не справочник и не замена врачу.',
+  search: 'Поиск: болезнь, признак, анализ, лекарство',
+  nothing: 'Ничего не нашлось',
+  articles: (n: number) => `${n} ${pluralRu(n, 'статья', 'статьи', 'статей')}`,
+  sections: {
+    conditions: 'Болезни',
+    findings: 'Признаки',
+    exams: 'Обследования',
+    treatments: 'Лечение',
+    risks: 'Факторы риска',
+  },
+  chronic: 'Хронические болезни',
+  findingGroup: { sym: 'Жалобы', hx: 'Анамнез', sign: 'Осмотр', vital: 'Показатели', lab: 'Анализы', img: 'Снимки', ecg: 'ЭКГ' },
+  findingKind: { sym: 'Жалоба', hx: 'Анамнез', sign: 'Находка при осмотре', vital: 'Показатель', lab: 'Анализ', img: 'Снимок', ecg: 'ЭКГ' },
+  examGroup: { ask: 'Расспрос', examine: 'Осмотр', lab: 'Анализы и экспресс-тесты', imaging: 'Снимки и функциональные' },
+  examKind: { ask: 'Расспрос', physical: 'Осмотр', bedside: 'У постели', lab: 'Анализ', rapid: 'Экспресс-тест', functional: 'Функциональное', imaging: 'Снимок' },
+  txKind: { drug: 'Лекарство', regimen: 'Режим и советы', procedure: 'Процедура' },
+  severity: { minor: 'лёгкое', moderate: 'средней тяжести', serious: 'серьёзное', critical: 'угрожает жизни' },
+  band: {
+    always: 'Почти всегда',
+    usually: 'Обычно',
+    often: 'Часто',
+    sometimes: 'Иногда',
+    rarely: 'Редко',
+    veryRarely: 'Исключительно редко',
+    never: 'Не бывает',
+  },
+  when: {
+    severe: 'при тяжёлом течении',
+    moderate: 'при среднетяжёлом течении',
+    mild: 'при лёгком течении',
+    stemi: 'при инфаркте с подъёмом ST',
+    nste: 'при ОКС без подъёма ST',
+  } as Record<string, string>,
+  icd: (code: string) => `МКБ-10: ${code}`,
+
+  // статья болезни — разделы в порядке 05-content.md §4
+  what: 'Что это',
+  signs: 'Признаки',
+  who: 'У кого бывает',
+  peakAfter: (from: number) => `Чаще после ${from} лет.`,
+  peakBetween: (from: number, to: number) => `Чаще в ${from}–${to} лет.`,
+  onlyWomen: 'Почти только у женщин.',
+  moreWomen: 'Чаще у женщин.',
+  onlyMen: 'Почти только у мужчин.',
+  moreMen: 'Чаще у мужчин.',
+  season: { winter: 'Чаще зимой.', spring: 'Чаще весной.', summer: 'Чаще летом.', autumn: 'Чаще осенью.' },
+  requires: 'Бывает только при',
+  riskFactors: 'Факторы риска',
+  times: (x: number) => `в ${decimal(x)} раза чаще`,
+  confirm: 'Как подтвердить',
+  clinical: 'Отдельного подтверждающего обследования нет: диагноз ставят по жалобам и осмотру, исключив опасное.',
+  similar: 'С чем спутать',
+  treatment: 'Лечение',
+  firstLine: 'Первая линия',
+  plan: 'Обычно назначают',
+  acceptable: 'Можно также',
+  supportive: 'Облегчить состояние',
+  notIndicated: 'Не нужно',
+  harmful: 'Опасно',
+  setting: { home: 'дома', ward: 'в стационаре', ambulance: 'скорая, больница' },
+  whereTitle: 'Где лечить',
+  whereDefault: (s: string) => `Обычно — ${s}.`,
+  whereIf: (when: string, s: string) => `${when[0].toUpperCase()}${when.slice(1)} — ${s}.`,
+  whereRedFlag: (s: string) => `При красных флагах — ${s}.`,
+  whereRisk: (risk: string, s: string) => `Если есть «${risk}» — ${s}.`,
+  course: 'Без лечения',
+  selfLimiting: 'Обычно проходит само.',
+  untreated: (band: string, from: number, to: number) => `Без действенного лечения ${band.toLowerCase()} становится хуже — на ${from}–${to}-й день.`,
+  redFlags: 'Красные флаги',
+  redFlagsNote: 'Признаки опасного течения: с ними тактика другая.',
+  pearls: 'Что запомнить',
+  sources: 'Источники',
+
+  // признак
+  redFlag: 'красный флаг',
+  howFound: 'Как выявить',
+  inConditions: 'При каких болезнях',
+  fromRisks: 'Бывает и от',
+  redFlagFor: 'Красный флаг при',
+
+  // обследование
+  minutes: (n: number) => `${n} мин`,
+  checks: 'Что проверяет',
+  accuracy: (sens: number, spec: number) => `чувствительность ${sens} %, специфичность ${spec} %`,
+  accuracyNote: 'Чувствительность — какую долю больных обследование находит; специфичность — какую долю здоровых не принимает за больных.',
+  confirms: 'Подтверждает',
+
+  // лечение
+  usedAs: 'Где в лечении',
+  firstLineFor: 'Первая линия при',
+  planFor: 'Обычно назначают при',
+  acceptableFor: 'Можно при',
+  supportiveFor: 'Облегчает при',
+  harmfulFor: 'Опасно при',
+  contraindications: 'Противопоказания',
+  level: { absolute: 'нельзя', relative: 'с осторожностью' },
+
+  // фактор риска
+  riskKind: 'Фактор риска',
+  shows: 'Как проявляется',
+  raises: 'Чаще бывают',
+  limits: 'Мешает лечению',
+
+  // переходы
+  more: 'Подробнее в энциклопедии',
+  truthArticle: (name: string) => `В энциклопедии: ${name}`,
+};
