@@ -120,7 +120,8 @@ export const shift = {
     doing: {
       registration: 'В регистратуре: заводят карту',
       triage: 'У медсестры: давление, пульс, температура, сатурация',
-      waiting: (min: number) => `Ждёт приёма ${min} мин`,
+      // между числом и единицей — неразрывный пробел (голос студии)
+      waiting: (min: number) => `Ждёт приёма ${min}\u00a0мин`,
       office: 'У вас в кабинете',
       exam: { xray: 'На рентгене', ecg: 'На ЭКГ', lab: 'Сдаёт анализы' } as Record<string, string>,
       examQueue: { xray: 'Ждёт очереди на рентген', ecg: 'Ждёт очереди на ЭКГ', lab: 'Ждёт очереди на анализы' } as Record<string, string>,
