@@ -5,12 +5,21 @@ import type { ObjectKind } from '@/engine/hospital/grid';
 
 export const SPRITE = 32;
 export const OBJECT_KINDS: ObjectKind[] = ['bed', 'chair', 'desk', 'couch', 'cabinet', 'machine', 'plant', 'sink', 'bench', 'xray', 'table'];
-export const PEOPLE = [
+/** Фигурки: 0 — врач, 1 — медсестра, 2–4 — пациенты, 5 — прочий персонал, 6–8 и 9–11 —
+ * пациенты с жёлтой и красной срочностью: толще обод — срочность видна не только цветом. */
+export const PEOPLE: { body: string; edge: string; ring?: number }[] = [
   { body: '#FFFFFF', edge: '#1A8A86' }, // врач
   { body: '#6FA8DC', edge: '#3D6E99' }, // медсестра
   { body: '#C9824F', edge: '#8A5634' }, // пациенты
   { body: '#8E7AA6', edge: '#5E4E73' },
   { body: '#7A9E7E', edge: '#4E6E52' },
+  { body: '#E6E0F0', edge: '#6E5E96' }, // регистратор, лаборант, рентгенолаборант, рентгенолог
+  { body: '#C9824F', edge: '#D9A21B', ring: 3.5 },
+  { body: '#8E7AA6', edge: '#D9A21B', ring: 3.5 },
+  { body: '#7A9E7E', edge: '#D9A21B', ring: 3.5 },
+  { body: '#C9824F', edge: '#C8453C', ring: 5 },
+  { body: '#8E7AA6', edge: '#C8453C', ring: 5 },
+  { body: '#7A9E7E', edge: '#C8453C', ring: 5 },
 ];
 
 export interface SpriteAtlas {
@@ -55,7 +64,7 @@ export function buildAtlas(): SpriteAtlas {
   });
   PEOPLE.forEach((p, j) => {
     const i = OBJECT_KINDS.length + j;
-    circle(i, 16, 16, 12, p.edge);
+    circle(i, 16, 16, 10 + (p.ring ?? 2), p.edge);
     circle(i, 16, 16, 10, p.body);
     circle(i, 16, 15, 5.5, '#E8BE9A');
   });

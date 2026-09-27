@@ -1,12 +1,15 @@
-// Смена в амбулатории (spec 2026-09-first-shift): очередь с часами и скоростями, кто в
-// кабинете, кто на обследованиях, что происходит; после закрытия дня — его итоги.
-// Часы идут, только пока этот экран на виду и в кабинете никого (ADR 0005).
+// Смена в амбулатории (spec 2026-09-first-shift): сверху — карта амбулатории, под ней
+// очередь с часами и скоростями, кто в кабинете, кто на обследованиях, что происходит;
+// после закрытия дня — его итоги. Часы идут, только пока этот экран на виду и в кабинете
+// никого (ADR 0005).
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { buzz, play } from '@/audio/sounds';
 import type { Triage } from '@/engine/shift/types';
 import { T } from '@/i18n';
+import { ClinicMap } from '@/render/map/ClinicMap';
+import { CLINIC } from '@/state/clinicMap';
 import {
   callPatient, closeDay, loadShift, nextDay, openCase, pauseClock, type QueueRow, type ShiftView, SPEEDS, type Speed, type SummaryView,
   saveNow, setSpeed, skipIdle, startShift, TICK_MS, tick, useShift,
@@ -48,10 +51,13 @@ const speedKey = (s: Speed): SpeedKey => (s === 1 ? 'x1' : s === 2 ? 'x2' : 'x4'
 
 function Queue({ v }: { v: ShiftView }) {
   const t = T.shift;
+  const { width } = useWindowDimensions();
+  const [focused, setFocused] = useState(true);
 
   // часы — только пока экран на виду: поверх него карта пациента или разбор
   useFocusEffect(
     useCallback(() => {
+      setFocused(true);
       const id = setInterval(() => {
         const notices = tick(TICK_MS);
         if (notices.some(n => n.kind === 'arrived' && n.triage === 'red')) {
@@ -65,6 +71,7 @@ function Queue({ v }: { v: ShiftView }) {
       return () => {
         clearInterval(id);
         saveNow();
+        setFocused(false);
       };
     }, []),
   );
@@ -97,8 +104,21 @@ function Queue({ v }: { v: ShiftView }) {
   const speed: SpeedKey = v.paused ? 'pause' : speedKey(v.speed);
   const onSpeed = (k: SpeedKey) => (k === 'pause' ? pauseClock() : setSpeed(SPEEDS.find(s => speedKey(s) === k) ?? 1));
 
+  // люди — из вида смены (пересобирается с каждым ходом часов), а не из живого состояния:
+  // вызов по изменяемому объекту смены React Compiler запомнил бы, и карта застыла бы
+  const map = (
+    <ClinicMap
+      layout={CLINIC}
+      people={v.people}
+      width={Math.min(width, 640)}
+      active={focused}
+      label={t.map.label(v.queue.length, v.away.length, v.inRoom?.name)}
+      onCall={call}
+    />
+  );
+
   return (
-    <Screen footer={footer}>
+    <Screen header={map} footer={footer}>
       <Card>
         <H>{`${t.day(v.day)} · `}<Text testID="shift-clock">{v.clock}</Text></H>
         <P muted testID="shift-counts">{t.counts(v.counts.seen, v.counts.waiting, v.counts.left)}</P>
