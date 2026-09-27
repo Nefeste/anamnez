@@ -1,46 +1,66 @@
-// Меню: смена (этап 2, в работе) и прототипы этапа 1. Оговорка — при каждом запуске, пока нет
-// настроек (11-publishing.md §3).
-import { type Href, router } from 'expo-router';
+// Главное меню (spec 2026-09-first-shift, «Что увидит игрок»): продолжить, быстрая игра —
+// практика в амбулатории, настройки; кампания, энциклопедия и профиль — «скоро».
+// При первом запуске вместо меню — медицинская оговорка (11-publishing.md §3): закрыл — она
+// больше не показывается, полный текст остаётся в «Об игре».
+import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { T } from '@/i18n';
-import { loadShift, useShift } from '@/state/session';
-import { Button, Card, H, P, Screen } from '@/ui/components';
-
-const ITEMS: { href: Href; title: string; hint: string; id: string }[] = [
-  { href: '/spikes/engine', title: T.menu.engine, hint: T.menu.engineHint, id: 'engine' },
-  { href: '/spikes/map', title: T.menu.map, hint: T.menu.mapHint, id: 'map' },
-  { href: '/spikes/patient', title: T.menu.patient, hint: T.menu.patientHint, id: 'patient' },
-  { href: '/spikes/imaging', title: T.menu.imaging, hint: T.menu.imagingHint, id: 'imaging' },
-  { href: '/spikes/save', title: T.menu.save, hint: T.menu.saveHint, id: 'save' },
-];
+import { VERSION } from '@/info';
+import { loadShift, startShift, useShift } from '@/state/session';
+import { loadSettings, updateSettings, useSettings } from '@/state/settings';
+import { Button, Card, H, P, Screen, Sheet } from '@/ui/components';
 
 export default function Menu() {
-  const [accepted, setAccepted] = useState(false);
+  const settings = useSettings();
   const shift = useShift();
+  const [restart, setRestart] = useState(false);
   useEffect(() => {
+    loadSettings();
     loadShift();
   }, []);
+
+  // настройки читаются доли секунды: не мелькать меню перед оговоркой
+  if (settings.status !== 'ready') return <Screen>{null}</Screen>;
+  if (!settings.disclaimerAccepted) return <Disclaimer />;
+
+  const t = T.menu;
+  const saved = shift.status === 'ready';
+  const again = () => {
+    setRestart(false);
+    startShift();
+    router.push('/shift');
+  };
   return (
     <Screen>
-      {!accepted && (
-        <Card>
-          <H>{T.common.disclaimerTitle}</H>
-          <P>{T.common.disclaimer}</P>
-          <Button testID="accept-disclaimer" title={T.common.understood} onPress={() => setAccepted(true)} />
-        </Card>
-      )}
-      <P muted>{T.menu.subtitle}</P>
-      <H>{T.menu.gameTitle}</H>
+      <P muted>{t.subtitle(VERSION)}</P>
+      {saved && <Button testID="menu-continue" title={t.continue} hint={t.continueHint(shift.day, shift.clock)} onPress={() => router.push('/shift')} />}
       <Button
         testID="menu-shift"
-        title={T.menu.shift}
-        hint={shift.status === 'ready' ? T.menu.shiftContinue(shift.day, shift.clock) : T.menu.shiftNew}
-        onPress={() => router.push('/shift')}
+        kind={saved ? 'plain' : 'primary'}
+        title={t.practice}
+        hint={saved ? t.practiceAgainHint : t.practiceHint}
+        onPress={() => (saved ? setRestart(true) : router.push('/shift'))}
       />
-      <H>{T.menu.spikesTitle}</H>
-      {ITEMS.map(it => (
-        <Button key={it.id} testID={`menu-${it.id}`} title={it.title} hint={it.hint} onPress={() => router.push(it.href)} />
-      ))}
+      <Button testID="menu-campaign" kind="plain" disabled title={t.campaign} hint={t.soon} onPress={() => undefined} />
+      <Button testID="menu-encyclopedia" kind="plain" disabled title={t.encyclopedia} hint={t.soon} onPress={() => undefined} />
+      <Button testID="menu-profile" kind="plain" disabled title={t.profile} hint={t.soon} onPress={() => undefined} />
+      <Button testID="menu-settings" kind="plain" title={t.settings} onPress={() => router.push('/settings')} />
+      <Sheet visible={restart} onClose={() => setRestart(false)} closeTitle={t.cancel} testID="restart-sheet">
+        <H>{t.restartTitle}</H>
+        <P>{t.restartText(shift.day)}</P>
+        <Button testID="restart-confirm" kind="plain" title={t.restart} onPress={again} />
+      </Sheet>
+    </Screen>
+  );
+}
+
+function Disclaimer() {
+  return (
+    <Screen footer={<Button testID="accept-disclaimer" title={T.common.understood} onPress={() => updateSettings({ disclaimerAccepted: true })} />}>
+      <Card>
+        <H>{T.common.disclaimerTitle}</H>
+        <P>{T.common.disclaimer}</P>
+      </Card>
     </Screen>
   );
 }

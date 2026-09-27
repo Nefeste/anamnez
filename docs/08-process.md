@@ -52,15 +52,14 @@
 
 | Файл | Что поправить |
 |------|---------------|
-| `app.json` | `expo.version` и `expo.android.versionCode` (+1) |
+| `app.json` | `expo.version` и `expo.android.versionCode` (+1); игра показывает версию из этого же файла (`src/info.ts`) |
 | `package.json` | `version` |
 | `package-lock.json` | `npm install --package-lock-only` (номер поднимается **до** установки) |
-| `src/version.ts` | `APP_VERSION`, `APP_BUILD` = `versionCode` |
-| `src/i18n/sections/settings.ts` | `whatsNew['X.Y.Z']` — «Что нового» |
+| `src/i18n/sections/about.ts` | `news` — «Что нового» в «Об игре» |
 | `content/version.yaml` | `contentVersion`, если база менялась |
 
 Каждой версии — раздел в корневом `README.md`, человеческим языком, о том, что
-изменилось для игрока.
+изменилось для игрока; «Что нового» в игре — то же, короче.
 
 ## Сборка и выкладывание
 
@@ -162,7 +161,7 @@ keytool -list -v -keystore anamnez-release.jks -alias anamnez | grep SHA256
 - [ ] сценарии в браузере (`09-testing.md`)
 - [ ] на современном телефоне: карта без подвисаний, звук, вибрация, обновление поверх прошлой версии
 - [ ] версия поднята во всех местах, `versionCode` +1
-- [ ] «Что нового» — в `src/i18n/sections/settings.ts` и `store/listing.*.md`; изменились
+- [ ] «Что нового» — в `src/i18n/sections/about.ts` (`news`) и `store/listing.*.md`; изменились
       экраны — `npm run export:web && npm run store` и снимки посмотреть глазами
 - [ ] раздел версии в `README.md`
 - [ ] документы и дорожная карта поправлены

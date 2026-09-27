@@ -1,6 +1,6 @@
 // Общие элементы интерфейса. Без системного Alert: в веб-сборке он не работает (AGENTS.md).
 import type { ReactNode } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View, type ViewStyle } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Switch, Text, View, type ViewStyle } from 'react-native';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, space, touch } from './theme';
 
@@ -94,7 +94,7 @@ function SheetBody({ onClose, closeTitle, children, testID }: SheetProps) {
  * Вкладки одной полосой. Подпись всегда в одну строку: на узком экране или с крупным
  * системным шрифтом она уменьшается, а не обрезается многоточием (отзыв на 0.0.5).
  */
-export function Tabs<K extends string>({ items, value, onChange }: { items: { key: K; title: string }[]; value: K; onChange: (k: K) => void }) {
+export function Tabs<K extends string>({ items, value, onChange, testPrefix = 'tab' }: { items: { key: K; title: string }[]; value: K; onChange: (k: K) => void; testPrefix?: string }) {
   return (
     <View style={styles.tabs} accessibilityRole="tablist">
       {items.map(({ key, title }) => {
@@ -102,7 +102,7 @@ export function Tabs<K extends string>({ items, value, onChange }: { items: { ke
         return (
           <Pressable
             key={key}
-            testID={`tab-${key}`}
+            testID={`${testPrefix}-${key}`}
             accessibilityRole="tab"
             aria-selected={on}
             onPress={() => onChange(key)}
@@ -112,6 +112,29 @@ export function Tabs<K extends string>({ items, value, onChange }: { items: { ke
         );
       })}
     </View>
+  );
+}
+
+/**
+ * Строка «вкл / выкл». Касание — по всей строке; переключатель только показывает
+ * состояние: иначе в вебе касание самого переключателя срабатывало бы дважды.
+ */
+export function Toggle({ title, hint, value, onChange, testID }: { title: string; hint?: string; value: boolean; onChange: (v: boolean) => void; testID?: string }) {
+  return (
+    <Pressable
+      testID={testID}
+      accessibilityRole="switch"
+      aria-checked={value}
+      onPress={() => onChange(!value)}
+      style={({ pressed }) => [styles.toggle, pressed && styles.btnPressed]}>
+      <View style={styles.fill}>
+        <Text style={styles.p}>{title}</Text>
+        {hint ? <Text style={[styles.toggleHint, styles.muted]}>{hint}</Text> : null}
+      </View>
+      <View style={styles.inert}>
+        <Switch value={value} trackColor={{ false: colors.line, true: colors.accent }} thumbColor={colors.card} />
+      </View>
+    </Pressable>
   );
 }
 
@@ -155,6 +178,9 @@ const styles = StyleSheet.create({
   tabOn: { backgroundColor: colors.accent },
   tabText: { fontSize: 15, fontWeight: '600', color: colors.ink },
   tabTextOn: { color: '#fff' },
+  toggle: { minHeight: touch, flexDirection: 'row', alignItems: 'center', gap: space.m, paddingVertical: space.xs },
+  toggleHint: { fontSize: 13, marginTop: 2 },
+  inert: { pointerEvents: 'none' },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.s },
   chip: { maxWidth: '100%', borderRadius: 16, paddingHorizontal: space.m, paddingVertical: 6 },
   chipStrong: { backgroundColor: colors.accentSoft },

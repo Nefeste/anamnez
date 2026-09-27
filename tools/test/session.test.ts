@@ -8,6 +8,7 @@ import {
   callPatient, chooseDiagnosis, chooseSetting, closeDay, examine, finishCase, forgetShift, leaveCase, loadShift, nextDay, openCase,
   pauseClock, saved, sendAway, setSpeed, setStore, shiftCaseView, shiftState, shiftView, skipIdle, startShift, tick, toggleTreatment,
 } from '../../src/state/session';
+import { forgetSettings, updateSettings } from '../../src/state/settings';
 
 let store = memoryStore();
 
@@ -15,6 +16,7 @@ beforeEach(() => {
   store = memoryStore();
   setStore(store);
   forgetShift();
+  forgetSettings();
 });
 
 /** Часы на карте до первого в очереди (не больше `limit` игровых минут). */
@@ -104,6 +106,30 @@ describe('смена на экране: часы', () => {
       expect(shiftView().paused).toBe(false);
     }
     expect(found).toBe(true);
+  });
+
+  test('автопаузу на «красного» выключили в настройках — часы идут, срочный первым в очереди', () => {
+    let checked = false;
+    for (let seed = 1; seed <= 80 && !checked; seed++) {
+      forgetSettings();
+      forgetShift();
+      startShift(seed, 'winter');
+      setSpeed(4);
+      let ticks = 0;
+      for (; ticks < 400 && !shiftView().paused; ticks++) tick(250);
+      if (!shiftView().pauseReason?.includes('срочный')) continue;
+      // та же смена, те же такты — без автопаузы на срочного
+      updateSettings({ pauseOnRed: false });
+      forgetShift();
+      startShift(seed, 'winter');
+      setSpeed(4);
+      for (let i = 0; i < ticks; i++) tick(250);
+      const v = shiftView();
+      expect(v.pauseReason?.includes('срочный') ?? false).toBe(false);
+      expect(v.queue[0].triage).toBe('red');
+      checked = true;
+    }
+    expect(checked).toBe(true);
   });
 });
 

@@ -72,12 +72,43 @@ page.on('pageerror', e => errors.push(String(e)));
 page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
 
 try {
-  // меню и оговорка
+  // оговорка первого запуска — отдельным экраном, до меню; закрыли — больше её нет
   await page.goto(base);
   await page.getByTestId('accept-disclaimer').waitFor({ timeout: 30_000 });
-  await page.screenshot({ path: join(OUT, '01-menu.png') });
+  await page.screenshot({ path: join(OUT, '01-disclaimer.png') });
+  check((await page.getByTestId('menu-shift').count()) === 0, 'первый запуск: оговорка — до меню');
   await page.getByTestId('accept-disclaimer').click();
-  check(await page.getByTestId('menu-engine').isVisible(), 'меню открывается, оговорка закрывается');
+  await page.getByTestId('menu-settings').waitFor({ timeout: 5000 });
+  await page.screenshot({ path: join(OUT, '01-menu.png') });
+  check(await page.getByTestId('menu-campaign').isDisabled(), 'меню: практика, настройки; кампания — «скоро»');
+  await page.goto(base);
+  await page.getByTestId('menu-shift').waitFor({ timeout: 30_000 });
+  check((await page.getByTestId('accept-disclaimer').count()) === 0, 'оговорка — только при первом запуске');
+
+  // настройки сохраняются; «Об игре» — версия, оговорка, почта, источники базы
+  await page.getByTestId('menu-settings').click();
+  await page.getByTestId('settings-vibration').waitFor({ timeout: 5000 });
+  const vibration = () => page.getByTestId('settings-vibration').getAttribute('aria-checked');
+  const quiet = () => page.getByTestId('sound-1').getAttribute('aria-selected');
+  check((await vibration()) === 'true' && (await page.getByTestId('sound-3').getAttribute('aria-selected')) === 'true', 'настройки: по умолчанию вибрация включена, звук громкий');
+  await page.getByTestId('settings-vibration').click();
+  await page.getByTestId('sound-1').click();
+  await page.screenshot({ path: join(OUT, '10-settings.png'), fullPage: true });
+  await page.goto(`${base}/settings`);
+  await page.getByTestId('settings-vibration').waitFor({ timeout: 10_000 });
+  check((await vibration()) === 'false' && (await quiet()) === 'true', 'настройки: вибрация и громкость — те же после перезапуска');
+  await page.getByTestId('settings-vibration').click();
+  await page.getByTestId('sound-3').click();
+  await page.getByTestId('settings-about').click();
+  await page.getByTestId('about-version').waitFor({ timeout: 5000 });
+  const version = JSON.parse(readFileSync(join(ROOT, 'app.json'), 'utf8')).expo.version;
+  check((await text(page, 'about-version')).includes(version), `«Об игре»: версия ${version}`);
+  check((await text(page, 'about-disclaimer')).includes('112') && (await text(page, 'about-write')).includes('support@gornitsa.games'), '«Об игре»: полная оговорка, почта разработчика');
+  await page.screenshot({ path: join(OUT, '10-about.png'), fullPage: true });
+  await page.getByTestId('about-sources').click();
+  await page.getByTestId('source').first().waitFor({ timeout: 5000 });
+  const sources = await page.getByTestId('source').count();
+  check(sources > 50, `«Об игре»: источники медицинской базы — ${sources}`);
 
   // П3: движок в V8 даёт тот же отпечаток, что в Bun
   await page.goto(`${base}/spikes/engine`);
@@ -182,7 +213,6 @@ try {
 
   // Этап 2: смена — часы на карте, приём, «отпустить ждать результатов», итог, продолжение
   await page.goto(base);
-  await page.getByTestId('accept-disclaimer').click();
   await page.getByTestId('menu-shift').click();
   await page.getByTestId('shift-start').waitFor({ timeout: 15_000 });
   await page.getByTestId('shift-start').click();
@@ -225,10 +255,19 @@ try {
   await page.getByTestId('shift-counts').waitFor({ timeout: 10_000 });
   check((await text(page, 'shift-counts')).startsWith('Принято: 1'), `смена: приём засчитан — ${await text(page, 'shift-counts')}`);
   await page.goto(base);
-  await page.getByTestId('accept-disclaimer').click();
-  await page.waitForTimeout(500);
-  const hint = await text(page, 'menu-shift');
-  check(hint.includes('продолжить: день 1'), `смена: сохранена, в меню — «${hint.split('\n').pop()}»`);
+  await page.getByTestId('menu-continue').waitFor({ timeout: 10_000 });
+  const hint = await text(page, 'menu-continue');
+  check(hint.includes('день 1'), `смена: сохранена, в меню — «Продолжить: ${hint.split('\n').pop()}»`);
+  // начать заново — только после вопроса: сохранение одно
+  await page.getByTestId('menu-shift').click();
+  await page.getByTestId('restart-sheet').waitFor({ timeout: 5000 });
+  await page.getByTestId('restart-sheet-close').click();
+  await page.getByTestId('restart-sheet').waitFor({ state: 'detached', timeout: 5000 });
+  check(await page.getByTestId('menu-continue').isVisible(), 'меню: «Отмена» — практика на месте');
+  await page.getByTestId('menu-shift').click();
+  await page.getByTestId('restart-confirm').click();
+  await page.getByTestId('shift-clock').waitFor({ timeout: 10_000 });
+  check((await text(page, 'shift-clock')) === '08:00' && (await text(page, 'shift-counts')).startsWith('Принято: 0'), 'меню: «Начать заново» — день 1, 08:00');
 
   // конец дня из сохранения: закрыть день, итоги, разбор случая из итогов, следующий день
   const day = await browser.newContext({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2 });

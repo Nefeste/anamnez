@@ -1,5 +1,5 @@
-// Корень: стек Expo Router (ADR 0003) внутри корня жестов. Здесь же смене даётся хранилище
-// сохранений платформы, и смена сохраняется, когда приложение уходит в фон.
+// Корень: стек Expo Router (ADR 0003) внутри корня жестов. Здесь же смене и настройкам
+// даётся хранилище платформы, и смена сохраняется, когда приложение уходит в фон.
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
@@ -8,10 +8,14 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { T } from '@/i18n';
 import { saveNow, setStore } from '@/state/session';
+import { loadSettings, setSettingsStore } from '@/state/settings';
 import { rawStore } from '@/state/storage';
 import { colors } from '@/ui/theme';
 
 setStore(rawStore);
+setSettingsStore(rawStore);
+// громкость и вибрация нужны и тому, кто пришёл не через меню
+loadSettings();
 
 export default function RootLayout() {
   useEffect(() => {
@@ -33,6 +37,9 @@ export default function RootLayout() {
             headerBackTitle: T.common.back,
           }}>
           <Stack.Screen name="index" options={{ title: T.common.appName }} />
+          <Stack.Screen name="settings" options={{ title: T.settings.title }} />
+          <Stack.Screen name="about" options={{ title: T.about.title }} />
+          <Stack.Screen name="sources" options={{ title: T.about.sourcesTitle }} />
           <Stack.Screen name="spikes/engine" options={{ title: T.spikes.engine.title }} />
           <Stack.Screen name="spikes/map" options={{ title: T.spikes.map.title, gestureEnabled: false }} />
           <Stack.Screen name="spikes/patient" options={{ title: T.spikes.patient.title }} />

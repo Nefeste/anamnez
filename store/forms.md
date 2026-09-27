@@ -19,7 +19,7 @@
 | разрешения | вибрация (`VIBRATE`) — отклик на касания и сигнал о срочном пациенте; настройки звука (`MODIFY_AUDIO_SETTINGS`) — громкость звуков игры |
 | политика конфиденциальности | https://gornitsa.games/anamnez/privacy — текст [`privacy.ru.md`](privacy.ru.md) |
 | сайт разработчика | https://gornitsa.games |
-| почта поддержки | ⟨владелец⟩ |
+| почта поддержки | support@gornitsa.games |
 | сборка | APK из Releases, подписан постоянным ключом (SHA-256 сертификата `873b866f…fd3db4`) |
 
 ### Почему 16+
