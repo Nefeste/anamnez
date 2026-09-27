@@ -289,6 +289,39 @@ export const roleSchema = z.strictObject({
   texts: z.strictObject({ hint }),
 });
 
+const int = z.number().int().min(0);
+/** Готовая больница: участок, вход, коридор прямоугольниками, помещения, скамьи, штат. */
+export const presetSchema = z.strictObject({
+  id: z.string().regex(/^preset\.[a-z0-9_]+$/),
+  name: text,
+  plot: z.tuple([z.number().int().min(8).max(64), z.number().int().min(8).max(64)]),
+  entrance: cellSrc,
+  /** коридор — прямоугольники клеток: x0, y0, x1, y1 включительно */
+  corridor: z.array(z.tuple([int, int, int, int])).min(1),
+  rooms: z.array(z.strictObject({
+    type: roomId,
+    size: z.enum(['S', 'M', 'L']),
+    x: int,
+    y: int,
+    /** поворот по часовой: дверная сторона снизу (0), слева (1), сверху (2), справа (3) */
+    rot: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]),
+    /** дверь — первая клетка вдоль дверной стороны в координатах шаблона; нет — сама */
+    door: z.number().int().min(1).optional(),
+    equipment: z.array(eqId).default([]),
+  })).min(1),
+  decor: z.array(z.tuple([z.enum(OBJECT_KINDS), int, int])).default([]),
+  /** кто где работает: должность и номер помещения в списке */
+  staff: z.array(z.strictObject({ role: roleId, room: int })).default([]),
+});
+
+/** Баланс своей больницы: числа игровые, настраиваются симулятором экономики. */
+export const economySchema = z.strictObject({
+  /** клетка коридора: постройка и содержание в день, ₽ */
+  corridor: z.strictObject({ cost: int, upkeep: int }),
+  /** сколько процентов цены возвращают снос и продажа аппарата */
+  refund: z.number().int().min(0).max(100),
+});
+
 export const versionSchema = z.strictObject({ contentVersion: z.number().int().min(1) });
 
 export type ConditionSrc = z.infer<typeof conditionSchema>;
@@ -299,5 +332,7 @@ export type RiskSrc = z.infer<typeof riskSchema>;
 export type RoomSrc = z.infer<typeof roomSchema>;
 export type EquipmentSrc = z.infer<typeof equipmentSchema>;
 export type RoleSrc = z.infer<typeof roleSchema>;
+export type PresetSrc = z.infer<typeof presetSchema>;
+export type EconomySrc = z.infer<typeof economySchema>;
 export type LinkSrc = z.infer<typeof link>;
 export type ProbabilitySrc = z.infer<typeof probability>;

@@ -182,3 +182,14 @@ describe('каталог больницы', () => {
     expect(door.some(e => e.includes('room.toilet S: дверь выходит за стену'))).toBe(true);
   });
 });
+
+describe('готовые больницы', () => {
+  test('помещение на чужом полу и помещение без человека — ошибки валидатора', () => {
+    const overlap = broken(d => edit(d, 'hospital/presets/clinic.yaml', '{ type: room.triage, size: S, x: 5, y: 0, rot: 0, door: 3 }', '{ type: room.triage, size: S, x: 4, y: 0, rot: 0, door: 3 }'));
+    expect(overlap.some(e => e.includes('preset.clinic: помещение 1 (room.triage) — не ставится: blocked'))).toBe(true);
+    const nobody = broken(d => edit(d, 'hospital/presets/clinic.yaml', '  - { role: role.radiologist, room: 7 }\n', ''));
+    expect(nobody.some(e => e.includes('preset.clinic: room.xray (r8) не работает: noStaff role.radiologist'))).toBe(true);
+    const bench = broken(d => edit(d, 'hospital/presets/clinic.yaml', '[bench, 9, 9]', '[bench, 9, 11]'));
+    expect(bench.some(e => e.includes('preset.clinic: bench (9, 11) — не в коридоре'))).toBe(true);
+  });
+});

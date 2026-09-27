@@ -4,6 +4,7 @@
 // обследования — в процедурную, на ЭКГ или рентген на время процедуры, а своей очереди к
 // аппарату и результатов ждёт на скамье; принятый и не дождавшийся уходят к выходу. Как люди
 // идут между местами, решает карта (src/render/map); что человек делает — подпись под картой.
+import { db } from '@/content';
 import type { ContentDb, Exam } from '@/content/types';
 import { type Cell, type ClinicLayout, clinicLayout, type StaffRole } from '@/engine/hospital/clinic';
 import type { ShiftPatient, ShiftState } from '@/engine/shift/types';
@@ -42,7 +43,7 @@ export interface Placement {
 }
 
 /** План амбулатории — один на всю игру: по нему и места в смене, и карта. */
-export const CLINIC = clinicLayout();
+export const CLINIC = clinicLayout(db);
 
 /** Сколько игровых секунд новый пациент у регистратуры и у медсестры, прежде чем сесть. */
 export const REGISTRATION = 2 * 60;

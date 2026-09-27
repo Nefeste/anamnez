@@ -1,0 +1,37 @@
+# Готовая амбулатория (spec 2026-09-first-shift и 2026-09-own-hospital): та же, что была
+# планом кодом в 0.0.13–0.0.18, — теперь из помещений каталога. Сверху — регистратура,
+# доврачебный, кабинет врача, процедурный, лаборатория (двери вниз); посередине — коридор со
+# входом слева и скамьями; снизу — зона ожидания, ЭКГ, рентген, санузел (двери вверх).
+id: preset.clinic
+name: { ru: "Амбулатория" }
+plot: [30, 17]
+entrance: [0, 8]
+corridor:
+  - [1, 7, 28, 9]
+rooms:
+  - { type: room.reception, size: S, x: 0, y: 0, rot: 0, door: 3 }
+  - { type: room.triage, size: S, x: 5, y: 0, rot: 0, door: 3 }
+  - { type: room.office, size: M, x: 10, y: 0, rot: 0, door: 3 }
+  - { type: room.procedure, size: S, x: 17, y: 0, rot: 0, door: 2 }
+  - { type: room.lab, size: M, x: 22, y: 0, rot: 0, door: 3, equipment: [eq.hematology_analyzer, eq.biochem_analyzer, eq.urine_analyzer, eq.immuno_analyzer] }
+  - { type: room.waiting, size: L, x: 0, y: 10, rot: 2, door: 5 }
+  - { type: room.ecg, size: S, x: 12, y: 10, rot: 2, door: 3, equipment: [eq.ecg] }
+  - { type: room.xray, size: M, x: 17, y: 10, rot: 2, door: 4, equipment: [eq.xray_digital] }
+  - { type: room.toilet, size: S, x: 24, y: 10, rot: 2, door: 3 }
+decor:
+  - [bench, 9, 9]
+  - [bench, 10, 9]
+  - [bench, 11, 9]
+  - [bench, 12, 9]
+  - [bench, 16, 9]
+  - [bench, 17, 9]
+  - [bench, 22, 9]
+  - [bench, 23, 9]
+staff:
+  - { role: role.registrar, room: 0 }
+  - { role: role.nurse, room: 1 }
+  - { role: role.nurse, room: 3 }
+  - { role: role.lab_tech, room: 4 }
+  - { role: role.nurse, room: 6 }
+  - { role: role.radiographer, room: 7 }
+  - { role: role.radiologist, room: 7 }

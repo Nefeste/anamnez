@@ -294,6 +294,32 @@ export interface StaffRole {
   texts: { hint: Text };
 }
 
+/** Поворот помещения по часовой: дверная сторона снизу (0), слева (1), сверху (2), справа (3). */
+export type Rot = 0 | 1 | 2 | 3;
+
+/** Готовая больница (content/hospital/presets): участок, коридор, помещения, штат. */
+export interface Preset {
+  id: Id;
+  name: Text;
+  plot: [number, number];
+  /** вход — дверь в краю участка */
+  entrance: Cell;
+  corridor: Cell[];
+  rooms: { type: Id; size: RoomSizeId; x: number; y: number; rot: Rot; door?: number; equipment: Id[] }[];
+  /** предметы коридора: скамьи */
+  decor: { kind: ObjectKind; x: number; y: number }[];
+  /** кто где работает: должность и номер помещения в списке */
+  staff: { role: Id; room: number }[];
+}
+
+/** Баланс своей больницы (content/hospital/economy.yaml); числа — игровые. */
+export interface Economy {
+  /** клетка коридора: постройка и содержание в день, ₽ */
+  corridor: { cost: number; upkeep: number };
+  /** сколько процентов цены возвращают снос и продажа аппарата */
+  refund: number;
+}
+
 export interface ContentDb {
   contentVersion: number;
   hash: string;
@@ -305,6 +331,8 @@ export interface ContentDb {
   rooms: Record<Id, RoomType>;
   equipment: Record<Id, Equipment>;
   roles: Record<Id, StaffRole>;
+  presets: Record<Id, Preset>;
+  economy: Economy;
   /** производное: какие обследования проверяют признак */
   revealedBy: Record<Id, Id[]>;
 }

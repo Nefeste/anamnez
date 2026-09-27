@@ -5,12 +5,15 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, join, relative } from 'node:path';
 import { parse } from 'yaml';
 import type { z } from 'zod';
-import type { AttrSpec, Condition, ContentDb, Equipment, Exam, Finding, Link, Risk, RoomType, StaffRole, Treatment } from '../../src/content/types';
+import type { AttrSpec, Cell, Condition, ContentDb, Equipment, Exam, Finding, Link, Preset, Risk, RoomType, StaffRole, Treatment } from '../../src/content/types';
+import { planOf, presetHospital } from '../../src/engine/hospital/build';
+import { problemsOf } from '../../src/engine/hospital/requirements';
 import { fingerprint } from '../../src/engine/core/hash';
 import { findBrand } from './brands';
 import {
-  BANDS, type ConditionSrc, conditionSchema, type EquipmentSrc, equipmentSchema, type ExamSrc, examSchema, type FindingSrc, findingSchema, type LinkSrc, PREVALENCE,
-  type ProbabilitySrc, type RiskSrc, type RoleSrc, riskSchema, roleSchema, type RoomSrc, roomSchema, type TreatmentSrc, treatmentSchema, versionSchema,
+  BANDS, type ConditionSrc, conditionSchema, type EconomySrc, economySchema, type EquipmentSrc, equipmentSchema, type ExamSrc, examSchema, type FindingSrc, findingSchema,
+  type LinkSrc, PREVALENCE, type PresetSrc, presetSchema, type ProbabilitySrc, type RiskSrc, type RoleSrc, riskSchema, roleSchema, type RoomSrc, roomSchema,
+  type TreatmentSrc, treatmentSchema, versionSchema,
 } from './schema';
 
 export const CONTENT_DIR = join(import.meta.dir, '../../content');
@@ -57,6 +60,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   const rooms: Record<string, RoomSrc> = {};
   const equipment: Record<string, EquipmentSrc> = {};
   const roles: Record<string, RoleSrc> = {};
+  const presets: Record<string, PresetSrc> = {};
+  let economy: EconomySrc | undefined;
   let contentVersion = 0;
 
   for (const file of files) {
@@ -114,11 +119,17 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     } else if (top === 'hospital' && rel.split('/')[1] === 'roles') {
       const r = check(roleSchema);
       if (r) { expectId(r.id, 'role'); put(roles, r); }
+    } else if (top === 'hospital' && rel.split('/')[1] === 'presets') {
+      const p = check(presetSchema);
+      if (p) { expectId(p.id, 'preset'); put(presets, p); }
+    } else if (rel === 'hospital/economy.yaml') {
+      economy = check(economySchema);
     } else {
-      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, treatments, hospital/rooms, hospital/equipment, hospital/roles)`);
+      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/economy.yaml)`);
     }
   }
   if (!contentVersion) errors.push('version.yaml: нет contentVersion');
+  if (!economy) errors.push('hospital/economy.yaml: нет баланса больницы');
 
   // --- ссылки ---
   const hasF = (id: string) => id in findings;
@@ -201,7 +212,10 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   checkHospital({ rooms, equipment, roles, exams, conditions }, errors);
 
   // --- сборка ---
-  const db: ContentDb = { contentVersion, hash: '', conditions: {}, findings: {}, exams: {}, risks: {}, treatments: {}, rooms: {}, equipment: {}, roles: {}, revealedBy };
+  const db: ContentDb = {
+    contentVersion, hash: '', conditions: {}, findings: {}, exams: {}, risks: {}, treatments: {}, rooms: {}, equipment: {}, roles: {}, presets: {},
+    economy: economy ?? { corridor: { cost: 0, upkeep: 0 }, refund: 0 }, revealedBy,
+  };
   for (const c of Object.values(conditions).sort((a, b) => (a.id < b.id ? -1 : 1))) {
     const e = c.epidemiology;
     const out: Condition = {
@@ -302,8 +316,58 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     };
     db.roles[r.id] = out;
   }
+  for (const p of Object.values(presets).sort((a, b) => (a.id < b.id ? -1 : 1))) {
+    const corridor: Cell[] = [];
+    for (const [x0, y0, x1, y1] of p.corridor) for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) corridor.push([x, y]);
+    const out: Preset = {
+      id: p.id, name: p.name, plot: p.plot, entrance: p.entrance, corridor,
+      rooms: p.rooms.map(r => ({ type: r.type, size: r.size, x: r.x, y: r.y, rot: r.rot, ...(r.door !== undefined ? { door: r.door } : {}), equipment: r.equipment })),
+      decor: p.decor.map(([kind, x, y]) => ({ kind, x, y })), staff: p.staff,
+    };
+    db.presets[p.id] = out;
+  }
+  if (errors.length === 0) checkPresets(db, errors);
   db.hash = fingerprint({ ...db, hash: '' });
   return { db, errors, warnings, files: files.length };
+}
+
+/**
+ * Готовые больницы строятся движком стройки теми же командами, что у игрока (spec
+ * 2026-09-own-hospital): что движок не построит, в базу не попадёт. В готовой больнице
+ * работает каждое помещение: штат на местах, аппараты стоят, от входа можно дойти.
+ */
+function checkPresets(db: ContentDb, errors: string[]) {
+  for (const p of Object.values(db.presets)) {
+    for (const r of p.rooms) {
+      if (!db.rooms[r.type]) { errors.push(`${p.id}: помещение ${r.type} не найдено`); return; }
+      if (!db.rooms[r.type].sizes.some(z => z.id === r.size)) { errors.push(`${p.id}: у ${r.type} нет размера ${r.size}`); return; }
+    }
+    const seen = new Set<string>();
+    for (const s of p.staff) {
+      const room = p.rooms[s.room];
+      if (!room) errors.push(`${p.id}: ${s.role} — в помещении ${s.room}, а их ${p.rooms.length}`);
+      else if (!db.rooms[room.type].staff.includes(s.role)) errors.push(`${p.id}: ${s.role} не нужен в ${room.type}`);
+      if (seen.has(`${s.room}:${s.role}`)) errors.push(`${p.id}: в помещении ${s.room} два человека на ${s.role}`);
+      seen.add(`${s.room}:${s.role}`);
+    }
+    const [w, h] = p.plot;
+    const [ex, ey] = p.entrance;
+    if (!(ex === 0 || ey === 0 || ex === w - 1 || ey === h - 1)) errors.push(`${p.id}: вход (${ex}, ${ey}) — не в краю участка`);
+    for (const [x, y] of p.corridor) if (x < 1 || y < 1 || x > w - 2 || y > h - 2) errors.push(`${p.id}: коридор (${x}, ${y}) — у самого края участка`);
+    const corridor = new Set(p.corridor.map(([x, y]) => `${x},${y}`));
+    for (const d of p.decor) if (!corridor.has(`${d.x},${d.y}`)) errors.push(`${p.id}: ${d.kind} (${d.x}, ${d.y}) — не в коридоре`);
+    const built = presetHospital(db, p);
+    for (const f of built.failed) {
+      const what = f.cmd === 'room' ? 'не ставится' : f.cmd === 'door' ? 'дверь не туда' : `аппарат ${f.equipment} не ставится`;
+      errors.push(`${p.id}: помещение ${f.room} (${p.rooms[f.room].type}) — ${what}: ${f.error.kind}`);
+    }
+    if (built.failed.length > 0) continue;
+    const plan = planOf(db, built.hospital);
+    const staffed = (room: string, role: string) => p.staff.some(s => `r${s.room + 1}` === room && s.role === role);
+    for (const r of plan.rooms) {
+      for (const pr of problemsOf(db, plan, r, staffed)) errors.push(`${p.id}: ${r.type} (${r.id}) не работает: ${pr.kind}${pr.kind === 'noStaff' ? ` ${pr.role}` : ''}`);
+    }
+  }
 }
 
 /**

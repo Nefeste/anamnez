@@ -275,10 +275,14 @@ interface GameState {
   clock: { t: number; day: number; speed: 0 | 1 | 2 | 4 };   // t — игровые секунды
   rng: Record<string, [number, number, number, number]>;      // состояние ветвей
   events: ScheduledEvent[];              // очередь событий (куча)
-  hospital: {
-    w: number; h: number; cells: string;  // клетки сетки, RLE-строка
-    rooms: RoomInstance[]; equipment: EquipmentInstance[];
-    staff: StaffMember[]; candidates: StaffMember[];
+  hospital: {                            // src/engine/hospital/build.ts (0.0.19)
+    w: number; h: number; entrance: Cell;
+    corridor: number[];                  // клетки коридора: y·w + x по возрастанию
+    rooms: RoomInstance[];               // тип, размер, угол, поворот, дверь, аппарат на каждом месте
+    decor: Placed[];                     // скамьи в коридоре
+    next: number;                        // номер следующего помещения (r1, r2…)
+    // сетка не хранится: план выводится из помещений (planOf)
+    staff: StaffMember[]; candidates: StaffMember[];   // часть 8
   };
   people: Agent[];                       // кто где идёт: маршрут и время выхода
   patients: Record<string, Patient>;     // активные и недавние

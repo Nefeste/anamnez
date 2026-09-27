@@ -13,7 +13,7 @@ const DIST = join(ROOT, 'dist-web');
 const OUT = join(import.meta.dir, 'out');
 const golden = JSON.parse(readFileSync(join(ROOT, 'tools/test/fixtures/golden.json'), 'utf8'));
 /** План амбулатории — тот же, что рисует карта смены: куда касаться. */
-const CLINIC = clinicLayout();
+const CLINIC = clinicLayout(buildDb().db);
 mkdirSync(OUT, { recursive: true });
 
 const TYPES: Record<string, string> = { '.html': 'text/html', '.js': 'text/javascript', '.wasm': 'application/wasm', '.json': 'application/json', '.png': 'image/png', '.wav': 'audio/wav', '.ttf': 'font/ttf' };
