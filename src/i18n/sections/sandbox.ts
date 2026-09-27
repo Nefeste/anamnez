@@ -39,6 +39,9 @@ export const sandbox = {
   undo: (n: number) => `Отменить (${n})`,
   done: 'Готово',
   mapLabel: 'План участка: стройка',
+  // для чтения с экрана: где призрак помещения — левый верхний угол, клетки от левого верхнего угла участка
+  mapGhost: (name: string, x: number, y: number, ok: boolean) =>
+    `План участка: стройка. ${name}: клетка ${x}, ${y} — ${ok ? 'можно построить' : 'здесь нельзя'}`,
   pickRoom: 'Какое помещение',
   fromPrice: (rub: string) => `от ${rub}`,
   pickSize: 'Размер',
@@ -174,6 +177,16 @@ export const sandbox = {
   /** «а», «а и б», «а, б и в» */
   andList: (xs: string[]) => (xs.length <= 1 ? (xs[0] ?? '') : `${xs.slice(0, -1).join(', ')} и ${xs[xs.length - 1]}`),
   orList: (xs: string[]) => xs.join(' или '),
+
+  // касание помещения на карте смены (часть 10)
+  roomWho: (role: string, name: string, skill: number) => `${role}: ${name} · навык ${skill}`,
+  roomInOffice: (name: string) => `На приёме: ${name}`,
+  roomQueue: (n: number) => `В очереди к врачу: ${n}`,
+  roomSeats: (busy: number, seats: number) => `Ждут приёма: ${busy} · мест: ${seats}`,
+  roomNow: (name: string) => `Сейчас: ${name}`,
+  roomNext: (n: number) => `Ждут обследования: ${n}`,
+  roomLab: (n: number) => `Анализов в работе: ${n}`,
+  roomFree: 'Сейчас свободно',
 
   // оплата закрытого приёма — на экране итога
   payment: 'Оплата',

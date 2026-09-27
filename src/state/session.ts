@@ -16,7 +16,7 @@ import { complaintText } from '@/engine/med/text';
 import { build, type BuildCommand, type BuildError, type HospitalState, type Plan, planOf } from '@/engine/hospital/build';
 import { type Block, examWhere, openBlocks, type Problem, problemsOf, workingRooms } from '@/engine/hospital/requirements';
 import { type ClinicLayout, cropPlan, layoutOf } from '@/engine/hospital/clinic';
-import { type StaffMember, staffingOf } from '@/engine/hospital/staff';
+import { memberAt, type StaffMember, staffingOf } from '@/engine/hospital/staff';
 import { levelOf } from '@/engine/economy/economy';
 import { apply, current, type HospitalCtx, hospitalCtx, newSandbox, newShift, observationsOf, reviewFor } from '@/engine/shift/engine';
 import {
@@ -26,7 +26,7 @@ import { T } from '@/i18n';
 import { type Arrival, type Decision, decisionOf, hhmm, makeCaseView, outcomeText, patientName, type VisitView } from './caseView';
 import { CLINIC, type Doing, type Placement, placements } from './clinicMap';
 import { archivedCase, recordCases } from './profile';
-import { type CashView, cashView, examBlockText, levelText, paymentText, personName } from './sandboxView';
+import { type CashView, cashView, examBlockText, levelText, paymentText, personName, statusText } from './sandboxView';
 import { loadSlot, type RawStore, saveSlot } from './saves';
 import { settings } from './settings';
 
@@ -56,6 +56,13 @@ export interface QueueRow {
 }
 
 /** Кого коснулись на карте: кто это и что делает. */
+/** Помещение своей больницы на карте смены: что это, работает ли, кто в нём и что происходит. */
+export interface RoomView {
+  title: string;
+  status: string;
+  lines: string[];
+}
+
 export interface WhoView {
   /** «Волков Сергей, 45 лет» — или должность */
   title: string;
@@ -132,6 +139,8 @@ export interface ShiftView {
   layout?: ClinicLayout;
   /** кто это — для каждого на карте */
   who: Record<string, WhoView>;
+  /** песочница: помещения карты смены — по касанию */
+  rooms?: Record<string, RoomView>;
 }
 
 interface Session {
@@ -865,8 +874,54 @@ function buildShiftView(): ShiftView {
     restored: sess.restored,
     people,
     who: whoOf(s, people),
+    ...(s.hospital ? { rooms: roomsOf(s) } : {}),
     ...(layout ? { layout } : {}),
   };
+}
+
+// помещения своей больницы: что это, работает ли и кто в нём — на день; что происходит — сейчас
+const roomBase = new WeakMap<HospitalCtx, Record<string, RoomView>>();
+
+function roomsOf(s: ShiftState): Record<string, RoomView> {
+  const ctx = hospitalCtx(db, s);
+  let base = roomBase.get(ctx);
+  if (!base) {
+    base = {};
+    for (const r of ctx.plan.rooms) {
+      const rec = db.rooms[r.type];
+      const who = rec.staff.flatMap(role => {
+        const m = memberAt(ctx.staff, r.id, role);
+        return m ? [T.sandbox.roomWho(db.roles[role].name.ru, personName(m.sex, m.seed), m.skill)] : [];
+      });
+      base[r.id] = { title: rec.name.ru, status: statusText(db, problemsOf(db, ctx.plan, r, ctx.staffed)), lines: who };
+    }
+    roomBase.set(ctx, base);
+  }
+  const t = T.sandbox;
+  const all = Object.values(s.patients);
+  const out: Record<string, RoomView> = {};
+  for (const r of ctx.plan.rooms) {
+    const now: string[] = [];
+    if (r.type === 'room.office') {
+      const p = current(s);
+      now.push(p ? t.roomInOffice(nameOf(p)) : t.roomFree, t.roomQueue(s.queue.length));
+    } else if (r.type === 'room.waiting') {
+      now.push(t.roomSeats(s.queue.length, r.seats.length));
+    } else if (r.type === 'room.lab') {
+      const n = all.reduce((m, p) => m + p.pending.filter(x => x.room === r.id).length, 0);
+      now.push(n > 0 ? t.roomLab(n) : t.roomFree);
+    } else if (db.rooms[r.type].staff.length > 0 && all.some(p => p.pending.some(x => x.room === r.id))) {
+      // рентген, ЭКГ: кто сейчас на обследовании и сколько ждут
+      const here = all.flatMap(p => p.pending.filter(x => x.room === r.id).map(x => ({ p, x })));
+      const at = here.find(({ x }) => (x.start ?? 0) <= s.t && s.t < (x.end ?? 0));
+      if (at) now.push(t.roomNow(nameOf(at.p)));
+      const next = here.filter(({ x }) => (x.start ?? 0) > s.t).length;
+      if (next > 0) now.push(t.roomNext(next));
+      if (!at && next === 0) now.push(t.roomFree);
+    }
+    out[r.id] = { ...base[r.id], lines: [...base[r.id].lines, ...now] };
+  }
+  return out;
 }
 
 function whoOf(s: ShiftState, people: readonly Placement[]): Record<string, WhoView> {

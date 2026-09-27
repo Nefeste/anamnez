@@ -103,6 +103,25 @@ describe('песочница', () => {
     expect(buildAction({ kind: 'corridor', cells: [[5, 20]] })).toEqual({ kind: 'unknown' });
   });
 
+  test('карта смены: касание помещения — что это, работает ли, кто в нём и что там сейчас', () => {
+    startSandbox({ start: 'clinic', budget: 'normal', difficulty: 'doctor', seed: 17, season: 'winter' });
+    const radiologist = staffView()!.staff.find(m => m.role === 'role.radiologist')!;
+    assign(radiologist.id);
+    nextDay();
+    skipIdle();
+    const v = shiftView();
+    const rooms = buildView()!.plan.rooms;
+    const of = (type: string) => v.rooms![rooms.find(r => r.type === type)!.id];
+    expect(of('room.office')).toMatchObject({ title: db.rooms['room.office'].name.ru, status: T.sandbox.works });
+    expect(of('room.office').lines).toEqual([T.sandbox.roomFree, T.sandbox.roomQueue(v.queue.length)]);
+    expect(of('room.reception').lines[0]).toMatch(/^Регистратор: .+ · навык 3$/);
+    expect(of('room.xray').status).toBe(T.sandbox.notWorking(T.sandbox.problem.noStaff(db.roles['role.radiologist'].gen.ru)));
+    expect(of('room.waiting').lines).toEqual([T.sandbox.roomSeats(v.queue.length, rooms.find(r => r.type === 'room.waiting')!.seats.length)]);
+    // практике касание помещений не нужно
+    startShift(18, 'winter', 'doctor');
+    expect(shiftView().rooms).toBeUndefined();
+  });
+
   test('касса: плательщик в очереди и в карте, оплата приёма на итоге, касса и репутация в итогах дня', () => {
     startSandbox({ start: 'clinic', budget: 'normal', difficulty: 'doctor', seed: 16, season: 'winter' });
     expect(buildView()!.reputation).toBe(db.economy.reputation.start);

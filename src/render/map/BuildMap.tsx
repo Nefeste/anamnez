@@ -118,6 +118,8 @@ export function BuildMap({ plan, width, height, tool, ghost, selected, labels, l
   const start = useSharedValue<number[]>([0, 0, 1, 0, 0]);
   // кисть — на UI-потоке: клетки x0, y0, x1, y1…; отпустили — JS получает их разом
   const stroke = useSharedValue<number[]>([]);
+  // где палец опустился — до того, как жест начнётся (в вебе сдвиг жеста считается от начала)
+  const down = useSharedValue<number[]>([0, 0]);
   const painted = usePathValue(b => {
     'worklet';
     const s = stroke.get();
@@ -147,11 +149,16 @@ export function BuildMap({ plan, width, height, tool, ghost, selected, labels, l
     .enabled(!still)
     .maxPointers(1)
     .minDistance(brush ? 2 : 6)
-    .onStart(e => {
+    .onBegin(e => {
+      'worklet';
+      down.set([e.x, e.y]);
+    })
+    .onStart(() => {
       'worklet';
       // где палец опустился: жест начинается, когда он уже немного сдвинулся
-      const cx = cellX(e.x - e.translationX);
-      const cy = cellY(e.y - e.translationY);
+      const [dx, dy] = down.get();
+      const cx = cellX(dx);
+      const cy = cellY(dy);
       if (tool === 'room' && g && cx >= g.x && cy >= g.y && cx < g.x + g.w && cy < g.y + g.h) {
         drag.set(1);
         grab.set([cx - g.x, cy - g.y]);

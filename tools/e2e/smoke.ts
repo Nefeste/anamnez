@@ -443,6 +443,8 @@ try {
       const b = await cellPoint(...c);
       await page.mouse.move(b.x, b.y, { steps: 14 });
     }
+    // палец задерживается на месте: последнее движение успевает дойти до жеста раньше, чем его отпустили
+    await page.waitForTimeout(150);
     await page.mouse.up();
     await page.waitForTimeout(400);
   };
@@ -458,7 +460,7 @@ try {
   const cash1 = await text(page, 'build-cash');
   check(cash1 !== cash0 && (await page.getByTestId('build-undo').innerText()).includes('(1)'), `стройка: регистратура построена — ${cash0} → ${cash1}`);
   await page.getByTestId('build-tool-corridor').click();
-  const corridor: [number, number][] = [[4, 13], [4, 17], [24, 17]];
+  const corridor: [number, number][] = [[4, 13], [4, 17], [34, 17]];
   await drag(corridor);
   const cash2 = await text(page, 'build-cash');
   check(cash2 !== cash1 && (await page.getByTestId('build-undo').innerText()).includes('(2)'), `стройка: коридор кистью — ${cash1} → ${cash2}`);
@@ -487,9 +489,64 @@ try {
   await page.goBack();
   await page.getByTestId('sandbox-open-needs').waitFor({ timeout: 5000 });
   check(!(await text(page, 'sandbox-open-needs')).includes('Регистратура') && await page.getByTestId('sandbox-open').isDisabled(), 'песочница: регистратор на месте, но без зоны ожидания и кабинета смену не открыть');
+  // зона ожидания и кабинет врача вдоль коридора — смену можно открыть; принять пациента,
+  // дожить до конца дня и закрыть его — в итогах касса (spec 2026-09-own-hospital, приёмка 5)
+  await page.getByTestId('sandbox-build').click();
+  await page.getByTestId('build-map').waitFor({ timeout: 10_000 });
+  await page.waitForTimeout(500);
+  // где призрак — из подписи карты для чтения с экрана: «…: клетка 16, 10 — здесь нельзя»
+  const ghostAt = async () => {
+    const m = /клетка (\d+), (\d+)/.exec((await page.getByTestId('build-map').getAttribute('aria-label')) ?? '');
+    return m ? [Number(m[1]), Number(m[2])] as [number, number] : undefined;
+  };
+  // тянем призрак за клетку внутри него, пока он не встанет куда нужно (жест в вебе может
+  // отстать на клетку — тогда ещё раз с того места, где он оказался)
+  const placeRoom = async (type: string, size: string, target: [number, number]) => {
+    await page.getByTestId('build-tool-room').click();
+    await page.getByTestId(`room-type-${type}`).click();
+    const sized = page.getByTestId(`room-size-${size}`);
+    if ((await sized.count()) > 0) await sized.click();
+    await page.getByTestId('build-place').waitFor({ timeout: 5000 });
+    for (let i = 0; i < 4; i++) {
+      const at = await ghostAt();
+      if (!at || (at[0] === target[0] && at[1] === target[1])) break;
+      const grip: [number, number] = [at[0] + 2, at[1] + 2];
+      await drag([grip, [grip[0] + target[0] - at[0], grip[1] + target[1] - at[1]]]);
+    }
+    check(JSON.stringify(await ghostAt()) === JSON.stringify(target), `стройка: ${type} — призрак в клетке ${target.join(', ')}`);
+    await page.getByTestId('build-place').click();
+    await page.getByTestId('build-tool-corridor').waitFor({ timeout: 5000 });
+  };
+  // над коридором, правее регистратуры: зона ожидания M и кабинет врача
+  await placeRoom('room.waiting', 'M', [18, 10]);
+  await placeRoom('room.office', 'M', [27, 10]);
+  await page.getByTestId('build-done').click();
+  await page.getByTestId('sandbox-open').waitFor({ timeout: 5000 });
+  check(!(await page.getByTestId('sandbox-open').isDisabled()), 'песочница: регистратура, зона ожидания и кабинет у коридора, регистратор на месте — смену можно открыть');
+  await page.getByTestId('sandbox-open').click();
+  await page.getByTestId('shift-skip').click();
+  await page.getByTestId('shift-call').waitFor({ timeout: 5000 });
+  await page.getByTestId('shift-call').click();
+  await page.getByTestId('exam-exam.ask_complaints').waitFor({ timeout: 10_000 });
+  await page.getByTestId('exam-exam.ask_complaints').click();
+  await page.getByTestId('visit-decide').click();
+  await page.locator('[data-testid^="hint-"]').first().click();
+  await page.getByTestId('decision-to-plan').click();
+  await page.getByTestId('setting-home').click();
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-payment').waitFor({ timeout: 10_000 });
+  await page.getByTestId('shift-to-queue').click();
+  await page.getByTestId('tab-x4').click();
+  const closable = page.locator('[data-testid="shift-close-day-early"], [data-testid="shift-close-day"]');
+  check(await runClockUntil(page, async () => (await closable.count()) > 0, 180_000), 'песочница: смена дожита до конца дня');
+  await closable.first().click();
+  await page.getByTestId('summary-cash').waitFor({ timeout: 10_000 });
+  check((await text(page, 'summary-seen')).startsWith('Принято: 1 из'), `песочница с пустого участка, итоги дня: ${await text(page, 'summary-seen')}`);
+  check((await text(page, 'cash-now')).startsWith('В кассе: ') && (await page.getByTestId('cash-oms').count()) + (await page.getByTestId('cash-dms').count()) + (await page.getByTestId('cash-self').count()) === 1,
+    `песочница с пустого участка, касса: ${await text(page, 'cash-now')}`);
   await page.goto(base);
   await page.getByTestId('menu-continue').waitFor({ timeout: 10_000 });
-  check((await text(page, 'menu-continue')).includes('песочница: перед открытием'), `меню: «Продолжить» — последняя партия: ${(await text(page, 'menu-continue')).replace(/\n/g, ' · ')}`);
+  check((await text(page, 'menu-continue')).includes('песочница: день 1'), `меню: «Продолжить» — последняя партия: ${(await text(page, 'menu-continue')).replace(/\n/g, ' · ')}`);
 
   // песочница заново — с готовой амбулаторией: штат на местах; продали иммунохимический
   // анализатор — ТТГ в карте пациента серым с причиной; «Открыть смену» — день 1 на своём плане
@@ -511,6 +568,17 @@ try {
   await page.getByTestId('shift-skip').click();
   await page.getByTestId('shift-call').waitFor({ timeout: 5000 });
   check(await page.getByTestId('clinic-map').isVisible(), 'песочница: смена открыта — карта своей больницы');
+  // касание помещения мимо людей — что это, работает ли, кто в нём (план тот же, что в практике)
+  const ownMap = page.getByTestId('clinic-map');
+  const ownCell = ((await ownMap.boundingBox())?.width ?? 0) / CLINIC.grid.w;
+  const labRoom = CLINIC.rooms.find(r => r.type === 'lab')!;
+  const tech = CLINIC.staff.find(x => x.role === 'labTech')!.cell;
+  const far: [number, number] = [tech[0] - labRoom.x < labRoom.w / 2 ? labRoom.x + labRoom.w - 2 : labRoom.x + 1, tech[1] - labRoom.y < labRoom.h / 2 ? labRoom.y + labRoom.h - 2 : labRoom.y + 1];
+  await ownMap.click({ position: { x: (far[0] + 0.5) * ownCell, y: (far[1] + 0.5) * ownCell } });
+  await page.getByTestId('map-room').waitFor({ timeout: 5_000 });
+  const labText = await text(page, 'map-room');
+  check(labText.startsWith('Лаборатория') && labText.includes('Работает') && labText.includes('Лаборант: '), `песочница: касание помещения — «${labText.replace(/\n/g, ' · ')}»`);
+  await page.screenshot({ path: join(OUT, '13-sandbox-room.png') });
   await page.getByTestId('shift-call').click();
   await page.getByTestId('exam-exam.ask_complaints').waitFor({ timeout: 10_000 });
   await page.getByTestId('tab-order').click();

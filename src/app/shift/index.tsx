@@ -17,7 +17,7 @@ import { CLINIC } from '@/state/clinicMap';
 import { blockText, type CashView } from '@/state/sandboxView';
 import {
   callPatient, closeDay, loadShift, nextDay, openCase, pauseClock, type QueueRow, type ShiftView, SPEEDS, type Speed, type SummaryView,
-  saveNow, setSpeed, skipIdle, startSandbox, startShift, TICK_MS, tick, useBuild, useShift, type WhoView,
+  type RoomView, saveNow, setSpeed, skipIdle, startSandbox, startShift, TICK_MS, tick, useBuild, useShift, type WhoView,
 } from '@/state/session';
 import { CaseRow } from '@/ui/case/CaseRow';
 import { Button, Card, Chip, Chips, H, P, Screen, Sheet, Tabs } from '@/ui/components';
@@ -121,8 +121,9 @@ function Queue({ v }: { v: ShiftView }) {
   const t = T.shift;
   const { width } = useWindowDimensions();
   const [focused, setFocused] = useState(true);
-  // кого коснулись на карте; кого пригласили — он идёт в кабинет
+  // кого или какое помещение коснулись на карте; кого пригласили — он идёт в кабинет
   const [selected, setSelected] = useState<string>();
+  const [room, setRoom] = useState<string>();
   const [entering, setEntering] = useState<string>();
 
   // часы — только пока экран на виду: поверх него карта пациента или разбор
@@ -199,8 +200,11 @@ function Queue({ v }: { v: ShiftView }) {
         awaiting={entering}
         onSelect={setSelected}
         onArrive={enter}
+        room={v.rooms && room ? room : undefined}
+        onRoom={v.rooms ? setRoom : undefined}
       />
       {who && selected !== undefined ? <WhoStrip who={who} onCall={who.callable ? () => call(selected) : undefined} /> : null}
+      {!who && room && v.rooms?.[room] ? <RoomStrip room={v.rooms[room]} /> : null}
     </>
   );
 
@@ -279,6 +283,17 @@ function WhoStrip({ who, onCall }: { who: WhoView; onCall?: () => void }) {
   );
 }
 
+/** Какого помещения коснулись на карте своей больницы: что это, работает ли, кто в нём и что там сейчас. */
+function RoomStrip({ room }: { room: RoomView }) {
+  return (
+    <View testID="map-room" style={styles.who}>
+      <Text style={styles.itemName} numberOfLines={1}>{room.title}</Text>
+      <Text testID="map-room-status" style={styles.itemMeta}>{room.status}</Text>
+      {room.lines.map((l, i) => <Text key={i} style={styles.itemText} numberOfLines={1}>{l}</Text>)}
+    </View>
+  );
+}
+
 function QueueItem({ r, disabled, onPress }: { r: QueueRow; disabled: boolean; onPress: () => void }) {
   return (
     <Pressable
@@ -341,7 +356,7 @@ function Summary({ v }: { v: ShiftView }) {
         </Card>
       )}
 
-      <Button kind="plain" testID="shift-restart" title={t.restart} onPress={() => setConfirm(true)} />
+      {!own && <Button kind="plain" testID="shift-restart" title={t.restart} onPress={() => setConfirm(true)} />}
       <Sheet visible={confirm} onClose={() => setConfirm(false)} closeTitle={t.cancel} testID="restart-sheet">
         <P>{t.restartConfirm}</P>
         <Button testID="restart-yes" title={t.restartYes} onPress={() => {

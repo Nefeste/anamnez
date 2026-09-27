@@ -130,7 +130,7 @@ function Builder({ b }: { b: BuildView }) {
             ghost={ghost}
             selected={selected}
             labels={labels}
-            label={t.mapLabel}
+            label={spec ? t.mapGhost(db.rooms[spec.type].name.ru, spec.x, spec.y, ghost?.ok ?? false) : t.mapLabel}
             onGhostMove={(x, y) => spec && setSpec({ ...spec, x, y })}
             onStroke={onStroke}
             onTapCell={onTapCell}
