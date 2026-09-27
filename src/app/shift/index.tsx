@@ -15,7 +15,7 @@ import {
   callPatient, closeDay, loadShift, nextDay, openCase, pauseClock, type QueueRow, type ShiftView, SPEEDS, type Speed, type SummaryView,
   saveNow, setSpeed, skipIdle, startShift, TICK_MS, tick, useShift, type WhoView,
 } from '@/state/session';
-import { gradeColor } from '@/ui/case/OutcomeScreen';
+import { CaseRow } from '@/ui/case/CaseRow';
 import { Button, Card, Chip, Chips, H, P, Screen, Sheet, Tabs } from '@/ui/components';
 import { colors, radius, space, touch } from '@/ui/theme';
 
@@ -267,14 +267,7 @@ function Summary({ v }: { v: ShiftView }) {
       <Card>
         <Text style={styles.label}>{t.cases}</Text>
         {s.cases.length === 0 ? <P muted>{t.noCases}</P> : s.cases.map(c => (
-          <Pressable key={c.id} testID={`case-${c.id}`} accessibilityRole="button" onPress={() => open(c.id)} style={({ pressed }) => [styles.caseRow, pressed && styles.pressed]}>
-            <Text style={styles.caseVerdict}>{T.shift.verdict[c.verdict]}</Text>
-            <View style={styles.caseText}>
-              <Text style={styles.itemName}>{c.name}</Text>
-              <Text style={styles.itemMeta}>{c.diagnosis}</Text>
-            </View>
-            <Text style={[styles.caseGrade, gradeColor(c.overall)]}>{c.overall}</Text>
-          </Pressable>
+          <CaseRow key={c.id} testID={`case-${c.id}`} verdict={c.verdict} title={c.name} subtitle={c.diagnosis} grade={c.overall} onPress={() => open(c.id)} />
         ))}
       </Card>
 
@@ -327,8 +320,4 @@ const styles = StyleSheet.create({
   inviteText: { fontSize: 15, fontWeight: '700', color: '#fff' },
   log: { fontSize: 14, lineHeight: 20, color: colors.ink },
   logRed: { color: colors.red, fontWeight: '600' },
-  caseRow: { flexDirection: 'row', alignItems: 'center', gap: space.m, paddingVertical: space.s, borderBottomWidth: 1, borderBottomColor: colors.line },
-  caseVerdict: { width: 20, fontSize: 18, textAlign: 'center', color: colors.ink },
-  caseText: { flex: 1, gap: 2 },
-  caseGrade: { fontSize: 22, fontWeight: '800' },
 });

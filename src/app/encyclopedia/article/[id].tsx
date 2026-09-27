@@ -1,10 +1,12 @@
 // Статья энциклопедии (05-content.md §4): разделы из записи базы, ссылки на другие статьи —
-// плашками. Открывается и из «Что это?» в карте пациента, и из разбора случая.
+// плашками. Открывается и из «Что это?» в карте пациента, и из разбора случая. У болезни —
+// сколько раз она встречалась в практике игрока (профиль).
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { StyleSheet, Text, View } from 'react-native';
 import { db } from '@/content';
 import { T } from '@/i18n';
 import { article } from '@/state/encyclopedia';
+import { useProfile } from '@/state/profile';
 import { Card, Chips, P, Screen } from '@/ui/components';
 import { EncyclopediaNote, RefChip } from '@/ui/encyclopedia';
 import { colors, space } from '@/ui/theme';
@@ -13,6 +15,7 @@ export default function ArticleScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const t = T.encyclopedia;
   const a = article(db, String(id));
+  const profile = useProfile();
   if (!a) {
     return (
       <Screen>
@@ -30,6 +33,7 @@ export default function ArticleScreen() {
       <Card>
         <Text testID="enc-article-title" style={styles.title}>{a.title}</Text>
         {a.subtitle ? <P muted>{a.subtitle}</P> : null}
+        {a.section === 'conditions' ? <P muted testID="enc-practice">{T.profile.practiceTimes(profile.seen[a.id] ?? 0)}</P> : null}
       </Card>
       {a.blocks.map(b => (
         <Card key={b.key}>

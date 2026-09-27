@@ -4,8 +4,8 @@ const digits = (n: number) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d)
 export const common = {
   appName: 'Анамнез',
   back: 'Назад',
-  minutes: (n: number) => `${n} мин`,
-  rub: (n: number) => `${digits(n)} ₽`,
+  minutes: (n: number) => `${n}\u00a0мин`,
+  rub: (n: number) => `${digits(n)}\u00a0₽`,
   disclaimerTitle: 'Это игра',
   disclaimer:
     'Медицинские сведения в «Анамнезе» упрощены и служат игре. Это не справочник, не средство самодиагностики и не замена врачу. Если вас что-то беспокоит — обратитесь к врачу; в экстренной ситуации звоните 112 (103 — скорая помощь).',
