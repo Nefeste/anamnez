@@ -127,6 +127,11 @@ try {
   for (let i = 0; i < 5 && (await page.getByTestId('visit-wait').count()) > 0; i++) await page.getByTestId('visit-wait').click();
   const clockAfter = await text(page, 'visit-clock');
   check(clockBefore !== clockAfter, `П4: ожидание результатов двигает часы (${clockBefore} → ${clockAfter})`);
+  // снимок — рисунком в результатах, а не только строками (0.0.10)
+  await page.getByTestId('result-xray').scrollIntoViewIfNeeded();
+  await page.waitForTimeout(500);
+  check((await page.getByTestId('result-xray').count()) === 1 && (await page.getByTestId('result-xray').isVisible()), 'П4: рентген в карте — снимком');
+  await page.screenshot({ path: join(OUT, '04-xray.png') });
   await page.screenshot({ path: join(OUT, '04-patient-exams.png'), fullPage: true });
   // решение — отдельный экран в два шага, а не четвёртая вкладка (отзыв на 0.0.5)
   check((await page.locator('[data-testid^="tab-"]').count()) === 3 && (await page.getByTestId('visit-decide').isVisible()), 'П4: три вкладки действий, «Решение» — отдельной кнопкой внизу');

@@ -1,0 +1,217 @@
+// npm run store — иконка, графика и снимки экрана для магазина и сайта (store/README.md,
+// 11-publishing.md §8). Сначала `npm run export:web`: снимки — с настоящей игры в
+// веб-сборке (стенд, ADR 0003) размером телефона 360 × 640 при плотности 3 — 1080 × 1920,
+// шрифтом Roboto, как на Android. Состояния смены пишет движок (tools/store/states.ts).
+//
+// Флаги: --only icons|graphics|shots (по умолчанию — всё).
+import { mkdirSync, readFileSync } from 'node:fs';
+import { extname, join } from 'node:path';
+import { type Browser, chromium, type Page } from 'playwright';
+import { buildDb } from '../content/load';
+import { BRAND, iconSvg, markSvg } from './art';
+import { CAPTIONS } from './captions';
+import { acsCase, envelope, pneumoniaCase, queueState, summaryState } from './states';
+
+const ROOT = join(import.meta.dir, '../..');
+const DIST = join(ROOT, 'dist-web');
+const FONTS = join(ROOT, 'node_modules/@fontsource/roboto');
+const STORE = join(ROOT, 'store');
+const ASSETS = join(ROOT, 'assets');
+const only = (() => {
+  const i = process.argv.indexOf('--only');
+  return i >= 0 ? process.argv[i + 1] : undefined;
+})();
+const want = (part: 'icons' | 'graphics' | 'shots') => !only || only === part;
+
+
+const TYPES: Record<string, string> = {
+  '.html': 'text/html', '.js': 'text/javascript', '.wasm': 'application/wasm', '.json': 'application/json', '.png': 'image/png',
+  '.wav': 'audio/wav', '.ttf': 'font/ttf', '.woff2': 'font/woff2',
+};
+
+/** Roboto — те же начертания, что на Android: @font-face из @fontsource с путями к серверу. */
+function fontCss(): string {
+  const faces = [400, 500, 600, 700, 800, 900].map(w => readFileSync(join(FONTS, `${w}.css`), 'utf8')).join('\n').replaceAll('url(./files/', 'url(/__fonts/');
+  return `${faces}\n* { font-family: 'Roboto', sans-serif !important; }`;
+}
+
+function serve() {
+  return Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    async fetch(req) {
+      const path = decodeURIComponent(new URL(req.url).pathname);
+      if (path.startsWith('/__fonts/')) {
+        const f = join(FONTS, 'files', path.slice('/__fonts/'.length));
+        return new Response(Bun.file(f), { headers: { 'content-type': TYPES[extname(f)] ?? 'application/octet-stream' } });
+      }
+      const wanted = join(DIST, path === '/' ? 'index.html' : path);
+      const name = (await Bun.file(wanted).exists()) ? wanted : join(DIST, 'index.html');
+      return new Response(Bun.file(name), { headers: { 'content-type': TYPES[extname(name)] ?? 'application/octet-stream' } });
+    },
+  });
+}
+
+/** SVG → PNG: без прозрачности (RGB) или с ней (RGBA) — как требует место. */
+async function svgPng(browser: Browser, svg: string, size: number, file: string, transparent: boolean) {
+  const page = await browser.newPage({ viewport: { width: size, height: size }, deviceScaleFactor: 1 });
+  await page.setContent(`<html><body style="margin:0;${transparent ? 'background:transparent' : `background:${BRAND.teal}`}">${svg.replace(/width="\d+" height="\d+"/, `width="${size}" height="${size}"`)}</body></html>`);
+  mkdirSync(join(file, '..'), { recursive: true });
+  await page.screenshot({ path: file, omitBackground: transparent, clip: { x: 0, y: 0, width: size, height: size } });
+  await page.close();
+  console.log(`  ${file.replace(`${ROOT}/`, '')}`);
+}
+
+async function icons(browser: Browser) {
+  console.log('Иконки');
+  await svgPng(browser, iconSvg('full'), 1024, join(ASSETS, 'icon.png'), false);
+  await svgPng(browser, iconSvg('foreground'), 1024, join(ASSETS, 'adaptive-icon.png'), true);
+  await svgPng(browser, iconSvg('background'), 1024, join(ASSETS, 'adaptive-icon-background.png'), false);
+  await svgPng(browser, iconSvg('monochrome'), 1024, join(ASSETS, 'adaptive-icon-monochrome.png'), true);
+  await svgPng(browser, iconSvg('full'), 48, join(ASSETS, 'favicon.png'), false);
+  await svgPng(browser, iconSvg('full'), 512, join(STORE, 'icon/icon-512.png'), false);
+}
+
+const ecgLine = (w: number, y: number, amp: number) => {
+  const beat = [[0, 0], [60, 0], [70, -0.12], [80, 0], [95, 0], [102, 0.2], [112, -1], [122, 0.7], [132, 0], [160, 0], [178, -0.22], [196, 0], [260, 0]];
+  const pts: string[] = [];
+  for (let x0 = -40; x0 < w; x0 += 260) for (const [x, v] of beat) pts.push(`${x0 + x},${y + v * amp}`);
+  return `<svg width="${w}" height="${y + amp + 10}" style="position:absolute;left:0;top:0"><polyline points="${pts.join(' ')}" fill="none" stroke="${BRAND.trace}" stroke-opacity="0.35" stroke-width="5" stroke-linejoin="round"/></svg>`;
+};
+
+const phone = (png: Buffer, width: number, style = '') =>
+  `<img src="data:image/png;base64,${png.toString('base64')}" style="width:${width}px;border-radius:${width * 0.05}px;border:${Math.round(width * 0.012)}px solid #0B3F3D;box-shadow:0 ${width * 0.03}px ${width * 0.08}px rgba(0,0,0,.35);${style}"/>`;
+
+async function page(browser: Browser, w: number, h: number, body: string, file: string) {
+  const p = await browser.newPage({ viewport: { width: w, height: h }, deviceScaleFactor: 1 });
+  await p.setContent(`<html><head><style>${fontCss().replaceAll('url(/__fonts/', `url(file://${FONTS}/files/`)}</style></head>
+    <body style="margin:0;width:${w}px;height:${h}px;overflow:hidden;position:relative;background:linear-gradient(155deg, ${BRAND.tealLight}, ${BRAND.tealDark});color:#fff">${body}</body></html>`);
+  await p.evaluate(() => document.fonts.ready);
+  mkdirSync(join(file, '..'), { recursive: true });
+  await p.screenshot({ path: file });
+  await p.close();
+  console.log(`  ${file.replace(`${ROOT}/`, '')}`);
+}
+
+async function graphics(browser: Browser, screens: Record<string, Buffer>) {
+  console.log('Графика');
+  // 1024 × 500 — графика Google Play и шапка для сайта: знак, название, одна строка
+  await page(browser, 1024, 500, `
+    ${ecgLine(1024, 462, 34)}
+    <div style="position:absolute;left:70px;top:95px">${markSvg(300)}</div>
+    <div style="position:absolute;left:430px;top:150px;right:40px">
+      <div style="font-weight:800;font-size:92px;letter-spacing:-1px">Анамнез</div>
+      <div style="font-size:34px;line-height:1.3;margin-top:8px;opacity:.95">Симулятор врача:<br/>каждый пациент — загадка</div>
+    </div>`, join(STORE, 'graphics/feature-1024x500.png'));
+  // 1920 × 1080 — обложка для сайта и соцсетей: слева слова, справа два экрана игры
+  const a = screens['02-xray.png'];
+  const b = screens['06-outcome.png'];
+  await page(browser, 1920, 1080, `
+    ${ecgLine(1920, 960, 90)}
+    <div style="position:absolute;left:130px;top:230px;width:820px">
+      <div style="display:flex;align-items:center;gap:36px">${markSvg(170)}<div style="font-weight:800;font-size:130px;letter-spacing:-2px">Анамнез</div></div>
+      <div style="font-size:52px;line-height:1.28;margin-top:36px">Симулятор врача<br/>с честной диагностикой</div>
+      <div style="font-size:34px;line-height:1.4;margin-top:34px;opacity:.9">Каждый пациент — загадка: расспросите, осмотрите, назначьте анализы и снимки, поставьте диагноз и вылечите.</div>
+    </div>
+    ${a ? `<div style="position:absolute;left:1040px;top:140px">${phone(a, 400)}</div>` : ''}
+    ${b ? `<div style="position:absolute;left:1440px;top:230px">${phone(b, 380)}</div>` : ''}`, join(STORE, 'graphics/cover-1920x1080.png'));
+}
+
+/** Снимок экрана — в рамке с подписью: 1080 × 1920, как просит RuStore. */
+async function framed(browser: Browser, raw: Buffer, caption: string, file: string) {
+  const text = caption.split('\n').map(l => `<div>${l}</div>`).join('');
+  await page(browser, 1080, 1920, `
+    <div style="position:absolute;top:120px;left:60px;right:60px;text-align:center;font-weight:700;font-size:64px;line-height:1.2">${text}</div>
+    <div style="position:absolute;left:50%;top:400px;transform:translateX(-50%)">${phone(raw, 820)}</div>`, file);
+}
+
+async function openShift(browser: Browser, base: string, save: string): Promise<Page> {
+  const ctx = await browser.newContext({ viewport: { width: 360, height: 640 }, deviceScaleFactor: 3 });
+  await ctx.addInitScript(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/shift.json', save]);
+  const p = await ctx.newPage();
+  await p.goto(`${base}/shift`);
+  await p.addStyleTag({ content: fontCss() });
+  await p.evaluate(() => document.fonts.ready);
+  return p;
+}
+
+const snap = async (p: Page) => Buffer.from(await p.screenshot({ type: 'png' }));
+
+/** Все прокрутки — наверх: нажатие кнопки прокручивает к ней список. */
+const toTop = (p: Page) => p.evaluate(() => {
+  for (const el of Array.from(document.querySelectorAll('*'))) if ((el as HTMLElement).scrollTop > 0) (el as HTMLElement).scrollTop = 0;
+});
+
+async function shots(browser: Browser): Promise<Record<string, Buffer>> {
+  console.log('Снимки экрана');
+  const { db } = buildDb();
+  const server = serve();
+  const base = `http://127.0.0.1:${server.port}`;
+  const raw: Record<string, Buffer> = {};
+  try {
+    // 1. очередь: через минуту приходит «красный» — автопауза и строка «Срочно»
+    let p = await openShift(browser, base, envelope(queueState(db)));
+    await p.getByTestId('shift-pause-reason').waitFor({ timeout: 20_000 });
+    await p.waitForTimeout(400);
+    raw['01-queue.png'] = await snap(p);
+    await p.context().close();
+
+    // 2–6. пневмония: снимок пришёл; решение, лечение, итог
+    p = await openShift(browser, base, envelope(pneumoniaCase(db)));
+    await p.getByTestId('shift-continue').click();
+    await p.getByTestId('result-xray').waitFor({ timeout: 20_000 });
+    await p.getByTestId('visit-fresh').first().evaluate(el => el.scrollIntoView({ block: 'start' }));
+    await p.mouse.wheel(0, -64);
+    await p.waitForTimeout(700);
+    raw['02-xray.png'] = await snap(p);
+    await p.getByTestId('visit-decide').click();
+    await p.getByTestId('hint-cond.pneumonia_cap').click();
+    await toTop(p);
+    await p.waitForTimeout(300);
+    raw['04-diagnosis.png'] = await snap(p);
+    await p.getByTestId('decision-to-plan').click();
+    await p.getByTestId('tx-tx.amoxicillin').click();
+    await p.getByTestId('tx-tx.rest_fluids').click();
+    await p.getByTestId('setting-home').click();
+    await toTop(p);
+    await p.waitForTimeout(300);
+    raw['05-plan.png'] = await snap(p);
+    await p.getByTestId('visit-finish').click();
+    await p.getByTestId('visit-truth').waitFor({ timeout: 20_000 });
+    await p.waitForTimeout(300);
+    raw['06-outcome.png'] = await snap(p);
+    await p.context().close();
+
+    // 3. боль в груди: на ЭКГ подъём ST
+    p = await openShift(browser, base, envelope(acsCase(db)));
+    await p.getByTestId('shift-continue').click();
+    await p.getByTestId('result-ecg').waitFor({ timeout: 20_000 });
+    await p.getByTestId('visit-fresh').first().evaluate(el => el.scrollIntoView({ block: 'end' }));
+    await p.mouse.wheel(0, 24);
+    await p.waitForTimeout(500);
+    raw['03-ecg.png'] = await snap(p);
+    await p.context().close();
+
+    // 7. итоги третьего дня
+    p = await openShift(browser, base, envelope(summaryState(db)));
+    await p.getByTestId('summary-seen').waitFor({ timeout: 20_000 });
+    await p.waitForTimeout(300);
+    raw['07-summary.png'] = await snap(p);
+    await p.context().close();
+  } finally {
+    server.stop(true);
+  }
+  for (const { file, caption } of CAPTIONS) await framed(browser, raw[file], caption, join(STORE, 'screenshots/phone', file));
+  return raw;
+}
+
+if (import.meta.main) {
+  const browser = await chromium.launch();
+  try {
+    if (want('icons')) await icons(browser);
+    const screens = want('shots') || want('graphics') ? await shots(browser) : {};
+    if (want('graphics')) await graphics(browser, screens);
+  } finally {
+    await browser.close();
+  }
+}

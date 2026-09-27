@@ -147,6 +147,30 @@ describe('приём', () => {
     expect(v.title).not.toBe(prev);
   });
 
+  test('рентген и ЭКГ — картинкой: сторона инфильтрата — как в протоколе снимка, частота — по пульсу', () => {
+    let found = false;
+    for (let i = 0; i < 200 && !found; i++) {
+      nextPatient();
+      act('exam.xray_chest');
+      for (let k = 0; k < 3 && visitView().pending.length > 0; k++) waitForResults();
+      found = visitView().results.some(l => l.f === 'img.cxr_infiltrate' && l.shown);
+    }
+    expect(found).toBe(true);
+    const xray = visitView().groups.find(g => g.exam === 'exam.xray_chest')!;
+    const side = xray.image?.kind === 'xray' ? xray.image.infiltrate : undefined;
+    expect(side).toBeDefined();
+    const words = { right: 'справа', left: 'слева', both: 'с обеих сторон' } as const;
+    expect(xray.lines.find(l => l.f === 'img.cxr_infiltrate')!.text).toContain(words[side!]);
+    // лента — у ЭКГ, а у пульса и давления картинки нет
+    act('exam.vitals');
+    act('exam.ecg');
+    for (let k = 0; k < 3 && visitView().pending.length > 0; k++) waitForResults();
+    const ecg = visitView().groups.find(g => g.exam === 'exam.ecg')!;
+    expect(ecg.image?.kind).toBe('ecg');
+    expect(ecg.image?.kind === 'ecg' && ecg.image.rate).toBeGreaterThan(30);
+    expect(visitView().groups.find(g => g.exam === 'exam.vitals')!.image).toBeUndefined();
+  });
+
   test('пациент сказал об аллергии — у пенициллинов предупреждение, у остального нет', () => {
     // ищем среди следующих пациентов того, кто назовёт аллергию на расспросе (~9 % взрослых)
     let told = false;

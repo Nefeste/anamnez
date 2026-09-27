@@ -13,6 +13,7 @@ import { Button, Card, Chip, Chips, H, P, Screen, Tabs } from '@/ui/components';
 import { TermSheet } from '@/ui/TermSheet';
 import { colors, radius, space } from '@/ui/theme';
 import type { CaseActions } from './actions';
+import { ResultPicture } from './ResultPicture';
 
 type Tab = 'ask' | 'examine' | 'order';
 
@@ -87,6 +88,7 @@ export function PatientCard({ view: v, actions }: { view: VisitView; actions: Ca
               <Text style={styles.groupTitle}>{`${g.name} · ${t.at(g.at)}`}</Text>
               {g.fresh && <Text style={styles.badge}>{t.fresh}</Text>}
             </View>
+            {g.image && <ResultPicture image={g.image} />}
             <Chips>{g.lines.map((r, i) => <Chip key={`${r.f}${i}`} text={r.text} strong={r.shown} onPress={() => explain(findingInfo(r.f))} />)}</Chips>
           </Animated.View>
         ))}
