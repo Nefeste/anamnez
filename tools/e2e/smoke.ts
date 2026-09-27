@@ -3,6 +3,7 @@
 import { mkdirSync, readFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import { chromium, type Page } from 'playwright';
+import { clinicLayout } from '../../src/engine/hospital/clinic';
 import { apply, newShift } from '../../src/engine/shift/engine';
 import { SHIFT_SCHEMA_VERSION } from '../../src/engine/shift/types';
 import { buildDb } from '../content/load';
@@ -11,6 +12,8 @@ const ROOT = join(import.meta.dir, '../..');
 const DIST = join(ROOT, 'dist-web');
 const OUT = join(import.meta.dir, 'out');
 const golden = JSON.parse(readFileSync(join(ROOT, 'tools/test/fixtures/golden.json'), 'utf8'));
+/** План амбулатории — тот же, что рисует карта смены: куда касаться. */
+const CLINIC = clinicLayout();
 mkdirSync(OUT, { recursive: true });
 
 const TYPES: Record<string, string> = { '.html': 'text/html', '.js': 'text/javascript', '.wasm': 'application/wasm', '.json': 'application/json', '.png': 'image/png', '.wav': 'audio/wav', '.ttf': 'font/ttf' };
@@ -268,9 +271,29 @@ try {
   // карта амбулатории над очередью: подпись для чтения с экрана — кто где
   const mapLabel = (await page.getByTestId('clinic-map').getAttribute('aria-label')) ?? '';
   check(await page.getByTestId('clinic-map').isVisible() && /В зале ожидания: [1-9]/.test(mapLabel), `смена: карта амбулатории — «${mapLabel}»`);
+  // касание на карте — кто это: медсестра и зачем к ней идут
+  const map = page.getByTestId('clinic-map');
+  const cellPx = ((await map.boundingBox())?.width ?? 0) / CLINIC.grid.w;
+  const tapCell = (c: readonly [number, number]) => map.click({ position: { x: (c[0] + 0.5) * cellPx, y: (c[1] + 0.5) * cellPx } });
+  await tapCell(CLINIC.staff.find(x => x.role === 'nurse')!.cell);
+  await page.getByTestId('map-who').waitFor({ timeout: 5_000 });
+  const nurseWho = await text(page, 'map-who');
+  check(nurseWho.includes('Медсестра доврачебного кабинета') && nurseWho.includes('давление'), `смена: касание на карте — «${nurseWho.replace(/\n/g, ' · ')}»`);
+  // первый пришедший доходит до стойки, до медсестры и садится в зале — тогда его и касаемся
+  let seatedWho = '';
+  for (let i = 0; i < 50 && !seatedWho.includes('Ждёт приёма'); i++) {
+    await tapCell(CLINIC.seats[0]);
+    await page.waitForTimeout(400);
+    seatedWho = (await page.getByTestId('map-who').count()) > 0 ? await text(page, 'map-who') : '';
+  }
+  check(seatedWho.includes('Ждёт приёма') && (await page.getByTestId('map-invite').isVisible()), `смена: коснулись ждущего в зале — «${seatedWho.replace(/\n/g, ' · ')}»`);
   await page.screenshot({ path: join(OUT, '08-shift-queue.png') });
-  await page.getByTestId('shift-call').click();
+  // «Пригласить» — он идёт в кабинет, карта пациента открывается, когда вошёл
+  const invited = Date.now();
+  await page.getByTestId('map-invite').click();
   await page.getByTestId('exam-exam.ask_complaints').waitFor({ timeout: 10_000 });
+  const walked = Date.now() - invited;
+  check(walked > 800, `смена: приглашённый дошёл до кабинета — карта пациента через ${walked} мс`);
   const roomClock = await text(page, 'visit-clock');
   await page.waitForTimeout(1500);
   check((await text(page, 'visit-clock')) === roomClock, 'смена: в кабинете часы идут только делами');

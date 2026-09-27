@@ -1,27 +1,53 @@
 // Люди на карте амбулатории: кто куда идёт (src/state/clinicMap.ts даёт места). Без React и
 // Skia — поэтому проверяется в Bun; карта (ClinicMap.tsx) только отдаёт пути на UI-поток.
-// Новое место — новый путь A* от того места, где человек сейчас, без скачка. Дошедший до
-// выхода исчезает и больше не появляется.
+// Смена на ×4 меняет места быстрее, чем человек успевает дойти, поэтому места — это
+// остановки маршрута: у стойки регистратуры, у стола медсестры, у аппарата человек хотя бы
+// немного стоит, даже если по смене он уже дальше; место ожидания (стул, скамья), до которого
+// не дошёл, заменяет следующее; в кабинет врача зовут — туда идут сразу и быстрее. Новый путь
+// начинается там, где человек сейчас, без скачка. Дошедший до выхода исчезает и больше не
+// появляется.
 import type { Cell, ClinicLayout } from '@/engine/hospital/clinic';
 import { findPath } from '@/engine/sim/path';
-import { assignSeats, type Figure, nearest, type Placement } from '@/state/clinicMap';
+import { assignSeats, type Doing, type Figure, nearest, type Placement } from '@/state/clinicMap';
 
 /** Шаг — клеток в секунду настоящего времени: на ×4 игровые минуты летят, а люди идут, а не прыгают. */
 export const SPEED = 4;
+/** В кабинет по вызову — быстрее: карта пациента откроется, когда он войдёт. */
+export const BRISK = 8;
+/** Сколько секунд человек хотя бы стоит там, где с ним что-то делают. */
+export const DWELL: Partial<Record<Doing['kind'], number>> = { registration: 1, triage: 1.5, exam: 1.5 };
+/** Чисел на человека в `meta`: смещение пути, число точек, время выхода, скорость, исчезнуть у цели. */
+export const STRIDE = 5;
+
+/** act — там с человеком что-то делают; wait — сидит, ждёт; go — идёт туда без остановок. */
+type LegKind = 'act' | 'wait' | 'go';
+
+/** Остановка маршрута: `arrive` и `leave` — номера точек пути, когда пришёл и когда пошёл дальше. */
+interface Leg {
+  key: string;
+  cell: Cell;
+  kind: LegKind;
+  /** сколько секунд стоять */
+  dwell: number;
+  arrive: number;
+  leave: number;
+}
 
 interface Walker {
   slot: number;
   sprite: number;
-  /** путь x0, y0, x1, y1, … в клетках: от первой точки к последней, по отрезку за 1/SPEED с */
+  /** путь x0, y0, x1, y1, … в клетках: от первой точки к последней, по отрезку за 1/speed с */
   pts: number[];
   /** когда вышел — по часам карты, в секундах */
   start: number;
+  speed: number;
+  legs: Leg[];
+  /** куда в итоге: ключ последней остановки */
   target: string;
   leaving: boolean;
-  callable: boolean;
 }
 
-/** Что уходит на UI-поток: пути подряд; на место — смещение, число точек, время выхода; фигурки. */
+/** Что уходит на UI-поток: пути подряд; на человека — STRIDE чисел (см. выше); фигурки. */
 export interface Frame {
   route: number[];
   meta: number[];
@@ -52,14 +78,20 @@ export function spriteOf(figure: Figure, id: string): number {
 }
 
 /** Где человек на пути в момент `now`; то же на каждом кадре считает ворклет карты. */
-export function posAt(pts: readonly number[], start: number, now: number): [number, number] {
+export function posAt(pts: readonly number[], start: number, speed: number, now: number): [number, number] {
   const last = pts.length / 2 - 1;
   if (last <= 0) return [pts[0], pts[1]];
-  const s = Math.min(last, Math.max(0, (now - start) * SPEED));
+  const s = Math.min(last, Math.max(0, (now - start) * speed));
   const k = Math.min(last - 1, Math.floor(s));
   const f = s - k;
   const a = k * 2;
   return [pts[a] + (pts[a + 2] - pts[a]) * f, pts[a + 1] + (pts[a + 3] - pts[a + 1]) * f];
+}
+
+function legKind(d: Doing): LegKind {
+  if (d.kind === 'waiting' || d.kind === 'results' || d.kind === 'examQueue') return 'wait';
+  if (d.kind === 'registration' || d.kind === 'triage' || d.kind === 'exam') return 'act';
+  return 'go';
 }
 
 export class Walkers {
@@ -84,7 +116,7 @@ export class Walkers {
       if (!present.has(id)) {
         this.walkers.delete(id);
         changed = true;
-      } else if (w.leaving && this.arrived(w, now)) {
+      } else if (w.leaving && now >= this.arrival(w)) {
         this.walkers.delete(id);
         this.gone.add(id);
         changed = true;
@@ -95,71 +127,134 @@ export class Walkers {
     const used = new Set([...this.walkers.values()].map(w => w.slot));
     for (const p of people) {
       if (this.gone.has(p.id)) continue;
-      const target = this.targetOf(p);
+      const leg = this.leg(p);
       const w = this.walkers.get(p.id);
       if (!w) {
         let slot = 0;
         while (used.has(slot)) slot++;
         if (slot >= this.capacity) continue;
         used.add(slot);
+        const fresh: Walker = { slot, sprite: spriteOf(p.figure, p.id), pts: [], start: now, speed: SPEED, legs: [], target: leg.key, leaving: !!p.leaving };
         // при открытии карты все уже на местах; потом новые входят с улицы
-        const from = this.first || p.id.startsWith('staff.') ? target : layout.entrance;
-        this.walkers.set(p.id, { slot, sprite: spriteOf(p.figure, p.id), pts: this.path(from, target), start: now, target: cellKey(target), leaving: !!p.leaving, callable: !!p.callable });
+        if (this.first || p.id.startsWith('staff.')) this.plan(fresh, [leg.cell], [{ ...leg, dwell: 0 }], now, SPEED);
+        else this.plan(fresh, [layout.entrance], [leg], now, SPEED);
+        this.walkers.set(p.id, fresh);
         changed = true;
         continue;
       }
-      w.callable = !!p.callable;
       w.leaving = !!p.leaving;
       const sprite = spriteOf(p.figure, p.id);
       if (w.sprite !== sprite) {
         w.sprite = sprite;
         changed = true;
       }
-      if (w.target !== cellKey(target)) {
-        const [x, y] = posAt(w.pts, w.start, now);
-        const from: Cell = [Math.round(x), Math.round(y)];
-        const rest = this.path(from, target);
-        const exact = Math.abs(x - from[0]) < 0.01 && Math.abs(y - from[1]) < 0.01;
-        w.pts = exact ? rest : [x, y, ...rest];
-        w.start = now;
-        w.target = cellKey(target);
+      if (w.target !== leg.key) {
+        this.retarget(w, leg, p.doing.kind === 'office', now);
         changed = true;
       }
     }
     this.first = false;
 
     const route: number[] = [];
-    const meta = new Array<number>(this.capacity * 3).fill(0);
+    const meta = new Array<number>(this.capacity * STRIDE).fill(0);
     const sprites = new Array<number>(this.capacity).fill(0);
     let until = 0;
     for (const w of this.walkers.values()) {
-      meta[w.slot * 3] = route.length / 2;
-      meta[w.slot * 3 + 1] = w.pts.length / 2;
-      meta[w.slot * 3 + 2] = w.start;
+      const m = w.slot * STRIDE;
+      meta[m] = route.length / 2;
+      meta[m + 1] = w.pts.length / 2;
+      meta[m + 2] = w.start;
+      meta[m + 3] = w.speed;
+      meta[m + 4] = w.leaving ? 1 : 0;
       for (const v of w.pts) route.push(v);
       sprites[w.slot] = w.sprite;
-      until = Math.max(until, w.start + (w.pts.length / 2 - 1) / SPEED);
+      until = Math.max(until, this.arrival(w));
     }
     return { route, meta, sprites, until, changed };
   }
 
-  /** Кого из ждущих в зале коснулись: точка — в клетках, не дальше клетки от фигурки. */
+  /** Кого коснулись: точка — в клетках, не дальше клетки от фигурки; персонал тоже. */
   hit(x: number, y: number, now: number): string | undefined {
-    const points = [...this.walkers].filter(([, w]) => w.callable).map(([id, w]) => {
-      const [px, py] = posAt(w.pts, w.start, now);
-      return { id, x: px + 0.5, y: py + 0.5 };
-    });
+    const points = [...this.walkers]
+      .filter(([, w]) => !(w.leaving && now >= this.arrival(w)))
+      .map(([id, w]) => {
+        const [px, py] = posAt(w.pts, w.start, w.speed, now);
+        return { id, x: px + 0.5, y: py + 0.5 };
+      });
     return nearest(points, x, y);
   }
 
   /** Где сейчас — для проверок. */
   where(id: string, now: number): [number, number] | undefined {
     const w = this.walkers.get(id);
-    return w ? posAt(w.pts, w.start, now) : undefined;
+    return w ? posAt(w.pts, w.start, w.speed, now) : undefined;
   }
 
-  private arrived(w: Walker, now: number) {
-    return (now - w.start) * SPEED >= w.pts.length / 2 - 1;
+  /** Когда (по часам карты) дойдёт до последней остановки; нет его на карте — undefined. */
+  arrivalOf(id: string): number | undefined {
+    const w = this.walkers.get(id);
+    return w ? this.arrival(w) : undefined;
+  }
+
+  /** Место в буферах UI-потока — для выделения; нет на карте — -1. */
+  slotOf(id: string | undefined): number {
+    const w = id === undefined ? undefined : this.walkers.get(id);
+    return w ? w.slot : -1;
+  }
+
+  private arrival(w: Walker) {
+    return w.start + (w.pts.length / 2 - 1) / w.speed;
+  }
+
+  /**
+   * Новое место: остановки, до которых ещё не дошёл или у которых ещё не достоял, остаются;
+   * место ожидания в конце заменяется новым; в кабинет врача — сразу, без остановок.
+   */
+  private retarget(w: Walker, leg: Leg, direct: boolean, now: number) {
+    const speed = direct ? BRISK : SPEED;
+    const n = w.pts.length / 2;
+    const s = Math.min(n - 1, Math.max(0, (now - w.start) * w.speed));
+    const k = Math.floor(s);
+    const f = s - k;
+    const at = (i: number): Cell => [w.pts[i * 2], w.pts[i * 2 + 1]];
+    let rest = direct ? [] : w.legs.filter(l => l.leave > s);
+    if (rest.length > 0 && rest[rest.length - 1].kind === 'wait') rest = rest.slice(0, -1);
+    if (rest.length > 0 && s >= rest[0].arrive) {
+      // стоит у остановки — достаивает, что осталось
+      rest[0] = { ...rest[0], dwell: (rest[0].leave - s) / w.speed };
+      this.plan(w, [rest[0].cell], [...rest, leg], now, speed);
+    } else if (f < 0.01) {
+      this.plan(w, [at(k)], [...rest, leg], now, speed);
+    } else {
+      // между клетками: шаг к следующей — с того же места и той же скоростью, назад не пятится
+      this.plan(w, [at(k), at(k + 1)], [...rest, leg], now - f / speed, speed);
+    }
+  }
+
+  /** Путь: сначала точки `lead` (человек сейчас на них), дальше — через остановки; стоянка — повтор точки. */
+  private plan(w: Walker, lead: Cell[], legs: Leg[], start: number, speed: number) {
+    const pts: number[] = lead.flat();
+    const planned: Leg[] = [];
+    let from = lead[lead.length - 1];
+    for (const leg of legs) {
+      const path = findPath(this.layout.grid, from, leg.cell) ?? [from, leg.cell];
+      // первая точка пути — та, где человек уже стоит
+      for (const [x, y] of path.slice(1)) pts.push(x, y);
+      const arrive = pts.length / 2 - 1;
+      for (let i = Math.round(leg.dwell * speed); i > 0; i--) pts.push(leg.cell[0], leg.cell[1]);
+      planned.push({ ...leg, arrive, leave: pts.length / 2 - 1 });
+      from = leg.cell;
+    }
+    w.pts = pts;
+    w.start = start;
+    w.speed = speed;
+    w.legs = planned;
+    w.target = planned[planned.length - 1].key;
+  }
+
+  private leg(p: Placement): Leg {
+    const cell = this.targetOf(p);
+    return { key: cellKey(cell), cell, kind: legKind(p.doing), dwell: DWELL[p.doing.kind] ?? 0, arrive: 0, leave: 0 };
   }
 
   private targetOf(p: Placement): Cell {
@@ -168,9 +263,5 @@ export class Walkers {
     // мест нет — стоит у регистратуры: восемнадцати стульев хватает на обычную очередь
     if ('seat' in p.where) return layout.seats[this.seats.get(p.id) ?? -1] ?? layout.spots.registration;
     return layout.benches[this.benches.get(p.id) ?? -1] ?? layout.spots.registration;
-  }
-
-  private path(from: Cell, to: Cell): number[] {
-    return (findPath(this.layout.grid, from, to) ?? [from, to]).flat();
   }
 }

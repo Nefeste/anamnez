@@ -1,7 +1,8 @@
-// Смена в амбулатории (spec 2026-09-first-shift): сверху — карта амбулатории, под ней
-// очередь с часами и скоростями, кто в кабинете, кто на обследованиях, что происходит;
-// после закрытия дня — его итоги. Часы идут, только пока этот экран на виду и в кабинете
-// никого (ADR 0005).
+// Смена в амбулатории (spec 2026-09-first-shift): сверху — карта амбулатории (коснулись
+// человека — под картой, кто это), под ней очередь с часами и скоростями, кто в кабинете,
+// кто на обследованиях, что происходит; после закрытия дня — его итоги. Часы идут, только
+// пока этот экран на виду и в кабинете никого (ADR 0005). Приглашённый идёт в кабинет, и
+// его карта открывается, когда он вошёл.
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
@@ -12,11 +13,11 @@ import { ClinicMap } from '@/render/map/ClinicMap';
 import { CLINIC } from '@/state/clinicMap';
 import {
   callPatient, closeDay, loadShift, nextDay, openCase, pauseClock, type QueueRow, type ShiftView, SPEEDS, type Speed, type SummaryView,
-  saveNow, setSpeed, skipIdle, startShift, TICK_MS, tick, useShift,
+  saveNow, setSpeed, skipIdle, startShift, TICK_MS, tick, useShift, type WhoView,
 } from '@/state/session';
 import { gradeColor } from '@/ui/case/OutcomeScreen';
 import { Button, Card, Chip, Chips, H, P, Screen, Sheet, Tabs } from '@/ui/components';
-import { colors, radius, space } from '@/ui/theme';
+import { colors, radius, space, touch } from '@/ui/theme';
 
 export default function ShiftScreen() {
   const v = useShift();
@@ -49,10 +50,22 @@ export default function ShiftScreen() {
 type SpeedKey = 'pause' | 'x1' | 'x2' | 'x4';
 const speedKey = (s: Speed): SpeedKey => (s === 1 ? 'x1' : s === 2 ? 'x2' : 'x4');
 
+/** Карта пациента открывается один раз, даже если он вошёл и игрок коснулся кнопки разом. */
+let enteredAt = 0;
+function openVisit() {
+  const now = Date.now();
+  if (now - enteredAt < 1000) return;
+  enteredAt = now;
+  router.push('/shift/patient');
+}
+
 function Queue({ v }: { v: ShiftView }) {
   const t = T.shift;
   const { width } = useWindowDimensions();
   const [focused, setFocused] = useState(true);
+  // кого коснулись на карте; кого пригласили — он идёт в кабинет
+  const [selected, setSelected] = useState<string>();
+  const [entering, setEntering] = useState<string>();
 
   // часы — только пока экран на виду: поверх него карта пациента или разбор
   useFocusEffect(
@@ -72,6 +85,7 @@ function Queue({ v }: { v: ShiftView }) {
         clearInterval(id);
         saveNow();
         setFocused(false);
+        setEntering(undefined);
       };
     }, []),
   );
@@ -86,15 +100,23 @@ function Queue({ v }: { v: ShiftView }) {
     }
   };
 
-  // двойное касание не открывает карту дважды: второй вызов не проходит — кабинет занят
+  // двойное касание не зовёт дважды: второй вызов не проходит — кабинет занят. Карта
+  // пациента — когда он дошёл до кабинета (ClinicMap, onArrive) или по кнопке сразу
   const call = (id: string) => {
     buzz('tap');
-    if (callPatient(id)) router.push('/shift/patient');
+    if (callPatient(id)) {
+      setSelected(undefined);
+      setEntering(id);
+    }
+  };
+  const enter = () => {
+    setEntering(undefined);
+    openVisit();
   };
 
   const first = v.queue[0];
   const footer = v.inRoom
-    ? <Button testID="shift-continue" title={`${t.continueVisit(v.inRoom.name)} ▶`} onPress={() => router.push('/shift/patient')} />
+    ? <Button testID="shift-continue" title={`${entering === v.inRoom.id ? t.entering(v.inRoom.name) : t.continueVisit(v.inRoom.name)} ▶`} onPress={enter} />
     : first
       ? <Button testID="shift-call" title={`${t.call(first.name)} ▶`} hint={v.queue.length > 1 ? t.callHint : undefined} onPress={() => call(first.id)} />
       : v.allDone
@@ -106,15 +128,22 @@ function Queue({ v }: { v: ShiftView }) {
 
   // люди — из вида смены (пересобирается с каждым ходом часов), а не из живого состояния:
   // вызов по изменяемому объекту смены React Compiler запомнил бы, и карта застыла бы
+  const who = selected === undefined ? undefined : v.who[selected];
   const map = (
-    <ClinicMap
-      layout={CLINIC}
-      people={v.people}
-      width={Math.min(width, 640)}
-      active={focused}
-      label={t.map.label(v.queue.length, v.away.length, v.inRoom?.name)}
-      onCall={call}
-    />
+    <>
+      <ClinicMap
+        layout={CLINIC}
+        people={v.people}
+        width={Math.min(width, 640)}
+        active={focused}
+        label={t.map.label(v.queue.length, v.away.length, v.inRoom?.name)}
+        selected={who ? selected : undefined}
+        awaiting={entering}
+        onSelect={setSelected}
+        onArrive={enter}
+      />
+      {who && selected !== undefined ? <WhoStrip who={who} onCall={who.callable ? () => call(selected) : undefined} /> : null}
+    </>
   );
 
   return (
@@ -170,6 +199,27 @@ function Queue({ v }: { v: ShiftView }) {
 }
 
 const TRIAGE_COLOR: Record<Triage, string> = { red: colors.red, yellow: colors.yellow, green: colors.green };
+
+/** Кого коснулись на карте: кто это и что делает; ждущего приёма можно пригласить. */
+function WhoStrip({ who, onCall }: { who: WhoView; onCall?: () => void }) {
+  return (
+    <View testID="map-who" style={styles.who}>
+      <View style={styles.itemHead}>
+        <Text style={styles.itemName} numberOfLines={1}>{who.title}</Text>
+        {who.triage ? <Text style={[styles.pill, styles.whoPill, { backgroundColor: TRIAGE_COLOR[who.triage] }]}>{T.shift.triage[who.triage]}</Text> : null}
+      </View>
+      {who.complaint ? <Text style={styles.itemText} numberOfLines={1}>{`«${who.complaint}»`}</Text> : null}
+      <View style={styles.whoFoot}>
+        <Text style={[styles.itemMeta, styles.whoDoing]}>{who.doing}</Text>
+        {onCall ? (
+          <Pressable testID="map-invite" accessibilityRole="button" onPress={onCall} style={({ pressed }) => [styles.invite, pressed && styles.pressed]}>
+            <Text style={styles.inviteText}>{`${T.shift.map.invite} ▶`}</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    </View>
+  );
+}
 
 function QueueItem({ r, disabled, onPress }: { r: QueueRow; disabled: boolean; onPress: () => void }) {
   return (
@@ -269,6 +319,12 @@ const styles = StyleSheet.create({
   itemText: { fontSize: 14, color: colors.ink },
   itemMeta: { fontSize: 13, color: colors.muted },
   pill: { fontSize: 12, fontWeight: '700', color: '#fff', borderRadius: 10, paddingHorizontal: space.s, paddingVertical: 2, overflow: 'hidden' },
+  who: { gap: 2, width: '100%', maxWidth: 640, paddingHorizontal: space.l, paddingVertical: space.s, borderTopWidth: 1, borderTopColor: colors.line },
+  whoPill: { flexShrink: 0 },
+  whoFoot: { flexDirection: 'row', alignItems: 'center', gap: space.m },
+  whoDoing: { flex: 1 },
+  invite: { minHeight: touch, justifyContent: 'center', paddingHorizontal: space.l, borderRadius: radius, backgroundColor: colors.accent },
+  inviteText: { fontSize: 15, fontWeight: '700', color: '#fff' },
   log: { fontSize: 14, lineHeight: 20, color: colors.ink },
   logRed: { color: colors.red, fontWeight: '600' },
   caseRow: { flexDirection: 'row', alignItems: 'center', gap: space.m, paddingVertical: space.s, borderBottomWidth: 1, borderBottomColor: colors.line },
