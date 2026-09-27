@@ -2,7 +2,8 @@
 // плашками. Открывается и из «Что это?» в карте пациента, и из разбора случая. У болезни —
 // сколько раз она встречалась в практике игрока (профиль).
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { Text } from '@/ui/text';
 import { db } from '@/content';
 import { T } from '@/i18n';
 import { article } from '@/state/encyclopedia';

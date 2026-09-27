@@ -1,7 +1,8 @@
 // Итог приёма и разбор (03-game-design.md §5): что было на самом деле, что было дальше,
 // оценки по категориям, затем разбор. Главная кнопка — внизу, под большим пальцем: у
 // прототипа «Следующий пациент», у смены — к очереди или к итогам дня.
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { Text } from '../text';
 import { db } from '@/content';
 import { T } from '@/i18n';
 import type { VisitView } from '@/state/caseView';

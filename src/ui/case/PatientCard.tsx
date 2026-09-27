@@ -3,7 +3,8 @@
 // внизу. Общая для прототипа П4 и смены: вид и действия приходят снаружи.
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
+import { Text } from '../text';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { buzz, play } from '@/audio/sounds';
 import { T } from '@/i18n';

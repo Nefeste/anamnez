@@ -5,7 +5,8 @@
 // его карта открывается, когда он вошёл.
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Text } from '@/ui/text';
 import { buzz, play } from '@/audio/sounds';
 import type { Difficulty, Triage } from '@/engine/shift/types';
 import { T } from '@/i18n';

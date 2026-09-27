@@ -3,7 +3,8 @@
 // Выбор — черновик приёма: можно вернуться, дообследовать и продолжить.
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { StyleSheet, Text } from 'react-native';
+import { StyleSheet } from 'react-native';
+import { Text } from '../text';
 import type { Setting } from '@/content/types';
 import { T } from '@/i18n';
 import { conditionTerm, diagnosisGroups, type TermInfo, treatmentTerm, type VisitView } from '@/state/caseView';

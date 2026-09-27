@@ -1,5 +1,6 @@
 // Выбор сложности (03-game-design.md §14): при начале практики и при «Начать заново».
-import { StyleSheet, Text } from 'react-native';
+import { StyleSheet } from 'react-native';
+import { Text } from './text';
 import type { Difficulty } from '@/engine/shift/types';
 import { T } from '@/i18n';
 import { P, Tabs } from './components';

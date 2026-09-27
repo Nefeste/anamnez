@@ -1,7 +1,8 @@
 // «Что это?» — справка простыми словами поверх экрана (03-game-design.md §5): общая для
 // приёма и решения. Справка — короткая выжимка статьи энциклопедии; «Подробнее» ведёт в
 // полную статью (§11), «назад» из неё — обратно на экран.
-import { StyleSheet, Text } from 'react-native';
+import { StyleSheet } from 'react-native';
+import { Text } from './text';
 import { T } from '@/i18n';
 import { Button, H, P, Sheet } from './components';
 import { openArticle } from './encyclopedia';

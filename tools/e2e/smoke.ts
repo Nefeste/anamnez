@@ -118,6 +118,21 @@ try {
   check((await vibration()) === 'false' && (await quiet()) === 'true', 'настройки: вибрация и громкость — те же после перезапуска');
   await page.getByTestId('settings-vibration').click();
   await page.getByTestId('sound-3').click();
+  // размер текста: «Крупный» — шрифт в 1,3 раза больше; вернуть «Обычный»
+  const fontOf = () => page.getByTestId('settings-about').locator('div[dir="auto"]').first().evaluate(el => parseFloat(getComputedStyle(el).fontSize));
+  const normal = await fontOf();
+  await page.getByTestId('text-size-2').click();
+  const large = await fontOf();
+  check(Math.abs(large / normal - 1.3) < 0.02, `настройки: размер текста «Крупный» — ${normal} → ${large} px`);
+  await page.getByTestId('text-size-0').click();
+  // отчёт об ошибке: весь текст виден, описание — первой строкой
+  await page.getByTestId('settings-report').click();
+  await page.getByTestId('report-text').waitFor({ timeout: 5000 });
+  await page.getByTestId('report-description').fill('Проверка отчёта');
+  const report = await text(page, 'report-text');
+  check(report.startsWith('Проверка отчёта') && report.includes(`сборка ${JSON.parse(readFileSync(join(ROOT, 'app.json'), 'utf8')).expo.android.versionCode}`) && report.includes('Практики нет'), `отчёт об ошибке: «${report.split('\n').slice(0, 5).join(' · ')}»`);
+  await page.goto(`${base}/settings`);
+  await page.getByTestId('settings-about').waitFor({ timeout: 10_000 });
   await page.getByTestId('settings-about').click();
   await page.getByTestId('about-version').waitFor({ timeout: 5000 });
   const version = JSON.parse(readFileSync(join(ROOT, 'app.json'), 'utf8')).expo.version;

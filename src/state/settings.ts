@@ -1,5 +1,5 @@
 // Настройки игрока (03-game-design.md §12, spec 2026-09-first-shift): громкость звуков,
-// вибрация, автопауза смены и отметка, что оговорка первого запуска прочитана
+// вибрация, автопауза смены, размер текста и отметка, что оговорка первого запуска прочитана
 // (11-publishing.md §3). Лежат в слоте `settings` тем же сырым хранилищем, что и смена
 // (ADR 0010): запись атомарная, с копиями. Модуль, как session.ts, не знает про платформу —
 // хранилище приходит снаружи (setSettingsStore).
@@ -11,6 +11,8 @@ export const SETTINGS_SCHEMA_VERSION = 1;
 
 /** Громкость звуков — четыре ступени: одним касанием, без ползунка. */
 export const VOLUMES = [0, 0.35, 0.7, 1] as const;
+/** Размер текста — три ступени (03-game-design.md §12); системный размер Android — поверх. */
+export const TEXT_SCALES = [1, 1.15, 1.3] as const;
 
 export interface Settings {
   /** громкость звуков игры, 0–1 */
@@ -22,9 +24,11 @@ export interface Settings {
   pauseOnResults: boolean;
   /** оговорка первого запуска прочитана и закрыта */
   disclaimerAccepted: boolean;
+  /** множитель размера текста — одна из TEXT_SCALES */
+  textScale: number;
 }
 
-export const DEFAULTS: Settings = { sound: 1, vibration: true, pauseOnRed: true, pauseOnResults: true, disclaimerAccepted: false };
+export const DEFAULTS: Settings = { sound: 1, vibration: true, pauseOnRed: true, pauseOnResults: true, disclaimerAccepted: false, textScale: 1 };
 
 export interface SettingsView extends Settings {
   /** ready — прочитаны с диска (или их там нет и действуют умолчания) */
@@ -63,7 +67,8 @@ export function sanitize(data: unknown): Settings {
   const d = (data !== null && typeof data === 'object' ? data : {}) as Record<string, unknown>;
   const flag = (k: 'vibration' | 'pauseOnRed' | 'pauseOnResults' | 'disclaimerAccepted') => (typeof d[k] === 'boolean' ? (d[k] as boolean) : DEFAULTS[k]);
   const sound = typeof d.sound === 'number' && d.sound >= 0 && d.sound <= 1 ? d.sound : DEFAULTS.sound;
-  return { sound, vibration: flag('vibration'), pauseOnRed: flag('pauseOnRed'), pauseOnResults: flag('pauseOnResults'), disclaimerAccepted: flag('disclaimerAccepted') };
+  const textScale = (TEXT_SCALES as readonly number[]).includes(d.textScale as number) ? (d.textScale as number) : DEFAULTS.textScale;
+  return { sound, vibration: flag('vibration'), pauseOnRed: flag('pauseOnRed'), pauseOnResults: flag('pauseOnResults'), disclaimerAccepted: flag('disclaimerAccepted'), textScale };
 }
 
 /** Прочитать настройки, если ещё не читали; файла нет или он испорчен — умолчания. */

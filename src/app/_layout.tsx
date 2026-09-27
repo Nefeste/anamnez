@@ -7,6 +7,7 @@ import { AppState } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { T } from '@/i18n';
+import { installErrorLog } from '@/state/errors';
 import { loadProfile, setProfileStore } from '@/state/profile';
 import { saveNow, setStore } from '@/state/session';
 import { loadSettings, setSettingsStore } from '@/state/settings';
@@ -16,6 +17,8 @@ import { colors } from '@/ui/theme';
 setStore(rawStore);
 setSettingsStore(rawStore);
 setProfileStore(rawStore);
+// сбои — в журнал для «Сообщить об ошибке»; только на телефоне
+void installErrorLog(rawStore);
 // громкость и вибрация нужны и тому, кто пришёл не через меню; профиль — чтобы записывать приёмы
 loadSettings();
 loadProfile();
@@ -42,6 +45,7 @@ export default function RootLayout() {
           <Stack.Screen name="index" options={{ title: T.common.appName }} />
           <Stack.Screen name="settings" options={{ title: T.settings.title }} />
           <Stack.Screen name="about" options={{ title: T.about.title }} />
+          <Stack.Screen name="report" options={{ title: T.report.title }} />
           <Stack.Screen name="sources" options={{ title: T.about.sourcesTitle }} />
           <Stack.Screen name="encyclopedia/index" options={{ title: T.encyclopedia.title }} />
           <Stack.Screen name="encyclopedia/[section]" options={{ title: T.encyclopedia.title }} />

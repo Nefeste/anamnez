@@ -1,6 +1,7 @@
 // Общие элементы интерфейса. Без системного Alert: в веб-сборке он не работает (AGENTS.md).
 import type { ReactNode } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Switch, Text, View, type ViewStyle } from 'react-native';
+import { Modal, Pressable, ScrollView, StyleSheet, Switch, View, type ViewStyle } from 'react-native';
+import { Text } from './text';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, space, touch } from './theme';
 

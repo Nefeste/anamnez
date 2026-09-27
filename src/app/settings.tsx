@@ -1,15 +1,16 @@
 // Настройки (03-game-design.md §12, spec 2026-09-first-shift): звук, вибрация, автопауза
-// смены; «Об игре»; прототипы первого этапа — ими на телефоне меряют отпечаток движка,
+// смены, размер текста; «Сообщить об ошибке»; «Об игре»; прототипы первого этапа — ими на телефоне меряют отпечаток движка,
 // кадры карты и запись сохранения.
 import { type Href, router } from 'expo-router';
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
 import { play } from '@/audio/sounds';
 import { T } from '@/i18n';
-import { loadSettings, updateSettings, useSettings, VOLUMES } from '@/state/settings';
+import { loadSettings, TEXT_SCALES, updateSettings, useSettings, VOLUMES } from '@/state/settings';
 import { Button, Card, H, P, Screen, Tabs, Toggle } from '@/ui/components';
 
 type Level = '0' | '1' | '2' | '3';
+type Size = '0' | '1' | '2';
 
 /** Ближайшая ступень громкости — файл могла записать и другая версия игры. */
 const levelOf = (sound: number): Level => {
@@ -52,6 +53,17 @@ export default function SettingsScreen() {
         <Toggle testID="settings-pause-red" title={t.pauseOnRed} hint={t.pauseHint} value={s.pauseOnRed} onChange={v => updateSettings({ pauseOnRed: v })} />
         <Toggle testID="settings-pause-results" title={t.pauseOnResults} value={s.pauseOnResults} onChange={v => updateSettings({ pauseOnResults: v })} />
       </Card>
+      <Card>
+        <H>{t.text}</H>
+        <P muted>{t.textSize}</P>
+        <Tabs<Size>
+          testPrefix="text-size"
+          value={String(Math.max(0, TEXT_SCALES.findIndex(k => k === s.textScale))) as Size}
+          onChange={k => updateSettings({ textScale: TEXT_SCALES[Number(k)] })}
+          items={t.textSizes.map((title, i) => ({ key: String(i) as Size, title }))}
+        />
+      </Card>
+      <Button testID="settings-report" kind="plain" title={t.report} hint={t.reportHint} onPress={() => router.push('/report')} />
       <Button testID="settings-about" kind="plain" title={t.about} hint={t.aboutHint} onPress={() => router.push('/about')} />
       <H>{t.checks}</H>
       <P muted>{t.checksHint}</P>

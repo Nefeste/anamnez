@@ -199,7 +199,7 @@ export const spikes = {
   },
   save: {
     title: 'Сохранение и звук',
-    saveBtn: 'Сохранить 60 пациентов',
+    saveBtn: 'Сохранить 60\u00a0пациентов',
     loadBtn: 'Прочитать',
     corruptBtn: 'Испортить текущий файл',
     saved: (kb: number, ms: number, json: number, files: number) => `Записано ${kb}\u00a0КБ за ${ms}\u00a0мс: JSON — ${json}\u00a0мс, файлы — ${files}\u00a0мс`,
