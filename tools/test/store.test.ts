@@ -4,6 +4,7 @@
 import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { PRIVACY_URL, SUPPORT_EMAIL } from '../../src/info';
 import { CAPTIONS } from '../store/captions';
 
 const STORE = join(import.meta.dir, '../../store');
@@ -60,6 +61,16 @@ describe('store: тексты', () => {
     for (const f of TEXTS) {
       const text = read(f);
       for (const re of [...FORBIDDEN, ...CLAIMS]) expect({ file: f, found: re.test(text) ? re.source : null }).toEqual({ file: f, found: null });
+    }
+  });
+
+  test('почта поддержки — везде та же, что в игре; в карточке и политике нет заглушек «⟨…⟩»', () => {
+    for (const f of TEXTS) expect({ file: f, has: read(f).includes(SUPPORT_EMAIL) }).toEqual({ file: f, has: true });
+    expect(listing).toContain(PRIVACY_URL);
+    // карточка и политика уходят в магазин и на сайт как есть; на страницах сайта ждёт
+    // ссылка на карточку RuStore — её вписывают, когда карточка появится
+    for (const f of ['listing.ru.md', 'privacy.ru.md', 'privacy.en.md']) {
+      expect({ file: f, placeholder: read(f).match(/⟨[^⟩]*⟩/)?.[0] ?? null }).toEqual({ file: f, placeholder: null });
     }
   });
 

@@ -16,6 +16,7 @@ import { type Command, DAY, type Notice, SHIFT_END, SHIFT_SCHEMA_VERSION, type S
 import { T } from '@/i18n';
 import { type Arrival, type Decision, decisionOf, hhmm, makeCaseView, outcomeText, patientName, type VisitView } from './caseView';
 import { loadSlot, type RawStore, saveSlot } from './saves';
+import { settings } from './settings';
 
 export const SLOT = 'shift';
 /** Скорость часов на карте — игровых минут в секунду. */
@@ -265,14 +266,15 @@ function allDone(s: ShiftState) {
 
 /**
  * Время на карте: идёт, пока в кабинете никого. Пришёл «красный» или вернулся с
- * результатами — пауза. Отдаёт случившееся — для звука.
+ * результатами — пауза, если она не выключена в настройках. Отдаёт случившееся — для звука.
  */
 export function tick(ms: number = TICK_MS): Notice[] {
   const sess = session;
   if (!sess || sess.paused || !sess.s.dayOpen || sess.s.current || allDone(sess.s)) return [];
   const notices = run(sess, { kind: 'advance', seconds: Math.round((ms / 1000) * sess.speed * 60) });
-  const red = notices.find(n => n.kind === 'arrived' && n.triage === 'red');
-  const back = notices.find(n => n.kind === 'resultsReady' && sess.s.patients[n.id].status === 'waiting');
+  const { pauseOnRed, pauseOnResults } = settings();
+  const red = pauseOnRed ? notices.find(n => n.kind === 'arrived' && n.triage === 'red') : undefined;
+  const back = pauseOnResults ? notices.find(n => n.kind === 'resultsReady' && sess.s.patients[n.id].status === 'waiting') : undefined;
   if (red && red.kind === 'arrived') pause(sess, T.shift.pause.red(nameOf(sess.s.patients[red.id])));
   else if (back && back.kind === 'resultsReady') pause(sess, T.shift.pause.results(nameOf(sess.s.patients[back.id])));
   changed();

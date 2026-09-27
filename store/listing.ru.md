@@ -88,4 +88,4 @@
 - сайт — https://gornitsa.games
 - политика конфиденциальности — https://gornitsa.games/anamnez/privacy (текст —
   [`privacy.ru.md`](privacy.ru.md), [`privacy.en.md`](privacy.en.md))
-- почта поддержки — ⟨вписывает владелец: та же, что в карточке «Вотчины»⟩
+- почта поддержки — support@gornitsa.games

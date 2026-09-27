@@ -1,8 +1,10 @@
 // Звуки и вибрация (03-game-design.md §13, 06-architecture.md §10). В движке звуков нет:
 // их вызывает интерфейс по событиям. Короткие звуки загружаются один раз в проигрыватели.
+// Громкость и вибрация — из настроек игрока.
 import { type AudioPlayer, createAudioPlayer } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
 import { Platform } from 'react-native';
+import { settings } from '@/state/settings';
 
 export type SoundName = 'tap' | 'ready' | 'urgent';
 
@@ -26,8 +28,10 @@ function player(name: SoundName | 'ambient'): AudioPlayer {
 }
 
 export function play(name: SoundName) {
+  const level = settings().sound;
+  if (level === 0) return;
   const p = player(name);
-  p.volume = name === 'tap' ? volume.ui : volume.events;
+  p.volume = (name === 'tap' ? volume.ui : volume.events) * level;
   p.seekTo(0).catch(() => undefined);
   p.play();
 }
@@ -35,14 +39,14 @@ export function play(name: SoundName) {
 export function setAmbient(on: boolean) {
   const p = player('ambient');
   p.loop = true;
-  p.volume = volume.ambient;
+  p.volume = volume.ambient * settings().sound;
   if (on) p.play();
   else p.pause();
 }
 
-/** Вибрация на срочное и на готовый результат; в вебе её нет. */
+/** Вибрация на срочное и на готовый результат; в вебе её нет, в настройках её можно выключить. */
 export function buzz(kind: 'urgent' | 'ready' | 'tap') {
-  if (Platform.OS === 'web') return;
+  if (Platform.OS === 'web' || !settings().vibration) return;
   if (kind === 'urgent') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => undefined);
   else if (kind === 'ready') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
   else Haptics.selectionAsync().catch(() => undefined);

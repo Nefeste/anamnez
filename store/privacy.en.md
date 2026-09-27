@@ -51,4 +51,4 @@ EU).
 
 If this policy changes, the new version will appear on this page with a new date.
 
-Questions — ⟨owner's email⟩.
+Questions — support@gornitsa.games.
