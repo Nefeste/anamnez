@@ -40,6 +40,9 @@ export default function RootLayout() {
           <Stack.Screen name="settings" options={{ title: T.settings.title }} />
           <Stack.Screen name="about" options={{ title: T.about.title }} />
           <Stack.Screen name="sources" options={{ title: T.about.sourcesTitle }} />
+          <Stack.Screen name="encyclopedia/index" options={{ title: T.encyclopedia.title }} />
+          <Stack.Screen name="encyclopedia/[section]" options={{ title: T.encyclopedia.title }} />
+          <Stack.Screen name="encyclopedia/article/[id]" options={{ title: T.encyclopedia.title }} />
           <Stack.Screen name="spikes/engine" options={{ title: T.spikes.engine.title }} />
           <Stack.Screen name="spikes/map" options={{ title: T.spikes.map.title, gestureEnabled: false }} />
           <Stack.Screen name="spikes/patient" options={{ title: T.spikes.patient.title }} />

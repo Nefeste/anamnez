@@ -32,6 +32,9 @@ const check = (ok: boolean, what: string) => {
   if (!ok) failures.push(what);
 };
 const text = async (page: Page, id: string) => (await page.getByTestId(id).innerText()).trim();
+/** Только видимое: в веб-стеке предыдущий экран может остаться в DOM (статья поверх статьи). */
+const visible = (page: Page, id: string) => page.locator(`[data-testid="${id}"]:visible`);
+const visibleText = async (page: Page, id: string) => (await visible(page, id).first().innerText()).trim();
 
 /** Часы смены на ×4, пока не выполнится условие; автопаузу («срочный», «результаты») снимаем. */
 async function runClockUntil(page: Page, done: () => Promise<boolean>, ms = 60_000): Promise<boolean> {
@@ -110,6 +113,28 @@ try {
   const sources = await page.getByTestId('source').count();
   check(sources > 50, `«Об игре»: источники медицинской базы — ${sources}`);
 
+  // энциклопедия: оговорка вверху; раздел → статья → ссылка в статью обследования; поиск
+  await page.goto(base);
+  await page.getByTestId('menu-encyclopedia').click();
+  await page.getByTestId('enc-section-conditions').waitFor({ timeout: 10_000 });
+  check(await page.getByTestId('enc-disclaimer').isVisible(), 'энциклопедия: оговорка вверху раздела');
+  await page.screenshot({ path: join(OUT, '11-encyclopedia.png') });
+  await page.getByTestId('enc-section-conditions').click();
+  await visible(page, 'enc-item-cond.pneumonia_cap').click();
+  await visible(page, 'enc-article-title').waitFor({ timeout: 5000 });
+  const blocks = await visible(page, 'enc-block-signs').count() + await visible(page, 'enc-block-confirm').count()
+    + await visible(page, 'enc-block-similar').count() + await visible(page, 'enc-block-treatment').count() + await visible(page, 'enc-block-sources').count();
+  check((await visibleText(page, 'enc-article-title')) === 'Внебольничная пневмония' && blocks === 5, 'энциклопедия: статья болезни — признаки, как подтвердить, с чем спутать, лечение, источники');
+  await page.screenshot({ path: join(OUT, '11-article.png'), fullPage: true });
+  await visible(page, 'enc-link-exam.xray_chest').first().click();
+  await visible(page, 'enc-block-confirms').waitFor({ timeout: 5000 });
+  check((await visibleText(page, 'enc-article-title')) === 'Рентгенография органов грудной клетки' && (await visible(page, 'enc-link-cond.pneumonia_cap').count()) > 0,
+    'энциклопедия: ссылка ведёт в статью обследования, а оттуда — обратно к болезни');
+  await page.goto(`${base}/encyclopedia`);
+  await page.getByTestId('enc-search').fill('подъем сегмента');
+  await page.getByTestId('enc-item-ecg.st_elevation').waitFor({ timeout: 5000 });
+  check(await page.getByTestId('enc-item-ecg.st_elevation').isVisible(), 'энциклопедия: поиск — «подъем» находит «подъём»');
+
   // П3: движок в V8 даёт тот же отпечаток, что в Bun
   await page.goto(`${base}/spikes/engine`);
   await page.getByTestId('engine-run').click();
@@ -140,8 +165,15 @@ try {
   check((await page.getByTestId('term-sheet').innerText()).toLowerCase().includes('что проверяет'), 'П4: «Что это?» объясняет обследование');
   await page.waitForTimeout(600); // карточка выезжает снизу
   await page.screenshot({ path: join(OUT, '04-term.png') });
-  await page.getByTestId('term-sheet-close').click();
-  await page.getByTestId('term-sheet').waitFor({ state: 'detached', timeout: 5000 });
+  // «Подробнее» — полная статья энциклопедии; «назад» — обратно в карту, справка закрыта
+  const sheet = await page.getByTestId('term-sheet').innerText();
+  await page.getByTestId('term-sheet-more').click();
+  await visible(page, 'enc-article-title').waitFor({ timeout: 5000 });
+  const termArticle = await visibleText(page, 'enc-article-title');
+  check(sheet.includes(termArticle), `П4: «Подробнее» в «Что это?» — статья «${termArticle}»`);
+  await page.goBack();
+  await page.getByTestId('exam-exam.ask_complaints').waitFor({ timeout: 5000 });
+  check((await page.getByTestId('term-sheet').count()) === 0, 'П4: из статьи «назад» — в карту пациента');
   await page.getByTestId('exam-exam.ask_complaints').click();
   await page.getByTestId('tab-examine').click();
   await page.getByTestId('exam-exam.lung_auscultation').click();
@@ -185,6 +217,14 @@ try {
   const overall = await text(page, 'visit-overall');
   check(outcome.length > 0 && /^[ABCD]$/.test(overall), `этап 2: исход и оценка случая — «${outcome}», итог ${overall}`);
   await page.screenshot({ path: join(OUT, '05-outcome.png') });
+  // разбор → энциклопедия: статья о том, что было на самом деле; поставленное — тоже
+  check(await page.getByTestId('visit-chosen-article').isVisible(), 'разбор: ошибся — есть статья и о поставленном диагнозе');
+  await page.getByTestId('visit-truth-article').click();
+  await visible(page, 'enc-article-title').waitFor({ timeout: 5000 });
+  const truthArticle = await visibleText(page, 'enc-article-title');
+  check(truth.includes(truthArticle), `разбор → энциклопедия: статья «${truthArticle}»`);
+  await page.goBack();
+  await page.getByTestId('visit-next').waitFor({ timeout: 5000 });
   await page.getByTestId('visit-next').click();
   await page.getByTestId('exam-exam.ask_complaints').waitFor({ timeout: 5000 });
   check((await page.getByTestId('tab-ask').getAttribute('aria-selected')) === 'true', 'П4: у следующего пациента открыта вкладка «Спросить»');

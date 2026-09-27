@@ -1,5 +1,5 @@
 id: risk.allergy_nsaid
-name: { ru: "Аллергия на НПВС и аспирин" }
+name: { ru: "Аллергия на НПВС" }
 prevalence: { m: 1, f: 1.5 }
 findings:
   - { f: hx.allergy_nsaid, band: always }

@@ -5,6 +5,7 @@ import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Glob } from 'bun';
+import { findBrand } from '../content/brands';
 
 const SRC = join(import.meta.dir, '../../src');
 const CYRILLIC = /[Ѐ-ӿ]/;
@@ -42,6 +43,12 @@ function stripComments(code: string): string {
 describe('строки интерфейса', () => {
   test('разбор комментариев', () => {
     expect(stripComments("a // привет\nb /* мир */ c 'строка // не комментарий'")).toBe("a \nb  c 'строка // не комментарий'");
+  });
+
+  test('в словаре интерфейса нет торговых названий лекарств (ADR 0012)', () => {
+    for (const file of new Glob('**/*.ts').scanSync(join(SRC, 'i18n'))) {
+      expect({ file, brand: findBrand(readFileSync(join(SRC, 'i18n', file), 'utf8')) }).toEqual({ file, brand: null });
+    }
   });
 
   test('кириллица только в src/i18n и в комментариях', () => {

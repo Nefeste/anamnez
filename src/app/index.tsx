@@ -1,5 +1,5 @@
 // Главное меню (spec 2026-09-first-shift, «Что увидит игрок»): продолжить, быстрая игра —
-// практика в амбулатории, настройки; кампания, энциклопедия и профиль — «скоро».
+// практика в амбулатории, энциклопедия, настройки; кампания и профиль — «скоро».
 // При первом запуске вместо меню — медицинская оговорка (11-publishing.md §3): закрыл — она
 // больше не показывается, полный текст остаётся в «Об игре».
 import { router } from 'expo-router';
@@ -41,8 +41,8 @@ export default function Menu() {
         hint={saved ? t.practiceAgainHint : t.practiceHint}
         onPress={() => (saved ? setRestart(true) : router.push('/shift'))}
       />
+      <Button testID="menu-encyclopedia" kind="plain" title={t.encyclopedia} hint={t.encyclopediaHint} onPress={() => router.push('/encyclopedia')} />
       <Button testID="menu-campaign" kind="plain" disabled title={t.campaign} hint={t.soon} onPress={() => undefined} />
-      <Button testID="menu-encyclopedia" kind="plain" disabled title={t.encyclopedia} hint={t.soon} onPress={() => undefined} />
       <Button testID="menu-profile" kind="plain" disabled title={t.profile} hint={t.soon} onPress={() => undefined} />
       <Button testID="menu-settings" kind="plain" title={t.settings} onPress={() => router.push('/settings')} />
       <Sheet visible={restart} onClose={() => setRestart(false)} closeTitle={t.cancel} testID="restart-sheet">
