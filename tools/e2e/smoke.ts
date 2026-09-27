@@ -265,6 +265,9 @@ try {
   await page.waitForTimeout(1500);
   const ticking = await text(page, 'shift-clock');
   check(ticking > opened, `смена: часы идут, пока в кабинете никого (${opened} → ${ticking})`);
+  // карта амбулатории над очередью: подпись для чтения с экрана — кто где
+  const mapLabel = (await page.getByTestId('clinic-map').getAttribute('aria-label')) ?? '';
+  check(await page.getByTestId('clinic-map').isVisible() && /В зале ожидания: [1-9]/.test(mapLabel), `смена: карта амбулатории — «${mapLabel}»`);
   await page.screenshot({ path: join(OUT, '08-shift-queue.png') });
   await page.getByTestId('shift-call').click();
   await page.getByTestId('exam-exam.ask_complaints').waitFor({ timeout: 10_000 });

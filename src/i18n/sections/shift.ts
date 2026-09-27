@@ -80,4 +80,20 @@ export const shift = {
   },
   news: (name: string, day: number, what: string) => `${name} (приём в день ${day}): ${what}`,
   verdict: { correct: '✓', partly: '≈', wrong: '✗' } as Record<string, string>,
+  map: {
+    rooms: {
+      reception: 'Регистратура',
+      triage: 'Медсестра',
+      office: 'Ваш кабинет',
+      procedure: 'Процедурная',
+      lab: 'Лаборатория',
+      waiting: 'Ожидание',
+      ecg: 'ЭКГ',
+      xray: 'Рентген',
+      toilet: 'Санузел',
+    } as Record<string, string>,
+    // для чтения с экрана: что на карте, словами
+    label: (waiting: number, away: number, inRoom: string | undefined) =>
+      `Карта амбулатории. В зале ожидания: ${patients(waiting)}; на обследованиях: ${patients(away)}; в кабинете: ${inRoom ?? 'никого'}.`,
+  },
 };

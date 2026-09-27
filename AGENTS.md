@@ -110,5 +110,8 @@ charter's `docs/05-rules.md` and are not repeated here. Project rules:
   manifest by a config plugin, debug keeps it for Metro. Any new permission must be added to the
   CI whitelist consciously.
 - The app's own confirm window is `Sheet` in `src/ui/components.tsx` (instead of `Alert`).
+- React Compiler memoizes calls by argument identity, and the engine mutates its state in place:
+  screens read data from the view rebuilt per version (`ShiftView` in `src/state/session.ts`),
+  never compute from the live state during render (`docs/06-architecture.md` §12).
 - Store texts never mention other games, TV shows, real insurers, clinics or drug brands
   (`docs/11-publishing.md`).

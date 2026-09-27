@@ -15,6 +15,7 @@ import { apply, current, newShift, observationsOf, reviewOf } from '@/engine/shi
 import { type Command, DAY, type Notice, SHIFT_END, SHIFT_SCHEMA_VERSION, type ShiftPatient, type ShiftState, type Triage } from '@/engine/shift/types';
 import { T } from '@/i18n';
 import { type Arrival, type Decision, decisionOf, hhmm, makeCaseView, outcomeText, patientName, type VisitView } from './caseView';
+import { CLINIC, type Placement, placements } from './clinicMap';
 import { loadSlot, type RawStore, saveSlot } from './saves';
 import { settings } from './settings';
 
@@ -92,6 +93,8 @@ export interface ShiftView {
   summary?: SummaryView;
   /** прочитана предыдущая копия: текущая была испорчена */
   restored: boolean;
+  /** кто где на карте амбулатории (clinicMap.ts) */
+  people: Placement[];
 }
 
 interface Session {
@@ -523,7 +526,7 @@ function summaryOf(s: ShiftState): SummaryView | undefined {
 
 const EMPTY: Omit<ShiftView, 'version' | 'status'> = {
   day: 0, clock: '', dayOpen: false, afterHours: false, allDone: false, speed: 1, paused: false,
-  queue: [], away: [], log: [], counts: { seen: 0, left: 0, waiting: 0, unseen: 0 }, restored: false,
+  queue: [], away: [], log: [], counts: { seen: 0, left: 0, waiting: 0, unseen: 0 }, restored: false, people: [],
 };
 
 function buildShiftView(): ShiftView {
@@ -550,6 +553,7 @@ function buildShiftView(): ShiftView {
     counts: { seen: s.summary.seen, left: s.summary.left, waiting: s.queue.length, unseen: s.queue.length + away.length + (inRoom ? 1 : 0) },
     summary: s.dayOpen ? undefined : summaryOf(s),
     restored: sess.restored,
+    people: placements(db, CLINIC, s),
   };
 }
 
