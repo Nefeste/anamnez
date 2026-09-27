@@ -451,15 +451,55 @@ try {
   const reception = await cellPoint(14, 12);
   await page.mouse.click(reception.x, reception.y);
   await page.getByTestId('room-status').waitFor({ timeout: 5000 });
-  check((await text(page, 'room-status')) === 'Работает', `стройка: карточка регистратуры — ${await text(page, 'room-status')}`);
+  check((await text(page, 'room-status')) === 'Не работает: нет регистратора', `стройка: карточка регистратуры — ${await text(page, 'room-status')}`);
   await page.getByTestId('room-card-close').click();
   await page.getByTestId('build-done').click();
   await page.getByTestId('sandbox-open-needs').waitFor({ timeout: 5000 });
-  check((await text(page, 'sandbox-open-needs')).includes('Зона ожидания, Кабинет врача') && !(await text(page, 'sandbox-open-needs')).includes('Регистратура'),
-    'песочница: регистратура есть — не хватает зоны ожидания и кабинета');
+  check((await text(page, 'sandbox-open-needs')).includes('Регистратура: нет регистратора, Зона ожидания, Кабинет врача'),
+    `песочница: регистратура есть, регистратора нет — ${await text(page, 'sandbox-open-needs')}`);
+  // персонал: кандидат-регистратор → нанять → назначить в регистратуру
+  await page.getByTestId('sandbox-staff').click();
+  await page.locator('[data-testid^="candidate-"]').first().waitFor({ timeout: 5000 });
+  const registrar = page.locator('[data-testid^="candidate-"]', { hasText: 'Регистратор' }).first();
+  await registrar.click();
+  await page.getByTestId('assign-r1').click();
+  const hiredText = await page.locator('[data-testid^="staff-s"]').first().innerText();
+  check(hiredText.includes('работает: регистратура'), `персонал: нанят и назначен — ${hiredText.replace(/\n/g, ' · ')}`);
+  await page.goBack();
+  await page.getByTestId('sandbox-open-needs').waitFor({ timeout: 5000 });
+  check(!(await text(page, 'sandbox-open-needs')).includes('Регистратура') && await page.getByTestId('sandbox-open').isDisabled(), 'песочница: регистратор на месте, но без зоны ожидания и кабинета смену не открыть');
   await page.goto(base);
   await page.getByTestId('menu-continue').waitFor({ timeout: 10_000 });
   check((await text(page, 'menu-continue')).includes('песочница: перед открытием'), `меню: «Продолжить» — последняя партия: ${(await text(page, 'menu-continue')).replace(/\n/g, ' · ')}`);
+
+  // песочница заново — с готовой амбулаторией: штат на местах; продали иммунохимический
+  // анализатор — ТТГ в карте пациента серым с причиной; «Открыть смену» — день 1 на своём плане
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-confirm').click();
+  await page.getByTestId('sandbox-from-clinic').click();
+  await page.getByTestId('sandbox-start').click();
+  await page.getByTestId('sandbox-build').waitFor({ timeout: 10_000 });
+  await page.getByTestId('sandbox-build').click();
+  await page.getByTestId('build-map').waitFor({ timeout: 10_000 });
+  await page.waitForTimeout(500);
+  const lab = await cellPoint(25, 3);
+  await page.mouse.click(lab.x, lab.y);
+  await page.getByTestId('room-sell-3').click();
+  await page.getByTestId('room-card-close').click();
+  await page.getByTestId('build-done').click();
+  await page.getByTestId('sandbox-open').waitFor({ timeout: 5000 });
+  await page.getByTestId('sandbox-open').click();
+  await page.getByTestId('shift-skip').click();
+  await page.getByTestId('shift-call').waitFor({ timeout: 5000 });
+  check(await page.getByTestId('clinic-map').isVisible(), 'песочница: смена открыта — карта своей больницы');
+  await page.getByTestId('shift-call').click();
+  await page.getByTestId('exam-exam.ask_complaints').waitFor({ timeout: 10_000 });
+  await page.getByTestId('tab-order').click();
+  const tsh = page.getByTestId('exam-exam.tsh');
+  await tsh.waitFor({ timeout: 5000 });
+  check(await tsh.isDisabled() && (await tsh.innerText()).includes('нет иммунохимического анализатора'), `песочница: ТТГ — «${(await tsh.innerText()).replace(/\n/g, ' · ')}»`);
+  check(!(await page.getByTestId('exam-exam.cbc').isDisabled()), 'песочница: общий анализ крови — можно');
+  await page.screenshot({ path: join(OUT, '13-sandbox-card.png') });
 
   // конец дня из сохранения: закрыть день, итоги, разбор случая из итогов, следующий день
   const day = await browser.newContext({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2 });

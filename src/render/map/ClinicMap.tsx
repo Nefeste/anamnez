@@ -4,7 +4,7 @@
 // (06-architecture.md §6). Касание выделяет человека — кто это, пишет экран смены; приглашённый
 // идёт в кабинет, и карта сообщает, когда он вошёл.
 import { Atlas, Canvas, Circle, Group, Picture, Skia, useRectBuffer, useRSXformBuffer } from '@shopify/react-native-skia';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useDerivedValue, useFrameCallback, useSharedValue } from 'react-native-reanimated';
@@ -60,7 +60,8 @@ export function ClinicMap({ layout, people, width, active, label, selected, awai
   const floor = useMemo(() => recordFloor(layout), [layout]);
   const objectSprites = useMemo(() => layout.objects.map(o => atlas.objectRect(o.kind)), [layout, atlas]);
   const objectXforms = useMemo(() => layout.objects.map(o => Skia.RSXform(CELL_PX / SPRITE, 0, o.x * CELL_PX, o.y * CELL_PX)), [layout]);
-  const [walkers] = useState(() => new Walkers(layout, CAPACITY));
+  // свой план песочницы меняется между сменами — с ним и ходоки: новые расставят всех по местам
+  const walkers = useMemo(() => new Walkers(layout, CAPACITY), [layout]);
   const scale = width / (layout.grid.w * CELL_PX);
   const height = layout.grid.h * CELL_PX * scale;
   const cell = CELL_PX * scale;

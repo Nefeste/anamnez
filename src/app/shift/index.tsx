@@ -41,9 +41,14 @@ export default function ShiftScreen() {
     );
   }
   if (v.status === 'none') return v.mode === 'sandbox' ? <NewSandbox onStart={opts => startSandbox(opts)} /> : <NewPractice />;
-  // песочница до первой смены — своя больница и стройка (spec 2026-09-own-hospital)
+  // песочница между сменами — своя больница: стройка, персонал, «Открыть смену» (spec 2026-09-own-hospital)
   if (v.mode === 'sandbox' && !v.dayOpen && v.day === 0) return <Evening v={v} />;
-  return v.dayOpen ? <Queue v={v} /> : <Summary v={v} />;
+  return (
+    <>
+      {v.mode === 'sandbox' && <Stack.Screen options={{ title: T.sandbox.title }} />}
+      {v.dayOpen ? <Queue v={v} /> : <Summary v={v} />}
+    </>
+  );
 }
 
 /** Своя больница между сменами: план, касса, «Стройка»; смена в ней — следующая часть этапа. */
@@ -63,11 +68,24 @@ function Evening({ v }: { v: ShiftView }) {
         <P testID="sandbox-summary">{`${t.cash(T.common.rub(v.cash ?? 0))} · ${t.rooms(b.plan.rooms.length)}`}</P>
       </Card>
       <BuildMap testID="sandbox-plan" plan={b.plan} width={w} height={h} tool="look" labels={labels} label={t.mapLabel} still onGhostMove={() => undefined} onStroke={() => undefined} onTapCell={() => undefined} />
-      <Card>
-        <Button testID="sandbox-open" kind="plain" disabled title={t.openShift} hint={t.openSoon} onPress={() => undefined} />
-        {b.open.length > 0 && <P muted testID="sandbox-open-needs">{`${t.needToOpen} ${b.open.map(x => blockText(db, x)).join(', ')}`}</P>}
-      </Card>
+      <OwnHospital />
     </Screen>
+  );
+}
+
+/** Между сменами в песочнице: персонал, чего не хватает, «Открыть смену». */
+function OwnHospital({ next }: { next?: boolean }) {
+  const t = T.sandbox;
+  const b = useBuild();
+  if (!b) return null;
+  const ready = b.open.length === 0;
+  return (
+    <Card>
+      {next && <Button testID="sandbox-build-evening" kind="plain" title={t.build} hint={t.buildHint} onPress={() => router.push('/sandbox/build')} />}
+      <Button testID="sandbox-staff" kind="plain" title={t.staffTitle} hint={t.staffHint} onPress={() => router.push('/sandbox/staff')} />
+      {!next && <Button testID="sandbox-open" disabled={!ready} title={t.openShift} hint={ready ? t.openHint : undefined} onPress={nextDay} />}
+      {!ready && <P muted testID="sandbox-open-needs">{`${t.needToOpen} ${b.open.map(x => blockText(db, x)).join(', ')}`}</P>}
+    </Card>
   );
 }
 
@@ -170,7 +188,7 @@ function Queue({ v }: { v: ShiftView }) {
   const map = (
     <>
       <ClinicMap
-        layout={CLINIC}
+        layout={v.layout ?? CLINIC}
         people={v.people}
         width={Math.min(width, 640)}
         active={focused}
@@ -282,6 +300,7 @@ function Summary({ v }: { v: ShiftView }) {
   const [confirm, setConfirm] = useState(false);
   const s = v.summary;
   if (!s) return null;
+  const own = v.mode === 'sandbox';
   const open = (id: string) => {
     openCase(id);
     router.push('/shift/outcome');
@@ -299,6 +318,8 @@ function Summary({ v }: { v: ShiftView }) {
         <P>{t.returns(s.returnsPlanned, s.returnsToday)}</P>
         <P muted>{t.moneyNote}</P>
       </Card>
+
+      {own && <OwnHospital next />}
 
       {s.seen > 0 && <Grades s={s} />}
 

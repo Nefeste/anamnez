@@ -6,10 +6,12 @@
 // меняется на месте; случайность — только из именованных ветвей зерна смены (ADR 0004).
 import type { ContentDb, Id, Season } from '../../content/types';
 import { fnv1a } from '../core/hash';
-import { build, emptyPlot, presetHospital, UNDO_DEPTH } from '../hospital/build';
+import { build, emptyPlot, type HospitalState, type Plan, planOf, presetHospital, UNDO_DEPTH } from '../hospital/build';
+import { examWhere, openBlocks, type Staffing, workingRooms } from '../hospital/requirements';
+import { applicantsOf, grow, memberAt, presetStaff, readingOf, type StaffMember, speedOf, staffingOf } from '../hospital/staff';
 import { RNG_VERSION, Rng } from '../core/rng';
 import { observe } from '../med/course';
-import { complaintObservations, runExam } from '../med/exams';
+import { complaintObservations, type ExamSkill, NORMAL_SKILL, runExam } from '../med/exams';
 import { generatePatient } from '../med/generate';
 import { knownFacts, posterior } from '../med/infer';
 import { evaluatePlan } from '../med/plan';
@@ -34,6 +36,56 @@ const SLOT_BOOKED = 6000;
 const WALK_INS: [number, number] = [2, 6];
 
 const branch = (s: ShiftState, name: string) => Rng.seeded(s.meta.seed).fork(name);
+
+// --- больница смены: план, штат, что работает (spec 2026-09-own-hospital, часть 8) ------------
+
+/** Больница смены: план, штат, кто на месте, какие помещения работают, стулья, есть ли доврачебный. */
+export interface HospitalCtx {
+  plan: Plan;
+  staff: StaffMember[];
+  staffed: Staffing;
+  working: Set<string>;
+  seats: number;
+  triage: boolean;
+}
+
+const presets = new WeakMap<ContentDb, { hospital: HospitalState; staff: StaffMember[] }>();
+const ctxs = new WeakMap<HospitalState, WeakMap<StaffMember[], HospitalCtx>>();
+
+/** Практика — готовая амбулатория каталога со своим штатом; песочница — своя больница. */
+function presetOf(db: ContentDb) {
+  let p = presets.get(db);
+  if (!p) {
+    const rec = db.presets['preset.clinic'];
+    p = { hospital: presetHospital(db, rec).hospital, staff: presetStaff(db, rec) };
+    presets.set(db, p);
+  }
+  return p;
+}
+
+/**
+ * План и штат меняются только между сменами, и каждый раз — новым объектом: за день план
+ * строится один раз.
+ */
+export function hospitalCtx(db: ContentDb, s: ShiftState): HospitalCtx {
+  const hospital = s.hospital ?? presetOf(db).hospital;
+  const staff = s.staff ?? presetOf(db).staff;
+  let byStaff = ctxs.get(hospital);
+  if (!byStaff) {
+    byStaff = new WeakMap();
+    ctxs.set(hospital, byStaff);
+  }
+  let c = byStaff.get(staff);
+  if (!c) {
+    const plan = planOf(db, hospital);
+    const staffed = staffingOf(staff);
+    const working = workingRooms(db, plan, staffed);
+    const live = plan.rooms.filter(r => working.has(r.id));
+    c = { plan, staff, staffed, working, seats: live.reduce((n, r) => n + r.seats.length, 0), triage: live.some(r => r.type === 'room.triage') };
+    byStaff.set(staff, c);
+  }
+  return c;
+}
 /** «Студент»: обследования не ошибаются, пациенты ждут в полтора раза дольше (03-game-design.md §14). */
 const exact = (s: ShiftState) => s.meta.difficulty === 'student';
 const STUDENT_PATIENCE = 1.5;
@@ -51,7 +103,7 @@ export function newShift(db: ContentDb, opts: { seed: number; season: Season; de
     queue: [],
     events: [],
     seq: 0,
-    rooms: { xray: 0, ecg: 0 },
+    rooms: {},
     returns: [],
     summary: emptySummary(1),
     history: [],
@@ -73,6 +125,8 @@ export function newSandbox(db: ContentDb, opts: { seed: number; season: Season; 
     ? presetHospital(db, db.presets['preset.clinic'], sb.plot).hospital
     : emptyPlot(w, h, sb.entrance, sb.corridor);
   const cash = opts.start === 'clinic' ? Math.floor((opts.budget * sb.clinicShare) / 100) : opts.budget;
+  const staff = opts.start === 'clinic' ? presetStaff(db, db.presets['preset.clinic']) : [];
+  const hired = applicantsOf(db, opts.seed >>> 0, 0, 1);
   return {
     meta: {
       schemaVersion: SHIFT_SCHEMA_VERSION, contentVersion: db.contentVersion, rngVersion: RNG_VERSION, mode: 'sandbox', start: opts.start,
@@ -85,7 +139,7 @@ export function newSandbox(db: ContentDb, opts: { seed: number; season: Season; 
     queue: [],
     events: [],
     seq: 0,
-    rooms: { xray: 0, ecg: 0 },
+    rooms: {},
     returns: [],
     summary: emptySummary(0),
     history: [],
@@ -93,6 +147,9 @@ export function newSandbox(db: ContentDb, opts: { seed: number; season: Season; 
     hospital,
     economy: { cash },
     undo: [],
+    staff,
+    candidates: hired.list,
+    nextStaff: hired.next,
   };
 }
 
@@ -148,7 +205,7 @@ export function apply(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
     case 'finish':
       return finish(db, s);
     case 'closeDay':
-      closeDay(s);
+      closeDay(db, s);
       return [];
     case 'nextDay':
       nextDay(db, s);
@@ -158,7 +215,39 @@ export function apply(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
     case 'buildEnd':
       building(db, s, cmd);
       return [];
+    case 'hire':
+    case 'fire':
+    case 'assign':
+      hiring(db, s, cmd);
+      return [];
   }
+}
+
+/** Найм — только в песочнице и между сменами. Назначенный на занятое место сменяет того, кто там был, — тот в резерв. */
+function hiring(db: ContentDb, s: ShiftState, cmd: Extract<Command, { kind: 'hire' | 'fire' | 'assign' }>) {
+  if (!s.staff || !s.hospital || s.dayOpen) return;
+  if (cmd.kind === 'hire') {
+    const c = s.candidates?.find(x => x.id === cmd.id);
+    if (!c) return;
+    s.staff = [...s.staff, c];
+    s.candidates = (s.candidates ?? []).filter(x => x.id !== cmd.id);
+    return;
+  }
+  const m = s.staff.find(x => x.id === cmd.id);
+  if (!m) return;
+  if (cmd.kind === 'fire') {
+    s.staff = s.staff.filter(x => x.id !== cmd.id);
+    return;
+  }
+  if (cmd.room !== undefined) {
+    const room = s.hospital.rooms.find(r => r.id === cmd.room);
+    if (!room || !db.rooms[room.type].staff.includes(m.role)) return;
+  }
+  s.staff = s.staff.map(x => {
+    if (x.id === m.id) return cmd.room === undefined ? { ...x, room: undefined } : { ...x, room: cmd.room };
+    if (cmd.room !== undefined && x.room === cmd.room && x.role === m.role) return { ...x, room: undefined };
+    return x;
+  });
 }
 
 /** Стройка — только в песочнице и только между сменами (ADR 0016); ошибка — ничего не меняется. */
@@ -181,6 +270,9 @@ function building(db: ContentDb, s: ShiftState, cmd: Extract<Command, { kind: 'b
   s.undo = [...(s.undo ?? []), { hospital: s.hospital, cash: s.economy.cash }].slice(-UNDO_DEPTH);
   s.hospital = r.state.hospital;
   s.economy.cash = r.state.cash;
+  // снесли помещение — кто в нём работал, в резерве
+  const gone = cmd.cmd.kind === 'demolish' ? cmd.cmd.room : undefined;
+  if (gone && s.staff?.some(m => m.room === gone)) s.staff = s.staff.map(m => (m.room === gone ? { ...m, room: undefined } : m));
 }
 
 export function current(s: ShiftState): ShiftPatient | undefined {
@@ -249,7 +341,7 @@ function returningPatient(db: ContentDb, s: ShiftState, ret: PlannedReturn) {
   });
 }
 
-function closeDay(s: ShiftState) {
+function closeDay(db: ContentDb, s: ShiftState) {
   if (!s.dayOpen) return;
   for (const p of Object.values(s.patients)) {
     if (p.status === 'waiting' || p.status === 'inRoom' || p.status === 'away' || p.status === 'coming') {
@@ -262,14 +354,27 @@ function closeDay(s: ShiftState) {
   s.events = [];
   s.dayOpen = false;
   s.history.push({ ...s.summary, grades: { ...s.summary.grades } });
+  // песочница: кто работал — на смену опытнее; вечером — новые кандидаты
+  if (s.staff && s.hospital) {
+    s.staff = s.staff.map(m => grow(db, m));
+    const c = applicantsOf(db, s.meta.seed, s.day, s.nextStaff ?? 1);
+    s.candidates = c.list;
+    s.nextStaff = c.next;
+  }
 }
 
 /** Следующий день: часы — на 08:00, кабинеты свободны, план прихода с повторными обращениями. */
 function nextDay(db: ContentDb, s: ShiftState) {
   if (s.dayOpen) return;
+  // своя больница: без регистратуры, зоны ожидания и кабинета смену не открыть
+  if (s.hospital) {
+    const c = hospitalCtx(db, s);
+    if (openBlocks(db, c.plan, c.working, c.staffed).length > 0) return;
+    s.undo = [];
+  }
   s.day++;
   s.t = (s.day - 1) * DAY + SHIFT_START;
-  s.rooms = { xray: 0, ecg: 0 };
+  s.rooms = {};
   s.summary = emptySummary(s.day);
   s.journal = [];
   s.dayOpen = true;
@@ -303,34 +408,58 @@ function call(db: ContentDb, s: ShiftState, id: string): Notice[] {
   return spend(db, s, p, MIN);
 }
 
-/** Обследование текущему пациенту. Цена для врача — сама процедура; рентген и ЭКГ — назначить. */
+/**
+ * Обследование текущему пациенту. Цена для врача — сама процедура; рентген и ЭКГ — назначить.
+ * Сделать можно, только если в больнице работает его помещение с подходящим аппаратом и есть
+ * где взять материал (spec 2026-09-own-hospital); иначе ничего не меняется. К аппарату —
+ * очередь по помещению: снимок делают там, где освободятся раньше. Время — с поправкой
+ * аппарата и человека, точность снимка — аппарата и рентгенолога; в готовой амбулатории
+ * всё ровно как в базе.
+ */
 function exam(db: ContentDb, s: ShiftState, examId: Id): Notice[] {
   const p = current(s);
   const e = db.exams[examId];
   if (!p || !e || p.done.includes(examId)) return [];
+  const ctx = hospitalCtx(db, s);
+  const where = examWhere(db, ctx.plan, ctx.working, ctx.staffed, examId);
+  if ('block' in where) return [];
+  const queued = e.kind === 'imaging' || e.kind === 'functional';
+  const rooms = e.room ? where.rooms.map(id => ctx.plan.rooms.find(r => r.id === id)!) : [];
+  const room = queued ? rooms.reduce((a, b) => ((s.rooms[b.id] ?? 0) < (s.rooms[a.id] ?? 0) ? b : a)) : rooms[0];
+  const eqId = room?.equipment.find(x => x !== null && (e.equipment ?? []).includes(x)) ?? undefined;
+  const eq = eqId ? db.equipment[eqId] : undefined;
+  // время: аппарат и тот, кто делает (первая должность помещения), — в процентах записанного
+  const pct = room ? Math.round((eq?.speed ?? 1) * speedOf(db, memberAt(ctx.staff, room.id, db.rooms[room.type].staff[0]))) : 100;
+  let skill: ExamSkill = NORMAL_SKILL;
+  if (room && e.kind === 'imaging') {
+    const [rs, rp] = readingOf(db, memberAt(ctx.staff, room.id, 'role.radiologist'));
+    skill = { sens: 1, spec: 1, sensPp: (eq?.quality.sens ?? 0) + rs, specPp: (eq?.quality.spec ?? 0) + rp };
+  }
+
   p.step++;
   p.done.push(examId);
   p.spent.money += e.cost;
   s.summary.money += e.cost;
-  const obs = runExam(db, p.patient, examId, branch(s, `exam:${p.id}:${p.done.length}:${examId}`), undefined, exact(s));
+  const obs = runExam(db, p.patient, examId, branch(s, `exam:${p.id}:${p.done.length}:${examId}`), skill, exact(s));
   const after = (e.time.report ?? 0) + (e.time.turnaround ?? 0);
-  if (e.kind === 'imaging' || e.kind === 'functional') {
-    // кабинет один: следующий снимок — когда аппарат освободится
-    const room = e.kind === 'imaging' ? 'xray' : 'ecg';
+  if (queued && room) {
     const order = 2 * MIN;
-    const start = Math.max(s.t + order, s.rooms[room]);
-    s.rooms[room] = start + e.time.procedure * MIN;
-    addPending(s, p, examId, start + (e.time.procedure + after) * MIN, obs);
+    const start = Math.max(s.t + order, s.rooms[room.id] ?? 0);
+    const end = start + Math.round((e.time.procedure * MIN * pct) / 100);
+    s.rooms[room.id] = end;
+    addPending(s, p, examId, end + after * MIN, obs, { room: room.id, start, end });
     return spend(db, s, p, order);
   }
   const cost = e.time.procedure * MIN;
-  if (after > 0) addPending(s, p, examId, s.t + cost + after * MIN, obs);
+  // анализ: пока лаборатория готовит, — с поправкой лаборатории
+  const wait = room ? Math.round((after * MIN * pct) / 100) : after * MIN;
+  if (after > 0) addPending(s, p, examId, s.t + cost + wait, obs, room ? { room: room.id, start: s.t, end: s.t + cost } : undefined);
   else p.results.push({ exam: examId, obs, at: s.t + cost, step: p.step });
   return spend(db, s, p, cost);
 }
 
-function addPending(s: ShiftState, p: ShiftPatient, examId: Id, readyAt: number, obs: Observation[]) {
-  p.pending.push({ exam: examId, readyAt, obs });
+function addPending(s: ShiftState, p: ShiftPatient, examId: Id, readyAt: number, obs: Observation[], at?: { room: string; start: number; end: number }) {
+  p.pending.push({ exam: examId, readyAt, obs, ...(at ?? {}) });
   schedule(s, readyAt, { kind: 'result', id: p.id });
 }
 
@@ -458,17 +587,22 @@ function handle(db: ContentDb, s: ShiftState, ev: ShiftEvent, notices: Notice[])
 /** Пришёл: медсестра меряет витальные и сортирует — по тому, что видит (жалобы и измерения). */
 function arrive(db: ContentDb, s: ShiftState, p: ShiftPatient, notices: Notice[]) {
   if (p.status !== 'coming') return;
-  if (db.exams['exam.vitals']) {
+  const ctx = hospitalCtx(db, s);
+  // медсестра доврачебного кабинета меряет давление, пульс, температуру; нет её — врач сам
+  if (ctx.triage && db.exams['exam.vitals']) {
     p.done.push('exam.vitals');
     p.results.push({ exam: 'exam.vitals', obs: runExam(db, p.patient, 'exam.vitals', branch(s, `vitals:${p.id}`), undefined, exact(s)), at: s.t, step: 0 });
   }
   p.triage = triageOf(db, p);
+  if (!ctx.triage) p.triaged = false;
   const [lo, hi] = p.triage === 'red' ? [0, 0] : PATIENCE[p.triage];
   p.patience = Math.round(branch(s, `patience:${p.id}`).range(lo, hi) * MIN * (s.meta.difficulty === 'student' ? STUDENT_PATIENCE : 1));
+  // своя больница: пришёл в полную зону ожидания — стоит, и ждать готов вдвое меньше
+  if (s.hospital && p.patience > 0 && s.queue.length >= ctx.seats) p.patience = Math.round(p.patience / 2);
   s.summary.arrived++;
   if (p.kind === 'return') s.summary.returnsToday++;
   enqueue(s, p, s.t);
-  notices.push({ kind: 'arrived', id: p.id, triage: p.triage });
+  notices.push({ kind: 'arrived', id: p.id, triage: p.triaged === false ? 'green' : p.triage });
 }
 
 export function triageOf(db: ContentDb, p: ShiftPatient): Triage {
@@ -481,10 +615,12 @@ function enqueue(s: ShiftState, p: ShiftPatient, queuedT: number) {
   p.status = 'waiting';
   p.queuedT = queuedT;
   p.wait++;
+  // срочность, если её определили (есть доврачебный кабинет), затем — кто раньше
+  const rank = (q: ShiftPatient) => (q.triaged === false ? TRIAGE_RANK.green : TRIAGE_RANK[q.triage]);
   s.queue = [...s.queue.filter(x => x !== p.id), p.id].sort((a, b) => {
     const x = s.patients[a];
     const y = s.patients[b];
-    return TRIAGE_RANK[x.triage] - TRIAGE_RANK[y.triage] || x.queuedT - y.queuedT || (a < b ? -1 : 1);
+    return rank(x) - rank(y) || x.queuedT - y.queuedT || (a < b ? -1 : 1);
   });
   if (p.patience > 0) schedule(s, s.t + p.patience, { kind: 'patience', id: p.id, wait: p.wait });
 }

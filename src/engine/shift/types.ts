@@ -7,6 +7,7 @@ import type { Id, Season, Setting } from '../../content/types';
 import type { Scheduled } from '../core/events';
 import type { Outcome } from '../med/course';
 import type { BuildCommand, Built, HospitalState } from '../hospital/build';
+import type { StaffMember } from '../hospital/staff';
 import type { Grade, ScoreNote } from '../med/score';
 import type { Observation, Patient } from '../med/types';
 
@@ -53,6 +54,10 @@ export interface PendingResult {
   exam: Id;
   readyAt: number;
   obs: Observation[];
+  /** где делают (помещение больницы) и когда сама процедура — для карты; нет — в кабинете врача */
+  room?: string;
+  start?: number;
+  end?: number;
 }
 
 export interface ShiftPatient {
@@ -64,6 +69,8 @@ export interface ShiftPatient {
   returnOf?: string;
   returnReason?: ReturnReason;
   triage: Triage;
+  /** false — доврачебного кабинета нет: срочность никто не определил, очередь — по приходу */
+  triaged?: boolean;
   status: PatientStatus;
   /** с какого момента ждёт в очереди — для порядка */
   queuedT: number;
@@ -122,7 +129,11 @@ export type Command =
   /** песочница, между сменами (ADR 0016): постройка, отмена последней, стройка закончена */
   | { kind: 'build'; cmd: BuildCommand }
   | { kind: 'undo' }
-  | { kind: 'buildEnd' };
+  | { kind: 'buildEnd' }
+  /** песочница, между сменами: нанять кандидата, уволить, назначить в помещение (нет — в резерв) */
+  | { kind: 'hire'; id: string }
+  | { kind: 'fire'; id: string }
+  | { kind: 'assign'; id: string; room?: string };
 
 /** Что случилось — для интерфейса: звук, автопауза, сводка «за это время». */
 export type Notice =
@@ -180,8 +191,8 @@ export interface ShiftState {
   /** очередь событий по (t, seq); seq — сквозной номер постановки, для одинакового порядка */
   events: Scheduled<ShiftEvent>[];
   seq: number;
-  /** когда освободятся рентген-кабинет и кабинет ЭКГ (по одному аппарату) */
-  rooms: { xray: number; ecg: number };
+  /** когда освободится помещение с очередью к аппарату (рентген, ЭКГ): номер помещения → время */
+  rooms: Record<string, number>;
   returns: PlannedReturn[];
   summary: DaySummary;
   history: DaySummary[];
@@ -193,4 +204,10 @@ export interface ShiftState {
   economy?: { cash: number };
   /** «Отменить» на экране стройки: прежние больница и касса, последние UNDO_DEPTH */
   undo?: Built[];
+  /** штат песочницы; в практике — штат готовой амбулатории */
+  staff?: StaffMember[];
+  /** кандидаты — новые каждый вечер */
+  candidates?: StaffMember[];
+  /** номер следующего человека */
+  nextStaff?: number;
 }

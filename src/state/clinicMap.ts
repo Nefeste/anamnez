@@ -83,10 +83,11 @@ function awayPlace(db: ContentDb, layout: ClinicLayout, p: ShiftPatient, t: numb
     const e: Exam | undefined = db.exams[x.exam];
     const room = e?.room ? EXAM_ROOM[e.room] : undefined;
     if (!e || !room) continue;
-    // время обследования — в минутах; результат готов после процедуры, описания и ожидания
+    // когда сама процедура — движок записал (с 0.0.21); прежде — по записанным минутам от готовности
     const total = (e.time.procedure + (e.time.report ?? 0) + (e.time.turnaround ?? 0)) * 60;
-    const start = x.readyAt - total;
-    if (t >= start && t < start + e.time.procedure * 60) return { where: { cell: examCell(layout, room) }, doing: { kind: 'exam', room } };
+    const start = x.start ?? x.readyAt - total;
+    const end = x.end ?? start + e.time.procedure * 60;
+    if (t >= start && t < end) return { where: { cell: examCell(layout, room) }, doing: { kind: 'exam', room } };
     if (start > t && (!next || start < next.start)) next = { room, start };
   }
   if (next) return { where: { bench: true }, doing: { kind: 'examQueue', room: next.room } };
@@ -95,8 +96,10 @@ function awayPlace(db: ContentDb, layout: ClinicLayout, p: ShiftPatient, t: numb
 
 export function placements(db: ContentDb, layout: ClinicLayout, s: ShiftState): Placement[] {
   const out: Placement[] = layout.staff.map(x => ({
-    id: `staff.${x.role}`, figure: STAFF_FIGURE[x.role], where: { cell: x.cell }, doing: { kind: 'staff', role: x.role },
+    id: `staff.${x.id ?? x.role}`, figure: STAFF_FIGURE[x.role], where: { cell: x.cell }, doing: { kind: 'staff', role: x.role },
   }));
+  // своя больница без доврачебного кабинета: от регистратуры — сразу в зал
+  const triage = layout.rooms.some(r => r.type === 'triage');
   const exit = { cell: layout.entrance };
   for (const p of Object.values(s.patients)) {
     const figure = patientFigure(p);
@@ -110,7 +113,7 @@ export function placements(db: ContentDb, layout: ClinicLayout, s: ShiftState): 
       const fresh = p.step === 0;
       const callable = s.current === undefined;
       if (fresh && since < REGISTRATION) out.push({ id: p.id, figure, where: { cell: layout.spots.registration }, doing: { kind: 'registration' }, callable });
-      else if (fresh && since < REGISTRATION + TRIAGE) out.push({ id: p.id, figure, where: { cell: layout.spots.triage }, doing: { kind: 'triage' }, callable });
+      else if (fresh && triage && since < REGISTRATION + TRIAGE) out.push({ id: p.id, figure, where: { cell: layout.spots.triage }, doing: { kind: 'triage' }, callable });
       else out.push({ id: p.id, figure, where: { seat: true }, doing: { kind: 'waiting' }, callable });
     } else if (p.status === 'away') {
       out.push({ id: p.id, figure, ...awayPlace(db, layout, p, s.t) });

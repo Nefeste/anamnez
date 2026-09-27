@@ -318,6 +318,24 @@ export interface Economy {
   corridor: { cost: number; upkeep: number };
   /** сколько процентов цены возвращают снос и продажа аппарата */
   refund: number;
+  /** персонал (spec 2026-09-own-hospital, часть 8): числа — баланс игры */
+  staff: {
+    /** кандидатов на должность в день: от, до */
+    candidates: [number, number];
+    /** веса навыка 1–5 */
+    skills: [number, number, number, number, number];
+    /** время обследования по навыку 1–5, % */
+    speed: [number, number, number, number, number];
+    /** рентгенолог по навыку 1–5: поправка чувствительности и специфичности снимка, п. п. */
+    reading: [number, number][];
+    /** отработанных дней на ступень навыка */
+    growthDays: number;
+    /** вес «без черты» */
+    noTrait: number;
+    traits: Record<'careful' | 'fast' | 'novice' | 'experienced', {
+      weight: number; salary?: number; speed?: number; reading?: [number, number]; skills?: [number, number]; growth?: number;
+    }>;
+  };
   /** песочница: участок, вход и отрезок коридора, бюджеты; с готовой амбулаторией — доля бюджета, % */
   sandbox: {
     plot: [number, number];

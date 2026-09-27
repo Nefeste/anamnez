@@ -8,8 +8,8 @@ import { apply, newSandbox } from '../../src/engine/shift/engine';
 import type { ShiftState } from '../../src/engine/shift/types';
 import { memoryStore, saveSlot } from '../../src/state/saves';
 import {
-  buildAction, buildView, compatible, endBuild, forgetShift, loadShift, nextDay, SANDBOX_SLOT, saved, savedGames, setStore, shiftState, shiftView, startSandbox,
-  startShift, tick, undoBuild,
+  assign, buildAction, buildView, compatible, endBuild, forgetShift, hire, loadShift, nextDay, SANDBOX_SLOT, saved, savedGames, setStore, shiftState, shiftView,
+  staffView, startSandbox, startShift, tick, undoBuild,
 } from '../../src/state/session';
 import { SHIFT_SCHEMA_VERSION } from '../../src/engine/shift/types';
 
@@ -45,7 +45,8 @@ describe('песочница', () => {
     startSandbox({ start: 'empty', budget: 'normal', difficulty: 'doctor', seed: 12, season: 'winter' });
     minimal();
     const b = buildView()!;
-    expect(b.open).toEqual([]);
+    // регистратура построена, а регистратора нет
+    expect(b.open).toEqual([{ kind: 'down', room: 'room.reception', problem: { kind: 'noStaff', role: 'role.registrar' } }]);
     expect(b.undo).toBe(4);
     const cost = 27 * db.economy.corridor.cost + db.rooms['room.reception'].sizes[0].cost + db.rooms['room.waiting'].sizes[1].cost + db.rooms['room.office'].sizes[0].cost;
     expect(b.cash).toBe(budgets.normal - cost);
@@ -85,11 +86,20 @@ describe('песочница', () => {
     expect(again.economy).toEqual(live.economy);
   });
 
-  test('смена в своей больнице — в следующей части: «Следующий день» пока ничего не делает, часы стоят', () => {
-    startSandbox({ start: 'clinic', budget: 'normal', difficulty: 'doctor', seed: 15, season: 'winter' });
+  test('смена открывается, только когда работают регистратура, зона ожидания и кабинет: нужен регистратор', () => {
+    startSandbox({ start: 'empty', budget: 'normal', difficulty: 'doctor', seed: 15, season: 'winter' });
+    minimal();
     nextDay();
-    tick(1000);
     expect([shiftView().day, shiftView().dayOpen]).toEqual([0, false]);
+    const registrar = staffView()!.candidates.find(c => c.role === 'role.registrar')!;
+    hire(registrar.id);
+    expect(staffView()!.staff.map(m => [m.id, m.room])).toEqual([[registrar.id, undefined]]);
+    assign(registrar.id, 'r1');
+    expect(buildView()!.open).toEqual([]);
+    nextDay();
+    expect([shiftView().day, shiftView().dayOpen, shiftView().clock]).toEqual([1, true, '08:00']);
+    // стройка — только между сменами
+    expect(buildAction({ kind: 'corridor', cells: [[5, 20]] })).toEqual({ kind: 'unknown' });
   });
 });
 

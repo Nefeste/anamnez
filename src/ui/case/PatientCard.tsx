@@ -126,8 +126,10 @@ export function PatientCard({ view: v, actions }: { view: VisitView; actions: Ca
             {groups[tab].map(id => {
               const info = examInfo(id);
               const done = v.done.includes(id);
+              // своя больница: нет помещения, аппарата или человека — серым, с причиной
+              const why = v.unavailable[id];
               return (
-                <Button key={id} testID={`exam-${id}`} kind="plain" disabled={done} title={info.name} hint={done ? t.done : t.cost(info.minutes, info.cost)}
+                <Button key={id} testID={`exam-${id}`} kind="plain" disabled={done || !!why} title={info.name} hint={done ? t.done : why ?? t.cost(info.minutes, info.cost)}
                   onPress={() => doExam(id)} onInfo={() => explain(examTerm(id))} infoLabel={t.whatIsIt} />
               );
             })}

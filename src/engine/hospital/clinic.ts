@@ -14,7 +14,8 @@ export type StaffRole = 'registrar' | 'nurse' | 'doctor' | 'procedureNurse' | 'l
 export interface ClinicLayout extends HospitalLayout {
   /** вход и выход — дверь на улицу */
   entrance: Cell;
-  staff: { role: StaffRole; cell: Cell }[];
+  /** персонал на местах; `id` — когда фигурок одной роли несколько (две медсестры ЭКГ) */
+  staff: { role: StaffRole; cell: Cell; id?: string }[];
   /** куда встаёт или садится пациент */
   spots: { registration: Cell; triage: Cell; office: Cell; procedure: Cell; ecg: Cell; xray: Cell };
   /** стулья зоны ожидания — очередь к врачу; ближний к двери ряд первым */
@@ -50,8 +51,11 @@ export function layoutOf(plan: Plan, staff: { room: string; role: Id }[]): Clini
     const r = plan.rooms.find(x => x.id === room);
     const figure = r && FIGURE[`${r.type}|${role}`];
     const cell = r?.staff[role];
-    return figure && cell ? [{ role: figure, cell }] : [];
+    return figure && cell ? [{ role: figure, cell, room }] : [];
   });
+  // одна фигурка роли — прежний номер (staff.nurse); несколько — ещё и помещение
+  const count = (f: StaffRole) => placed.filter(x => x.role === f).length;
+  const staffOut = placed.map(x => (count(x.role) > 1 ? { role: x.role, cell: x.cell, id: `${x.role}.${x.room}` } : { role: x.role, cell: x.cell }));
   const spot = (type: Id): Cell => plan.rooms.find(r => r.type === type)?.patient ?? plan.entrance;
   const spots = Object.fromEntries(Object.entries(SPOT).map(([k, type]) => [k, spot(type)])) as ClinicLayout['spots'];
   return {
@@ -59,10 +63,47 @@ export function layoutOf(plan: Plan, staff: { room: string; role: Id }[]): Clini
     rooms,
     objects: plan.objects,
     entrance: plan.entrance,
-    staff: placed,
+    staff: staffOut,
     spots,
     seats: plan.rooms.flatMap(r => r.seats),
     benches: plan.objects.filter(o => o.kind === 'bench').map(o => [o.x, o.y] as Cell),
+  };
+}
+
+/**
+ * План без пустой улицы вокруг: на карте смены своя больница — во всю ширину экрана, как
+ * практика. Клетки сдвигаются к углу построенного.
+ */
+export function cropPlan(plan: Plan): Plan {
+  const { w, h, cells } = plan.grid;
+  let x0 = w;
+  let y0 = h;
+  let x1 = -1;
+  let y1 = -1;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (cells[y * w + x] === 0) continue;
+      x0 = Math.min(x0, x);
+      y0 = Math.min(y0, y);
+      x1 = Math.max(x1, x);
+      y1 = Math.max(y1, y);
+    }
+  }
+  if (x1 < 0 || (x0 === 0 && y0 === 0 && x1 === w - 1 && y1 === h - 1)) return plan;
+  const nw = x1 - x0 + 1;
+  const nh = y1 - y0 + 1;
+  const out = new Uint8Array(nw * nh);
+  for (let y = 0; y < nh; y++) for (let x = 0; x < nw; x++) out[y * nw + x] = cells[(y + y0) * w + (x + x0)];
+  const at = (c: Cell): Cell => [c[0] - x0, c[1] - y0];
+  return {
+    grid: { w: nw, h: nh, cells: out },
+    rooms: plan.rooms.map(r => ({
+      ...r, x: r.x - x0, y: r.y - y0, door: r.door.map(at), staff: Object.fromEntries(Object.entries(r.staff).map(([k, c]) => [k, at(c)])),
+      ...(r.patient ? { patient: at(r.patient) } : {}), seats: r.seats.map(at), slots: r.slots.map(at),
+    })),
+    objects: plan.objects.map(o => ({ ...o, x: o.x - x0, y: o.y - y0 })),
+    entrance: at(plan.entrance),
+    connected: plan.connected,
   };
 }
 

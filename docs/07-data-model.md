@@ -290,6 +290,10 @@ interface GameState {
   orders: Order[];                       // назначенные обследования и лечение
   economy: { cash: number; reputation: number; ledger: LedgerEntry[] };  // ledger — за текущий день; 0.0.20 — только cash
   undo?: { hospital; cash }[];           // «Отменить» на экране стройки, последние 20; «Готово» — пусто
+  // 0.0.21: штат и кандидаты (src/engine/hospital/staff.ts) — должность, пол и зерно имени,
+  // навык 1–5, черта, зарплата за смену, помещение (нет — резерв), отработанные смены;
+  // у ожидающего результата — помещение и время процедуры; у пациента без доврачебного
+  // кабинета — triaged: false
   career?: { chapter: Id; missions: Record<Id, MissionState> };
   journal: Command[];                    // команды за текущий день (отчёт об ошибке, тесты)
 }

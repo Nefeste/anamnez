@@ -4,6 +4,7 @@
 import type { Cell, ContentDb, Id, RoomSizeId, Rot } from '@/content/types';
 import { type BuildError, canPlace, dims, type HospitalState, type Plan, sizeOf, turn } from '@/engine/hospital/build';
 import type { Block, Problem } from '@/engine/hospital/requirements';
+import { fnv1a } from '@/engine/core/hash';
 import { T } from '@/i18n';
 
 export function problemText(db: ContentDb, p: Problem): string {
@@ -83,4 +84,21 @@ export function rotated(db: ContentDb, g: GhostSpec): GhostSpec {
   const rot = ((g.rot + 1) % 4) as Rot;
   const [nw, nh] = dims(z, rot);
   return { ...g, rot, x: g.x + Math.floor((w - nw) / 2), y: g.y + Math.floor((h - nh) / 2) };
+}
+
+/** Почему обследование не сделать: «нет рентген-кабинета», «рентген-кабинет не работает: нет рентгенолога». */
+export function examBlockText(db: ContentDb, b: Block): string {
+  const t = T.sandbox.examBlock;
+  const room = db.rooms[b.room];
+  if (b.kind === 'noRoom') return t.none(room?.gen.ru ?? b.room);
+  if (b.kind === 'down') return t.down(room?.name.ru ?? b.room, problemText(db, b.problem));
+  return t.none(db.equipment[b.equipment[0]]?.gen.ru ?? b.equipment[0]);
+}
+
+/** Имя сотрудника — из того же словаря, что имена пациентов: пол и зерно. */
+export function personName(sex: 'm' | 'f', seed: number): string {
+  const n = T.names;
+  const first = sex === 'm' ? n.male : n.female;
+  const surname = n.surnames[fnv1a(`${seed}:s`) % n.surnames.length];
+  return `${sex === 'm' ? surname : n.feminine(surname)} ${first[fnv1a(`${seed}:f`) % first.length]}`;
 }

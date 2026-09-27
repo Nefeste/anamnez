@@ -314,12 +314,36 @@ export const presetSchema = z.strictObject({
   staff: z.array(z.strictObject({ role: roleId, room: int })).default([]),
 });
 
+/** Поправка чувствительности и специфичности, процентные пункты. */
+const pp = z.tuple([z.number().int().min(-20).max(20), z.number().int().min(-20).max(20)]);
+/** Черта кандидата: вес при выборе, зарплата и скорость в процентах, поправка чтения снимка, навык (от, до), рост. */
+const trait = z.strictObject({
+  weight: int,
+  salary: z.number().int().min(50).max(200).optional(),
+  speed: z.number().int().min(50).max(200).optional(),
+  reading: pp.optional(),
+  skills: z.tuple([z.number().int().min(1).max(5), z.number().int().min(1).max(5)]).optional(),
+  growth: z.number().int().min(1).max(5).optional(),
+});
+
 /** Баланс своей больницы: числа игровые, настраиваются симулятором экономики. */
 export const economySchema = z.strictObject({
   /** клетка коридора: постройка и содержание в день, ₽ */
   corridor: z.strictObject({ cost: int, upkeep: int }),
   /** сколько процентов цены возвращают снос и продажа аппарата */
   refund: z.number().int().min(0).max(100),
+  /** персонал: кандидаты, навык, скорость и точность по навыку, рост, черты (spec 2026-09-own-hospital, часть 8) */
+  staff: z.strictObject({
+    candidates: z.tuple([int, int]),
+    skills: z.tuple([int, int, int, int, int]),
+    speed: z.tuple([int, int, int, int, int]),
+    reading: z.tuple([pp, pp, pp, pp, pp]),
+    growthDays: z.number().int().min(1),
+    noTrait: int,
+    traits: z.strictObject({
+      careful: trait, fast: trait, novice: trait, experienced: trait,
+    }),
+  }),
   /** песочница: участок, вход, отрезок коридора прямоугольниками, бюджеты; с готовой амбулаторией — доля бюджета, % */
   sandbox: z.strictObject({
     plot: z.tuple([z.number().int().min(8).max(64), z.number().int().min(8).max(64)]),

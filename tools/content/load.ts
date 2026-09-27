@@ -18,6 +18,12 @@ import {
 
 export const CONTENT_DIR = join(import.meta.dir, '../../content');
 
+/** Баланс персонала, пока economy.yaml не прочитан (ошибка сборки всё равно будет). */
+const NO_STAFF: ContentDb['economy']['staff'] = {
+  candidates: [0, 0], skills: [1, 1, 1, 1, 1], speed: [100, 100, 100, 100, 100], reading: [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]], growthDays: 1, noTrait: 1,
+  traits: { careful: { weight: 0 }, fast: { weight: 0 }, novice: { weight: 0 }, experienced: { weight: 0 } },
+};
+
 export interface BuildResult {
   db: ContentDb;
   errors: string[];
@@ -217,8 +223,11 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   const db: ContentDb = {
     contentVersion, hash: '', conditions: {}, findings: {}, exams: {}, risks: {}, treatments: {}, rooms: {}, equipment: {}, roles: {}, presets: {},
     economy: economy
-      ? { corridor: economy.corridor, refund: economy.refund, sandbox: { ...economy.sandbox, corridor: rects(economy.sandbox.corridor) } }
-      : { corridor: { cost: 0, upkeep: 0 }, refund: 0, sandbox: { plot: [8, 8], entrance: [0, 1], corridor: [], budgets: { modest: 0, normal: 0, generous: 0 }, clinicShare: 0 } },
+      ? { corridor: economy.corridor, refund: economy.refund, staff: economy.staff, sandbox: { ...economy.sandbox, corridor: rects(economy.sandbox.corridor) } }
+      : {
+        corridor: { cost: 0, upkeep: 0 }, refund: 0, staff: NO_STAFF,
+        sandbox: { plot: [8, 8], entrance: [0, 1], corridor: [], budgets: { modest: 0, normal: 0, generous: 0 }, clinicShare: 0 },
+      },
     revealedBy,
   };
   for (const c of Object.values(conditions).sort((a, b) => (a.id < b.id ? -1 : 1))) {

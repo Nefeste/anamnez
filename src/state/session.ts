@@ -14,8 +14,10 @@ import { evaluatePlan } from '@/engine/med/plan';
 import type { Grade } from '@/engine/med/score';
 import { complaintText } from '@/engine/med/text';
 import { build, type BuildCommand, type BuildError, type HospitalState, type Plan, planOf } from '@/engine/hospital/build';
-import { type Block, openBlocks, type Problem, problemsOf, type Staffing, workingRooms } from '@/engine/hospital/requirements';
-import { apply, current, newSandbox, newShift, observationsOf, reviewFor } from '@/engine/shift/engine';
+import { type Block, examWhere, openBlocks, type Problem, problemsOf, workingRooms } from '@/engine/hospital/requirements';
+import { type ClinicLayout, cropPlan, layoutOf } from '@/engine/hospital/clinic';
+import { type StaffMember, staffingOf } from '@/engine/hospital/staff';
+import { apply, current, type HospitalCtx, hospitalCtx, newSandbox, newShift, observationsOf, reviewFor } from '@/engine/shift/engine';
 import {
   type Command, DAY, type Difficulty, type Mode, type Notice, SHIFT_END, SHIFT_SCHEMA_VERSION, type ShiftPatient, type ShiftState, type Triage,
 } from '@/engine/shift/types';
@@ -23,6 +25,7 @@ import { T } from '@/i18n';
 import { type Arrival, type Decision, decisionOf, hhmm, makeCaseView, outcomeText, patientName, type VisitView } from './caseView';
 import { CLINIC, type Doing, type Placement, placements } from './clinicMap';
 import { archivedCase, recordCases } from './profile';
+import { examBlockText, personName } from './sandboxView';
 import { loadSlot, type RawStore, saveSlot } from './saves';
 import { settings } from './settings';
 
@@ -122,6 +125,8 @@ export interface ShiftView {
   restored: boolean;
   /** кто где на карте амбулатории (clinicMap.ts) */
   people: Placement[];
+  /** план своей больницы для карты смены — в песочнице; в практике — готовая амбулатория (CLINIC) */
+  layout?: ClinicLayout;
   /** кто это — для каждого на карте */
   who: Record<string, WhoView>;
 }
@@ -504,9 +509,12 @@ export function closeDay() {
 export function nextDay() {
   const sess = session;
   if (!sess || sess.s.dayOpen) return;
-  // песочница: смена в своей больнице — следующая часть этапа (spec 2026-09-own-hospital, часть 8)
-  if (sess.s.meta.mode === 'sandbox') return;
+  // песочница: без регистратуры, зоны ожидания и кабинета смену не открыть — движок не откроет
   run(sess, { kind: 'nextDay' });
+  if (!sess.s.dayOpen) {
+    changed();
+    return;
+  }
   sess.log = [];
   sess.focus = undefined;
   sess.paused = false;
@@ -548,8 +556,118 @@ export function endBuild() {
   changed();
 }
 
-/** Кто работает — штата пока нет (часть 8): считаем, что люди на местах. */
-const STAFFED: Staffing = () => true;
+// --- персонал: песочница, между сменами -----------------------------------------------------
+
+function staffAction(cmd: Command) {
+  const sess = session;
+  if (!sess?.s.staff || sess.s.dayOpen) return;
+  run(sess, cmd);
+  save();
+  changed();
+}
+
+/** Нанять кандидата — в резерв; назначить — в помещение (нет — в резерв); уволить. */
+export const hire = (id: string) => staffAction({ kind: 'hire', id });
+export const fire = (id: string) => staffAction({ kind: 'fire', id });
+export const assign = (id: string, room?: string) => staffAction({ kind: 'assign', id, ...(room ? { room } : {}) });
+
+export interface PersonView {
+  id: string;
+  name: string;
+  role: Id;
+  roleName: string;
+  skill: number;
+  trait?: string;
+  salary: number;
+  /** где работает; нет — в резерве */
+  room?: string;
+  roomName?: string;
+}
+
+/** Место в помещении, где нужен человек: занято ли и кем. */
+export interface PostView {
+  room: string;
+  roomName: string;
+  role: Id;
+  roleName: string;
+  who?: string;
+}
+
+export interface StaffView {
+  version: number;
+  staff: PersonView[];
+  candidates: PersonView[];
+  posts: PostView[];
+  /** зарплаты всех нанятых за смену, ₽ */
+  salaries: number;
+}
+
+function personOf(s: ShiftState, m: StaffMember): PersonView {
+  const room = m.room ? s.hospital?.rooms.find(r => r.id === m.room) : undefined;
+  return {
+    id: m.id, name: personName(m.sex, m.seed), role: m.role, roleName: db.roles[m.role]?.name.ru ?? m.role, skill: m.skill,
+    ...(m.trait ? { trait: T.sandbox.traits[m.trait] } : {}), salary: m.salary,
+    ...(room ? { room: room.id, roomName: db.rooms[room.type].name.ru } : {}),
+  };
+}
+
+function buildStaffView(): StaffView | undefined {
+  const s = session?.s;
+  if (!s?.hospital || !s.staff) return undefined;
+  const staff = s.staff;
+  const posts: PostView[] = s.hospital.rooms.flatMap(r => db.rooms[r.type].staff.filter(role => db.roles[role]?.hire).map(role => ({
+    room: r.id, roomName: db.rooms[r.type].name.ru, role, roleName: db.roles[role].name.ru,
+    ...(() => {
+      const m = staff.find(x => x.room === r.id && x.role === role);
+      return m ? { who: m.id } : {};
+    })(),
+  })));
+  return {
+    version, staff: staff.map(m => personOf(s, m)), candidates: (s.candidates ?? []).map(m => personOf(s, m)), posts,
+    salaries: staff.reduce((n, m) => n + m.salary, 0),
+  };
+}
+
+let staffCache: { version: number; view: StaffView | undefined } | null = null;
+
+export function staffView(): StaffView | undefined {
+  if (staffCache?.version !== version) staffCache = { version, view: buildStaffView() };
+  return staffCache.view;
+}
+
+export function useStaff(): StaffView | undefined {
+  return useSyncExternalStore(subscribe, staffView, staffView);
+}
+
+// план своей больницы на карте смены — один объект на план и штат: карта держит своих ходоков
+const layouts = new WeakMap<HospitalCtx, ClinicLayout>();
+
+function sandboxLayout(s: ShiftState): ClinicLayout {
+  const ctx = hospitalCtx(db, s);
+  let l = layouts.get(ctx);
+  if (!l) {
+    l = layoutOf(cropPlan(ctx.plan), ctx.staff.flatMap(m => (m.room ? [{ room: m.room, role: m.role }] : [])));
+    layouts.set(ctx, l);
+  }
+  return l;
+}
+
+// обследования, которых в своей больнице не сделать, — и почему
+const blocked = new WeakMap<HospitalCtx, Record<Id, string>>();
+
+function unavailableOf(s: ShiftState): Record<Id, string> {
+  const ctx = hospitalCtx(db, s);
+  let out = blocked.get(ctx);
+  if (!out) {
+    out = {};
+    for (const id of Object.keys(db.exams)) {
+      const w = examWhere(db, ctx.plan, ctx.working, ctx.staffed, id);
+      if ('block' in w) out[id] = examBlockText(db, w.block);
+    }
+    blocked.set(ctx, out);
+  }
+  return out;
+}
 
 export interface BuildView {
   version: number;
@@ -568,9 +686,10 @@ function buildBuildView(): BuildView | undefined {
   const s = session?.s;
   if (!s?.hospital || !s.economy) return undefined;
   const plan = planOf(db, s.hospital);
+  const staffed = staffingOf(s.staff ?? []);
   const problems: Record<string, Problem[]> = {};
-  for (const r of plan.rooms) problems[r.id] = problemsOf(db, plan, r, STAFFED);
-  return { version, hospital: s.hospital, plan, cash: s.economy.cash, undo: s.undo?.length ?? 0, problems, open: openBlocks(db, plan, workingRooms(db, plan, STAFFED), STAFFED) };
+  for (const r of plan.rooms) problems[r.id] = problemsOf(db, plan, r, staffed);
+  return { version, hospital: s.hospital, plan, cash: s.economy.cash, undo: s.undo?.length ?? 0, problems, open: openBlocks(db, plan, workingRooms(db, plan, staffed), staffed) };
 }
 
 let buildCache: { version: number; view: BuildView | undefined } | null = null;
@@ -708,8 +827,8 @@ function buildShiftView(): ShiftView {
   const s = sess.s;
   const inRoom = current(s);
   const away = Object.values(s.patients).filter(p => p.status === 'away').sort((a, b) => (a.id < b.id ? -1 : 1));
-  // песочница: люди на карте своей больницы — с частью 8, пока её план рисует экран стройки
-  const people = s.meta.mode === 'sandbox' ? [] : placements(db, CLINIC, s);
+  const layout = s.hospital ? sandboxLayout(s) : undefined;
+  const people = placements(db, layout ?? CLINIC, s);
   return {
     version,
     status,
@@ -733,6 +852,7 @@ function buildShiftView(): ShiftView {
     restored: sess.restored,
     people,
     who: whoOf(s, people),
+    ...(layout ? { layout } : {}),
   };
 }
 
@@ -870,6 +990,7 @@ function buildCaseView(): VisitView | undefined {
     canSendAway: p.status === 'inRoom' && p.pending.length > 0,
     returnNote: p.returnReason && prev?.closed ? T.shift.returnNote(p.returnReason, closedDay(prev), female(p)) : undefined,
     difficulty: s.meta.difficulty ?? 'doctor',
+    ...(s.hospital ? { unavailable: unavailableOf(s) } : {}),
   });
 }
 

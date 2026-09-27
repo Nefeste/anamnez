@@ -11,7 +11,7 @@ import type { Cell, Id, RoomSizeId } from '@/content/types';
 import { sizeOf } from '@/engine/hospital/build';
 import { T } from '@/i18n';
 import { BuildMap, type Tool } from '@/render/map/BuildMap';
-import { buildAction, type BuildView, endBuild, undoBuild, useBuild } from '@/state/session';
+import { buildAction, type BuildView, endBuild, undoBuild, useBuild, useStaff } from '@/state/session';
 import { buildErrorText, centered, type GhostSpec, ghostOf, rotated, statusText } from '@/state/sandboxView';
 import { Button, Card, H, P, Screen, Sheet } from '@/ui/components';
 import { Text } from '@/ui/text';
@@ -185,6 +185,7 @@ function RoomCard({ b, id, onClose, onDemolish, act }: {
   b: BuildView; id: string; onClose: () => void; onDemolish: () => void; act: (cmd: Parameters<typeof buildAction>[0]) => boolean;
 }) {
   const t = T.sandbox;
+  const staff = useStaff();
   const [buying, setBuying] = useState(false);
   const room = b.hospital.rooms.find(r => r.id === id);
   if (!room) return null;
@@ -220,7 +221,16 @@ function RoomCard({ b, id, onClose, onDemolish, act }: {
           })}
         </>
       )}
-      {type.staff.some(r => db.roles[r].hire) && <P muted>{t.staffSoon}</P>}
+      {staff && type.staff.some(r => db.roles[r].hire) && (
+        <>
+          <P>{t.staffTitle}</P>
+          {staff.posts.filter(x => x.room === id).map(x => {
+            const who = staff.staff.find(m => m.id === x.who);
+            return <P key={x.role} muted testID={`post-${x.role}`}>{who ? t.postWho(x.roleName, who.name, who.skill, who.trait) : `${x.roleName}: ${t.postFree}`}</P>;
+          })}
+          <Button testID="room-staff" kind="plain" title={t.staffTitle} hint={t.staffHint} onPress={() => { onClose(); router.push('/sandbox/staff'); }} />
+        </>
+      )}
       <Button testID="room-demolish" kind="plain" title={t.demolish(rub(back))} onPress={onDemolish} />
     </Sheet>
   );

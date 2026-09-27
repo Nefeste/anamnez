@@ -101,6 +101,8 @@ export interface VisitView {
   /** смена: за это время пришёл срочный пациент — звук «срочно», а не «готово» */
   urgent?: boolean;
   done: Id[];
+  /** обследования, которых в этой больнице не сделать, — и почему */
+  unavailable: Record<Id, string>;
   hints: { id: Id; name: string; outOf10: number }[];
   /** всё лечение базы по алфавиту; warning — противопоказание, о котором врач уже знает */
   treatments: { id: Id; name: string; warning?: string }[];
@@ -145,6 +147,8 @@ export interface CaseInput {
   returnNote?: string;
   /** сложность: «Похоже на» — только у «Студента» (03-game-design.md §14); нет — «Студент» (прототип П4) */
   difficulty?: Difficulty;
+  /** своя больница: обследования, которых здесь не сделать, — и почему (spec 2026-09-own-hospital) */
+  unavailable?: Record<Id, string>;
 }
 
 export function hhmm(min: number): string {
@@ -292,6 +296,7 @@ export function makeCaseView(c: CaseInput): VisitView {
     meanwhile: c.meanwhile,
     ...(c.urgent ? { urgent: true } : {}),
     done: c.done,
+    unavailable: c.unavailable ?? {},
     // «0 из 10» ничего не подсказывает — такие не показываем, первую — всегда
     hints: c.difficulty === 'doctor' ? [] : beliefsOf(p, obs).slice(0, HINTS)
       .map(b => ({ id: b.id, name: db.conditions[b.id].name.ru, outOf10: Math.round(b.p * 10) }))
