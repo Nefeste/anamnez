@@ -2,13 +2,16 @@
 // базы, по которым работает модель, — поэтому энциклопедия не может разойтись с игрой.
 // Здесь только вид: разделы, статьи, поиск; экраны — src/app/encyclopedia. База приходит
 // параметром, как у движка: тесты подставляют ту же собранную базу.
-import { type Condition, type ContentDb, type Exam, type Finding, type Id, type Link, type P, type Risk, SYSTEMS, type Tactics, type Treatment } from '@/content/types';
+import {
+  type Condition, type ContentDb, type Equipment, type Exam, type Finding, type Id, type Link, type P, type Risk, type RoomType, type StaffRole, SYSTEMS, type Tactics,
+  type Treatment,
+} from '@/content/types';
 import { T } from '@/i18n';
 import { TX_GROUP_ORDER, txGroupOfClass } from './caseView';
 import { sourceLine } from './sources';
 
-export type Section = 'conditions' | 'findings' | 'exams' | 'treatments' | 'risks';
-export const SECTIONS: Section[] = ['conditions', 'findings', 'exams', 'treatments', 'risks'];
+export type Section = 'conditions' | 'findings' | 'exams' | 'treatments' | 'risks' | 'hospital';
+export const SECTIONS: Section[] = ['conditions', 'findings', 'exams', 'treatments', 'risks', 'hospital'];
 
 /** Ссылка на статью; `note` — пометка рядом: частота, «в 2 раза чаще», точность. */
 export interface Ref {
@@ -73,11 +76,12 @@ export function sectionOf(db: ContentDb, id: Id): Section | undefined {
   if (db.exams[id]) return 'exams';
   if (db.treatments[id]) return 'treatments';
   if (db.risks[id]) return 'risks';
+  if (db.rooms[id] || db.equipment[id] || db.roles[id]) return 'hospital';
   return undefined;
 }
 
 function nameOf(db: ContentDb, id: Id): string {
-  return (db.conditions[id] ?? db.findings[id] ?? db.exams[id] ?? db.treatments[id] ?? db.risks[id])?.name.ru ?? id;
+  return (db.conditions[id] ?? db.findings[id] ?? db.exams[id] ?? db.treatments[id] ?? db.risks[id] ?? db.rooms[id] ?? db.equipment[id] ?? db.roles[id])?.name.ru ?? id;
 }
 
 const ref = (db: ContentDb, id: Id, note?: string): Ref => (note ? { id, title: nameOf(db, id), note } : { id, title: nameOf(db, id) });
@@ -268,6 +272,13 @@ function examArticle(db: ContentDb, x: Exam): Article {
   }
   const confirms = Object.values(db.conditions).filter(c => c.confirm !== 'clinical' && c.confirm.includes(x.id)).map(c => ref(db, c.id)).sort(byTitle);
   if (confirms.length > 0) blocks.push({ key: 'confirms', title: e.confirms, refs: confirms });
+  // где делают: помещение, аппараты, где берут материал; без помещения — у врача в кабинете
+  const room = x.room ?? (db.rooms['room.office'] ? 'room.office' : undefined);
+  if (room && db.rooms[room]) {
+    const refs = [ref(db, room), ...(x.equipment ?? []).map(id => ref(db, id))];
+    if (x.collect) refs.push(ref(db, x.collect, e.collectHere));
+    blocks.push({ key: 'where', title: e.whereDone, refs });
+  }
   blocks.push(sources(db, x));
 
   const minutes = x.time.procedure + (x.time.report ?? 0) + (x.time.turnaround ?? 0);
@@ -310,6 +321,57 @@ function riskArticle(db: ContentDb, r: Risk): Article {
   return { id: r.id, section: 'risks', title: r.name.ru, subtitle: e.riskKind, blocks };
 }
 
+// --- больница: помещения, аппараты, должности (spec 2026-09-own-hospital) ----------------
+
+function roomArticle(db: ContentDb, r: RoomType): Article {
+  const e = T.encyclopedia;
+  const rub = T.common.rub;
+  const blocks: Block[] = [{ key: 'what', title: e.what, text: [r.texts.hint.ru] }];
+  if (r.exams.length > 0) blocks.push({ key: 'doneHere', title: e.doneHere, refs: r.exams.map(id => ref(db, id)).sort(byTitle) });
+  if (r.collects.length > 0) blocks.push({ key: 'collectsFor', title: e.collectsFor, refs: r.collects.map(id => ref(db, id)).sort(byTitle) });
+  const rows: Row[] = [];
+  if (r.staff.length > 0) rows.push({ label: e.needPeople, refs: r.staff.map(id => ref(db, id)) });
+  if (r.equipment.length > 0) rows.push({ label: r.needsEquipment ? e.needMachine : e.machines, refs: r.equipment.map(id => ref(db, id, rub(db.equipment[id].price))) });
+  if (rows.length > 0) blocks.push({ key: 'needs', title: e.needs, rows });
+  blocks.push({
+    key: 'sizes',
+    title: e.sizes,
+    text: r.sizes.map(z => e.sizeLine(z.id, z.w, z.h, rub(z.cost), rub(z.upkeep), z.seats)),
+    note: e.sizeNote,
+  });
+  const from = Math.min(...r.sizes.map(z => z.cost));
+  return { id: r.id, section: 'hospital', title: r.name.ru, subtitle: [e.roomKind, e.fromPrice(rub(from))].join(' · '), blocks };
+}
+
+function equipmentArticle(db: ContentDb, x: Equipment): Article {
+  const e = T.encyclopedia;
+  const rub = T.common.rub;
+  const blocks: Block[] = [{ key: 'what', title: e.what, text: [x.texts.hint.ru] }];
+  if (x.exams.length > 0) blocks.push({ key: 'examsBy', title: e.examsBy, refs: x.exams.map(id => ref(db, id)).sort(byTitle) });
+  blocks.push({ key: 'standsIn', title: e.standsIn, refs: [ref(db, x.room)] });
+  if (x.upgradeOf) blocks.push({ key: 'upgrades', title: e.upgrades, refs: [ref(db, x.upgradeOf)] });
+  const better = Object.values(db.equipment).filter(y => y.upgradeOf === x.id).map(y => ref(db, y.id, rub(y.price)));
+  if (better.length > 0) blocks.push({ key: 'upgradedBy', title: e.upgradedBy, refs: better });
+  const lines = [e.priceLine(rub(x.price), rub(x.upkeep))];
+  if (x.speed > 1) lines.push(e.slower(x.speed));
+  if (x.speed < 1) lines.push(e.faster(Math.round((1 / x.speed) * 10) / 10));
+  const { sens, spec } = x.quality;
+  if (sens < 0 && spec <= 0) lines.push(e.worse(-sens, -spec));
+  if (sens > 0 && spec >= 0) lines.push(e.better(sens, spec));
+  blocks.push({ key: 'prices', title: e.prices, text: lines });
+  return { id: x.id, section: 'hospital', title: x.name.ru, subtitle: [e.equipmentKind, db.rooms[x.room]?.name.ru ?? x.room, rub(x.price)].join(' · '), blocks };
+}
+
+function roleArticle(db: ContentDb, r: StaffRole): Article {
+  const e = T.encyclopedia;
+  const rub = T.common.rub;
+  const blocks: Block[] = [{ key: 'what', title: e.what, text: [r.texts.hint.ru] }];
+  if (r.rooms.length > 0) blocks.push({ key: 'worksIn', title: e.worksIn, refs: r.rooms.map(id => ref(db, id)).sort(byTitle) });
+  if (r.hire) blocks.push({ key: 'salary', title: e.salary, text: [e.salaryLine(rub(r.salary[0]), rub(r.salary[1]))] });
+  const subtitle = r.hire ? [e.roleKind, e.perShift(rub(r.salary[0]), rub(r.salary[1]))].join(' · ') : e.roleKind;
+  return { id: r.id, section: 'hospital', title: r.name.ru, subtitle, blocks };
+}
+
 /** Статья по идентификатору; нет такой записи — undefined. */
 export function article(db: ContentDb, id: Id): Article | undefined {
   if (db.conditions[id]) return conditionArticle(db, db.conditions[id]);
@@ -317,6 +379,9 @@ export function article(db: ContentDb, id: Id): Article | undefined {
   if (db.exams[id]) return examArticle(db, db.exams[id]);
   if (db.treatments[id]) return treatmentArticle(db, db.treatments[id]);
   if (db.risks[id]) return riskArticle(db, db.risks[id]);
+  if (db.rooms[id]) return roomArticle(db, db.rooms[id]);
+  if (db.equipment[id]) return equipmentArticle(db, db.equipment[id]);
+  if (db.roles[id]) return roleArticle(db, db.roles[id]);
   return undefined;
 }
 
@@ -331,6 +396,7 @@ const EXAM_GROUPS: { key: 'ask' | 'examine' | 'lab' | 'imaging'; kinds: Exam['ki
 ];
 
 function table(db: ContentDb, section: Section): { id: Id; name: { ru: string } }[] {
+  if (section === 'hospital') return [...Object.values(db.rooms), ...Object.values(db.equipment), ...Object.values(db.roles)];
   const t = { conditions: db.conditions, findings: db.findings, exams: db.exams, treatments: db.treatments, risks: db.risks }[section];
   return Object.values(t);
 }
@@ -354,6 +420,12 @@ export function sectionView(db: ContentDb, section: Section): SectionView {
   } else if (section === 'treatments') {
     const all = Object.values(db.treatments);
     groups = TX_GROUP_ORDER.map(k => ({ key: k, title: T.spikes.decision.txGroup[k], items: refs(all.filter(x => txGroupOfClass(x.class) === k)) }));
+  } else if (section === 'hospital') {
+    groups = [
+      { key: 'rooms', title: e.hospitalGroup.rooms, items: refs(Object.values(db.rooms)) },
+      { key: 'equipment', title: e.hospitalGroup.equipment, items: refs(Object.values(db.equipment)) },
+      { key: 'roles', title: e.hospitalGroup.roles, items: refs(Object.values(db.roles)) },
+    ];
   } else {
     groups = [{ key: 'risks', title: e.sections.risks, items: refs(Object.values(db.risks)) }];
   }

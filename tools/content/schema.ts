@@ -147,11 +147,19 @@ export const findingSchema = z.strictObject({
 });
 
 const accuracy = z.number().min(50).max(100);
+const roomId = z.string().regex(/^room\.[a-z0-9_]+$/);
+const eqId = z.string().regex(/^eq\.[a-z0-9_]+$/);
+const roleId = z.string().regex(/^role\.[a-z0-9_]+$/);
 export const examSchema = z.strictObject({
   id: z.string().regex(/^exam\.[a-z0-9_]+$/),
   name: text,
   kind: z.enum(['ask', 'physical', 'bedside', 'lab', 'rapid', 'functional', 'imaging']),
-  room: z.string().optional(),
+  /** где делают; нет — в кабинете врача */
+  room: roomId.optional(),
+  /** каким аппаратом: подходит любой из списка (spec 2026-09-own-hospital) */
+  equipment: z.array(eqId).min(1).optional(),
+  /** где берут материал: кровь и мочу для анализов принимают в процедурном */
+  collect: roomId.optional(),
   time: z.strictObject({ procedure: z.number().int().min(0), report: z.number().int().min(0).optional(), turnaround: z.number().int().min(0).optional() }),
   cost: z.number().int().min(0),
   discomfort: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]),
@@ -203,6 +211,84 @@ export const riskSchema = z.strictObject({
   review,
 });
 
+// --- каталог больницы (spec 2026-09-own-hospital, `docs/07-data-model.md` §1) ---------------
+// Помещения, аппараты и должности — игровые предметы: цены и размеры — баланс игры. Что
+// каким аппаратом делают — медицинский факт, он записан в записях обследований с источниками.
+
+export const OBJECT_KINDS = ['bed', 'chair', 'desk', 'couch', 'cabinet', 'machine', 'plant', 'sink', 'bench', 'xray', 'table'] as const;
+const cellSrc = z.tuple([z.number().int().min(0), z.number().int().min(0)]);
+/** «нет лаборатории», «нет лаборанта» — родительный падеж для причин «не работает» */
+const gen = text;
+
+/**
+ * Размер помещения: клетки вместе со стенами; координаты — от левого верхнего угла стен в
+ * исходном повороте, дверная сторона — нижняя. Первый ряд внутри — под подпись на карте,
+ * последний — проход вдоль двери: в обоих предметов нет (валидатор).
+ */
+const roomSize = z.strictObject({
+  id: z.enum(['S', 'M', 'L']),
+  w: z.number().int().min(5).max(16),
+  h: z.number().int().min(5).max(16),
+  /** цена постройки и содержание в день, ₽ */
+  cost: z.number().int().min(0),
+  upkeep: z.number().int().min(0),
+  /** дверь по умолчанию: первая клетка проёма на нижней стене и его ширина */
+  door: z.strictObject({ x: z.number().int().min(1), width: z.number().int().min(1).max(4).default(1) }),
+  objects: z.array(z.tuple([z.enum(OBJECT_KINDS), z.number().int(), z.number().int()])),
+  /** места под аппараты */
+  slots: z.array(cellSrc).default([]),
+  /** где стоит человек каждой должности */
+  staff: z.record(roleId, cellSrc).default({}),
+  /** куда встаёт или садится пациент */
+  patient: cellSrc.optional(),
+});
+
+export const roomSchema = z.strictObject({
+  id: roomId,
+  name: text,
+  gen,
+  /** кто нужен, чтобы работало: по человеку на должность */
+  staff: z.array(roleId).default([]),
+  /** без аппарата не работает */
+  needsEquipment: z.boolean().default(false),
+  /** стулья — места в очереди */
+  seats: z.boolean().default(false),
+  sizes: z.array(roomSize).min(1),
+  texts: z.strictObject({ hint }),
+});
+
+export const equipmentSchema = z.strictObject({
+  id: eqId,
+  name: text,
+  gen,
+  room: roomId,
+  /** как выглядит на карте */
+  sprite: z.enum(['machine', 'xray']),
+  /** улучшение другого аппарата: цифровой рентген — плёночного */
+  upgradeOf: eqId.optional(),
+  /** цена и обслуживание в день, ₽ */
+  price: z.number().int().min(0),
+  upkeep: z.number().int().min(0),
+  /** шанс поломки за день работы, %; поломок в 0.2.0 нет */
+  breakdown: z.number().min(0).max(100),
+  /** множитель времени обследования: 0.8 — на пятую часть быстрее */
+  speed: z.number().min(0.3).max(3),
+  /** поправка к чувствительности и специфичности, процентные пункты */
+  quality: z.strictObject({ sens: z.number().int().min(-20).max(20), spec: z.number().int().min(-20).max(20) }).default({ sens: 0, spec: 0 }),
+  texts: z.strictObject({ hint }),
+});
+
+export const roleSchema = z.strictObject({
+  id: roleId,
+  name: text,
+  gen,
+  /** врача не нанимают: это игрок */
+  hire: z.boolean().default(true),
+  /** зарплата за смену при навыке 1 и при навыке 5, ₽ */
+  salary: z.tuple([z.number().int().min(0), z.number().int().min(0)]),
+  texts: z.strictObject({ hint }),
+});
+
 export const versionSchema = z.strictObject({ contentVersion: z.number().int().min(1) });
 
 export type ConditionSrc = z.infer<typeof conditionSchema>;
@@ -210,5 +296,8 @@ export type TreatmentSrc = z.infer<typeof treatmentSchema>;
 export type FindingSrc = z.infer<typeof findingSchema>;
 export type ExamSrc = z.infer<typeof examSchema>;
 export type RiskSrc = z.infer<typeof riskSchema>;
+export type RoomSrc = z.infer<typeof roomSchema>;
+export type EquipmentSrc = z.infer<typeof equipmentSchema>;
+export type RoleSrc = z.infer<typeof roleSchema>;
 export type LinkSrc = z.infer<typeof link>;
 export type ProbabilitySrc = z.infer<typeof probability>;

@@ -2,6 +2,8 @@ id: exam.ferritin
 name: { ru: "Ферритин" }
 kind: lab
 room: room.lab
+equipment: [eq.biochem_analyzer]
+collect: room.procedure
 time: { procedure: 5, turnaround: 120 }
 cost: 450
 discomfort: 1

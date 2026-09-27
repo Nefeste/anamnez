@@ -152,7 +152,9 @@ type TemplateSet = { ru: string[]; en?: string[] };   // варианты, ша�
 interface Exam {
   id: Id; name: Text;
   kind: 'ask' | 'physical' | 'bedside' | 'lab' | 'rapid' | 'functional' | 'imaging' | 'endoscopy' | 'score';
-  room?: Id; equipment?: Id[]; staff?: Id[];     // что нужно, чтобы сделать
+  room?: Id;                                     // где делают; нет — в кабинете врача
+  equipment?: Id[];                              // каким аппаратом: подходит любой из списка
+  collect?: Id;                                  // где берут материал: анализы — в процедурном
   time: { procedure: Minutes; report?: Minutes; turnaround?: Minutes };
   cost: number; consumables?: number;
   discomfort: 0 | 1 | 2 | 3; radiation?: 'none' | 'low' | 'medium' | 'high';
@@ -213,20 +215,47 @@ interface Treatment {
   // (жаропонижающее снимает температуру), sideEffects: { add: Id; p: P; if?: Id }[]
 }
 
+// Каталог больницы — content/hospital/ (spec 2026-09-own-hospital). gen — родительный
+// падеж для причин «не работает: нет лаборанта». Цены и зарплаты — баланс игры.
 interface RoomType {
-  id: Id; name: Text; department?: Id;
-  sizes: { id: 'S' | 'M' | 'L'; w: number; h: number; layout: ObjectPlacement[] }[];
-  requires: { equipment?: Id[]; staff?: Id[]; minArea: number };
-  capacity?: number;                     // койки, места ожидания
-  cost: number; upkeep: number;
+  id: Id; name: Text; gen: Text;
+  staff: Id[];                           // кто нужен: по человеку на должность
+  needsEquipment: boolean;               // без аппарата не работает (лаборатория, ЭКГ, рентген)
+  seats: boolean;                        // стулья — места в очереди (зона ожидания)
+  sizes: RoomSize[];
+  texts: { hint: Text };
+  // производное при сборке: какие аппараты сюда ставят, какие обследования здесь делают
+  // и для каких здесь берут материал
+  equipment: Id[]; exams: Id[]; collects: Id[];
+}
+// Клетки со стенами, от левого верхнего угла стен; дверная сторона в исходном повороте —
+// нижняя. Первый ряд внутри — под подпись на карте, последний — проход у двери: там пусто.
+interface RoomSize {
+  id: 'S' | 'M' | 'L'; w: number; h: number;
+  cost: number; upkeep: number;          // постройка и содержание в день, ₽
+  door: { x: number; width: number };    // дверь по умолчанию на нижней стене
+  objects: { kind: ObjectKind; x: number; y: number }[];
+  slots: Cell[];                         // места под аппараты
+  staff: Record<Id, Cell>;               // где стоит человек каждой должности
+  patient?: Cell;                        // куда встаёт или садится пациент
+  seats: number;                         // производное: стулья зоны ожидания
 }
 interface Equipment {
-  id: Id; name: Text; rooms: Id[]; tier?: number; upgradeOf?: Id;
-  price: number; upkeep: number; reliability: P;       // шанс поломки за день работы
-  speed: number; quality: number;                      // множители времени и точности
-  footprint: [number, number];
+  id: Id; name: Text; gen: Text; room: Id; sprite: 'machine' | 'xray'; upgradeOf?: Id;
+  price: number; upkeep: number;
+  breakdown: P;                          // шанс поломки за день работы; поломок в 0.2.0 нет
+  speed: number;                         // множитель времени обследования
+  quality: { sens: number; spec: number };   // поправка к точности, процентные пункты
+  exams: Id[];                           // производное: что им делают
+  texts: { hint: Text };
 }
-interface StaffRole { id: Id; name: Text; salary: [number, number]; rooms: Id[]; performs: Id[] }
+interface StaffRole {
+  id: Id; name: Text; gen: Text;
+  hire: boolean;                         // врача не нанимают: это игрок
+  salary: [number, number];              // за смену при навыке 1 и 5
+  rooms: Id[];                           // производное: где работает
+  texts: { hint: Text };
+}
 ```
 
 ## 2. Состояние партии

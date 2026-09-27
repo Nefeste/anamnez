@@ -181,7 +181,12 @@ export interface Exam {
   id: Id;
   name: Text;
   kind: 'ask' | 'physical' | 'bedside' | 'lab' | 'rapid' | 'functional' | 'imaging';
+  /** где делают; нет — в кабинете врача */
   room?: Id;
+  /** каким аппаратом: подходит любой из списка */
+  equipment?: Id[];
+  /** где берут материал (анализы — в процедурном) */
+  collect?: Id;
   /** минуты: сама процедура, описание, ожидание результата */
   time: { procedure: number; report?: number; turnaround?: number };
   cost: number;
@@ -209,6 +214,86 @@ export interface Risk {
 
 export type Season = 'winter' | 'spring' | 'summer' | 'autumn';
 
+// --- каталог больницы (spec 2026-09-own-hospital) ------------------------------------------
+
+export type Cell = [number, number];
+export type ObjectKind = 'bed' | 'chair' | 'desk' | 'couch' | 'cabinet' | 'machine' | 'plant' | 'sink' | 'bench' | 'xray' | 'table';
+export type RoomSizeId = 'S' | 'M' | 'L';
+
+/**
+ * Размер помещения: клетки вместе со стенами, координаты — от левого верхнего угла стен в
+ * исходном повороте; дверная сторона — нижняя. Первый ряд внутри — под подпись на карте,
+ * последний — проход вдоль двери.
+ */
+export interface RoomSize {
+  id: RoomSizeId;
+  w: number;
+  h: number;
+  cost: number;
+  upkeep: number;
+  /** дверь по умолчанию: первая клетка проёма на нижней стене и ширина проёма */
+  door: { x: number; width: number };
+  objects: { kind: ObjectKind; x: number; y: number }[];
+  /** места под аппараты */
+  slots: Cell[];
+  /** где стоит человек каждой должности */
+  staff: Record<Id, Cell>;
+  /** куда встаёт или садится пациент */
+  patient?: Cell;
+  /** стулья зоны ожидания — места в очереди */
+  seats: number;
+}
+
+export interface RoomType {
+  id: Id;
+  name: Text;
+  /** родительный падеж: «нет лаборатории» */
+  gen: Text;
+  /** кто нужен, чтобы работало: по человеку на должность */
+  staff: Id[];
+  needsEquipment: boolean;
+  seats: boolean;
+  sizes: RoomSize[];
+  /** производное: какие аппараты ставят сюда и какие обследования здесь делают или берут материал */
+  equipment: Id[];
+  exams: Id[];
+  collects: Id[];
+  texts: { hint: Text };
+}
+
+export interface Equipment {
+  id: Id;
+  name: Text;
+  gen: Text;
+  room: Id;
+  sprite: 'machine' | 'xray';
+  upgradeOf?: Id;
+  price: number;
+  upkeep: number;
+  /** шанс поломки за день работы, в долях 1/10 000; поломок в 0.2.0 нет */
+  breakdown: P;
+  /** множитель времени обследования */
+  speed: number;
+  /** поправка к чувствительности и специфичности, процентные пункты */
+  quality: { sens: number; spec: number };
+  /** производное: какие обследования им делают */
+  exams: Id[];
+  texts: { hint: Text };
+}
+
+export interface StaffRole {
+  id: Id;
+  name: Text;
+  gen: Text;
+  /** врача не нанимают: это игрок */
+  hire: boolean;
+  /** зарплата за смену при навыке 1 и при навыке 5, ₽ */
+  salary: [number, number];
+  /** производное: где работает */
+  rooms: Id[];
+  texts: { hint: Text };
+}
+
 export interface ContentDb {
   contentVersion: number;
   hash: string;
@@ -217,6 +302,9 @@ export interface ContentDb {
   exams: Record<Id, Exam>;
   risks: Record<Id, Risk>;
   treatments: Record<Id, Treatment>;
+  rooms: Record<Id, RoomType>;
+  equipment: Record<Id, Equipment>;
+  roles: Record<Id, StaffRole>;
   /** производное: какие обследования проверяют признак */
   revealedBy: Record<Id, Id[]>;
 }

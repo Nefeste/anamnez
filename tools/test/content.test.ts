@@ -131,3 +131,54 @@ describe('валидатор базы', () => {
     expect(db.exams['exam.flu_rapid'].checks[0]).toEqual({ f: 'lab.flu_ag', sens: 6200, spec: 9800 });
   });
 });
+
+// Каталог больницы (spec 2026-09-own-hospital): помещения, аппараты, должности и их связь с
+// обследованиями.
+describe('каталог больницы', () => {
+  test('собран: у помещений — что открывают, у аппаратов — какие обследования, у должностей — где работают', () => {
+    const { db } = buildDb();
+    expect(Object.keys(db.rooms)).toHaveLength(9);
+    expect(db.rooms['room.lab'].exams).toContain('exam.cbc');
+    expect(db.rooms['room.procedure'].collects).toContain('exam.cbc');
+    expect(db.rooms['room.lab'].equipment).toContain('eq.biochem_analyzer');
+    expect(db.equipment['eq.immuno_analyzer'].exams).toEqual(['exam.tsh']);
+    expect(db.equipment['eq.xray_digital'].upgradeOf).toBe('eq.xray_analog');
+    expect(db.roles['role.nurse'].rooms).toEqual(['room.ecg', 'room.procedure', 'room.triage']);
+    expect(db.roles['role.doctor'].hire).toBe(false);
+    expect(db.rooms['room.waiting'].sizes.map(z => z.seats)).toEqual([6, 10, 18]);
+    // у каждого обследования в лаборатории, ЭКГ и рентгене — аппарат
+    for (const e of Object.values(db.exams)) if (e.room && db.rooms[e.room].needsEquipment) expect(e.equipment?.length).toBeGreaterThan(0);
+  });
+
+  test('обследование с неизвестным аппаратом или аппаратом из чужого помещения', () => {
+    const unknown = broken(d => edit(d, 'exams/tsh.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.immuno]'));
+    expect(unknown.some(e => e.includes('exam.tsh: аппарат eq.immuno не найден'))).toBe(true);
+    const foreign = broken(d => edit(d, 'exams/tsh.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.ecg]'));
+    expect(foreign.some(e => e.includes('exam.tsh: аппарат eq.ecg стоит в room.ecg'))).toBe(true);
+    // и тогда иммунохимическим анализатором ничего не делают
+    expect(foreign.some(e => e.includes('eq.immuno_analyzer: ни одно обследование им не делают'))).toBe(true);
+  });
+
+  test('в лаборатории без аппарата не работают — у анализа должен быть анализатор', () => {
+    const errors = broken(d => edit(d, 'exams/tsh.yaml', 'equipment: [eq.immuno_analyzer]\n', ''));
+    expect(errors.some(e => e.includes('exam.tsh: в room.lab без аппарата не работают'))).toBe(true);
+  });
+
+  test('шаблон помещения: предмет в ряду под подпись, место на столе, должность без места', () => {
+    const label = broken(d => edit(d, 'hospital/rooms/reception.yaml', '[cabinet, 4, 2]', '[cabinet, 4, 1]'));
+    expect(label.some(e => e.includes('room.reception S: cabinet (4, 1) — в ряду под подпись или в проходе у двери'))).toBe(true);
+    const walkway = broken(d => edit(d, 'hospital/rooms/reception.yaml', '[plant, 4, 4]', '[plant, 4, 5]'));
+    expect(walkway.some(e => e.includes('plant (4, 5) — в ряду под подпись или в проходе у двери'))).toBe(true);
+    const onDesk = broken(d => edit(d, 'hospital/rooms/reception.yaml', 'patient: [2, 4]', 'patient: [2, 3]'));
+    expect(onDesk.some(e => e.includes('место пациента (2, 3) занято: desk'))).toBe(true);
+    const noSpot = broken(d => edit(d, 'hospital/rooms/xray.yaml', ', role.radiologist: [1, 4] }', ' }'));
+    expect(noSpot.some(e => e.includes('room.xray M: не сказано, где стоит role.radiologist'))).toBe(true);
+  });
+
+  test('неизвестная должность и дверь за стеной', () => {
+    const role = broken(d => edit(d, 'hospital/rooms/lab.yaml', 'staff: [role.lab_tech]', 'staff: [role.laborant]'));
+    expect(role.some(e => e.includes('room.lab: должность role.laborant не найдена'))).toBe(true);
+    const door = broken(d => edit(d, 'hospital/rooms/toilet.yaml', 'door: { x: 3 }', 'door: { x: 5 }'));
+    expect(door.some(e => e.includes('room.toilet S: дверь выходит за стену'))).toBe(true);
+  });
+});

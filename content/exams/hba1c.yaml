@@ -2,6 +2,8 @@ id: exam.hba1c
 name: { ru: "Гликированный гемоглобин" }
 kind: lab
 room: room.lab
+equipment: [eq.biochem_analyzer]
+collect: room.procedure
 time: { procedure: 5, turnaround: 90 }
 cost: 500
 discomfort: 1

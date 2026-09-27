@@ -2,6 +2,8 @@ id: exam.urinalysis
 name: { ru: "Общий анализ мочи" }
 kind: lab
 room: room.lab
+equipment: [eq.urine_analyzer]
+collect: room.procedure
 time: { procedure: 3, turnaround: 60 }
 cost: 300
 discomfort: 0

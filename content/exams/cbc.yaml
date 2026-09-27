@@ -2,6 +2,8 @@ id: exam.cbc
 name: { ru: "Общий анализ крови" }
 kind: lab
 room: room.lab
+equipment: [eq.hematology_analyzer]
+collect: room.procedure
 time: { procedure: 5, turnaround: 40 }
 cost: 350
 discomfort: 1

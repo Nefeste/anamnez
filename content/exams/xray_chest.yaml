@@ -2,6 +2,7 @@ id: exam.xray_chest
 name: { ru: "Рентгенография органов грудной клетки" }
 kind: imaging
 room: room.xray
+equipment: [eq.xray_analog, eq.xray_digital]
 radiation: low
 time: { procedure: 15, report: 20 }
 cost: 900

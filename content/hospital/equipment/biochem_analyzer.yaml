@@ -1,0 +1,11 @@
+id: eq.biochem_analyzer
+name: { ru: "Биохимический анализатор" }
+gen: { ru: "биохимического анализатора" }
+room: room.lab
+sprite: machine
+price: 1500000
+upkeep: 1200
+breakdown: 1
+speed: 1
+texts:
+  hint: { ru: "Меряет вещества в крови: С-реактивный белок, глюкозу, креатинин, гликированный гемоглобин, ферритин." }

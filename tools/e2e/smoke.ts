@@ -161,6 +161,17 @@ try {
   await visible(page, 'enc-block-confirms').waitFor({ timeout: 5000 });
   check((await visibleText(page, 'enc-article-title')) === 'Рентгенография органов грудной клетки' && (await visible(page, 'enc-link-cond.pneumonia_cap').count()) > 0,
     'энциклопедия: ссылка ведёт в статью обследования, а оттуда — обратно к болезни');
+  // больница: у обследования — где делают; у помещения — что здесь делают и что нужно
+  await visible(page, 'enc-link-room.xray').first().click();
+  await visible(page, 'enc-block-needs').waitFor({ timeout: 5000 });
+  check((await visibleText(page, 'enc-article-title')) === 'Рентген-кабинет' && (await visible(page, 'enc-link-role.radiologist').count()) > 0
+    && (await visible(page, 'enc-link-eq.xray_digital').count()) > 0, 'энциклопедия: из обследования — в помещение, где его делают: кто нужен и какие аппараты');
+  await page.screenshot({ path: join(OUT, '11-room.png'), fullPage: true });
+  await page.goto(`${base}/encyclopedia`);
+  await page.getByTestId('enc-section-hospital').click();
+  await visible(page, 'enc-item-eq.immuno_analyzer').waitFor({ timeout: 5000 });
+  check((await visible(page, 'enc-item-room.lab').count()) > 0 && (await visible(page, 'enc-item-role.lab_tech').count()) > 0,
+    'энциклопедия: раздел «Больница» — помещения, аппараты, должности');
   await page.goto(`${base}/encyclopedia`);
   await page.getByTestId('enc-search').fill('подъем сегмента');
   await page.getByTestId('enc-item-ecg.st_elevation').waitFor({ timeout: 5000 });

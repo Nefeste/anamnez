@@ -1,0 +1,20 @@
+id: room.procedure
+name: { ru: "Процедурный кабинет" }
+gen: { ru: "процедурного кабинета" }
+staff: [role.nurse]
+sizes:
+  - id: S
+    w: 6
+    h: 7
+    cost: 170000
+    upkeep: 300
+    door: { x: 2 }
+    objects:
+      - [table, 2, 3]
+      - [chair, 2, 4]
+      - [cabinet, 4, 3]
+      - [sink, 4, 4]
+    staff: { role.nurse: [2, 2] }
+    patient: [2, 4]
+texts:
+  hint: { ru: "Медсестра берёт кровь из вены и принимает мочу на анализ. Без процедурного кабинета лаборатории не с чем работать." }

@@ -1,0 +1,23 @@
+id: room.office
+name: { ru: "Кабинет врача" }
+gen: { ru: "кабинета врача" }
+staff: [role.doctor]
+sizes:
+  - id: M
+    w: 8
+    h: 7
+    cost: 200000
+    upkeep: 350
+    door: { x: 3 }
+    objects:
+      - [desk, 3, 3]
+      - [chair, 3, 2]
+      - [chair, 3, 4]
+      - [couch, 6, 2]
+      - [cabinet, 1, 3]
+      - [sink, 6, 4]
+      - [plant, 1, 4]
+    staff: { role.doctor: [3, 2] }
+    patient: [3, 4]
+texts:
+  hint: { ru: "Ваш кабинет: здесь расспрашивают, осматривают, делают экспресс-тесты и решают, что дальше." }

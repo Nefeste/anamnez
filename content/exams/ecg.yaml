@@ -2,6 +2,7 @@ id: exam.ecg
 name: { ru: "ЭКГ" }
 kind: functional
 room: room.ecg
+equipment: [eq.ecg]
 time: { procedure: 10, report: 10 }
 cost: 400
 discomfort: 0

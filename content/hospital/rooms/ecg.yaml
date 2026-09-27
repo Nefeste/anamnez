@@ -1,0 +1,20 @@
+id: room.ecg
+name: { ru: "Кабинет ЭКГ" }
+gen: { ru: "кабинета ЭКГ" }
+staff: [role.nurse]
+needsEquipment: true
+sizes:
+  - id: S
+    w: 6
+    h: 7
+    cost: 150000
+    upkeep: 300
+    door: { x: 3 }
+    slots: [[1, 3]]
+    objects:
+      - [couch, 2, 3]
+      - [cabinet, 4, 2]
+    staff: { role.nurse: [3, 3] }
+    patient: [2, 3]
+texts:
+  hint: { ru: "Медсестра снимает электрокардиограмму: пациент лежит, на груди и руках и ногах — электроды. Запись описывают через несколько минут." }
