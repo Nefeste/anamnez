@@ -20,7 +20,10 @@ export type ScoreNote =
    * скорая (spec 2026-09-chapter-2, часть 27): врач отсортировал срочнее или спокойнее, чем шкала
    * NEWS2 с красными флагами; `flag` — признак, что поднял цвет выше баллов
    */
-  | { code: 'triage.under' | 'triage.over'; triage: 'red' | 'yellow' | 'green'; news2: number; flag?: Id };
+  | { code: 'triage.under' | 'triage.over'; triage: 'red' | 'yellow' | 'green'; news2: number; flag?: Id }
+  /** операция (часть 28): через сколько часов от решения, в срок `window` болезни или позже; осложнение после неё */
+  | { code: 'op.onTime' | 'op.late'; tx: Id; hours: number; window: number }
+  | { code: 'op.complication'; tx: Id };
 
 export interface CaseInput {
   verdict: 'correct' | 'partly' | 'wrong';

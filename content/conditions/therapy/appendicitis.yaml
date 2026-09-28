@@ -15,6 +15,11 @@ course:
     - { id: late, days: [1, 3] }
   presentation: [0, 1]
   untreated: { band: usually, days: [1, 3] }
+  # после аппендэктомии в стационаре 1–4 дня (325_2, раздел 3.3)
+  stay: [1, 4]
+# операция — аппендэктомия; при неосложнённом её можно отложить до 24 ч от поступления, дольше —
+# хуже исходы (325_2, раздел 3.2; WSES 2020, утверждение 3.2)
+surgery: { tx: tx.appendectomy, window: 24 }
 findings:
   - { f: sym.abdominal_pain, band: usually }
   - { f: sym.rlq_pain, band: usually }
@@ -50,7 +55,7 @@ pearls:
   - ru: "Обезболивание не «смазывает картину» — это миф; опасно другое: отпустить домой с «отравлением»."
 simplified: "Шкала Альварадо, УЗИ и КТ — позже; в поликлинике задача — заподозрить и отправить к хирургу."
 sources:
-  - { kind: guideline, title: "Острый аппендицит у взрослых", org: "Минздрав РФ", year: 2023, url: "https://cr.minzdrav.gov.ru/view-cr/325_2", note: "ID 325_2, опубликованы 24.11.2023, применяются; сверено с рубрикатором 28.09.2026; частоты — черновик" }
-  - { kind: guideline, title: "Di Saverio S et al. Diagnosis and treatment of acute appendicitis: 2020 update of the WSES Jerusalem guidelines. World J Emerg Surg 2020;15:27" }
+  - { kind: guideline, title: "Острый аппендицит у взрослых", org: "Минздрав РФ", year: 2023, url: "https://cr.minzdrav.gov.ru/view-cr/325_2", note: "ID 325_2, опубликованы 24.11.2023, применяются; сверено с рубрикатором 28.09.2026; частоты — черновик; срок операции и стационара — разделы 3.2 и 3.3" }
+  - { kind: guideline, title: "Di Saverio S et al. Diagnosis and treatment of acute appendicitis: 2020 update of the WSES Jerusalem guidelines. World J Emerg Surg 2020;15:27", url: "https://pubmed.ncbi.nlm.nih.gov/32295644/", note: "PMC7386163: отсрочка аппендэктомии до 24 ч от поступления не повышает риск осложнённого аппендицита, позже — хуже исходы (утверждение 3.2)" }
   - { kind: paper, title: "Wagner JM, McKinney WP, Carpenter JL. Does this patient have appendicitis? JAMA 1996;276(19):1589–1594" }
 review: draft

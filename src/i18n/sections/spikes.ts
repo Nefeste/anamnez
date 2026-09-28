@@ -128,6 +128,8 @@ export const spikes = {
       ambulance: 'Увезла скорая',
       // своя палата (spec 2026-09-chapter-2, часть 26)
       admitted: 'Лежит в палате — чем кончится, покажет обход',
+      // операционная (spec 2026-09-chapter-2, часть 28)
+      operated: 'В операционную, после операции — в палату: чем кончится, покажет обход',
       transferred: (female: boolean) => (female ? 'Переведена в другую больницу' : 'Переведён в другую больницу'),
     },
     outcomeLabel: 'Что было дальше',
@@ -177,6 +179,12 @@ export const spikes = {
         `При сортировке недооценили: по листу передачи NEWS2 — ${news2}\u00a0${pluralRu(news2, 'балл', 'балла', 'баллов')}${flag ? `, но «${flag.toLowerCase()}» — тревожный признак` : ''}, по шкале это ${TRIAGE[triage] ?? triage}`,
       triageOver: (triage: string, news2: number, flag?: string) =>
         `При сортировке переоценили: по листу передачи — ${TRIAGE[triage] ?? triage} (NEWS2 — ${news2}\u00a0${pluralRu(news2, 'балл', 'балла', 'баллов')}${flag ? `, тревожный признак «${flag.toLowerCase()}»` : ''})`,
+      // операционная (spec 2026-09-chapter-2, часть 28): срок от поступления и осложнение после операции
+      opOnTime: (tx: string, hours: number, window: number) =>
+        `${tx} — через ${String(hours).replace('.', ',')}\u00a0ч после поступления: в срок, до ${window}\u00a0ч`,
+      opLate: (tx: string, hours: number, window: number) =>
+        `${tx} — через ${String(hours).replace('.', ',')}\u00a0ч после поступления: позже срока в ${window}\u00a0ч`,
+      opComplication: (tx: string) => `После операции (${tx.toLowerCase()}) — осложнение: инфекция раны или абсцесс, стационар дольше`,
     },
     done: 'Уже сделано',
     cost: (min: number, rub: number) => (rub > 0 ? `${min}\u00a0мин · ${rub}\u00a0₽` : `${min}\u00a0мин`),

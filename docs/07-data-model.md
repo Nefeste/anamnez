@@ -75,6 +75,7 @@ interface Condition {
     // позже (приёмное и скорая, этап 4) — осложнения новыми состояниями:
     // complications?: { after: [number, number]; when?: Cond; add: Id; p: P }[];
   };
+  surgery?: { tx: Id; window: number }; // лечат операцией tx; «в срок» — не позже window часов (0.0.45)
   findings: Link[];                     // связи «состояние → признак»
   vitals?: VitalShift[];                // сдвиги витальных по стадиям и тяжести
   confirm: Id[] | 'clinical';
@@ -205,7 +206,7 @@ interface ClinicalTask {
 ```ts
 interface Treatment {
   id: Id; name: Text;                    // МНН или группа, без доз (ADR 0012)
-  kind: 'drug' | 'regimen' | 'procedure'; // позже: 'surgery' (часть 28)
+  kind: 'drug' | 'regimen' | 'procedure' | 'surgery'; // операция — с 0.0.45
   class?: string;                        // 'antibiotic.penicillin'
   route?: 'oral' | 'inhaled' | 'nasal' | 'iv' | 'im';
   cost: number;
@@ -216,6 +217,8 @@ interface Treatment {
   contraindications: { id: Id; level: 'relative' | 'absolute'; reaction: P }[];
   texts: { hint: Text };                 // «Что это?» простыми словами (05-content.md §4)
   sources: Source[]; review: Review; replacedBy?: Id;
+  // операция (0.0.45): где, какая бригада, какие аппараты — все сразу, минуты, доля осложнений
+  surgery?: { room: Id; team: Id[]; equipment: Id[]; minutes: number; complications: P };
   // позже: room?, staff?, time? (процедуры в кабинетах), findings в effects
   // (жаропонижающее снимает температуру), sideEffects: { add: Id; p: P; if?: Id }[]
 }
@@ -250,7 +253,8 @@ interface RoomSize {
   places: number;                        // мест для нанятых врачей — ординаторская (0.0.32)
 }
 interface Equipment {
-  id: Id; name: Text; gen: Text; room: Id; sprite: 'ecg' | 'analyzer' | 'xray'; upgradeOf?: Id;
+  id: Id; name: Text; gen: Text; room: Id; sprite: 'ecg' | 'analyzer' | 'xray' | 'or_table' | 'anesthesia'; upgradeOf?: Id;
+  slot?: number;                         // своё место в помещении (стол — под пациентом, 0.0.45)
   price: number; upkeep: number;
   breakdown: P;                          // шанс поломки за день работы; поломок в 0.2.0 нет
   speed: number;                         // множитель времени обследования
@@ -400,6 +404,14 @@ interface Patient {
   `taken`, сколько его пациентов вы забрали. Приём с `from` — ваш: в прежних строках итогов,
   в профиле и оценке «Смены».
 
+- С 0.0.45 — операционная (часть 28а): у лежащего `stay.op` — операция: `tx`, когда решили
+  оперировать (`queued`), операционная и хирург, начало и конец по часам смены, `done`,
+  `complication`; пока `start` нет — ждёт в очереди операционной (по `queued`). Выбор места
+  `surgery` — «В операционную» (пациент ложится на койку, как `admit`), команда `operate { id }`
+  — с обхода; событие `opEnd`; в итогах дня `surgery` — операций, в срок, позже, осложнений; в
+  разборе — `op.onTime` и `op.late` (часы от поступления и окно) и `op.complication`. В
+  `economy.yaml` — `staff.surgery` (поправка доли осложнений по навыку хирурга, %) и
+  `tariffs.omsOperation` (прибавка к случаю стационара с операцией). Схема сохранения прежняя.
 - С 0.0.44 — скорая (часть 27): вид приёма `ambulance`; у привезённого `bay` — место в
   смотровой приёмного (нет — ждёт у входа), `sorted` — отсортировал ли врач (цвет — прежний
   `triage`), `scale` — цвет и баллы по шкале NEWS2 с флагами, как отсортировала бы медсестра,

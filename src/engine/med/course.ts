@@ -12,7 +12,7 @@ import type { Patient } from './types';
 /** Сколько дней после приёма модель следит за пациентом, отпущенным домой. */
 export const OBSERVE_DAYS = 7;
 
-/** `admitted` — лёг в свою палату: чем кончится, скажет выписка (spec 2026-09-chapter-2, часть 26). */
+/** `admitted` — лёг в свою палату (часть 26) или в операционную, затем в палату (часть 28): чем кончится, скажет выписка. */
 export type OutcomeKind = 'recovered' | 'improved' | 'unchanged' | 'worse' | 'reaction' | 'transferred' | 'admitted';
 
 export interface Outcome {
@@ -35,7 +35,7 @@ function anyOf(ps: readonly number[]): number {
 }
 
 export function observe(db: ContentDb, patient: Patient, plan: Plan, ev: PlanEval, rng: Rng): Outcome {
-  if (plan.setting === 'admit') return { kind: 'admitted', day: 0, cured: ev.effective };
+  if (plan.setting === 'admit' || plan.setting === 'surgery') return { kind: 'admitted', day: 0, cured: ev.effective };
   if (plan.setting !== 'home') return { kind: 'transferred', day: 0, cured: false };
   const primary = primaryOf(patient);
   const cond = db.conditions[primary.id];

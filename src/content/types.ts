@@ -76,7 +76,7 @@ export interface Tactics {
 export interface Treatment {
   id: Id;
   name: Text;
-  kind: 'drug' | 'regimen' | 'procedure';
+  kind: 'drug' | 'regimen' | 'procedure' | 'surgery';
   class?: string;
   route?: 'oral' | 'inhaled' | 'nasal' | 'iv' | 'im';
   cost: number;
@@ -84,9 +84,19 @@ export interface Treatment {
   effects: { on: Id; kind: 'cure' | 'relieve'; p: P; days: [number, number] }[];
   /** reaction — вероятность вреда, если назначить при этом противопоказании */
   contraindications: { id: Id; level: 'relative' | 'absolute'; reaction: P }[];
+  /** операция (spec 2026-09-chapter-2, часть 28): помещение, бригада, аппараты — все сразу, минуты, осложнений при среднем навыке хирурга */
+  surgery?: Surgery;
   texts: { hint: Text };
   sources: Source[];
   review: Review;
+}
+
+export interface Surgery {
+  room: Id;
+  team: Id[];
+  equipment: Id[];
+  minutes: number;
+  complications: P;
 }
 
 export interface Stage {
@@ -137,6 +147,8 @@ export interface Condition {
   untreated?: { p: P; days: [number, number] };
   /** в стационаре при действенном лечении: через сколько суток можно выписывать */
   stay?: [number, number];
+  /** лечат операцией (часть 28): какой и за сколько часов от поступления, чтобы не поздно */
+  surgery?: { tx: Id; window: number };
   /** тактика; есть у всех, с чем приходят (валидатор) */
   treatment?: Tactics;
   texts: { summary: Text };
@@ -231,7 +243,7 @@ export type Season = 'winter' | 'spring' | 'summer' | 'autumn';
 // --- каталог больницы (spec 2026-09-own-hospital) ------------------------------------------
 
 export type Cell = [number, number];
-export type ObjectKind = 'bed' | 'chair' | 'desk' | 'couch' | 'cabinet' | 'machine' | 'plant' | 'sink' | 'bench' | 'xray' | 'table' | 'ecg' | 'analyzer';
+export type ObjectKind = 'bed' | 'chair' | 'desk' | 'couch' | 'cabinet' | 'machine' | 'plant' | 'sink' | 'bench' | 'xray' | 'table' | 'ecg' | 'analyzer' | 'or_table' | 'anesthesia';
 export type RoomSizeId = 'S' | 'M' | 'L';
 
 /**
@@ -287,8 +299,10 @@ export interface Equipment {
   name: Text;
   gen: Text;
   room: Id;
-  sprite: 'ecg' | 'analyzer' | 'xray';
+  sprite: 'ecg' | 'analyzer' | 'xray' | 'or_table' | 'anesthesia';
   upgradeOf?: Id;
+  /** своё место в помещении — номер из `slots`; занято — первое свободное */
+  slot?: number;
   price: number;
   upkeep: number;
   /** шанс поломки за день работы, в долях 1/10 000; поломок в 0.2.0 нет */
@@ -353,6 +367,8 @@ export interface Economy {
     speed: [number, number, number, number, number];
     /** рентгенолог по навыку 1–5: поправка чувствительности и специфичности снимка, п. п. */
     reading: [number, number][];
+    /** хирург по навыку 1–5: доля осложнений после операции, % от записанной у операции (spec 2026-09-chapter-2, часть 28) */
+    surgery: [number, number, number, number, number];
     /** отработанных дней на ступень навыка */
     growthDays: number;
     /** вес «без черты» */
@@ -377,6 +393,8 @@ export interface Economy {
     oms: Record<'minor' | 'moderate' | 'serious' | 'critical', number>;
     /** случай стационара по тяжести диагноза — при выписке */
     omsWard: Record<'minor' | 'moderate' | 'serious' | 'critical', number>;
+    /** случай стационара с операцией — прибавка за операцию */
+    omsOperation: number;
     omsQuality: Record<'A' | 'B' | 'C' | 'D', number>;
     omsUnconfirmed: number;
     /** показанные обследования, % цены в базе */

@@ -1,6 +1,6 @@
 {
-  "version": "0.0.44",
-  "base": 21,
+  "version": "0.0.45",
+  "base": 22,
   "ids": {
     "achievements": [
       "ach.allergy_10",
@@ -134,10 +134,12 @@
       "cond.tension_headache/episode"
     ],
     "equipment": [
+      "eq.anesthesia",
       "eq.biochem_analyzer",
       "eq.ecg",
       "eq.hematology_analyzer",
       "eq.immuno_analyzer",
+      "eq.or_table",
       "eq.urine_analyzer",
       "eq.xray_analog",
       "eq.xray_digital"
@@ -335,12 +337,15 @@
       "risk.travel"
     ],
     "roles": [
+      "role.anesthetist",
       "role.doctor",
       "role.lab_tech",
       "role.nurse",
+      "role.or_nurse",
       "role.radiographer",
       "role.radiologist",
       "role.registrar",
+      "role.surgeon",
       "role.therapist"
     ],
     "rooms": [
@@ -348,6 +353,7 @@
       "room.emergency",
       "room.lab",
       "room.office",
+      "room.or",
       "room.procedure",
       "room.reception",
       "room.staff",
@@ -365,6 +371,7 @@
       "room.lab/M",
       "room.lab/S",
       "room.office/M",
+      "room.or/M",
       "room.procedure/S",
       "room.reception/S",
       "room.staff/M",
@@ -395,6 +402,7 @@
       "tx.amoxicillin_clavulanate",
       "tx.antacid",
       "tx.antihistamine",
+      "tx.appendectomy",
       "tx.arb",
       "tx.aspirin_acs",
       "tx.bed_rest",

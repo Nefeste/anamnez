@@ -13,6 +13,8 @@ export const ROOM_TINT: Record<RoomType, string> = {
   reception: '#FAF1E4', waiting: '#FAF6E8', office: '#E7F3F2', triage: '#F8ECEC', procedure: '#F8ECEC',
   lab: '#F1ECF8', ecg: '#EEF5E6', xray: '#E9ECED', ultrasound: '#EEF5E6', ward: '#ECEFF9',
   surgery: '#E4F3EA', staff: '#F3F0EA', toilet: '#E8EFF5',
+  // смотровая приёмного — прежний пол по умолчанию (часть 27), операционная — как хирургия (часть 28)
+  emergency: '#F3F0EA', or: '#E4F3EA',
 };
 export const OUTSIDE = '#DDE4E3';
 export const CORRIDOR = '#F6F3ED';

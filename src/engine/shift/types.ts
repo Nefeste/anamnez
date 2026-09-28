@@ -149,6 +149,8 @@ export type ShiftEvent =
   | { kind: 'colleague'; id: string }
   /** нанятый врач дописал карту и свободен — зовёт следующего */
   | { kind: 'free'; by: string }
+  /** операция кончилась (spec 2026-09-chapter-2, часть 28): исход и следующий в очереди операционной */
+  | { kind: 'opEnd'; id: string }
   | { kind: 'shiftEnd' };
 
 export type Command =
@@ -181,7 +183,9 @@ export type Command =
   | { kind: 'transfer'; id: string }
   | { kind: 'replan'; id: string; treatments: Id[] }
   /** скорая (часть 27): врач сортирует привезённого по листу передачи */
-  | { kind: 'sort'; id: string; triage: Triage };
+  | { kind: 'sort'; id: string; triage: Triage }
+  /** обход (часть 28): лежащего — в операционную, операцией его диагноза */
+  | { kind: 'operate'; id: string };
 
 /** Что случилось — для интерфейса: звук, автопауза, сводка «за это время». */
 export type Notice =
@@ -219,6 +223,15 @@ export interface DaySummary {
   ward?: WardDay;
   /** скорая за день (часть 27): привезли, отсортировали, из них недооценили и переоценили по шкале */
   ambulance?: AmbulanceDay;
+  /** операционная за день (часть 28): операций, из них в срок `window` и позже; осложнений после операции */
+  surgery?: SurgeryDay;
+}
+
+export interface SurgeryDay {
+  done: number;
+  onTime: number;
+  late: number;
+  complications: number;
 }
 
 export interface AmbulanceDay {

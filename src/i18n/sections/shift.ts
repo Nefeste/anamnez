@@ -106,6 +106,12 @@ export const shift = {
       stay: (mean: number, norm: number) =>
         `В среднем в стационаре ${String(mean).replace('.', ',')}\u00a0сут. при обычных ${String(norm).replace('.', ',')}.`,
     },
+    // операционная за день (часть 28)
+    surgery: {
+      title: 'Операционная',
+      line: (done: number, onTime: number, late: number) => `Операций: ${done}, в срок: ${onTime}${late > 0 ? `, позже срока: ${late}` : ''}.`,
+      complications: (n: number) => `Осложнений после операции: ${n} — стационар у них дольше.`,
+    },
     nextDay: 'Следующий день ▶',
     restart: 'Начать практику заново',
     restartConfirm: 'Все дни практики будут стёрты. Начать заново?',
@@ -132,6 +138,8 @@ export const shift = {
       ward: 'Палата',
       // смотровая приёмного (часть 27)
       emergency: 'Приёмное',
+      // операционная (часть 28)
+      or: 'Операционная',
     } as Record<string, string>,
     // для чтения с экрана: что на карте, словами
     label: (waiting: number, away: number, inRoom: string | undefined) =>
@@ -153,6 +161,9 @@ export const shift = {
       ecgNurse: 'Медсестра кабинета ЭКГ',
       radiographer: 'Рентгенолаборант',
       radiologist: 'Рентгенолог',
+      surgeon: 'Хирург',
+      anesthetist: 'Анестезиолог',
+      orNurse: 'Операционная медсестра',
     } as Record<string, string>,
     // нанятый врач (spec 2026-09-hired-doctors): кто он и кого принимает
     therapist: (name: string, skill: number) => `${name}, терапевт · навык ${skill}`,
@@ -182,6 +193,9 @@ export const shift = {
       left: (female: boolean) => ago(female, 'Не дождался приёма и уходит', 'Не дождалась приёма и уходит'),
       // палата (spec 2026-09-chapter-2, часть 26): день поступления — «первые сутки»
       ward: (days: number) => `В палате: ${days + 1}-е\u00a0сутки`,
+      // операционная (часть 28): на столе и ждёт операции в палате
+      onTable: (op: string, until: string) => `Идёт операция: ${op.toLowerCase()}, до ${until}`,
+      waitingOp: (op: string) => `В палате, ждёт операции: ${op.toLowerCase()}`,
       // скорая (spec 2026-09-chapter-2, часть 27)
       ambulance: {
         unsorted: 'Привезла скорая — ждёт сортировки',
@@ -227,6 +241,17 @@ export const shift = {
     transfer: 'Перевести',
     replanTitle: 'Сменить лечение',
     replanDone: 'Готово',
+    // операционная (spec 2026-09-chapter-2, часть 28): в решении и на обходе
+    operate: 'В операционную',
+    opHint: (op: string, free: number, all: number) => `${op} · коек свободно ${free} из ${all}`,
+    noOperation: 'у этого диагноза операции нет',
+    noDiagnosis: 'сначала — диагноз',
+    orDown: (why: string) => `операционная не работает: ${why}`,
+    noOpEquipment: (gen: string) => `в операционной нет ${gen}`,
+    opWaiting: (op: string, n: number) => `Ждёт операции: ${op.toLowerCase()}${n > 1 ? ` · в очереди ${n}-й` : ''}`,
+    opOn: (op: string, until: string) => `Идёт операция: ${op.toLowerCase()}, до ${until}`,
+    opDone: (op: string) => `После операции: ${op.toLowerCase()}`,
+    opComplication: 'после операции — осложнение, стационар дольше',
   },
   // скорая (spec 2026-09-chapter-2, часть 27): лист передачи и сортировка врачом
   ambulance: {

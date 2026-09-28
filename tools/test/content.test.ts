@@ -144,7 +144,7 @@ describe('валидатор базы', () => {
 describe('каталог больницы', () => {
   test('собран: у помещений — что открывают, у аппаратов — какие обследования, у должностей — где работают', () => {
     const { db } = buildDb();
-    expect(Object.keys(db.rooms)).toHaveLength(12);
+    expect(Object.keys(db.rooms)).toHaveLength(13);
     // нанятый врач (spec 2026-09-hired-doctors): встаёт на место врача, нужна ординаторская с местами
     expect(db.roles['role.therapist']).toMatchObject({ hire: true, stands: 'role.doctor', needs: 'room.staff', rooms: ['room.office'] });
     expect(db.rooms['room.staff'].sizes.map(z => z.places)).toEqual([2, 4]);
@@ -161,6 +161,12 @@ describe('каталог больницы', () => {
     // смотровая приёмного (часть 27): койки — места для пациентов скорой, одно, два, три
     expect(db.rooms['room.emergency']).toMatchObject({ emergency: true, beds: false, staff: ['role.nurse'] });
     expect(db.rooms['room.emergency'].sizes.map(z => z.beds)).toEqual([1, 2, 3]);
+    // операционная (часть 28): бригада из трёх, стол и наркозный аппарат — каждый на своём месте
+    expect(db.rooms['room.or']).toMatchObject({ needsEquipment: true, staff: ['role.surgeon', 'role.anesthetist', 'role.or_nurse'] });
+    expect(db.equipment['eq.or_table']).toMatchObject({ slot: 1, exams: [] });
+    expect(db.equipment['eq.anesthesia']).toMatchObject({ slot: 0, exams: [] });
+    expect(db.treatments['tx.appendectomy'].surgery).toMatchObject({ room: 'room.or', equipment: ['eq.or_table', 'eq.anesthesia'], minutes: 45, complications: 870 });
+    expect(db.conditions['cond.appendicitis'].surgery).toEqual({ tx: 'tx.appendectomy', window: 24 });
     expect(db.roles['role.doctor'].hire).toBe(false);
     expect(db.rooms['room.waiting'].sizes.map(z => z.seats)).toEqual([6, 10, 18]);
     // у каждого обследования в лаборатории, ЭКГ и рентгене — аппарат
@@ -179,13 +185,29 @@ describe('каталог больницы', () => {
     expect(nobody.some(e => e.includes('dept.therapy: скорой некого везти'))).toBe(true);
   });
 
+  test('операция: у болезни — не операция; у операции — чужая бригада, аппарат из другого помещения, место аппарата за краем', () => {
+    const notOp = broken(d => edit(d, 'conditions/therapy/appendicitis.yaml', 'surgery: { tx: tx.appendectomy, window: 24 }', 'surgery: { tx: tx.paracetamol, window: 24 }'));
+    expect(notOp.some(e => e.includes('cond.appendicitis: tx.paracetamol — не операция (kind: surgery)'))).toBe(true);
+    const kind = broken(d => edit(d, 'treatments/appendectomy.yaml', 'kind: surgery', 'kind: procedure'));
+    expect(kind.some(e => e.includes('tx.appendectomy: у операции (kind: surgery) должен быть блок surgery, и только у неё'))).toBe(true);
+    const team = broken(d => edit(d, 'treatments/appendectomy.yaml', 'team: [role.surgeon, role.anesthetist, role.or_nurse]', 'team: [role.surgeon, role.nurse]'));
+    expect(team.some(e => e.includes('tx.appendectomy: role.nurse — не из штата room.or'))).toBe(true);
+    const alien = broken(d => edit(d, 'treatments/appendectomy.yaml', 'equipment: [eq.or_table, eq.anesthesia]', 'equipment: [eq.or_table, eq.ecg]'));
+    expect(alien.some(e => e.includes('tx.appendectomy: аппарат eq.ecg стоит в room.ecg, а операция — в room.or'))).toBe(true);
+    const slot = broken(d => edit(d, 'hospital/equipment/or_table.yaml', 'slot: 1', 'slot: 2'));
+    expect(slot.some(e => e.includes('eq.or_table: места 2 под аппарат нет у всех размеров room.or'))).toBe(true);
+    // лечит не ту болезнь, что в записи болезни
+    const cure = broken(d => edit(d, 'treatments/appendectomy.yaml', 'on: cond.appendicitis, kind: cure', 'on: cond.gastroenteritis, kind: cure'));
+    expect(cure.some(e => e.includes('cond.appendicitis: операция tx.appendectomy не действует на причину'))).toBe(true);
+  });
+
   test('обследование с неизвестным аппаратом или аппаратом из чужого помещения', () => {
     const unknown = broken(d => edit(d, 'exams/tsh.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.immuno]'));
     expect(unknown.some(e => e.includes('exam.tsh: аппарат eq.immuno не найден'))).toBe(true);
     const foreign = broken(d => edit(d, 'exams/tsh.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.ecg]'));
     expect(foreign.some(e => e.includes('exam.tsh: аппарат eq.ecg стоит в room.ecg'))).toBe(true);
     // и тогда иммунохимическим анализатором ничего не делают
-    expect(foreign.some(e => e.includes('eq.immuno_analyzer: ни одно обследование им не делают'))).toBe(true);
+    expect(foreign.some(e => e.includes('eq.immuno_analyzer: ни одно обследование и ни одна операция им не делают'))).toBe(true);
   });
 
   test('в лаборатории без аппарата не работают — у анализа должен быть анализатор', () => {

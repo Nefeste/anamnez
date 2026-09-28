@@ -5,7 +5,7 @@
 // аппарату и результатов ждёт на скамье; принятый и не дождавшийся уходят к выходу. Как люди
 // идут между местами, решает карта (src/render/map); что человек делает — подпись под картой.
 import { db } from '@/content';
-import type { ContentDb, Exam } from '@/content/types';
+import type { ContentDb, Exam, Id } from '@/content/types';
 import { fnv1a } from '@/engine/core/hash';
 import { type Cell, type ClinicLayout, clinicLayout, type StaffRole } from '@/engine/hospital/clinic';
 import type { ShiftPatient, ShiftState } from '@/engine/shift/types';
@@ -34,8 +34,10 @@ export type Doing =
   | { kind: 'results'; readyAt: number }
   | { kind: 'leaving' }
   | { kind: 'left' }
-  /** лежит в палате своей больницы; `days` — сутки в стационаре (spec 2026-09-chapter-2, часть 26) */
-  | { kind: 'ward'; days: number }
+  /** лежит в палате своей больницы; `days` — сутки в стационаре (spec 2026-09-chapter-2, часть 26); `op` — ждёт этой операции (часть 28) */
+  | { kind: 'ward'; days: number; op?: Id }
+  /** на операционном столе: идёт операция `tx` до `end` — время смены (часть 28) */
+  | { kind: 'surgery'; tx: Id; end: number }
   /** привезла скорая (часть 27): ждёт сортировки, ждёт врача, на каталке у входа — мест нет, у вас на осмотре */
   | { kind: 'ambulance'; state: 'unsorted' | 'waiting' | 'door' | 'withYou' };
 
@@ -71,6 +73,9 @@ const STAFF_FIGURE: Record<StaffRole, Figure> = {
   ecgNurse: 'nurse',
   radiographer: 'staff',
   radiologist: 'staff',
+  surgeon: 'doctor',
+  anesthetist: 'doctor',
+  orNurse: 'nurse',
 };
 
 function figureOf(p: ShiftPatient): Figure {
@@ -154,9 +159,15 @@ export function placements(db: ContentDb, layout: ClinicLayout, s: ShiftState): 
     } else if (p.status === 'done' && p.closed && s.t - p.closed.at < LEAVING) {
       out.push({ id: p.id, figure, look, where: exit, doing: { kind: 'leaving' }, leaving: true });
     } else if (p.status === 'admitted' && p.stay) {
-      // лежит на своей койке; палату снесли — на карте его нет, пока не выпишут
+      // идёт операция — на операционном столе (часть 28); иначе лежит на своей койке; палату
+      // снесли — на карте его нет, пока не выпишут
+      const op = p.stay.op;
+      const table = op && !op.done && op.start !== undefined && op.start <= s.t && op.room ? layout.tables?.[op.room] : undefined;
       const bed = layout.beds[p.stay.room]?.[p.stay.bed];
-      if (bed) out.push({ id: p.id, figure, look, where: { cell: bed }, doing: { kind: 'ward', days: Math.max(0, s.day - p.stay.since) } });
+      if (table && op) out.push({ id: p.id, figure, look, where: { cell: table }, doing: { kind: 'surgery', tx: op.tx, end: op.end ?? s.t } });
+      else if (bed) {
+        out.push({ id: p.id, figure, look, where: { cell: bed }, doing: { kind: 'ward', days: Math.max(0, s.day - p.stay.since), ...(op && !op.done ? { op: op.tx } : {}) } });
+      }
     } else if (p.status === 'left' && s.t - (p.queuedT + p.patience) < LEAVING) {
       // не дождался: ушёл, когда кончилось терпение (engine.ts, событие patience)
       out.push({ id: p.id, figure, look, where: exit, doing: { kind: 'left' }, leaving: true });

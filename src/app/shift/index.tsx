@@ -558,6 +558,13 @@ function Summary({ v }: { v: ShiftView }) {
         </Card>
       )}
 
+      {s.surgeryLines && (
+        <Card testID="summary-surgery">
+          <Text style={styles.label}>{t.surgery.title}</Text>
+          {s.surgeryLines.map(line => <P key={line}>{line}</P>)}
+        </Card>
+      )}
+
       {v.mode === 'shift' && <Button kind="plain" testID="shift-restart" title={t.restart} onPress={() => setConfirm(true)} />}
       <Sheet visible={confirm} onClose={() => setConfirm(false)} closeTitle={t.cancel} testID="restart-sheet">
         <P>{t.restartConfirm}</P>

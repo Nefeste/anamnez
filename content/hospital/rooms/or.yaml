@@ -1,0 +1,24 @@
+id: room.or
+name: { ru: "Операционная" }
+gen: { ru: "операционной" }
+staff: [role.surgeon, role.anesthetist, role.or_nurse]
+needsEquipment: true
+# операционный стол — посередине, наркозный аппарат — у изголовья; хирург и медсестра — у
+# стола, анестезиолог — у аппарата; пациент — на столе
+sizes:
+  - id: M
+    w: 9
+    h: 7
+    cost: 60000
+    upkeep: 400
+    door: { x: 4, width: 2 }
+    slots: [[2, 3], [4, 3]]
+    objects:
+      - [cabinet, 1, 2]
+      - [table, 6, 2]
+      - [sink, 7, 2]
+      - [table, 7, 3]
+    staff: { role.surgeon: [5, 3], role.or_nurse: [6, 3], role.anesthetist: [2, 4] }
+    patient: [4, 3]
+texts:
+  hint: { ru: "Здесь оперирует бригада: хирург, анестезиолог и операционная медсестра. Нужны операционный стол и наркозно-дыхательный аппарат. После операции пациент — в палате." }

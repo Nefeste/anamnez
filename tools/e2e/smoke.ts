@@ -4,6 +4,7 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import { chromium, type Page } from 'playwright';
 import { clinicLayout } from '../../src/engine/hospital/clinic';
+import { generatePatient } from '../../src/engine/med/generate';
 import { apply, newSandbox, newShift, newSingle } from '../../src/engine/shift/engine';
 import { DAY, SHIFT_END, SHIFT_SCHEMA_VERSION } from '../../src/engine/shift/types';
 import { buildDb } from '../content/load';
@@ -229,6 +230,41 @@ function ambulanceSave(): { save: string; id: string; dx: string; scale: string;
     save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s }), id: p.id, dx: p.patient.truth.conditions[0].id, scale: p.scale!.triage,
     ...(flag ? { flag } : {}), cars: cars.length,
   };
+}
+
+/**
+ * Песочница с палатой и операционной (spec 2026-09-chapter-2, часть 28): стол, наркозный
+ * аппарат, бригада из кандидатов; день 1 после рабочих часов — у вас в кабинете пациент с
+ * аппендицитом, диагноз поставлен.
+ */
+function surgerySave(): { save: string; id: string } {
+  const { db } = buildDb();
+  const s = newSandbox(db, { seed: 21, season: 'winter', difficulty: 'student', start: 'clinic', budget: db.economy.sandbox.budgets.generous });
+  const cells: [number, number][] = [];
+  for (let x = 29; x <= 38; x++) for (let y = 7; y <= 9; y++) cells.push([x, y]);
+  apply(db, s, { kind: 'build', cmd: { kind: 'corridor', cells } });
+  apply(db, s, { kind: 'build', cmd: { kind: 'room', type: 'room.ward', size: 'M', x: 29, y: 0, rot: 0 } });
+  apply(db, s, { kind: 'build', cmd: { kind: 'room', type: 'room.or', size: 'M', x: 29, y: 10, rot: 2 } });
+  const ward = s.hospital!.rooms.find(r => r.type === 'room.ward')!.id;
+  const or = s.hospital!.rooms.find(r => r.type === 'room.or')!.id;
+  for (const equipment of ['eq.or_table', 'eq.anesthesia']) apply(db, s, { kind: 'build', cmd: { kind: 'buy', room: or, equipment } });
+  apply(db, s, { kind: 'buildEnd' });
+  apply(db, s, { kind: 'assign', id: s.staff!.find(m => m.role === 'role.nurse' && m.room === 'r7')!.id, room: ward });
+  for (const role of ['role.surgeon', 'role.anesthetist', 'role.or_nurse']) {
+    const c = s.candidates!.find(x => x.role === role)!;
+    apply(db, s, { kind: 'hire', id: c.id });
+    apply(db, s, { kind: 'assign', id: c.id, room: or });
+  }
+  apply(db, s, { kind: 'nextDay' });
+  for (let i = 0; i < 600 && s.queue.length === 0; i++) apply(db, s, { kind: 'advance', seconds: 60 });
+  const id = s.queue[0];
+  // пришёл с аппендицитом: болезнь пациента — из генератора, как в тестах движка
+  s.patients[id].patient = generatePatient(db, 4242, { department: 'dept.therapy', season: 'winter', primary: 'cond.appendicitis', params: {} });
+  apply(db, s, { kind: 'call', id });
+  apply(db, s, { kind: 'exam', exam: 'exam.vitals' });
+  apply(db, s, { kind: 'diagnose', id: 'cond.appendicitis' });
+  while (s.t < (s.day - 1) * DAY + SHIFT_END) apply(db, s, { kind: 'advance', seconds: 10 * 60 });
+  return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s }), id };
 }
 
 /** Песочница до открытия: готовая амбулатория, бюджет «обычный» — экран «Перед открытием». */
@@ -1009,6 +1045,58 @@ try {
     && (amb.cars === 1 || ambDay.includes(`Не отсортировали до конца дня: ${amb.cars - 1}.`)), `скорая, итоги дня: ${ambDay.replace(/\n/g, ' · ')}`);
   await page.waitForTimeout(1500); // лист меню «Продолжить» ещё уезжает вниз (веб)
   await page.screenshot({ path: join(OUT, '17-ambulance-summary.png'), fullPage: true });
+  // операционная (spec 2026-09-chapter-2, часть 28): у вас пациент с аппендицитом — в решении
+  // «В операционную» с операцией и койками; итог приёма — операция и палата; на обходе —
+  // «идёт операция» и выписать нельзя; вечером — в итогах дня операционная
+  const surg = surgerySave();
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', surg.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId('shift-continue').waitFor({ timeout: 15_000 });
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId('shift-continue').click();
+  await visible(page, 'visit-decide').waitFor({ timeout: 10_000 });
+  await visible(page, 'visit-decide').click();
+  await page.getByTestId('decision-to-plan').click();
+  await page.getByTestId('setting-surgery').waitFor({ timeout: 5000 });
+  const opOption = await text(page, 'setting-surgery');
+  check(opOption.startsWith('В операционную') && opOption.includes('Аппендэктомия · коек свободно 4 из 4') && !(await page.getByTestId('setting-surgery').isDisabled()),
+    `операционная, решение: ${opOption.replace(/\n/g, ' · ')}`);
+  await page.getByTestId('setting-surgery').click();
+  await page.screenshot({ path: join(OUT, '18-surgery-decision.png'), fullPage: true });
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-outcome').waitFor({ timeout: 10_000 });
+  check((await text(page, 'visit-outcome')).includes('В операционную, после операции — в палату'), `операционная, итог приёма: ${await text(page, 'visit-outcome')}`);
+  await page.getByTestId('shift-to-queue').click();
+  await page.getByTestId('rounds-open').waitFor({ timeout: 10_000 });
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(OUT, '18-surgery-map.png') });
+  await page.getByTestId('rounds-open').click();
+  await page.getByTestId(`round-op-${surg.id}`).waitFor({ timeout: 10_000 });
+  const opLine = await text(page, `round-op-${surg.id}`);
+  check(/^Идёт операция: аппендэктомия, до \d{2}:\d{2}$/.test(opLine) && await page.getByTestId(`round-discharge-${surg.id}`).isDisabled()
+    && await page.getByTestId(`round-transfer-${surg.id}`).isDisabled(), `операционная, обход: ${opLine}; выписать и перевести нельзя`);
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(OUT, '18-surgery-rounds.png'), fullPage: true });
+  await page.goBack();
+  await page.locator('[data-testid="shift-close-day-early"], [data-testid="shift-close-day"]').first().click();
+  await page.getByTestId('summary-surgery').waitFor({ timeout: 10_000 });
+  const opDay = await text(page, 'summary-surgery');
+  check(opDay.includes('Операций: 1, в срок: 1.'), `операционная, итоги дня: ${opDay.replace(/\n/g, ' · ')}`);
+  await page.waitForTimeout(1500); // лист меню «Продолжить» ещё уезжает вниз (веб)
+  await page.screenshot({ path: join(OUT, '18-surgery-summary.png'), fullPage: true });
+  // энциклопедия: операция — что лечит, где, бригада
+  await page.goto(`${base}/encyclopedia/article/tx.appendectomy`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  // подписи разделов — прописными (стиль подписей), innerText отдаёт как на экране
+  const team = (await visibleText(page, 'enc-block-team')).toLowerCase();
+  check((await visibleText(page, 'enc-article-title')) === 'Аппендэктомия' && team === 'бригада' && (await visible(page, 'enc-block-treats').count()) === 1,
+    `энциклопедия, операция: ${await visibleText(page, 'enc-article-title')} — что лечит, где, ${team}`);
+
   // энциклопедия: раздел «Шкалы», статья NEWS2 — баллы по показателям
   await page.goto(`${base}/encyclopedia/article/score.news2`);
   await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });

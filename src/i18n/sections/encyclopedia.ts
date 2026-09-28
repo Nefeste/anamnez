@@ -24,7 +24,7 @@ export const encyclopedia = {
   findingKind: { sym: 'Жалоба', hx: 'Анамнез', sign: 'Находка при осмотре', vital: 'Показатель', lab: 'Анализ', img: 'Снимок', ecg: 'ЭКГ' },
   examGroup: { ask: 'Расспрос', examine: 'Осмотр', lab: 'Анализы и экспресс-тесты', imaging: 'Снимки и функциональные' },
   examKind: { ask: 'Расспрос', physical: 'Осмотр', bedside: 'У постели', lab: 'Анализ', rapid: 'Экспресс-тест', functional: 'Функциональное', imaging: 'Снимок' },
-  txKind: { drug: 'Лекарство', regimen: 'Режим и советы', procedure: 'Процедура' },
+  txKind: { drug: 'Лекарство', regimen: 'Режим и советы', procedure: 'Процедура', surgery: 'Операция' },
   severity: { minor: 'лёгкое', moderate: 'средней тяжести', serious: 'серьёзное', critical: 'угрожает жизни' },
   band: {
     always: 'Почти всегда',
@@ -74,6 +74,13 @@ export const encyclopedia = {
   whereIf: (when: string, s: string) => `${when[0].toUpperCase()}${when.slice(1)} — ${s}.`,
   whereRedFlag: (s: string) => `При красных флагах — ${s}.`,
   whereRisk: (risk: string, s: string) => `Если есть «${risk}» — ${s}.`,
+  // операция и срок стационара (spec 2026-09-chapter-2, части 26 и 28)
+  whereSurgery: (op: string, hours: number) => `Операция — ${op.toLowerCase()}: в первые ${hours}\u00a0ч после поступления.`,
+  whereStay: (lo: number, hi: number) => `В стационаре обычно ${lo === hi ? lo : `${lo}–${hi}`}\u00a0${pluralRu(hi, 'день', 'дня', 'дней')}.`,
+  surgeryRow: 'Операция',
+  opTreats: 'Чем лечат и в какой срок',
+  opWindow: (hours: number) => `в первые ${hours}\u00a0ч после поступления`,
+  opTeam: 'Бригада',
   course: 'Без лечения',
   selfLimiting: 'Обычно проходит само.',
   untreated: (band: string, from: number, to: number) => `Без действенного лечения ${band.toLowerCase()} становится хуже — на ${from}–${to}-й день.`,
@@ -134,6 +141,7 @@ export const encyclopedia = {
   needs: 'Что нужно, чтобы работало',
   needPeople: 'Люди',
   needMachine: 'Аппарат — хотя бы один',
+  needMachines: 'Аппараты — все сразу',
   machines: 'Аппараты',
   sizes: 'Размеры и цена',
   sizeLine: (id: string, w: number, h: number, cost: string, upkeep: string, seats: number, beds = 0, bays = 0) =>

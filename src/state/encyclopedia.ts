@@ -174,13 +174,16 @@ const TACTICS: { key: keyof Omit<Tactics, 'setting'>; label: 'firstLine' | 'plan
   { key: 'harmful', label: 'harmful', forLabel: 'harmfulFor' },
 ];
 
-function whereLines(db: ContentDb, t: Tactics): string[] {
+function whereLines(db: ContentDb, c: Condition, t: Tactics): string[] {
   const e = T.encyclopedia;
   const s = t.setting;
   const lines = [e.whereDefault(e.setting[s.default])];
   for (const [value, set] of Object.entries(s.param?.map ?? {})) if (set !== s.default) lines.push(e.whereIf(e.when[value] ?? value, e.setting[set]));
   if (s.redFlag && s.redFlag !== s.default) lines.push(e.whereRedFlag(e.setting[s.redFlag]));
   for (const r of s.risks ?? []) if (r.setting !== s.default) lines.push(e.whereRisk(nameOf(db, r.id), e.setting[r.setting]));
+  // операция и срок стационара (spec 2026-09-chapter-2, части 26 и 28)
+  if (c.surgery) lines.push(e.whereSurgery(nameOf(db, c.surgery.tx), c.surgery.window));
+  if (c.stay) lines.push(e.whereStay(c.stay[0], c.stay[1]));
   return lines;
 }
 
@@ -222,8 +225,9 @@ function conditionArticle(db: ContentDb, c: Condition): Article {
   const t = c.treatment;
   if (t) {
     const rows = TACTICS.map(k => ({ label: e[k.label], refs: (t[k.key] ?? []).map(id => ref(db, id)) })).filter(r => r.refs.length > 0);
+    if (c.surgery) rows.unshift({ label: e.surgeryRow, refs: [ref(db, c.surgery.tx)] });
     blocks.push({ key: 'treatment', title: e.treatment, rows });
-    blocks.push({ key: 'where', title: e.whereTitle, text: whereLines(db, t) });
+    blocks.push({ key: 'where', title: e.whereTitle, text: whereLines(db, c, t) });
   }
 
   const course: string[] = [];
@@ -301,10 +305,19 @@ function treatmentArticle(db: ContentDb, x: Treatment): Article {
   if (x.contraindications.length > 0) {
     blocks.push({ key: 'contraindications', title: e.contraindications, refs: x.contraindications.map(k => ref(db, k.id, e.level[k.level])) });
   }
+  // операция (часть 28): что ею лечат и в какой срок, где делают и какая бригада
+  const op = x.surgery;
+  if (op) {
+    const treats = conditions.filter(c => c.surgery?.tx === x.id).map(c => ref(db, c.id, e.opWindow(c.surgery!.window))).sort(byTitle);
+    if (treats.length > 0) blocks.push({ key: 'treats', title: e.opTreats, refs: treats });
+    blocks.push({ key: 'where', title: e.whereDone, refs: [ref(db, op.room), ...op.equipment.map(id => ref(db, id))] });
+    blocks.push({ key: 'team', title: e.opTeam, refs: op.team.map(id => ref(db, id)) });
+  }
   blocks.push(sources(db, x));
 
   const kind = x.kind === 'drug' ? T.spikes.decision.txGroup[txGroupOfClass(x.class)] : e.txKind[x.kind];
-  return { id: x.id, section: 'treatments', title: x.name.ru, subtitle: [kind, T.common.rub(x.cost)].join(' · '), blocks };
+  const subtitle = op ? [kind, e.minutes(op.minutes), T.common.rub(x.cost)] : [kind, T.common.rub(x.cost)];
+  return { id: x.id, section: 'treatments', title: x.name.ru, subtitle: subtitle.join(' · '), blocks };
 }
 
 function riskArticle(db: ContentDb, r: Risk): Article {
@@ -355,11 +368,16 @@ function roomArticle(db: ContentDb, r: RoomType): Article {
   const e = T.encyclopedia;
   const rub = T.common.rub;
   const blocks: Block[] = [{ key: 'what', title: e.what, text: [r.texts.hint.ru] }];
-  if (r.exams.length > 0) blocks.push({ key: 'doneHere', title: e.doneHere, refs: r.exams.map(id => ref(db, id)).sort(byTitle) });
+  // операции (spec 2026-09-chapter-2, часть 28) — тоже «что здесь делают»; их аппараты нужны все сразу
+  const ops = Object.values(db.treatments).filter(t => t.surgery?.room === r.id);
+  const done = [...r.exams.map(id => ref(db, id)), ...ops.map(t => ref(db, t.id, e.minutes(t.surgery!.minutes)))].sort(byTitle);
+  if (done.length > 0) blocks.push({ key: 'doneHere', title: e.doneHere, refs: done });
   if (r.collects.length > 0) blocks.push({ key: 'collectsFor', title: e.collectsFor, refs: r.collects.map(id => ref(db, id)).sort(byTitle) });
   const rows: Row[] = [];
   if (r.staff.length > 0) rows.push({ label: e.needPeople, refs: r.staff.map(id => ref(db, id)) });
-  if (r.equipment.length > 0) rows.push({ label: r.needsEquipment ? e.needMachine : e.machines, refs: r.equipment.map(id => ref(db, id, rub(db.equipment[id].price))) });
+  const allAtOnce = ops.length > 0 && r.equipment.every(id => ops.some(t => t.surgery!.equipment.includes(id)));
+  const label = allAtOnce ? e.needMachines : r.needsEquipment ? e.needMachine : e.machines;
+  if (r.equipment.length > 0) rows.push({ label, refs: r.equipment.map(id => ref(db, id, rub(db.equipment[id].price))) });
   if (rows.length > 0) blocks.push({ key: 'needs', title: e.needs, rows });
   blocks.push({
     key: 'sizes',
@@ -375,7 +393,10 @@ function equipmentArticle(db: ContentDb, x: Equipment): Article {
   const e = T.encyclopedia;
   const rub = T.common.rub;
   const blocks: Block[] = [{ key: 'what', title: e.what, text: [x.texts.hint.ru] }];
-  if (x.exams.length > 0) blocks.push({ key: 'examsBy', title: e.examsBy, refs: x.exams.map(id => ref(db, id)).sort(byTitle) });
+  // аппаратом делают обследования или операции (операционный стол — часть 28)
+  const ops = Object.values(db.treatments).filter(t => t.surgery?.equipment.includes(x.id)).map(t => ref(db, t.id));
+  const by = [...x.exams.map(id => ref(db, id)), ...ops].sort(byTitle);
+  if (by.length > 0) blocks.push({ key: 'examsBy', title: e.examsBy, refs: by });
   blocks.push({ key: 'standsIn', title: e.standsIn, refs: [ref(db, x.room)] });
   if (x.upgradeOf) blocks.push({ key: 'upgrades', title: e.upgrades, refs: [ref(db, x.upgradeOf)] });
   const better = Object.values(db.equipment).filter(y => y.upgradeOf === x.id).map(y => ref(db, y.id, rub(y.price)));

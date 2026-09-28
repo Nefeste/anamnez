@@ -8,6 +8,7 @@ import type { ContentDb, Id } from '../../content/types';
 import { P_ONE, type Rng } from '../core/rng';
 import { type Plan, type PlanEval, primaryOf } from '../med/plan';
 import type { Patient } from '../med/types';
+import type { Operation } from './surgery';
 
 /** Койка: помещение-палата и номер койки в нём. */
 export interface Bed {
@@ -35,6 +36,8 @@ export interface Stay extends WardCourse, Bed {
   planFrom: number;
   /** сколько раз план меняли — номер ветви зерна */
   replans: number;
+  /** операция (spec 2026-09-chapter-2, часть 28): ждёт, идёт или сделана */
+  op?: Operation;
 }
 
 /** Что видно на обходе: лучше, без перемен, хуже, можно выписывать, реакция на лечение. */

@@ -10,7 +10,9 @@ import { doctorRoom } from './requirements';
 
 export type Cell = [number, number];
 
-export type StaffRole = 'registrar' | 'nurse' | 'doctor' | 'therapist' | 'procedureNurse' | 'labTech' | 'ecgNurse' | 'radiographer' | 'radiologist';
+export type StaffRole =
+  | 'registrar' | 'nurse' | 'doctor' | 'therapist' | 'procedureNurse' | 'labTech' | 'ecgNurse' | 'radiographer' | 'radiologist'
+  | 'surgeon' | 'anesthetist' | 'orNurse';
 
 export interface ClinicLayout extends HospitalLayout {
   /** вход и выход — дверь на улицу */
@@ -25,6 +27,8 @@ export interface ClinicLayout extends HospitalLayout {
   mine?: string;
   /** койки палат по помещениям: номер койки лежащего (spec 2026-09-chapter-2, часть 26) */
   beds: Record<string, Cell[]>;
+  /** операционный стол в каждой операционной — там лежит оперируемый (часть 28); нет у старых планов */
+  tables?: Record<string, Cell>;
   /** стулья зоны ожидания — очередь к врачу; ближний к двери ряд первым */
   seats: Cell[];
   /** скамьи в коридоре — ждут результатов обследований */
@@ -42,6 +46,10 @@ const FIGURE: Record<string, StaffRole> = {
   'room.ecg|role.nurse': 'ecgNurse',
   'room.xray|role.radiographer': 'radiographer',
   'room.xray|role.radiologist': 'radiologist',
+  // операционная (spec 2026-09-chapter-2, часть 28)
+  'room.or|role.surgeon': 'surgeon',
+  'room.or|role.anesthetist': 'anesthetist',
+  'room.or|role.or_nurse': 'orNurse',
 };
 
 const SPOT: Record<keyof ClinicLayout['spots'], Id> = {
@@ -83,6 +91,7 @@ export function layoutOf(plan: Plan, staff: { room: string; role: Id; stands?: I
     ...(mine ? { mine } : {}),
     seats: plan.rooms.flatMap(r => r.seats),
     beds: Object.fromEntries(plan.rooms.filter(r => r.beds.length > 0).map(r => [r.id, r.beds])),
+    tables: Object.fromEntries(plan.rooms.filter(r => r.type === 'room.or' && r.patient).map(r => [r.id, r.patient!])),
     benches: plan.objects.filter(o => o.kind === 'bench').map(o => [o.x, o.y] as Cell),
   };
 }

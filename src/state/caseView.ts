@@ -264,7 +264,9 @@ export function diagnosisGroups(): { key: BodySystem; title: string; items: { id
 function treatmentChoices(obs: readonly Observation[]): VisitView['treatments'] {
   const known = knownFacts(db, obs);
   const knownIds = new Set([...known.risks, ...known.conditions]);
+  // операцию выбирают не здесь, а «В операционную»: какая — по диагнозу (часть 28)
   return Object.values(db.treatments)
+    .filter(x => x.kind !== 'surgery')
     .map(x => {
       const by = x.contraindications.find(k => knownIds.has(k.id));
       return { id: x.id, name: x.name.ru, warning: by ? T.spikes.patient.contraindicated(riskName(by.id)) : undefined };
@@ -394,8 +396,8 @@ export function outcomeText(outcome: Outcome, setting: Setting, female: boolean)
     case 'unchanged': return out.unchanged;
     case 'worse': return out.worse(outcome.day);
     case 'reaction': return outcome.reaction ? out.reaction(db.treatments[outcome.reaction.tx].name.ru, riskName(outcome.reaction.by)) : out.unchanged;
-    case 'transferred': return setting === 'ambulance' ? out.ambulance : setting === 'admit' ? out.transferred(female) : out.ward(female);
-    case 'admitted': return out.admitted;
+    case 'transferred': return setting === 'ambulance' ? out.ambulance : setting === 'admit' || setting === 'surgery' ? out.transferred(female) : out.ward(female);
+    case 'admitted': return setting === 'surgery' ? out.operated : out.admitted;
   }
 }
 
@@ -419,6 +421,9 @@ export function noteText(n: ScoreNote): string {
     case 'thrift.over': return t.thriftOver(n.times);
     case 'triage.under': return t.triageUnder(n.triage, n.news2, n.flag && db.findings[n.flag]?.name.ru);
     case 'triage.over': return t.triageOver(n.triage, n.news2, n.flag && db.findings[n.flag]?.name.ru);
+    case 'op.onTime': return t.opOnTime(tx(n.tx), n.hours, n.window);
+    case 'op.late': return t.opLate(tx(n.tx), n.hours, n.window);
+    case 'op.complication': return t.opComplication(tx(n.tx));
   }
 }
 

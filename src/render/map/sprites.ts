@@ -8,9 +8,9 @@ import type { ObjectKind } from '@/engine/hospital/grid';
 import { CLOTHES, HAIR, SKIN } from '@/render/look';
 import { BODIES, type Hair, HAIRS, HEADS, STYLES, UNIFORM } from './figures';
 
-export const OBJECT_KINDS: ObjectKind[] = ['bed', 'chair', 'desk', 'couch', 'cabinet', 'machine', 'plant', 'sink', 'bench', 'xray', 'table', 'ecg', 'analyzer'];
-/** Аппараты, у которых есть рисунок «работает» — горит экран или трубка (часть 23). */
-export const LIT_KINDS: ObjectKind[] = ['ecg', 'analyzer', 'xray'];
+export const OBJECT_KINDS: ObjectKind[] = ['bed', 'chair', 'desk', 'couch', 'cabinet', 'machine', 'plant', 'sink', 'bench', 'xray', 'table', 'ecg', 'analyzer', 'or_table', 'anesthesia'];
+/** Аппараты, у которых есть рисунок «работает» — горит экран, трубка или лампа над столом (части 23, 28). */
+export const LIT_KINDS: ObjectKind[] = ['ecg', 'analyzer', 'xray', 'or_table', 'anesthesia'];
 
 export interface SpriteAtlas {
   image: SkImage;
@@ -260,6 +260,29 @@ function drawObject(u: Pen, k: ObjectKind, lit = false) {
       u.rr(0.64, 0.2, 0.88, 0.42, 0.03, lit ? SCREEN_ON : '#2F3B3E');
       u.line([0.67, 0.34, 0.85, 0.34], lit ? TRACE_ON : '#7FC4E6', 0.025);
       u.circle(0.76, 0.66, 0.045, lit ? '#3DDC84' : '#1A8A86');
+      break;
+    case 'or_table':
+      // узкий стол с зелёной простынёй, подголовник — к северу; над серединой — бестеневая лампа
+      u.rr(0.27, 0.02, 0.73, 0.98, 0.06, '#C9D3D6', '#8E9DA1');
+      u.rr(0.33, 0.05, 0.67, 0.17, 0.05, '#B2BEC2');
+      u.rr(0.3, 0.2, 0.7, 0.95, 0.04, '#7FB7A4', '#5E9482', 0.015);
+      u.circle(0.5, 0.52, lit ? 0.24 : 0.21, lit ? '#FFF6D5' : '#E9EEF0', '#9AA7AB', 0.02);
+      for (let n = 0; n < 6; n++) {
+        const r = (n * Math.PI) / 3;
+        u.circle(0.5 + Math.cos(r) * 0.12, 0.52 + Math.sin(r) * 0.12, 0.04, lit ? TUBE_ON : '#D6DEE1');
+      }
+      u.circle(0.5, 0.52, 0.05, lit ? TUBE_ON : '#D6DEE1');
+      break;
+    case 'anesthesia':
+      // тележка: монитор с кривыми, мешок дыхательного контура, баллоны газов, шланг к пациенту
+      u.rr(0.12, 0.14, 0.88, 0.88, 0.07, '#E6EAEC', STEEL_EDGE);
+      u.rr(0.2, 0.2, 0.8, 0.48, 0.04, lit ? SCREEN_ON : '#2F3B3E');
+      u.line([0.24, 0.3, 0.36, 0.3, 0.4, 0.24, 0.44, 0.34, 0.48, 0.29, 0.76, 0.29], lit ? TRACE_ON : '#7FD4A0', 0.022);
+      u.line([0.24, 0.41, 0.34, 0.37, 0.44, 0.41, 0.54, 0.37, 0.64, 0.41, 0.76, 0.38], lit ? '#1A6FA8' : '#7FC4E6', 0.02);
+      u.circle(0.36, 0.68, 0.11, '#9CC3E6', '#6D93B5', 0.02);
+      u.circle(0.62, 0.64, 0.05, '#3F8A5A');
+      u.circle(0.75, 0.64, 0.05, '#E7EDF0', STEEL_EDGE, 0.015);
+      u.quad(0.5, 0.88, 0.52, 0.97, 0.72, 0.97, '#56666B', 0.022);
       break;
   }
 }

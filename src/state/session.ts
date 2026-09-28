@@ -20,9 +20,10 @@ import { memberAt, type StaffMember, staffingOf } from '@/engine/hospital/staff'
 import { missionProgress } from '@/engine/campaign/campaign';
 import { levelOf } from '@/engine/economy/economy';
 import {
-  apply, atDoorOf, current, freeBeds, type HospitalCtx, hospitalCtx, inpatientsOf, newCampaign, newSandbox, newShift, newSingle, observationsOf, reviewFor, SANDBOX_VENUE,
-  wardBeds,
+  apply, atDoorOf, current, freeBeds, type HospitalCtx, hospitalCtx, inpatientsOf, newCampaign, newSandbox, newShift, newSingle, observationsOf, type OrBlock,
+  orBlock, orQueueOf, reviewFor, SANDBOX_VENUE, wardBeds,
 } from '@/engine/shift/engine';
+import { operationFor } from '@/engine/shift/surgery';
 import {
   type Command, DAY, type Difficulty, type Mode, type Notice, SHIFT_END, SHIFT_SCHEMA_VERSION, type ShiftPatient, type ShiftState, type Triage,
 } from '@/engine/shift/types';
@@ -36,7 +37,7 @@ import { type RoomSign, roomSigns } from './roomSigns';
 import { achievementsBy, archivedCase, caseKey, type DayRecord, profile, recordCases, recordDay, recordSingle } from './profile';
 import { dateText } from './profileView';
 import { SINGLE_CATEGORIES, type SingleCategory, singleResult } from './single';
-import { blockText, type CashView, cashView, examBlockText, levelText, paymentText, personName, statusText } from './sandboxView';
+import { blockText, type CashView, cashView, examBlockText, levelText, paymentText, personName, problemText, statusText } from './sandboxView';
 import { loadSlot, type RawStore, saveSlot } from './saves';
 import { settings } from './settings';
 import { momentKey, momentOf, type TipMoment, type TipScreen, tipFor } from './tips';
@@ -134,6 +135,8 @@ export interface SummaryView {
   wardLines?: string[];
   /** скорая за день (часть 27): привезли, отсортировали, сверка со шкалой */
   ambulanceLines?: string[];
+  /** операционная за день (часть 28): операций, в срок и позже, осложнения */
+  surgeryLines?: string[];
 }
 
 /** Итог «Смены»: оценки по категориям, общая, строки, лучший в этой больнице. */
@@ -1269,7 +1272,16 @@ function summaryOf(s: ShiftState): SummaryView | undefined {
     ...(s.meta.mode === 'single' ? { single: singleView(s) } : {}),
     ...(h.ward ? { wardLines: wardLines(h.ward) } : {}),
     ...(h.ambulance && h.ambulance.arrived > 0 ? { ambulanceLines: ambulanceLines(h.ambulance) } : {}),
+    ...(h.surgery && h.surgery.done > 0 ? { surgeryLines: surgeryLines(h.surgery) } : {}),
   };
+}
+
+/** Операционная за день — строками итогов: операций и в срок ли, осложнения. */
+function surgeryLines(x: NonNullable<ShiftState['summary']['surgery']>): string[] {
+  const t = T.shift.summary.surgery;
+  const out = [t.line(x.done, x.onTime, x.late)];
+  if (x.complications > 0) out.push(t.complications(x.complications));
+  return out;
 }
 
 /** Скорая за день — строками итогов: привезли, отсортировали, сколько совпало со шкалой. */
@@ -1473,7 +1485,9 @@ function doingText(s: ShiftState, p: ShiftPatient, d: Doing): string {
     case 'left':
       return t.left(female(p));
     case 'ward':
-      return t.ward(d.days);
+      return d.op ? t.waitingOp(db.treatments[d.op]?.name.ru ?? d.op) : t.ward(d.days);
+    case 'surgery':
+      return t.onTable(db.treatments[d.tx]?.name.ru ?? d.tx, hhmm(minuteOfDay(d.end)));
     case 'ambulance':
       return t.ambulance[d.state];
     case 'staff':
@@ -1496,6 +1510,13 @@ export interface RoundCard {
   vitals: { label: string; values: string }[];
   treatments: string;
   treatmentIds: Id[];
+  /** операция (spec 2026-09-chapter-2, часть 28): ждёт, идёт до…, после операции */
+  op?: string;
+  /** «В операционную» — у диагноза есть операция, а её ещё не было; нельзя — почему */
+  operate?: { hint: string; disabled?: boolean };
+  /** на столе — ни выписать, ни перевести; ждёт операции — только перевести */
+  canDischarge: boolean;
+  canTransfer: boolean;
 }
 
 const fmtVital = (f: Id, v: number) => {
@@ -1512,6 +1533,8 @@ export function roundsView(): RoundCard[] {
   const s = sess.s;
   const t = T.shift.ward;
   const student = s.meta.difficulty === 'student';
+  const hasOr = s.hospital !== undefined && hospitalCtx(db, s).plan.rooms.some(r => r.type === 'room.or');
+  const queue = orQueueOf(s).map(p => p.id);
   return inpatientsOf(s).map(p => {
     const stay = p.stay!;
     const days = daysIn(stay, s.day);
@@ -1528,6 +1551,13 @@ export function roundsView(): RoundCard[] {
       return [{ label: t.vital[f] ?? f, values: `${series.map(v => fmtVital(f, v!)).join(' → ')}\u00a0${spec.unit}` }];
     });
     const dx = p.closed?.diagnosis;
+    const op = stay.op;
+    const opName = op ? (db.treatments[op.tx]?.name.ru ?? op.tx) : '';
+    const opLine = !op ? undefined
+      : op.done ? `${t.opDone(opName)}${op.complication ? ` · ${t.opComplication}` : ''}`
+        : op.start !== undefined ? t.opOn(opName, hhmm(minuteOfDay(op.end ?? op.start))) : t.opWaiting(opName, queue.indexOf(p.id) + 1);
+    const dxOp = !op && dx && hasOr ? operationFor(db, dx) : undefined;
+    const block = dxOp ? orBlock(db, s, dxOp) : null;
     return {
       id: p.id,
       title: `${nameOf(p)}, ${T.spikes.patient.years(p.patient.age)}`,
@@ -1540,7 +1570,12 @@ export function roundsView(): RoundCard[] {
       ...(student && state === 'ready' ? { readyHint: t.readyHint } : {}),
       vitals,
       treatments: stay.plan.treatments.length > 0 ? stay.plan.treatments.map(tx => db.treatments[tx]?.name.ru ?? tx).join(', ') : t.noTreatment,
-      treatmentIds: [...stay.plan.treatments],
+      // операцию меняют «В операционную», а не сменой лечения
+      treatmentIds: stay.plan.treatments.filter(tx => db.treatments[tx]?.kind !== 'surgery'),
+      ...(opLine ? { op: opLine } : {}),
+      ...(dxOp ? { operate: block ? { hint: orBlockText(block), disabled: true } : { hint: db.treatments[dxOp].name.ru } } : {}),
+      canDischarge: !op || op.done === true,
+      canTransfer: !op || op.done === true || op.start === undefined,
     };
   });
 }
@@ -1624,6 +1659,8 @@ export function sortAmbulance(id: string, triage: Triage) {
 }
 
 export const dischargePatient = (id: string) => wardAct({ kind: 'discharge', id });
+/** С обхода — в операционную (часть 28). */
+export const operatePatient = (id: string) => wardAct({ kind: 'operate', id });
 export const transferPatient = (id: string) => wardAct({ kind: 'transfer', id });
 export const replanPatient = (id: string, treatments: Id[]) => wardAct({ kind: 'replan', id, treatments });
 
@@ -1692,19 +1729,38 @@ export function archiveCaseView(key: string): VisitView | undefined {
 
 /**
  * Где лечить в больнице со своей палатой (spec 2026-09-chapter-2, часть 26): домой, в палату
- * (сколько коек свободно; нет свободных — нельзя), направить в другую больницу, скорая.
+ * (сколько коек свободно; нет свободных — нельзя), направить в другую больницу, скорая. Есть
+ * операционная (часть 28) — и «В операционную»: какая операция — по диагнозу, нельзя — почему.
  */
-function settingOptions(s: ShiftState): SettingOption[] {
+function settingOptions(s: ShiftState, diagnosis?: Id): SettingOption[] {
   const all = wardBeds(db, s).length;
   const free = freeBeds(db, s).length;
   const t = T.shift.ward;
   const setting = T.spikes.patient.setting;
+  const hasOr = hospitalCtx(db, s).plan.rooms.some(r => r.type === 'room.or');
   return [
     { key: 'home', title: setting.home },
     { key: 'admit', title: t.admit, hint: free > 0 ? t.freeBeds(free, all) : t.noBeds, disabled: free === 0 },
+    ...(hasOr ? [orOption(s, diagnosis, free, all)] : []),
     { key: 'ward', title: t.refer },
     { key: 'ambulance', title: setting.ambulance },
   ];
+}
+
+/** «В операционную»: операция диагноза и свободные койки; нельзя — почему (часть 28). */
+function orOption(s: ShiftState, diagnosis: Id | undefined, free: number, all: number): SettingOption {
+  const t = T.shift.ward;
+  const op = diagnosis ? operationFor(db, diagnosis) : undefined;
+  const block = op ? orBlock(db, s, op) : null;
+  const why = !diagnosis ? t.noDiagnosis : !op ? t.noOperation : block ? orBlockText(block) : free === 0 ? t.noBeds : undefined;
+  return why ? { key: 'surgery', title: t.operate, hint: why, disabled: true } : { key: 'surgery', title: t.operate, hint: t.opHint(db.treatments[op!].name.ru, free, all) };
+}
+
+function orBlockText(b: OrBlock): string {
+  const t = T.shift.ward;
+  if (b.kind === 'noEquipment') return t.noOpEquipment(db.equipment[b.equipment]?.gen.ru ?? b.equipment);
+  if (b.kind === 'down') return t.orDown(problemText(db, b.problem));
+  return t.orDown(T.sandbox.problem.noEquipment);
 }
 
 function buildCaseView(): VisitView | undefined {
@@ -1738,7 +1794,7 @@ function buildCaseView(): VisitView | undefined {
     returnNote: p.returnReason && prev?.closed ? T.shift.returnNote(p.returnReason, closedDay(prev), female(p)) : undefined,
     difficulty: s.meta.difficulty ?? 'doctor',
     ...(s.hospital ? { unavailable: unavailableOf(s) } : {}),
-    ...(wardBeds(db, s).length > 0 ? { settings: settingOptions(s) } : {}),
+    ...(wardBeds(db, s).length > 0 ? { settings: settingOptions(s, p.draft.diagnosis) } : {}),
     ...(p.payer ? { payerNote: T.sandbox.payerNote[p.payer] } : {}),
     ...(p.paid && p.closed ? { payment: paymentText(db, p.payer ?? 'oms', p.paid, p.closed) } : {}),
     ...(p.closed ? { achievements: achievementNames(caseKey(s.meta.seed, p.id)) } : {}),

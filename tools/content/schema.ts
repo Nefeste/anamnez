@@ -115,6 +115,11 @@ export const conditionSchema = z.strictObject({
       risks: z.array(z.strictObject({ id: z.string().regex(/^risk\.[a-z0-9_]+$/), setting })).optional(),
     }),
   }).optional(),
+  /**
+   * лечат операцией (spec 2026-09-chapter-2, часть 28): какой — операция вида `surgery`, — и за
+   * сколько часов от поступления её сделать, чтобы не было поздно, — по рекомендации
+   */
+  surgery: z.strictObject({ tx: txId, window: z.number().int().min(1).max(240) }).optional(),
   findings: z.array(link).min(3),
   confirm: z.union([z.array(z.string()).min(1), z.literal('clinical')]),
   redFlags: z.array(z.string()).optional(),
@@ -184,7 +189,7 @@ export const examSchema = z.strictObject({
 export const treatmentSchema = z.strictObject({
   id: txId,
   name: text,
-  kind: z.enum(['drug', 'regimen', 'procedure']),
+  kind: z.enum(['drug', 'regimen', 'procedure', 'surgery']),
   /** класс для аллергий и статистики: antibiotic.penicillin, antibiotic.macrolide… */
   class: z.string().regex(/^[a-z_]+(\.[a-z_]+)*$/).optional(),
   route: z.enum(['oral', 'inhaled', 'nasal', 'iv', 'im']).optional(),
@@ -202,6 +207,17 @@ export const treatmentSchema = z.strictObject({
     level: z.enum(['relative', 'absolute']),
     reaction: probability,
   })).default([]),
+  /**
+   * операция (часть 28): в каком помещении, какая бригада — по человеку на должность, какие
+   * аппараты — все сразу, сколько минут идёт; осложнений после неё при среднем навыке хирурга
+   */
+  surgery: z.strictObject({
+    room: roomId,
+    team: z.array(roleId).min(1),
+    equipment: z.array(eqId).min(1),
+    minutes: z.number().int().min(5).max(600),
+    complications: probability,
+  }).optional(),
   texts: z.strictObject({ hint }),
   sources: z.array(source).min(1),
   review,
@@ -222,7 +238,7 @@ export const riskSchema = z.strictObject({
 // Помещения, аппараты и должности — игровые предметы: цены и размеры — баланс игры. Что
 // каким аппаратом делают — медицинский факт, он записан в записях обследований с источниками.
 
-export const OBJECT_KINDS = ['bed', 'chair', 'desk', 'couch', 'cabinet', 'machine', 'plant', 'sink', 'bench', 'xray', 'table', 'ecg', 'analyzer'] as const;
+export const OBJECT_KINDS = ['bed', 'chair', 'desk', 'couch', 'cabinet', 'machine', 'plant', 'sink', 'bench', 'xray', 'table', 'ecg', 'analyzer', 'or_table', 'anesthesia'] as const;
 const cellSrc = z.tuple([z.number().int().min(0), z.number().int().min(0)]);
 /** «нет лаборатории», «нет лаборанта» — родительный падеж для причин «не работает» */
 const gen = text;
@@ -276,9 +292,11 @@ export const equipmentSchema = z.strictObject({
   gen,
   room: roomId,
   /** как выглядит на карте: у каждого вида аппарата свой рисунок (spec 2026-09-living-map) */
-  sprite: z.enum(['ecg', 'analyzer', 'xray']),
+  sprite: z.enum(['ecg', 'analyzer', 'xray', 'or_table', 'anesthesia']),
   /** улучшение другого аппарата: цифровой рентген — плёночного */
   upgradeOf: eqId.optional(),
+  /** своё место в помещении — номер из `slots` (стол операционной — под пациентом); занято — первое свободное */
+  slot: z.number().int().min(0).optional(),
   /** цена и обслуживание в день, ₽ */
   price: z.number().int().min(0),
   upkeep: z.number().int().min(0),
@@ -360,6 +378,8 @@ export const economySchema = z.strictObject({
     skills: z.tuple([int, int, int, int, int]),
     speed: z.tuple([int, int, int, int, int]),
     reading: z.tuple([pp, pp, pp, pp, pp]),
+    /** хирург по навыку 1–5: доля осложнений после операции, % от записанной у операции (часть 28) */
+    surgery: z.tuple([int, int, int, int, int]),
     growthDays: z.number().int().min(1),
     noTrait: int,
     traits: z.strictObject({
@@ -377,6 +397,8 @@ export const economySchema = z.strictObject({
     oms: z.strictObject({ minor: int, moderate: int, serious: int, critical: int }),
     /** случай стационара: по тяжести диагноза, при выписке (spec 2026-09-chapter-2, часть 26) */
     omsWard: z.strictObject({ minor: int, moderate: int, serious: int, critical: int }),
+    /** случай стационара с операцией — прибавка к тарифу за операцию (часть 28) */
+    omsOperation: int,
     omsQuality: z.strictObject({ A: pct, B: pct, C: pct, D: pct }),
     omsUnconfirmed: pct,
     omsExam: int,

@@ -37,15 +37,23 @@ export function settingFit(need: Setting, chosen: Setting): 'ok' | 'under' | 'ov
   return SETTING_ORDER[chosen] < SETTING_ORDER[need] ? 'under' : 'over';
 }
 
-/** Где свободна своя койка — там стационар свой (часть 26); операционная и перевод — с главой 2. */
+/**
+ * Что есть в больнице: свободная своя койка — стационар свой (часть 26); работает операционная с
+ * бригадой и аппаратами для нужной операции и есть койка после неё — операция своя (часть 28).
+ */
 export interface Venue {
   ward?: boolean;
+  or?: boolean;
 }
 
-/** Что выбрать при такой нужде здесь: в амбулатории — направить или скорая, со своей палатой — в неё. */
+/**
+ * Что выбрать при такой нужде здесь: в амбулатории — направить или скорая, со своей палатой — в
+ * неё, со своей операционной — оперировать; центра, которого в районе нет, — скорая.
+ */
 export function choiceFor(need: Setting, venue: Venue = {}): Setting {
   if (need === 'home') return 'home';
   if (need === 'ward' || need === 'ambulance') return venue.ward ? 'admit' : need;
+  if (need === 'surgery' && venue.or) return 'surgery';
   return 'ambulance';
 }
 
@@ -81,6 +89,8 @@ export function primaryOf(patient: Patient) {
 }
 
 export function txRole(db: ContentDb, condId: Id, tx: Id): TxRole {
+  // своя операция болезни — первая линия (часть 28); в тактике её нет: до приезда скорой её не сделать
+  if (db.conditions[condId]?.surgery?.tx === tx) return 'firstLine';
   const t = db.conditions[condId]?.treatment;
   if (!t) return 'notIndicated';
   return ROLES.find(role => t[role].includes(tx)) ?? 'notIndicated';
