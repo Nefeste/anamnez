@@ -97,7 +97,7 @@ function Evening({ v }: { v: ShiftView }) {
   if (!b) return null;
   const w = Math.min(width, 640) - 32;
   const h = Math.round((w * b.plan.grid.h) / b.plan.grid.w);
-  const labels = b.plan.rooms.map(r => ({ id: r.id, name: db.rooms[r.type].name.ru, x: r.x, y: r.y, w: r.w, down: b.problems[r.id].length > 0 }));
+  const labels = b.plan.rooms.map(r => ({ id: r.id, name: db.rooms[r.type].name.ru, x: r.x, y: r.y, w: r.w, h: r.h, door: r.door, down: b.problems[r.id].length > 0 }));
   return (
     <Screen footer={<Button testID="sandbox-build" title={t.build} hint={t.buildHint} onPress={() => router.push('/sandbox/build')} />}>
       <Stack.Screen options={{ title: v.mode === 'campaign' ? (c?.title ?? T.campaign.title) : t.title }} />

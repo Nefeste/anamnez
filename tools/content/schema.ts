@@ -215,7 +215,7 @@ export const riskSchema = z.strictObject({
 // Помещения, аппараты и должности — игровые предметы: цены и размеры — баланс игры. Что
 // каким аппаратом делают — медицинский факт, он записан в записях обследований с источниками.
 
-export const OBJECT_KINDS = ['bed', 'chair', 'desk', 'couch', 'cabinet', 'machine', 'plant', 'sink', 'bench', 'xray', 'table'] as const;
+export const OBJECT_KINDS = ['bed', 'chair', 'desk', 'couch', 'cabinet', 'machine', 'plant', 'sink', 'bench', 'xray', 'table', 'ecg', 'analyzer'] as const;
 const cellSrc = z.tuple([z.number().int().min(0), z.number().int().min(0)]);
 /** «нет лаборатории», «нет лаборанта» — родительный падеж для причин «не работает» */
 const gen = text;
@@ -264,8 +264,8 @@ export const equipmentSchema = z.strictObject({
   name: text,
   gen,
   room: roomId,
-  /** как выглядит на карте */
-  sprite: z.enum(['machine', 'xray']),
+  /** как выглядит на карте: у каждого вида аппарата свой рисунок (spec 2026-09-living-map) */
+  sprite: z.enum(['ecg', 'analyzer', 'xray']),
   /** улучшение другого аппарата: цифровой рентген — плёночного */
   upgradeOf: eqId.optional(),
   /** цена и обслуживание в день, ₽ */

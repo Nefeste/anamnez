@@ -37,7 +37,7 @@ export interface Placed {
   y: number;
 }
 
-export type ObjectKind = 'bed' | 'chair' | 'desk' | 'couch' | 'cabinet' | 'machine' | 'plant' | 'sink' | 'bench' | 'xray' | 'table';
+export type ObjectKind = 'bed' | 'chair' | 'desk' | 'couch' | 'cabinet' | 'machine' | 'plant' | 'sink' | 'bench' | 'xray' | 'table' | 'ecg' | 'analyzer';
 
 export const cellAt = (g: Grid, x: number, y: number) => g.cells[y * g.w + x] as CellKind;
 export const walkable = (g: Grid, x: number, y: number) => {

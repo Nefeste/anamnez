@@ -164,7 +164,7 @@ describe('амбулатория: места и касание', () => {
 describe('амбулатория: люди идут', () => {
   const { spots, seats, benches, entrance } = layout;
   const at = (cell: [number, number]) => ({ cell });
-  const person = (id: string, where: Placement['where'], doing: Doing, extra: Partial<Placement> = {}): Placement => ({ id, figure: 'patient', where, doing, ...extra });
+  const person = (id: string, where: Placement['where'], doing: Doing, extra: Partial<Placement> = {}): Placement => ({ id, figure: 'patient', look: { body: 3, head: 0 }, where, doing, ...extra });
   const seat = (id: string) => person(id, { seat: true }, { kind: 'waiting' }, { callable: true });
   const bench = (id: string) => person(id, { bench: true }, { kind: 'results', readyAt: 0 });
   const registration = (id: string) => person(id, at(spots.registration), { kind: 'registration' });
@@ -196,8 +196,8 @@ describe('амбулатория: люди идут', () => {
     expect(frame.changed).toBe(true);
     expect(frame.until).toBeCloseTo(10 + steps(entrance, spots.registration) / SPEED + DWELL.registration!);
     expect(w.sync([seat('p1'), registration('p2')], 11).changed).toBe(false);
-    // срочность поменялась — другая фигурка
-    expect(w.sync([seat('p1'), { ...registration('p2'), figure: 'patientRed' }], 12).changed).toBe(true);
+    // срочность поменялась — другая фигурка: обод на теле
+    expect(w.sync([seat('p1'), { ...registration('p2'), figure: 'patientRed', look: { body: 15, head: 0 } }], 12).changed).toBe(true);
   });
 
   test('смена спешит, а человек доходит до стойки и до медсестры и стоит у них, потом садится', () => {
@@ -272,7 +272,7 @@ describe('амбулатория: люди идут', () => {
 
   test('касание находит любого — пациента, персонал; мимо всех — никого', () => {
     const w = new Walkers(layout, 48);
-    const nurse: Placement = { id: 'staff.nurse', figure: 'nurse', where: at(layout.staff[1].cell), doing: { kind: 'staff', role: 'nurse' } };
+    const nurse: Placement = { id: 'staff.nurse', figure: 'nurse', look: { body: 1, head: 105 }, where: at(layout.staff[1].cell), doing: { kind: 'staff', role: 'nurse' } };
     w.sync([seat('p1'), office('p2'), nurse], 0);
     const [sx, sy] = seats[0];
     expect(w.hit(sx + 0.5, sy + 0.5, 0)).toBe('p1');

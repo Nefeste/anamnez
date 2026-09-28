@@ -217,7 +217,7 @@ export type Season = 'winter' | 'spring' | 'summer' | 'autumn';
 // --- каталог больницы (spec 2026-09-own-hospital) ------------------------------------------
 
 export type Cell = [number, number];
-export type ObjectKind = 'bed' | 'chair' | 'desk' | 'couch' | 'cabinet' | 'machine' | 'plant' | 'sink' | 'bench' | 'xray' | 'table';
+export type ObjectKind = 'bed' | 'chair' | 'desk' | 'couch' | 'cabinet' | 'machine' | 'plant' | 'sink' | 'bench' | 'xray' | 'table' | 'ecg' | 'analyzer';
 export type RoomSizeId = 'S' | 'M' | 'L';
 
 /**
@@ -268,7 +268,7 @@ export interface Equipment {
   name: Text;
   gen: Text;
   room: Id;
-  sprite: 'machine' | 'xray';
+  sprite: 'ecg' | 'analyzer' | 'xray';
   upgradeOf?: Id;
   price: number;
   upkeep: number;

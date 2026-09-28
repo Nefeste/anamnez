@@ -8,7 +8,8 @@
 // появляется.
 import type { Cell, ClinicLayout } from '@/engine/hospital/clinic';
 import { findPath } from '@/engine/sim/path';
-import { assignSeats, type Doing, type Figure, nearest, type Placement } from '@/state/clinicMap';
+import { assignSeats, type Doing, nearest, type Placement } from '@/state/clinicMap';
+import { headingOf, objectTurns, restHeading, type Turn } from './orient';
 
 /** Шаг — клеток в секунду настоящего времени: на ×4 игровые минуты летят, а люди идут, а не прыгают. */
 export const SPEED = 4;
@@ -35,9 +36,13 @@ interface Leg {
 
 interface Walker {
   slot: number;
-  sprite: number;
+  /** тело и голова из атласа (figures.ts) */
+  body: number;
+  head: number;
   /** путь x0, y0, x1, y1, … в клетках: от первой точки к последней, по отрезку за 1/speed с */
   pts: number[];
+  /** куда повёрнут на каждой точке пути, радианы: идёт — по ходу, стоит — к столу или как стул */
+  turns: number[];
   /** когда вышел — по часам карты, в секундах */
   start: number;
   speed: number;
@@ -47,11 +52,16 @@ interface Walker {
   leaving: boolean;
 }
 
-/** Что уходит на UI-поток: пути подряд; на человека — STRIDE чисел (см. выше); фигурки. */
+/**
+ * Что уходит на UI-поток: пути подряд и повороты на их точках; на человека — STRIDE чисел
+ * (см. выше), тело и голова из атласа.
+ */
 export interface Frame {
   route: number[];
+  turns: number[];
   meta: number[];
-  sprites: number[];
+  bodies: number[];
+  heads: number[];
   /** когда дойдёт последний идущий — дальше часы карты стоят и кадры не рисуются */
   until: number;
   /** изменилось ли что-то для UI-потока с прошлой сверки */
@@ -59,23 +69,6 @@ export interface Frame {
 }
 
 const cellKey = (c: Cell) => `${c[0]},${c[1]}`;
-
-function hash(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
-  return Math.abs(h);
-}
-
-/** Фигурка (sprites.ts): персонал по роли; пациент — один из трёх цветов, обод — по срочности. */
-export function spriteOf(figure: Figure, id: string): number {
-  const v = hash(id) % 3;
-  if (figure === 'doctor') return 0;
-  if (figure === 'nurse') return 1;
-  if (figure === 'staff') return 5;
-  if (figure === 'patientYellow') return 6 + v;
-  if (figure === 'patientRed') return 9 + v;
-  return 2 + v;
-}
 
 /** Где человек на пути в момент `now`; то же на каждом кадре считает ворклет карты. */
 export function posAt(pts: readonly number[], start: number, speed: number, now: number): [number, number] {
@@ -86,6 +79,14 @@ export function posAt(pts: readonly number[], start: number, speed: number, now:
   const f = s - k;
   const a = k * 2;
   return [pts[a] + (pts[a + 2] - pts[a]) * f, pts[a + 1] + (pts[a + 3] - pts[a + 1]) * f];
+}
+
+/** Куда повёрнут на пути в момент `now`: поворот отрезка, по которому идёт, или остановки. */
+export function turnAt(turns: readonly number[], start: number, speed: number, now: number): number {
+  const last = turns.length - 1;
+  if (last <= 0) return turns[0] ?? 0;
+  const s = Math.min(last, Math.max(0, (now - start) * speed));
+  return turns[Math.min(last, Math.floor(s))];
 }
 
 function legKind(d: Doing): LegKind {
@@ -100,8 +101,12 @@ export class Walkers {
   private benches = new Map<string, number>();
   private gone = new Set<string>();
   private first = true;
+  /** куда повёрнут каждый предмет плана — к нему поворачиваются стоящие и сидящие */
+  private objectTurns: Turn[];
 
-  constructor(private layout: ClinicLayout, private capacity: number) {}
+  constructor(private layout: ClinicLayout, private capacity: number) {
+    this.objectTurns = objectTurns(layout.grid, layout.objects, layout.staff.map(s => s.cell));
+  }
 
   /** Сверить с местами из смены; `now` — часы карты. Отдаёт то, что рисовать. */
   sync(people: readonly Placement[], now: number): Frame {
@@ -134,7 +139,7 @@ export class Walkers {
         while (used.has(slot)) slot++;
         if (slot >= this.capacity) continue;
         used.add(slot);
-        const fresh: Walker = { slot, sprite: spriteOf(p.figure, p.id), pts: [], start: now, speed: SPEED, legs: [], target: leg.key, leaving: !!p.leaving };
+        const fresh: Walker = { slot, body: p.look.body, head: p.look.head, pts: [], turns: [], start: now, speed: SPEED, legs: [], target: leg.key, leaving: !!p.leaving };
         // при открытии карты все уже на местах; потом новые входят с улицы
         if (this.first || p.id.startsWith('staff.')) this.plan(fresh, [leg.cell], [{ ...leg, dwell: 0 }], now, SPEED);
         else this.plan(fresh, [layout.entrance], [leg], now, SPEED);
@@ -143,9 +148,9 @@ export class Walkers {
         continue;
       }
       w.leaving = !!p.leaving;
-      const sprite = spriteOf(p.figure, p.id);
-      if (w.sprite !== sprite) {
-        w.sprite = sprite;
+      if (w.body !== p.look.body || w.head !== p.look.head) {
+        w.body = p.look.body;
+        w.head = p.look.head;
         changed = true;
       }
       if (w.target !== leg.key) {
@@ -156,8 +161,10 @@ export class Walkers {
     this.first = false;
 
     const route: number[] = [];
+    const turns: number[] = [];
     const meta = new Array<number>(this.capacity * STRIDE).fill(0);
-    const sprites = new Array<number>(this.capacity).fill(0);
+    const bodies = new Array<number>(this.capacity).fill(0);
+    const heads = new Array<number>(this.capacity).fill(0);
     let until = 0;
     for (const w of this.walkers.values()) {
       const m = w.slot * STRIDE;
@@ -167,10 +174,12 @@ export class Walkers {
       meta[m + 3] = w.speed;
       meta[m + 4] = w.leaving ? 1 : 0;
       for (const v of w.pts) route.push(v);
-      sprites[w.slot] = w.sprite;
+      for (const v of w.turns) turns.push(v);
+      bodies[w.slot] = w.body;
+      heads[w.slot] = w.head;
       until = Math.max(until, this.arrival(w));
     }
-    return { route, meta, sprites, until, changed };
+    return { route, turns, meta, bodies, heads, until, changed };
   }
 
   /** Кого коснулись: точка — в клетках, не дальше клетки от фигурки; персонал тоже. */
@@ -188,6 +197,12 @@ export class Walkers {
   where(id: string, now: number): [number, number] | undefined {
     const w = this.walkers.get(id);
     return w ? posAt(w.pts, w.start, w.speed, now) : undefined;
+  }
+
+  /** Куда повёрнут сейчас, радианы (рисунок — лицом на юг); то же на кадре считает ворклет карты. */
+  facing(id: string, now: number): number | undefined {
+    const w = this.walkers.get(id);
+    return w ? turnAt(w.turns, w.start, w.speed, now) : undefined;
   }
 
   /** Когда (по часам карты) дойдёт до последней остановки; нет его на карте — undefined. */
@@ -233,6 +248,8 @@ export class Walkers {
 
   /** Путь: сначала точки `lead` (человек сейчас на них), дальше — через остановки; стоянка — повтор точки. */
   private plan(w: Walker, lead: Cell[], legs: Leg[], start: number, speed: number) {
+    // куда смотрел до нового пути — так и стоит, пока не пошёл
+    const before = w.pts.length > 0 ? turnAt(w.turns, w.start, w.speed, start) : 0;
     const pts: number[] = lead.flat();
     const planned: Leg[] = [];
     let from = lead[lead.length - 1];
@@ -246,10 +263,31 @@ export class Walkers {
       from = leg.cell;
     }
     w.pts = pts;
+    w.turns = this.turnsOf(pts, before);
     w.start = start;
     w.speed = speed;
     w.legs = planned;
     w.target = planned[planned.length - 1].key;
+  }
+
+  /**
+   * Поворот на каждой точке пути: идёт — по отрезку к следующей точке; стоит (повтор точки или
+   * конец пути) — к столу или аппарату рядом, на стуле — как стул; иначе — как шёл.
+   */
+  private turnsOf(pts: readonly number[], before: number): number[] {
+    const n = pts.length / 2;
+    const out = new Array<number>(n);
+    let last = before;
+    for (let i = 0; i < n; i++) {
+      const x = pts[i * 2];
+      const y = pts[i * 2 + 1];
+      const dx = i + 1 < n ? pts[i * 2 + 2] - x : 0;
+      const dy = i + 1 < n ? pts[i * 2 + 3] - y : 0;
+      if (dx !== 0 || dy !== 0) last = headingOf(dx, dy);
+      else last = restHeading(this.layout.objects, this.objectTurns, [x, y]) ?? last;
+      out[i] = last;
+    }
+    return out;
   }
 
   private leg(p: Placement): Leg {

@@ -6,8 +6,11 @@
 // идут между местами, решает карта (src/render/map); что человек делает — подпись под картой.
 import { db } from '@/content';
 import type { ContentDb, Exam } from '@/content/types';
+import { fnv1a } from '@/engine/core/hash';
 import { type Cell, type ClinicLayout, clinicLayout, type StaffRole } from '@/engine/hospital/clinic';
 import type { ShiftPatient, ShiftState } from '@/engine/shift/types';
+import { lookOf } from '@/render/look';
+import { type Figure as Look, patientFigure, staffFigure, type Uniform } from '@/render/map/figures';
 
 /** Вид фигурки: персонал — по роли, пациент — по срочности (цвет — не единственный признак: 03-game-design.md §13). */
 export type Figure = 'doctor' | 'nurse' | 'staff' | 'patient' | 'patientYellow' | 'patientRed';
@@ -35,6 +38,8 @@ export type Doing =
 export interface Placement {
   id: string;
   figure: Figure;
+  /** как выглядит на карте: пациент — как на портрете, персонал — форма по должности */
+  look: Look;
   where: Where;
   doing: Doing;
   /** пациент уходит: дошёл до выхода — исчезает */
@@ -64,8 +69,16 @@ const STAFF_FIGURE: Record<StaffRole, Figure> = {
   radiologist: 'staff',
 };
 
-function patientFigure(p: ShiftPatient): Figure {
+function figureOf(p: ShiftPatient): Figure {
   return p.triage === 'red' ? 'patientRed' : p.triage === 'yellow' ? 'patientYellow' : 'patient';
+}
+
+const UNIFORM_OF: Record<Figure, Uniform | undefined> = { doctor: 'doctor', nurse: 'nurse', staff: 'staff', patient: undefined, patientYellow: undefined, patientRed: undefined };
+
+/** Пациент на карте — с тем же лицом, что на портрете в карте пациента (caseView). */
+function lookOfPatient(p: ShiftPatient): Look {
+  const { seed, sex, age } = p.patient;
+  return patientFigure(lookOf(fnv1a(`${seed}:portrait`), sex, age), p.triage === 'red' ? 2 : p.triage === 'yellow' ? 1 : 0);
 }
 
 const EXAM_ROOM: Record<string, ExamRoom> = { 'room.xray': 'xray', 'room.ecg': 'ecg', 'room.lab': 'lab' };
@@ -97,20 +110,23 @@ function awayPlace(db: ContentDb, layout: ClinicLayout, p: ShiftPatient, t: numb
 }
 
 export function placements(db: ContentDb, layout: ClinicLayout, s: ShiftState): Placement[] {
-  const out: Placement[] = layout.staff.map(x => ({
-    id: `staff.${x.id ?? x.role}`, figure: STAFF_FIGURE[x.role], where: { cell: x.cell }, doing: { kind: 'staff', role: x.role },
-  }));
+  const out: Placement[] = layout.staff.map(x => {
+    const id = `staff.${x.id ?? x.role}`;
+    const figure = STAFF_FIGURE[x.role];
+    return { id, figure, look: staffFigure(UNIFORM_OF[figure] ?? 'staff', id), where: { cell: x.cell }, doing: { kind: 'staff', role: x.role } };
+  });
   // своя больница без доврачебного кабинета: от регистратуры — сразу в зал
   const triage = layout.rooms.some(r => r.type === 'triage');
   const exit = { cell: layout.entrance };
   for (const p of Object.values(s.patients)) {
-    const figure = patientFigure(p);
+    const figure = figureOf(p);
+    const look = lookOfPatient(p);
     if (p.status === 'inRoom' && p.by) {
       // у нанятого врача — в его кабинете (spec 2026-09-hired-doctors)
       const room = s.staff?.find(m => m.id === p.by)?.room;
-      out.push({ id: p.id, figure, where: { cell: (room && layout.offices[room]) || layout.spots.office }, doing: { kind: 'office', by: p.by } });
+      out.push({ id: p.id, figure, look, where: { cell: (room && layout.offices[room]) || layout.spots.office }, doing: { kind: 'office', by: p.by } });
     } else if (p.status === 'inRoom') {
-      out.push({ id: p.id, figure, where: { cell: layout.spots.office }, doing: { kind: 'office' } });
+      out.push({ id: p.id, figure, look, where: { cell: layout.spots.office }, doing: { kind: 'office' } });
     } else if (p.status === 'waiting') {
       // только что пришедший — регистратура и медсестра (её витальные — уже в результатах);
       // вернувшийся с обследований — сразу в зал: врач с ним уже работал
@@ -119,16 +135,16 @@ export function placements(db: ContentDb, layout: ClinicLayout, s: ShiftState): 
       const fresh = p.step === 0;
       // пациент нанятого врача ждёт его, а не вас (spec 2026-09-hired-doctors)
       const callable = s.current === undefined && p.by === undefined;
-      if (fresh && since < REGISTRATION) out.push({ id: p.id, figure, where: { cell: layout.spots.registration }, doing: { kind: 'registration' }, callable });
-      else if (fresh && triage && since < REGISTRATION + TRIAGE) out.push({ id: p.id, figure, where: { cell: layout.spots.triage }, doing: { kind: 'triage' }, callable });
-      else out.push({ id: p.id, figure, where: { seat: true }, doing: { kind: 'waiting' }, callable });
+      if (fresh && since < REGISTRATION) out.push({ id: p.id, figure, look, where: { cell: layout.spots.registration }, doing: { kind: 'registration' }, callable });
+      else if (fresh && triage && since < REGISTRATION + TRIAGE) out.push({ id: p.id, figure, look, where: { cell: layout.spots.triage }, doing: { kind: 'triage' }, callable });
+      else out.push({ id: p.id, figure, look, where: { seat: true }, doing: { kind: 'waiting' }, callable });
     } else if (p.status === 'away') {
-      out.push({ id: p.id, figure, ...awayPlace(db, layout, p, s.t) });
+      out.push({ id: p.id, figure, look, ...awayPlace(db, layout, p, s.t) });
     } else if (p.status === 'done' && p.closed && s.t - p.closed.at < LEAVING) {
-      out.push({ id: p.id, figure, where: exit, doing: { kind: 'leaving' }, leaving: true });
+      out.push({ id: p.id, figure, look, where: exit, doing: { kind: 'leaving' }, leaving: true });
     } else if (p.status === 'left' && s.t - (p.queuedT + p.patience) < LEAVING) {
       // не дождался: ушёл, когда кончилось терпение (engine.ts, событие patience)
-      out.push({ id: p.id, figure, where: exit, doing: { kind: 'left' }, leaving: true });
+      out.push({ id: p.id, figure, look, where: exit, doing: { kind: 'left' }, leaving: true });
     }
     // coming — ещё не пришёл; unseen — день закрыт, их на карте нет
   }

@@ -3,13 +3,17 @@
 // (NFR-PRF-1): цель — ни одного подвисания на современных.
 import { Atlas, Canvas, Group, Picture, Skia, useRSXformBuffer } from '@shopify/react-native-skia';
 import { useEffect, useMemo } from 'react';
+import { PixelRatio } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useDerivedValue, useFrameCallback, useSharedValue } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import type { HospitalLayout } from '@/engine/hospital/grid';
+import { bodyIndex, staffFigure } from './figures';
 import { CELL_PX, recordFloor } from './floor';
+import { angleOf, objectTurns } from './orient';
 import { makePeople } from './people';
-import { buildAtlas, SPRITE } from './sprites';
+import { atlasPx, buildAtlas } from './sprites';
+import { cellXform } from './xform';
 
 export interface FrameStats {
   fps: number;
@@ -25,12 +29,21 @@ export function HospitalMap({ layout, width, height, people = 60, paused, onCell
   onCell: (x: number, y: number) => void;
   onStats: (s: FrameStats) => void;
 }) {
-  const atlas = useMemo(() => buildAtlas(), []);
+  // атлас — под плотность экрана при двукратном приближении камеры
+  const px = atlasPx(CELL_PX * (width / (layout.grid.w * CELL_PX)) * 2, PixelRatio.get());
+  const atlas = useMemo(() => buildAtlas(px), [px]);
   const floor = useMemo(() => recordFloor(layout), [layout]);
+  const turned = useMemo(() => objectTurns(layout.grid, layout.objects), [layout]);
   const objectSprites = useMemo(() => layout.objects.map(o => atlas.objectRect(o.kind)), [layout, atlas]);
-  const objectXforms = useMemo(() => layout.objects.map(o => Skia.RSXform(CELL_PX / SPRITE, 0, o.x * CELL_PX, o.y * CELL_PX)), [layout]);
+  const objectXforms = useMemo(() => layout.objects.map((o, i) => Skia.RSXform(...cellXform(angleOf(turned[i]), o.x, o.y, px))), [layout, turned, px]);
   const routes = useMemo(() => makePeople(layout, people), [layout, people]);
-  const personSprites = useMemo(() => routes.kinds.map(k => atlas.personRect(k)), [routes, atlas]);
+  // 0 — врачи, 1 — медсёстры, дальше — пациенты в своей одежде; лица — из номера
+  const figures = useMemo(
+    () => routes.kinds.map((k, i) => (k === 0 ? staffFigure('doctor', `p${i}`) : k === 1 ? staffFigure('nurse', `p${i}`) : { ...staffFigure('staff', `p${i}`), body: bodyIndex({ clothes: i, urgency: 0 }) })),
+    [routes],
+  );
+  const bodySprites = useMemo(() => figures.map(f => atlas.bodyRect(f.body)), [figures, atlas]);
+  const headSprites = useMemo(() => figures.map(f => atlas.headRect(f.head)), [figures, atlas]);
 
   // Игровые часы для ворклета и маршруты на UI-потоке.
   const clock = useSharedValue(0);
@@ -61,7 +74,6 @@ export function HospitalMap({ layout, width, height, people = 60, paused, onCell
   }, [frame, paused]);
 
   const cell = CELL_PX;
-  const scale = CELL_PX / SPRITE;
   const personXforms = useRSXformBuffer(routes.count, (val, i) => {
     'worklet';
     const m = meta.value;
@@ -73,16 +85,23 @@ export function HospitalMap({ layout, width, height, people = 60, paused, onCell
     const pts = points.value;
     let x = pts[off * 2];
     let y = pts[off * 2 + 1];
+    let turn = 0;
     if (last > 0) {
       let s = (clock.value * speed + phase) % (2 * last);
-      if (s > last) s = 2 * last - s;
+      // туда и обратно: на обратном пути повёрнут назад
+      const back = s > last;
+      if (back) s = 2 * last - s;
       const k = Math.min(last - 1, Math.floor(s));
       const f = s - k;
       const a = (off + k) * 2;
-      x = pts[a] + (pts[a + 2] - pts[a]) * f;
-      y = pts[a + 1] + (pts[a + 3] - pts[a + 1]) * f;
+      const dx = pts[a + 2] - pts[a];
+      const dy = pts[a + 3] - pts[a + 1];
+      x = pts[a] + dx * f;
+      y = pts[a + 1] + dy * f;
+      turn = back ? Math.atan2(dx, -dy) : Math.atan2(-dx, dy);
     }
-    val.set(scale, 0, x * cell, y * cell);
+    const [sc, ss, tx, ty] = cellXform(turn, x, y, px, 1.15);
+    val.set(sc, ss, tx, ty);
   });
 
   // Камера: сначала вся карта по ширине.
@@ -120,7 +139,8 @@ export function HospitalMap({ layout, width, height, people = 60, paused, onCell
         <Group transform={transform}>
           <Picture picture={floor} />
           <Atlas image={atlas.image} sprites={objectSprites} transforms={objectXforms} />
-          <Atlas image={atlas.image} sprites={personSprites} transforms={personXforms} />
+          <Atlas image={atlas.image} sprites={bodySprites} transforms={personXforms} />
+          <Atlas image={atlas.image} sprites={headSprites} transforms={personXforms} />
         </Group>
       </Canvas>
     </GestureDetector>
