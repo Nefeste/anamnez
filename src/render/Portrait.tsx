@@ -1,9 +1,10 @@
-// Портрет человека кодом из зерна (ADR 0013): лицо, возраст, волосы, очки, одежда.
+// Портрет человека кодом из зерна (ADR 0013): лицо, возраст, волосы, очки, одежда. `still` —
+// как у рентгена (Xray.tsx).
 import { Canvas, Circle, Group, Oval, Path, Rect, RoundedRect, Skia } from '@shopify/react-native-skia';
 import { useMemo } from 'react';
 import { lookOf } from './look';
 
-export function Portrait({ seed, sex, age, size = 72 }: { seed: number; sex: 'm' | 'f'; age: number; size?: number }) {
+export function Portrait({ seed, sex, age, size = 72, still = false }: { seed: number; sex: 'm' | 'f'; age: number; size?: number; still?: boolean }) {
   const look = useMemo(() => lookOf(seed, sex, age), [seed, sex, age]);
 
   const s = size;
@@ -21,7 +22,7 @@ export function Portrait({ seed, sex, age, size = 72 }: { seed: number; sex: 'm'
   }, [s]);
 
   return (
-    <Canvas style={{ width: s, height: s }}>
+    <Canvas style={{ width: s, height: s }} __destroyWebGLContextAfterRender={still}>
       <Circle cx={s / 2} cy={s / 2} r={s / 2} color={look.bg} />
       <Group>
         {/* длинные волосы за головой */}

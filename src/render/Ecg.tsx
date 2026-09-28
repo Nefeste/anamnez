@@ -1,4 +1,5 @@
-// Лента ЭКГ на миллиметровке: 25 мм/с, 10 мм/мВ (06-architecture.md §11).
+// Лента ЭКГ на миллиметровке: 25 мм/с, 10 мм/мВ (06-architecture.md §11). `still` — как у
+// рентгена (Xray.tsx).
 import { Canvas, Group, Line, Path, Rect, Skia, vec } from '@shopify/react-native-skia';
 import { useMemo } from 'react';
 import { ECG_HZ, type EcgSpec, synthEcg } from './ecgSignal';
@@ -7,7 +8,7 @@ const PINK_FINE = '#F7D4D4';
 const PINK_BOLD = '#EFA3A3';
 const INK = '#1C2B2D';
 
-export function Ecg({ spec, width, height = 160 }: { spec: EcgSpec; width: number; height?: number }) {
+export function Ecg({ spec, width, height = 160, still = false }: { spec: EcgSpec; width: number; height?: number; still?: boolean }) {
   // Масштаб: вся лента по ширине; «миллиметр» — ширина одного отсчёта.
   const { path, grid, mm } = useMemo(() => {
     const { mv } = synthEcg(spec);
@@ -27,7 +28,7 @@ export function Ecg({ spec, width, height = 160 }: { spec: EcgSpec; width: numbe
   }, [spec, width, height]);
 
   return (
-    <Canvas style={{ width, height }}>
+    <Canvas style={{ width, height }} __destroyWebGLContextAfterRender={still}>
       <Rect x={0} y={0} width={width} height={height} color="#FFF8F8" />
       <Group>
         {grid.map((l, i) => (

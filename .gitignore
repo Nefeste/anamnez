@@ -50,6 +50,7 @@ src/content/generated/
 # отчёты «виртуального врача» и e2e
 tools/sim/out/
 tools/e2e/out/
+tools/imaging/out/
 
 # Claude Code
 .claude/worktrees/

@@ -3,7 +3,7 @@
     "name": "Анамнез",
     "slug": "anamnez",
     "scheme": "anamnez",
-    "version": "0.0.33",
+    "version": "0.0.34",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "icon": "./assets/icon.png",
@@ -14,7 +14,7 @@
     },
     "android": {
       "package": "com.anamnez.game",
-      "versionCode": 33,
+      "versionCode": 34,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundImage": "./assets/adaptive-icon-background.png",

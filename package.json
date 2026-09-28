@@ -1,6 +1,6 @@
 {
   "name": "anamnez",
-  "version": "0.0.33",
+  "version": "0.0.34",
   "main": "index",
   "private": true,
   "scripts": {
@@ -16,7 +16,8 @@
     "test": "npm run content && bun test tools/test",
     "export:web": "npm run content && setup-skia-web public && expo export --platform web --output-dir dist-web",
     "e2e": "bun tools/e2e/smoke.ts",
-    "store": "bun tools/store/render.ts"
+    "store": "bun tools/store/render.ts",
+    "imaging": "bun tools/imaging/render.ts"
   },
   "dependencies": {
     "@shopify/react-native-skia": "2.6.2",
