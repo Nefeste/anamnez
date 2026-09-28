@@ -1,12 +1,14 @@
-// П5 · Снимки, ЭКГ и портреты кодом; КТ и МРТ головы — с 0.0.34 (spec 2026-09-ct-mri-ultrasound).
+// П5 · Снимки, ЭКГ и портреты кодом; КТ и МРТ головы — с 0.0.34, УЗИ — с 0.0.35
+// (spec 2026-09-ct-mri-ultrasound).
 // Рисунков на экране больше 16 — все `still`: в вебе холст с живым контекстом WebGL их не вместит.
 import { useWindowDimensions, View } from 'react-native';
 import { T } from '@/i18n';
 import { Ecg } from '@/render/Ecg';
 import { HeadSlice } from '@/render/HeadSlice';
 import { Portrait } from '@/render/Portrait';
+import { UsSector } from '@/render/UsSector';
 import { Xray } from '@/render/Xray';
-import { HEAD_CASES } from '@/state/imagingCases';
+import { HEAD_CASES, US_CASES } from '@/state/imagingCases';
 import { Card, H, P, Screen } from '@/ui/components';
 
 const PEOPLE: { seed: number; sex: 'm' | 'f'; age: number }[] = [
@@ -45,6 +47,16 @@ export default function ImagingSpike() {
           <P muted>{T.spikes.imaging.head.note}</P>
         </Card>
       ))}
+      <Card testID="us">
+        <H>{T.spikes.imaging.us.title}</H>
+        {US_CASES.map(k => (
+          <View key={k.key} testID={k.key} style={{ gap: 4 }}>
+            <UsSector width={w} findings={k.findings} seed={k.seed} still />
+            <P muted>{k.label}</P>
+          </View>
+        ))}
+        <P muted>{T.spikes.imaging.us.note}</P>
+      </Card>
       <Card>
         <H>{T.spikes.imaging.ecgSinus}</H>
         <Ecg width={w} spec={{ rhythm: 'sinus', rate: 72, seconds: 10, seed: 1 }} still />

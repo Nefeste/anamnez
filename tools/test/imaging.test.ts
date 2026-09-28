@@ -1,9 +1,10 @@
-// Снимки кодом (spec 2026-09-ct-mri-ultrasound, часть 20): срез головы на КТ и МРТ — геометрия
-// очагов и смещения, и сам рисунок без экрана (Skia через CanvasKit, tools/imaging/headless.ts):
-// где светло и где темно, то же зерно — тот же рисунок.
+// Снимки кодом (spec 2026-09-ct-mri-ultrasound): срез головы на КТ и МРТ (часть 20) и сектор УЗИ
+// (часть 21) — геометрия очагов, и сам рисунок без экрана (Skia через CanvasKit,
+// tools/imaging/headless.ts): где светло и где темно, то же зерно — тот же рисунок.
 import { beforeAll, describe, expect, test } from 'bun:test';
 import { brainRadius, headGeometry, type HeadFindings, type HeadFocus, inside, skullInnerRadius } from '../../src/render/ct/geometry';
-import { HEAD_CASES } from '../../src/state/imagingCases';
+import { HEAD_CASES, US_CASES } from '../../src/state/imagingCases';
+import { inSector, polar as usPolar, R1, usGeometry } from '../../src/render/us/geometry';
 import { loadSkia, luma, rasterize } from '../imaging/headless';
 
 const CX = 0.5, CY = 0.5;
@@ -158,3 +159,95 @@ describe('срез головы: рисунок без экрана', () => {
     }
   });
 });
+
+describe('сектор УЗИ: геометрия', () => {
+  test('всё внутри сектора; точки — в пузыре у нижней стенки, тень — по лучу до конца сектора', () => {
+    const g = usGeometry({ view: 'gallbladder', foci: { count: 3, size: 0.5 } }, 2);
+    for (const p of g.gallbladder!) expect(inSector(p)).toBe(true);
+    const gbCenter = centroid(g.gallbladder!);
+    expect(g.foci).toHaveLength(3);
+    for (const k of g.foci) {
+      expect(inside(k.c, g.gallbladder!)).toBe(true);
+      // дальше центра пузыря от датчика — у нижней стенки
+      expect(usPolar(k.c).r).toBeGreaterThan(usPolar(gbCenter).r);
+      // тень: два дальних угла — на конце сектора, по обе стороны луча точки
+      const far = k.shadow.filter(p => Math.abs(usPolar(p).r - R1) < 1e-9);
+      expect(far).toHaveLength(2);
+      const a = usPolar(k.c).a;
+      expect(Math.min(...far.map(p => usPolar(p).a))).toBeLessThan(a);
+      expect(Math.max(...far.map(p => usPolar(p).a))).toBeGreaterThan(a);
+    }
+    // без точек — ни точек, ни теней; больше пяти — пять
+    expect(usGeometry({ view: 'gallbladder' }, 2).foci).toHaveLength(0);
+    expect(usGeometry({ view: 'gallbladder', foci: { count: 9, size: 1 } }, 2).foci).toHaveLength(5);
+  });
+
+  test('почка: синус и лоханка внутри почки; жидкость — между печенью и почкой, шире с параметром', () => {
+    const g = usGeometry({ view: 'kidney', pelvis: 1, fluid: 1 }, 3);
+    for (const p of g.sinus!) expect(inside(p, g.kidney!)).toBe(true);
+    for (const part of g.pelvisParts!) for (const p of part) expect(inside(p, g.kidney!)).toBe(true);
+    const thick = (f: number) => {
+      const band = usGeometry({ view: 'kidney', fluid: f }, 3).fluid!;
+      const ys = band.map(p => p[1]);
+      return Math.max(...ys) - Math.min(...ys);
+    };
+    expect(thick(1)).toBeGreaterThan(thick(0.2));
+    expect(usGeometry({ view: 'kidney' }, 3).fluid).toBeUndefined();
+    expect(usGeometry({ view: 'kidney' }, 3).pelvisParts).toBeUndefined();
+  });
+});
+
+describe('сектор УЗИ: рисунок без экрана', () => {
+  const S = 240;
+  let draw: (f: import('../../src/render/us/geometry').UsFindings, seed: number) => Promise<{ rgba: Uint8Array; png: Uint8Array }>;
+  beforeAll(async () => {
+    await loadSkia();
+    const { recordUsSector } = await import('../../src/render/us/sector');
+    draw = (f, seed) => rasterize(recordUsSector(S, f, seed), S, S);
+  });
+  const at = (px: Uint8Array, p: [number, number]) => luma(px, S, S, p[0], p[1]);
+  /** Средняя яркость по лучу `a` на глубинах от r0 до r1 — зерно усредняется. */
+  const along = (px: Uint8Array, a: number, r0: number, r1: number) => {
+    let sum = 0;
+    for (let i = 0; i <= 20; i++) {
+      const r = r0 + ((r1 - r0) * i) / 20;
+      sum += at(px, [0.5 + r * Math.sin(a), -0.26 + r * Math.cos(a)]);
+    }
+    return sum / 21;
+  };
+
+  test('пузырь чёрный, за ним светлее, чем сбоку; за точкой — темнее', async () => {
+    const g = usGeometry({ view: 'gallbladder' }, 1);
+    const { rgba } = await draw({ view: 'gallbladder' }, 1);
+    const c = centroid(g.gallbladder!);
+    expect(at(rgba, c)).toBeLessThan(25);
+    const pc = usPolar(c);
+    const behind = along(rgba, pc.a, pc.r + 0.12, pc.r + 0.3);
+    const beside = along(rgba, pc.a - 0.3, pc.r + 0.12, pc.r + 0.3);
+    expect(behind).toBeGreaterThan(beside);
+
+    const f = { view: 'gallbladder' as const, foci: { count: 1, size: 0.8 } };
+    const k = usGeometry(f, 2).foci[0];
+    const r2 = (await draw(f, 2)).rgba;
+    const pk = usPolar(k.c);
+    expect(along(r2, pk.a, pk.r + 0.12, pk.r + 0.3)).toBeLessThan(along(r2, pk.a - 0.25, pk.r + 0.12, pk.r + 0.3) - 20);
+  });
+
+  test('расширенная середина почки — тёмная; без расширения там светлый синус', async () => {
+    const plain = usGeometry({ view: 'kidney' }, 4);
+    const c = centroid(plain.sinus!);
+    const normal = (await draw({ view: 'kidney' }, 4)).rgba;
+    const wide = (await draw({ view: 'kidney', pelvis: 0.8 }, 4)).rgba;
+    expect(at(normal, c)).toBeGreaterThan(90);
+    expect(at(wide, c)).toBeLessThan(30);
+  });
+
+  test('то же зерно — те же байты; все варианты «Проверок» рисуются', async () => {
+    const a = await draw({ view: 'kidney', fluid: 0.5 }, 9);
+    const b = await draw({ view: 'kidney', fluid: 0.5 }, 9);
+    expect(Buffer.from(a.png).equals(Buffer.from(b.png))).toBe(true);
+    expect(US_CASES.length).toBe(5);
+    for (const k of US_CASES) expect((await draw(k.findings, k.seed)).png.length).toBeGreaterThan(1000);
+  });
+});
+

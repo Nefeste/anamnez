@@ -2,6 +2,7 @@
 // что нарисовано, а не диагноз. Их же рисует `npm run imaging` без экрана.
 import { T } from '@/i18n';
 import type { HeadFindings } from '@/render/ct/geometry';
+import type { UsFindings } from '@/render/us/geometry';
 
 export interface HeadCase {
   key: string;
@@ -21,4 +22,21 @@ export const HEAD_CASES: HeadCase[] = [
   { key: 'ct-wedge', mode: 'ct', findings: { focus: { density: 'low', shape: 'wedge', side: 'left', region: 'middle', size: 0.7 } }, seed: 5, label: t.ctWedge },
   { key: 'mri-normal', mode: 'mri', findings: {}, seed: 6, label: t.mriNormal },
   { key: 'mri-wedge', mode: 'mri', findings: { focus: { density: 'high', shape: 'wedge', side: 'right', region: 'middle', size: 0.6 } }, seed: 7, label: t.mriWedge },
+];
+
+export interface UsCase {
+  key: string;
+  findings: UsFindings;
+  seed: number;
+  label: string;
+}
+
+const u = T.spikes.imaging.us;
+
+export const US_CASES: UsCase[] = [
+  { key: 'us-gb', findings: { view: 'gallbladder' }, seed: 1, label: u.gb },
+  { key: 'us-gb-foci', findings: { view: 'gallbladder', foci: { count: 3, size: 0.5 } }, seed: 2, label: u.gbFoci },
+  { key: 'us-kidney', findings: { view: 'kidney' }, seed: 3, label: u.kidney },
+  { key: 'us-kidney-pelvis', findings: { view: 'kidney', pelvis: 0.7 }, seed: 4, label: u.kidneyPelvis },
+  { key: 'us-kidney-fluid', findings: { view: 'kidney', fluid: 0.6 }, seed: 5, label: u.kidneyFluid },
 ];
