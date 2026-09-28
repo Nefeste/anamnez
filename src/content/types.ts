@@ -214,6 +214,7 @@ export interface Risk {
   ageMin?: number;
   ageMax?: number;
   findings: Link[];
+  sources: Source[];
   review: Review;
 }
 

@@ -43,6 +43,6 @@ pearls:
   - ru: "Глюкометр — для отбора; диагноз ставят по лабораторной глюкозе натощак или гликированному гемоглобину."
 simplified: "Осложнения диабета, другие группы сахароснижающих и инсулин — позже, с эндокринологией."
 sources:
-  - { kind: guideline, title: "Сахарный диабет 2 типа у взрослых", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru; частоты — черновик" }
+  - { kind: guideline, title: "Сахарный диабет 2 типа у взрослых", org: "Минздрав РФ", year: 2022, url: "https://cr.minzdrav.gov.ru/view-cr/290_2", note: "ID 290_2, опубликованы 12.07.2022, применяются; сверено с рубрикатором 28.09.2026; частоты — черновик" }
   - { kind: guideline, title: "American Diabetes Association. 2. Diagnosis and Classification of Diabetes: Standards of Care in Diabetes — 2024. Diabetes Care 2024;47(Suppl 1):S20–S42" }
 review: draft

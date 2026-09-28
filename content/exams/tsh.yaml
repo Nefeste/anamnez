@@ -15,5 +15,5 @@ texts:
   summary:
     ru: "Кровь из вены."
 sources:
-  - { kind: guideline, title: "Гипотиреоз", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru" }
+  - { kind: guideline, title: "Гипотиреоз", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/531_4", note: "ID 531_4, опубликованы 18.09.2024, применяются; сверено с рубрикатором 28.09.2026" }
 review: draft

@@ -40,6 +40,5 @@ pearls:
   - ru: "Регулярный приём обезболивающих — частая причина болей в желудке: спросите о лекарствах."
 simplified: "Тест на хеликобактер и эрадикационная терапия — позже; в игре диспепсия без тревожных признаков лечится ИПП."
 sources:
-  - { kind: guideline, title: "Функциональная диспепсия", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru; частоты — черновик" }
-  - { kind: guideline, title: "Moayyedi PM et al. ACG and CAG Clinical Guideline: Management of Dyspepsia. Am J Gastroenterol 2017;112(7):988–1013" }
+  - { kind: guideline, title: "Moayyedi P et al. ACG and CAG Clinical Guideline: Management of Dyspepsia. Am J Gastroenterol 2017;112(7):988–1013", url: "https://pubmed.ncbi.nlm.nih.gov/28631728/" }
 review: draft

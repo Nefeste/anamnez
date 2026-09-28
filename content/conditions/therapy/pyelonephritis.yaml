@@ -69,5 +69,5 @@ pearls:
 sources:
   - { kind: guideline, title: "EAU Guidelines on Urological Infections", org: "European Association of Urology", year: 2024, note: "частоты — черновик" }
   - { kind: guideline, title: "Pyelonephritis (acute): antimicrobial prescribing. NICE guideline NG111", org: "NICE", year: 2018 }
-  - { kind: guideline, title: "Острый пиелонефрит", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru" }
+  - { kind: guideline, title: "Острый пиелонефрит", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/9_3", note: "ID 9_3, опубликованы 28.12.2024, применяются; сверено с рубрикатором 28.09.2026" }
 review: draft

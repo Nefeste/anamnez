@@ -11,6 +11,6 @@ texts:
   hint:
     ru: "Гормон (например, преднизолон), снимающий воспаление в бронхах: короткий курс при обострении ХОБЛ и астмы ускоряет выздоровление. При простуде, бронхите и лёгком COVID-19 не нужен."
 sources:
-  - { kind: guideline, title: "Хроническая обструктивная болезнь лёгких", org: "Минздрав РФ", note: "черновик: название и редакцию сверить на cr.minzdrav.gov.ru" }
+  - { kind: guideline, title: "Хроническая обструктивная болезнь легких", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/603_3", note: "ID 603_3, опубликованы 17.12.2024, применяются; сверено с рубрикатором 28.09.2026" }
   - { kind: guideline, title: "Global Strategy for the Diagnosis, Management and Prevention of COPD (GOLD) 2024", org: "GOLD", note: "черновик: сверить раздел об обострениях" }
 review: draft

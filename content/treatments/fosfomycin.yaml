@@ -11,5 +11,5 @@ texts:
     ru: "Антибиотик для неосложнённого цистита: однократный приём, устойчивость к нему редка, при беременности допустим. До почек в нужной концентрации не доходит — при пиелонефрите не годится."
 sources:
   - { kind: guideline, title: "EAU Guidelines on Urological Infections", org: "European Association of Urology", year: 2024 }
-  - { kind: guideline, title: "Цистит у женщин", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru" }
+  - { kind: guideline, title: "Цистит у женщин", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/14_3", note: "ID 14_3, опубликованы 02.11.2024, применяются; сверено с рубрикатором 28.09.2026" }
 review: draft

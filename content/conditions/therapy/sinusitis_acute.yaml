@@ -49,6 +49,6 @@ pearls:
 simplified: "Вирусный и поствирусный риносинусит объединены; рентген пазух не делают — он не нужен для диагноза."
 sources:
   - { kind: guideline, title: "Fokkens WJ et al. European Position Paper on Rhinosinusitis and Nasal Polyps 2020. Rhinology 2020;58(Suppl S29):1–464", note: "частоты — черновик" }
-  - { kind: guideline, title: "Острый синусит", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru" }
+  - { kind: guideline, title: "Острый синусит", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/313_3", note: "ID 313_3, опубликованы 28.10.2024, применяются; сверено с рубрикатором 28.09.2026" }
   - { kind: guideline, title: "Sinusitis (acute): antimicrobial prescribing. NICE guideline NG79", org: "NICE", year: 2017 }
 review: draft

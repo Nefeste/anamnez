@@ -10,6 +10,6 @@ texts:
   hint:
     ru: "Расширяют артерии и снижают давление; одна из основных групп при гипертонии, часто в одной таблетке с ингибитором АПФ. Бывают отёки лодыжек."
 sources:
-  - { kind: guideline, title: "Артериальная гипертензия у взрослых", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru" }
+  - { kind: guideline, title: "Артериальная гипертензия у взрослых", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/62_3", note: "ID 62_3, опубликованы 03.10.2024, применяются; сверено с рубрикатором 28.09.2026" }
   - { kind: guideline, title: "2023 ESH Guidelines for the management of arterial hypertension. J Hypertens 2023;41(12):1874–2071" }
 review: draft

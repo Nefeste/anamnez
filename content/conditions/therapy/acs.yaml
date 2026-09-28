@@ -57,6 +57,6 @@ pearls:
 simplified: "Тропонин и коронарография — в стационаре; в поликлинике задача — заподозрить, дать ацетилсалициловую кислоту и вызвать скорую."
 sources:
   - { kind: guideline, title: "2023 ESC Guidelines for the management of acute coronary syndromes. Eur Heart J 2023;44(38):3720–3826", note: "частоты — черновик" }
-  - { kind: guideline, title: "Острый коронарный синдром без подъёма сегмента ST электрокардиограммы", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru" }
+  - { kind: guideline, title: "Острый коронарный синдром без подъема сегмента ST электрокардиограммы", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/154_4", note: "ID 154_4, опубликованы 23.10.2024, применяются; сверено с рубрикатором 28.09.2026" }
   - { kind: paper, title: "Swap CJ, Nagurney JT. Value and limitations of chest pain history in the evaluation of patients with suspected acute coronary syndromes. JAMA 2005;294(20):2623–2629" }
 review: draft

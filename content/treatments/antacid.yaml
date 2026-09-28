@@ -11,5 +11,5 @@ texts:
   hint:
     ru: "Нейтрализуют кислоту и создают защитный слой над содержимым желудка: изжога проходит за минуты, но ненадолго. Для редкой изжоги — хорошо, для лечения рефлюксной болезни — мало."
 sources:
-  - { kind: guideline, title: "Гастроэзофагеальная рефлюксная болезнь", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru" }
+  - { kind: guideline, title: "Katz PO et al. ACG Clinical Guideline for the Diagnosis and Management of Gastroesophageal Reflux Disease. Am J Gastroenterol 2022;117(1):27–56", url: "https://pubmed.ncbi.nlm.nih.gov/34807007/" }
 review: draft

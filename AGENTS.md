@@ -53,6 +53,10 @@ project — charter `docs/04-process.md`. In addition here: new diseases, findin
 - Write every record **from a named primary source** (Russian Ministry of Health clinical
   guidelines, textbooks, papers, open datasets listed in `docs/05-content.md` §2) and put it in
   `sources`. Never from memory: model memory mixes sources, including other games.
+- Cite a Ministry of Health guideline by its entry in the rubricator (`cr.minzdrav.gov.ru`): exact
+  title, publication year, ID and card URL (`docs/05-content.md` §2). Before a release with a
+  changed base run `bun tools/content/clinrecs.ts` (needs network): the guideline is in force,
+  the title matches, there is no newer version.
 - Frequencies as bands (`always`, `usually`, `often`, `sometimes`, `rarely`, `very_rarely`,
   `never`); an exact number only with its source.
 - Treatments are drug classes or INN (международные непатентованные названия). **No doses, no

@@ -48,8 +48,15 @@ describe('энциклопедия', () => {
     expect(similar(db, 'cond.migraine')).toContain('cond.tension_headache');
   });
 
+  test('статья фактора риска — что даёт, что повышает и источники', () => {
+    const obesity = article(db, 'risk.obesity')!;
+    expect(obesity.blocks.at(-1)!.key).toBe('sources');
+    expect(obesity.blocks.at(-1)!.text).toContain('Минздрав РФ. Ожирение, 2024');
+    for (const id of Object.keys(db.risks)) expect({ id, sources: article(db, id)!.blocks.some(b => b.key === 'sources') }).toEqual({ id, sources: true });
+  });
+
   test('ни служебных пометок авторов базы, ни доз', () => {
-    const notes = [...Object.values(db.conditions), ...Object.values(db.exams), ...Object.values(db.treatments)]
+    const notes = [...Object.values(db.conditions), ...Object.values(db.exams), ...Object.values(db.treatments), ...Object.values(db.risks)]
       .flatMap(x => x.sources)
       .flatMap(s => (s.note ? [s.note] : []));
     expect(notes.length).toBeGreaterThan(0);

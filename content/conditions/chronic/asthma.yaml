@@ -28,5 +28,5 @@ texts:
       с аллергическим ринитом.
 sources:
   - { kind: guideline, title: "Global Initiative for Asthma. Global Strategy for Asthma Management and Prevention", org: "GINA", year: 2024, note: "распространённость у взрослых — черновик" }
-  - { kind: guideline, title: "Бронхиальная астма", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru" }
+  - { kind: guideline, title: "Бронхиальная астма", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/359_3", note: "ID 359_3, опубликованы 15.11.2024, применяются; сверено с рубрикатором 28.09.2026" }
 review: draft

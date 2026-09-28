@@ -64,7 +64,7 @@ pearls:
   - ru: "Отрицательный экспресс-тест в первые дни болезни не исключает COVID-19: тест пропускает около четверти случаев."
   - ru: "При лёгком течении лечение — как при простуде. Гормоны нужны только тем, кому нужен кислород, — и в стационаре."
 sources:
-  - { kind: guideline, title: "Профилактика, диагностика и лечение новой коронавирусной инфекции (COVID-19). Временные методические рекомендации", org: "Минздрав РФ", note: "сверить действующую версию; частоты — черновик" }
-  - { kind: guideline, title: "Clinical management of COVID-19: living guideline", org: "ВОЗ", note: "сверить действующую редакцию" }
+  - { kind: guideline, title: "Коронавирусная инфекция COVID-19", org: "Минздрав РФ", year: 2026, url: "https://cr.minzdrav.gov.ru/view-cr/1024_1", note: "ID 1024_1, опубликованы 28.01.2026, применяются; сверено с рубрикатором 28.09.2026; частоты — черновик" }
+  - { kind: guideline, title: "Clinical management of COVID-19: living guideline, 18 August 2023", org: "ВОЗ", year: 2023, url: "https://www.who.int/publications/i/item/WHO-2019-nCoV-clinical-2023.2", note: "WHO/2019-nCoV/clinical/2023.2; сверено с сайтом ВОЗ 28.09.2026" }
   - { kind: paper, title: "The RECOVERY Collaborative Group. Dexamethasone in Hospitalized Patients with Covid-19. N Engl J Med 2021;384(8):693–704" }
 review: draft

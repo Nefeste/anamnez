@@ -15,5 +15,5 @@ texts:
   summary:
     ru: "Кровь из вены."
 sources:
-  - { kind: guideline, title: "Железодефицитная анемия", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru" }
+  - { kind: guideline, title: "Железодефицитная анемия", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/669_2", note: "ID 669_2, опубликованы 23.10.2024, применяются; сверено с рубрикатором 28.09.2026" }
 review: draft
