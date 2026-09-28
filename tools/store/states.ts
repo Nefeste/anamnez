@@ -5,7 +5,7 @@
 import type { ContentDb, Id } from '../../src/content/types';
 import { Rng } from '../../src/engine/core/rng';
 import { choosePlan, runDoctor } from '../../src/engine/med/policy';
-import { apply, candidatesOf, current, newShift, observationsOf } from '../../src/engine/shift/engine';
+import { apply, candidatesOf, current, newSandbox, newShift, observationsOf } from '../../src/engine/shift/engine';
 import { type Command, DAY, SHIFT_END, SHIFT_SCHEMA_VERSION, type ShiftState } from '../../src/engine/shift/types';
 
 const MIN = 60;
@@ -13,7 +13,7 @@ const SEEDS = 3000;
 // «Студент» — как у нового игрока: на снимках видны подсказки «Похоже на» (03-game-design.md §14)
 const winter = { season: 'winter' as const, difficulty: 'student' as const };
 
-/** Сохранение слота `shift`, как его пишет игра (src/state/saves.ts). */
+/** Сохранение слота партии, как его пишет игра (src/state/saves.ts). */
 export function envelope(s: ShiftState): string {
   return JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'store', data: s });
 }
@@ -163,4 +163,9 @@ export function summaryState(db: ContentDb): ShiftState {
     if (h.seen >= 10 && h.correct >= h.seen - 3 && news.length >= 2) return s;
   }
   throw new Error('summaryState: не нашлось трёх дней с вестями о прошлых пациентах');
+}
+
+/** Своя больница до открытия: готовая амбулатория на участке песочницы, бюджет «обычный». */
+export function sandboxState(db: ContentDb): ShiftState {
+  return newSandbox(db, { seed: 1, ...winter, start: 'clinic', budget: db.economy.sandbox.budgets.normal });
 }
