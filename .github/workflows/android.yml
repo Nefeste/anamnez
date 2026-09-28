@@ -278,7 +278,7 @@ jobs:
             # Белый список: вибрация (expo-haptics), настройки звука (expo-audio, обычное
             # разрешение без запроса) и служебное разрешение самого приложения. Всё прочее —
             # ошибка: нужное добавить сюда и в docs/08-process.md, ненужное — в blockedPermissions.
-            ALLOW='^(android\.permission\.(VIBRATE|MODIFY_AUDIO_SETTINGS)|com\.anamnez\.game\.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION)$'
+            ALLOW='^(android\.permission\.(VIBRATE|MODIFY_AUDIO_SETTINGS)|games\.gornitsa\.anamnez\.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION)$'
             EXTRA="$(printf '%s\n' "$PERMS" | grep -vE "$ALLOW" || true)"
             if [ -n "$EXTRA" ]; then echo "::error::Разрешения вне списка: $(printf '%s\n' "$EXTRA" | paste -sd ' ')."; exit 1; fi
 
