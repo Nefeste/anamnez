@@ -10,6 +10,7 @@ import type { BuildCommand, Built, HospitalState } from '../hospital/build';
 import type { CampaignProgress } from '../campaign/campaign';
 import type { CaseIncome, Ledger, Payer, RepChange } from '../economy/economy';
 import type { StaffMember } from '../hospital/staff';
+import type { DoctorPhase } from '../med/policy';
 import type { Grade, ScoreNote } from '../med/score';
 import type { Observation, Patient } from '../med/types';
 
@@ -98,6 +99,10 @@ export interface ShiftPatient {
   spent: { seconds: number; money: number };
   draft: { diagnosis?: Id; treatments: Id[]; setting: Setting };
   closed?: ClosedCase;
+  /** ведёт нанятый врач — номер человека из штата (spec 2026-09-hired-doctors); нет — вы */
+  by?: string;
+  /** где он в приёме: ищет диагноз или спрашивает о противопоказаниях перед лечением */
+  phase?: DoctorPhase;
 }
 
 export interface ClosedCase {
@@ -113,6 +118,8 @@ export interface ClosedCase {
   /** цена разумного пути на этом пациенте — для итогов дня: в условных единицах и в рублях */
   rationalCost: number;
   rationalMoney: number;
+  /** принял нанятый врач — номер человека из штата; нет — вы */
+  by?: string;
 }
 
 export type ShiftEvent =
@@ -121,6 +128,10 @@ export type ShiftEvent =
   | { kind: 'result'; id: string }
   /** проверить, не ушёл ли: то же ожидание (wait) — значит, терпение кончилось */
   | { kind: 'patience'; id: string; wait: number }
+  /** нанятый врач: следующее действие с его пациентом (spec 2026-09-hired-doctors) */
+  | { kind: 'colleague'; id: string }
+  /** нанятый врач дописал карту и свободен — зовёт следующего */
+  | { kind: 'free'; by: string }
   | { kind: 'shiftEnd' };
 
 export type Command =
@@ -175,6 +186,17 @@ export interface DaySummary {
   needlessAntibiotic?: number;
   /** кампания: какие задания выполнены за день и какие письма пришли */
   campaign?: { done: string[]; letters: string[] };
+  /** нанятые врачи: номер человека из штата → его приёмы за день; прежние строки — ваши приёмы */
+  colleagues?: Record<string, ColleagueDay>;
+}
+
+/** Приёмы нанятого врача за день (spec 2026-09-hired-doctors). */
+export interface ColleagueDay {
+  seen: number;
+  correct: number;
+  partly: number;
+  wrong: number;
+  grades: Record<Grade, number>;
 }
 
 export interface PlannedReturn {
@@ -234,4 +256,6 @@ export interface ShiftState {
   nextStaff?: number;
   /** кампания: глава, задания, письма (spec 2026-09-campaign) */
   campaign?: CampaignProgress;
+  /** нанятые врачи: номер человека → до какого времени дописывает карту после приёма */
+  desk?: Record<string, number>;
 }

@@ -4,6 +4,7 @@
 // как у пациентов: здесь только пол и зерно имени.
 import type { ContentDb, Id, Preset } from '../../content/types';
 import { Rng } from '../core/rng';
+import type { Plan } from './build';
 import type { Staffing } from './requirements';
 
 export type Trait = 'careful' | 'fast' | 'novice' | 'experienced';
@@ -35,10 +36,10 @@ export function salaryOf(db: ContentDb, role: Id, skill: number, trait?: Trait):
 }
 
 /**
- * Кандидаты дня: на каждую должность, которую нанимают, — от и до `candidates` человек из
- * ветви зерна `candidates:<день>`. Номера продолжают сквозной счёт найма.
+ * Кандидаты дня: на каждую должность, которую нанимают (и `allow` пропускает), — от и до
+ * `candidates` человек из ветви зерна `candidates:<день>`. Номера продолжают сквозной счёт.
  */
-export function applicantsOf(db: ContentDb, seed: number, day: number, next: number): { list: StaffMember[]; next: number } {
+export function applicantsOf(db: ContentDb, seed: number, day: number, next: number, allow: (role: Id) => boolean = () => true): { list: StaffMember[]; next: number } {
   const b = db.economy.staff;
   const root = Rng.seeded(seed).fork(`candidates:${day}`);
   const weights: Record<string, number> = { none: b.noTrait };
@@ -46,7 +47,7 @@ export function applicantsOf(db: ContentDb, seed: number, day: number, next: num
   const list: StaffMember[] = [];
   let n = next;
   for (const role of Object.keys(db.roles).sort()) {
-    if (!db.roles[role].hire) continue;
+    if (!db.roles[role].hire || !allow(role)) continue;
     const r = root.fork(role);
     const count = r.range(b.candidates[0], b.candidates[1]);
     for (let i = 0; i < count; i++) {
@@ -81,6 +82,22 @@ export function readingOf(db: ContentDb, m?: StaffMember): [number, number] {
   return [s + t[0], p + t[1]];
 }
 
+/**
+ * Как ведёт приём нанятый врач (spec 2026-09-hired-doctors): при какой уверенности ставит
+ * диагноз, какая польза обследования (биты) для него ещё стоит цены, как часто забывает
+ * спросить о противопоказаниях перед лечением (%). Навык и черта — числа `economy.yaml`.
+ */
+export function doctorOf(db: ContentDb, m: StaffMember): { threshold: number; minGain: number; forget: number } {
+  const d = db.economy.staff.doctor;
+  const t = m.trait ? db.economy.staff.traits[m.trait] : undefined;
+  const i = m.skill - 1;
+  return {
+    threshold: Math.min(95, Math.max(50, d.threshold[i] + (t?.threshold ?? 0))) / 100,
+    minGain: d.minGain[i] / 1000,
+    forget: Math.min(100, Math.max(0, d.forget[i] + (t?.forget ?? 0))),
+  };
+}
+
 /** Смена отработана: навык растёт на ступень за `growthDays` смен (новичок — быстрее), не выше 5. */
 export function grow(db: ContentDb, m: StaffMember): StaffMember {
   if (!m.room || m.skill >= 5) return m;
@@ -90,9 +107,35 @@ export function grow(db: ContentDb, m: StaffMember): StaffMember {
   return days >= need ? { ...m, skill: m.skill + 1, days: 0 } : { ...m, days };
 }
 
-/** Кто на месте: помещение и должность → есть ли человек. */
-export function staffingOf(staff: readonly StaffMember[]): Staffing {
-  return (room, role) => staff.some(m => m.room === room && m.role === role);
+/** Мест для нанятых врачей в помещениях этого типа, до двери которых можно дойти. */
+export function placesOf(db: ContentDb, plan: Plan, type: Id): number {
+  return plan.rooms
+    .filter(r => r.type === type && r.door.length > 0 && plan.connected[r.id])
+    .reduce((n, r) => n + (db.rooms[type]?.sizes.find(z => z.id === r.size)?.places ?? 0), 0);
+}
+
+const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
+/**
+ * Кто на месте: помещение и должность → есть ли человек. Встающий на чужое место (терапевт —
+ * на место врача) на нём и считается. Кому нужно место в помещении (терапевту — в
+ * ординаторской), тот работает, только если место досталось: места раздаются по номеру
+ * помещения, где он работает, затем по номеру человека (spec 2026-09-hired-doctors).
+ */
+export function staffingOf(db: ContentDb, plan: Plan, staff: readonly StaffMember[]): Staffing {
+  const unplaced = new Set<string>();
+  const left: Record<string, number> = {};
+  const needing = staff.filter(m => m.room !== undefined && db.roles[m.role]?.needs).sort((a, b) => cmp(a.room!, b.room!) || cmp(a.id, b.id));
+  for (const m of needing) {
+    const type = db.roles[m.role].needs!;
+    left[type] ??= placesOf(db, plan, type);
+    if (left[type] > 0) left[type]--;
+    else unplaced.add(m.id);
+  }
+  const fills = (m: StaffMember, role: Id) => m.role === role || db.roles[m.role]?.stands === role;
+  const staffed: Staffing = (room, role) => staff.some(m => m.room === room && fills(m, role) && !unplaced.has(m.id));
+  staffed.unplaced = room => staff.some(m => m.room === room && unplaced.has(m.id));
+  return staffed;
 }
 
 /** Кто на месте в помещении на должности — для скорости и точности. */

@@ -242,6 +242,8 @@ export interface RoomSize {
   patient?: Cell;
   /** стулья зоны ожидания — места в очереди */
   seats: number;
+  /** мест для нанятых врачей — ординаторская */
+  places: number;
 }
 
 export interface RoomType {
@@ -289,6 +291,10 @@ export interface StaffRole {
   hire: boolean;
   /** зарплата за смену при навыке 1 и при навыке 5, ₽ */
   salary: [number, number];
+  /** встаёт на место этой должности (терапевт — на место врача) */
+  stands?: Id;
+  /** без места в этом помещении не работает (терапевту нужна ординаторская) */
+  needs?: Id;
   /** производное: где работает */
   rooms: Id[];
   texts: { hint: Text };
@@ -334,7 +340,15 @@ export interface Economy {
     noTrait: number;
     traits: Record<'careful' | 'fast' | 'novice' | 'experienced', {
       weight: number; salary?: number; speed?: number; reading?: [number, number]; skills?: [number, number]; growth?: number;
+      /** нанятый врач: поправка порога уверенности и «забыл спросить», п. п. */
+      threshold?: number; forget?: number;
     }>;
+    /**
+     * Нанятые врачи (spec 2026-09-hired-doctors) по навыку 1–5: при какой уверенности ставят
+     * диагноз, %; наименьшая польза обследования, тысячные бита; как часто забывают спросить
+     * о противопоказаниях перед лечением, %.
+     */
+    doctor: { threshold: number[]; minGain: number[]; forget: number[] };
   };
   /**
    * ОМС — за обращение по тяжести диагноза; экспертиза страховой: доля по обоснованности и

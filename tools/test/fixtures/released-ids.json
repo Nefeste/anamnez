@@ -1,6 +1,6 @@
 {
-  "version": "0.0.28",
-  "base": 15,
+  "version": "0.0.32",
+  "base": 16,
   "ids": {
     "achievements": [
       "ach.allergy_10",
@@ -340,7 +340,8 @@
       "role.nurse",
       "role.radiographer",
       "role.radiologist",
-      "role.registrar"
+      "role.registrar",
+      "role.therapist"
     ],
     "rooms": [
       "room.ecg",
@@ -348,6 +349,7 @@
       "room.office",
       "room.procedure",
       "room.reception",
+      "room.staff",
       "room.toilet",
       "room.triage",
       "room.waiting",
@@ -360,6 +362,8 @@
       "room.office/M",
       "room.procedure/S",
       "room.reception/S",
+      "room.staff/M",
+      "room.staff/S",
       "room.toilet/S",
       "room.triage/S",
       "room.waiting/L",

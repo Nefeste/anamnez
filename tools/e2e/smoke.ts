@@ -109,6 +109,40 @@ function sandboxEndOfDaySave(): string {
   return JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s });
 }
 
+/**
+ * Песочница с нанятым терапевтом (spec 2026-09-hired-doctors) в конце дня 1: справа от
+ * амбулатории — коридор, ординаторская и второй кабинет; врач принял своих, вы — остальных.
+ */
+function hiredEndOfDaySave(): string {
+  const { db } = buildDb();
+  const s = newSandbox(db, { seed: 43, season: 'winter', difficulty: 'doctor', start: 'clinic', budget: db.economy.sandbox.budgets.normal });
+  const cells: [number, number][] = [];
+  for (let x = 29; x <= 38; x++) for (let y = 7; y <= 9; y++) cells.push([x, y]);
+  apply(db, s, { kind: 'build', cmd: { kind: 'corridor', cells } });
+  apply(db, s, { kind: 'build', cmd: { kind: 'room', type: 'room.staff', size: 'S', x: 30, y: 0, rot: 0 } });
+  apply(db, s, { kind: 'build', cmd: { kind: 'room', type: 'room.office', size: 'M', x: 30, y: 10, rot: 2 } });
+  apply(db, s, { kind: 'buildEnd' });
+  const office = s.hospital!.rooms[s.hospital!.rooms.length - 1].id;
+  const therapist = s.candidates!.find(c => c.role === 'role.therapist')!;
+  apply(db, s, { kind: 'hire', id: therapist.id });
+  apply(db, s, { kind: 'assign', id: therapist.id, room: office });
+  apply(db, s, { kind: 'nextDay' });
+  const see = () => {
+    apply(db, s, { kind: 'call', id: s.queue[0] });
+    apply(db, s, { kind: 'exam', exam: 'exam.ask_complaints' });
+    apply(db, s, { kind: 'diagnose', id: 'cond.arvi' });
+    apply(db, s, { kind: 'finish' });
+  };
+  const busy = () => Object.values(s.patients).some(p => p.by !== undefined && (p.status === 'inRoom' || p.status === 'waiting' || p.status === 'away'));
+  for (let i = 0; i < 9 * 60; i++) {
+    apply(db, s, { kind: 'advance', seconds: 60 });
+    if (s.queue.length > 0 && s.queue.length % 3 === 0) see();
+  }
+  while (s.queue.length > 0) see();
+  for (let i = 0; i < 600 && busy(); i++) apply(db, s, { kind: 'advance', seconds: 60 });
+  return JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s });
+}
+
 /** Песочница до открытия: готовая амбулатория, бюджет «обычный» — экран «Перед открытием». */
 function sandboxFreshSave(): string {
   const { db } = buildDb();
@@ -666,6 +700,28 @@ try {
   await page.locator('[data-testid^="case-"]').first().click();
   await page.getByTestId('visit-payment').waitFor({ timeout: 10_000 });
   check(/^оплата\n(омс|дмс|платно): \d/i.test(await text(page, 'visit-payment')), `песочница, итог приёма: ${(await text(page, 'visit-payment')).replace(/\n/g, ' · ')}`);
+
+  // нанятый врач (spec 2026-09-hired-doctors): песочница с терапевтом во втором кабинете — в
+  // итогах дня его строка, а в «Персонале» он — во втором кабинете врача
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', hiredEndOfDaySave()]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId('shift-close-day').waitFor({ timeout: 15_000 });
+  await page.getByTestId('shift-close-day').click();
+  await page.getByTestId('summary-colleagues').waitFor({ timeout: 10_000 });
+  const colleagues = await text(page, 'summary-colleagues');
+  check(/вами \d+, врачами [1-9]\d*$/.test(await text(page, 'summary-seen')) && /терапевт\nПринято: [1-9]/.test(colleagues),
+    `нанятый врач, итоги дня: ${await text(page, 'summary-seen')} · ${colleagues.replace(/\n/g, ' · ')}`);
+  await page.waitForTimeout(1500); // лист меню «Продолжить» ещё уезжает вниз (веб)
+  await page.screenshot({ path: join(OUT, '14-hired-summary.png'), fullPage: true });
+  await page.getByTestId('sandbox-staff').click();
+  await page.getByTestId('staff-total').waitFor({ timeout: 10_000 });
+  const staffTexts = await page.locator('[data-testid^="staff-s"]').allInnerTexts();
+  check(staffTexts.some(x => x.includes('Терапевт') && x.includes('работает: кабинет врача №\u00a02')), `нанятый врач в «Персонале»: ${staffTexts.find(x => x.includes('Терапевт'))?.replace(/\n/g, ' · ')}`);
 
   // кампания: карьера 1 → глава 1 — письма и задания; письмо наставника; смена открывается;
   // «Продолжить» в меню — карьера (spec 2026-09-campaign)

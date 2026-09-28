@@ -1,9 +1,11 @@
 // Уверенность так, как её считал бы идеальный врач на месте игрока, — только по
 // открытому (`docs/04-medical-model.md` §10). Нужна подсказкам, оценке и разбору.
 //
-// Вывод состояние партии не меняет, поэтому здесь можно обычную математику с плавающей
-// точкой и логарифмами (ADR 0004 запрещает их только в коде, меняющем состояние).
+// По пользе обследования решают страховая песочницы и нанятые врачи — а это меняет состояние
+// партии, поэтому логарифм здесь свой, из `core/math.ts` (ADR 0004): одинаковый в Hermes, V8 и
+// JavaScriptCore.
 import type { Condition, ContentDb, Id, Link, Season } from '../../content/types';
+import { log2 } from '../core/math';
 import { P_ONE } from '../core/rng';
 import { chronicChance, presentingWeight } from './generate';
 import type { Observation, Sex } from './types';
@@ -129,7 +131,7 @@ export function posterior(db: ContentDb, candidates: readonly Id[], observations
 
 export function entropy(beliefs: readonly Belief[]): number {
   let h = 0;
-  for (const b of beliefs) if (b.p > 0) h -= b.p * Math.log2(b.p);
+  for (const b of beliefs) if (b.p > 0) h -= b.p * log2(b.p);
   return h;
 }
 

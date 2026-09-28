@@ -15,12 +15,22 @@ export type Problem =
   | { kind: 'noDoor' }
   | { kind: 'noPath' }
   | { kind: 'noEquipment' }
-  | { kind: 'noStaff'; role: Id };
+  | { kind: 'noStaff'; role: Id }
+  /** нанятый есть, а места для него нет — в ординаторской (spec 2026-09-hired-doctors) */
+  | { kind: 'noPlace'; room: Id };
 
-/** Есть ли человек на должности в помещении — решает штат (часть 8); врач — сам игрок. */
-export type Staffing = (room: string, role: Id) => boolean;
+/**
+ * Есть ли человек на должности в помещении — решает штат (часть 8); в вашем кабинете врач — вы.
+ * `unplaced` — назначен ли сюда кто-то, кому не хватило места (терапевт без стола в ординаторской).
+ */
+export type Staffing = ((room: string, role: Id) => boolean) & { unplaced?: (room: string) => boolean };
 
-/** Кабинет врача — первый, до которого можно дойти; врач один, это игрок. */
+/** Кто встаёт на место этой должности — терапевт на место врача; нет — никто. */
+export function standInOf(db: ContentDb, role: Id): Id | undefined {
+  return Object.values(db.roles).find(r => r.stands === role && r.hire)?.id;
+}
+
+/** Ваш кабинет — первый кабинет врача, до которого можно дойти; в других — нанятые врачи. */
 export function doctorRoom(plan: Plan): string | undefined {
   const offices = plan.rooms.filter(r => r.type === OFFICE);
   return (offices.find(r => plan.connected[r.id]) ?? offices[0])?.id;
@@ -35,8 +45,13 @@ export function problemsOf(db: ContentDb, plan: Plan, room: PlacedRoom, staffed:
   if (t.needsEquipment && !room.equipment.some(Boolean)) out.push({ kind: 'noEquipment' });
   const doctor = doctorRoom(plan);
   for (const role of t.staff) {
-    const here = role === DOCTOR ? room.id === doctor : staffed(room.id, role);
-    if (!here) out.push({ kind: 'noStaff', role });
+    const here = role === DOCTOR ? room.id === doctor || staffed(room.id, DOCTOR) : staffed(room.id, role);
+    if (here) continue;
+    // в другом кабинете врача — нанятый врач: нет его — «нет терапевта», нет ему места — «нет места»
+    const stand = standInOf(db, role);
+    const needs = stand ? db.roles[stand].needs : undefined;
+    if (needs && staffed.unplaced?.(room.id)) out.push({ kind: 'noPlace', room: needs });
+    else out.push({ kind: 'noStaff', role: role === DOCTOR ? (stand ?? role) : role });
   }
   return out;
 }

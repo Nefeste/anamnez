@@ -38,7 +38,8 @@ export default function StaffScreen() {
         <P muted testID="staff-total">{t.salaries(rub(v.salaries))}</P>
         {v.staff.length === 0 && <P muted>{t.noStaff}</P>}
         {v.staff.map(m => (
-          <Button key={m.id} testID={`staff-${m.id}`} kind="plain" title={m.name} hint={`${hint(m)} · ${m.roomName ? t.worksIn(m.roomName) : t.reserve}`} onPress={() => setChosen(m.id)} />
+          <Button key={m.id} testID={`staff-${m.id}`} kind="plain" title={m.name}
+            hint={`${hint(m)} · ${m.roomName ? t.worksIn(m.roomName) : t.reserve}${m.problem ? ` · ${m.problem}` : ''}`} onPress={() => setChosen(m.id)} />
         ))}
       </Card>
       {free.length > 0 && (

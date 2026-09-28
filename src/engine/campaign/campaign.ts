@@ -75,7 +75,7 @@ export function missionProgress(db: ContentDb, v: CampaignView, m: Mission): Mis
       let works = false;
       if (v.hospital) {
         const plan = planOf(db, v.hospital);
-        const working = workingRooms(db, plan, staffingOf(v.staff ?? []));
+        const working = workingRooms(db, plan, staffingOf(db, plan, v.staff ?? []));
         works = plan.rooms.some(r => r.type === m.room && working.has(r.id));
       }
       return { value: works || was ? 1 : 0, target: 1, done: was || works };

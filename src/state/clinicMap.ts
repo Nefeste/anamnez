@@ -24,7 +24,8 @@ export type Doing =
   | { kind: 'registration' }
   | { kind: 'triage' }
   | { kind: 'waiting' }
-  | { kind: 'office' }
+  /** в кабинете врача; `by` — у нанятого врача (номер человека из штата) */
+  | { kind: 'office'; by?: string }
   | { kind: 'exam'; room: ExamRoom }
   | { kind: 'examQueue'; room: ExamRoom }
   | { kind: 'results'; readyAt: number }
@@ -55,6 +56,7 @@ const STAFF_FIGURE: Record<StaffRole, Figure> = {
   registrar: 'staff',
   nurse: 'nurse',
   doctor: 'doctor',
+  therapist: 'doctor',
   procedureNurse: 'nurse',
   labTech: 'staff',
   ecgNurse: 'nurse',
@@ -103,7 +105,11 @@ export function placements(db: ContentDb, layout: ClinicLayout, s: ShiftState): 
   const exit = { cell: layout.entrance };
   for (const p of Object.values(s.patients)) {
     const figure = patientFigure(p);
-    if (p.status === 'inRoom') {
+    if (p.status === 'inRoom' && p.by) {
+      // у нанятого врача — в его кабинете (spec 2026-09-hired-doctors)
+      const room = s.staff?.find(m => m.id === p.by)?.room;
+      out.push({ id: p.id, figure, where: { cell: (room && layout.offices[room]) || layout.spots.office }, doing: { kind: 'office', by: p.by } });
+    } else if (p.status === 'inRoom') {
       out.push({ id: p.id, figure, where: { cell: layout.spots.office }, doing: { kind: 'office' } });
     } else if (p.status === 'waiting') {
       // только что пришедший — регистратура и медсестра (её витальные — уже в результатах);
@@ -111,7 +117,8 @@ export function placements(db: ContentDb, layout: ClinicLayout, s: ShiftState): 
       // пригласить можно любого из очереди, как из списка, — пока кабинет свободен
       const since = s.t - p.arriveT;
       const fresh = p.step === 0;
-      const callable = s.current === undefined;
+      // пациент нанятого врача ждёт его, а не вас (spec 2026-09-hired-doctors)
+      const callable = s.current === undefined && p.by === undefined;
       if (fresh && since < REGISTRATION) out.push({ id: p.id, figure, where: { cell: layout.spots.registration }, doing: { kind: 'registration' }, callable });
       else if (fresh && triage && since < REGISTRATION + TRIAGE) out.push({ id: p.id, figure, where: { cell: layout.spots.triage }, doing: { kind: 'triage' }, callable });
       else out.push({ id: p.id, figure, where: { seat: true }, doing: { kind: 'waiting' }, callable });
