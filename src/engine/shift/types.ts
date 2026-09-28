@@ -7,6 +7,7 @@ import type { Id, Season, Setting } from '../../content/types';
 import type { Scheduled } from '../core/events';
 import type { Outcome } from '../med/course';
 import type { BuildCommand, Built, HospitalState } from '../hospital/build';
+import type { CampaignProgress } from '../campaign/campaign';
 import type { CaseIncome, Ledger, Payer, RepChange } from '../economy/economy';
 import type { StaffMember } from '../hospital/staff';
 import type { Grade, ScoreNote } from '../med/score';
@@ -38,7 +39,8 @@ export type Difficulty = 'student' | 'doctor';
 export type PatientStatus = 'coming' | 'waiting' | 'inRoom' | 'away' | 'done' | 'left' | 'unseen';
 
 /** Практика в готовой амбулатории или песочница — своя больница (spec 2026-09-own-hospital). */
-export type Mode = 'shift' | 'sandbox';
+/** Практика, песочница, кампания (spec 2026-09-campaign) — у каждой свои сохранения. */
+export type Mode = 'shift' | 'sandbox' | 'campaign';
 
 export type VisitKind = 'appointment' | 'walkIn' | 'return';
 export type ReturnReason = 'worse' | 'reaction' | 'unchanged';
@@ -168,6 +170,10 @@ export interface DaySummary {
   returnsToday: number;
   /** песочница: касса за день, остаток вечером, как изменилась репутация */
   economy?: { ledger: Ledger; cash: number; reputation: RepChange; level: { level: number; rooms: Id[] } };
+  /** сколько раз назначен антибиотик, который не показан (задание главы 1) */
+  needlessAntibiotic?: number;
+  /** кампания: какие задания выполнены за день и какие письма пришли */
+  campaign?: { done: string[]; letters: string[] };
 }
 
 export interface PlannedReturn {
@@ -184,6 +190,8 @@ export interface ShiftState {
     mode: Mode;
     /** песочница: с чего начали — пустой участок или готовая амбулатория */
     start?: 'empty' | 'clinic';
+    /** кампания: номер карьеры — её слот (1–3) */
+    career?: number;
     seed: number;
     season: Season;
     department: Id;
@@ -221,4 +229,6 @@ export interface ShiftState {
   candidates?: StaffMember[];
   /** номер следующего человека */
   nextStaff?: number;
+  /** кампания: глава, задания, письма (spec 2026-09-campaign) */
+  campaign?: CampaignProgress;
 }

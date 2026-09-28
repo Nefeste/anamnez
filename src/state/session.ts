@@ -17,8 +17,9 @@ import { build, type BuildCommand, type BuildError, type HospitalState, type Pla
 import { type Block, examWhere, openBlocks, type Problem, problemsOf, workingRooms } from '@/engine/hospital/requirements';
 import { type ClinicLayout, cropPlan, layoutOf } from '@/engine/hospital/clinic';
 import { memberAt, type StaffMember, staffingOf } from '@/engine/hospital/staff';
+import { missionProgress } from '@/engine/campaign/campaign';
 import { levelOf } from '@/engine/economy/economy';
-import { apply, current, type HospitalCtx, hospitalCtx, newSandbox, newShift, observationsOf, reviewFor } from '@/engine/shift/engine';
+import { apply, current, type HospitalCtx, hospitalCtx, newCampaign, newSandbox, newShift, observationsOf, reviewFor } from '@/engine/shift/engine';
 import {
   type Command, DAY, type Difficulty, type Mode, type Notice, SHIFT_END, SHIFT_SCHEMA_VERSION, type ShiftPatient, type ShiftState, type Triage,
 } from '@/engine/shift/types';
@@ -30,10 +31,11 @@ import { type CashView, cashView, examBlockText, levelText, paymentText, personN
 import { loadSlot, type RawStore, saveSlot } from './saves';
 import { settings } from './settings';
 
-/** Слоты сохранения: практика и песочница — у каждой своё. */
+/** Слоты сохранения: практика и песочница — у каждой своё, у кампании — три карьеры. */
 export const SLOT = 'shift';
 export const SANDBOX_SLOT = 'sandbox';
-export const slotOf = (m: Mode) => (m === 'sandbox' ? SANDBOX_SLOT : SLOT);
+export const CAREERS = [1, 2, 3] as const;
+export const slotOf = (m: Mode, career = 1) => (m === 'sandbox' ? SANDBOX_SLOT : m === 'campaign' ? `campaign-${career}` : SLOT);
 /** Скорость часов на карте — игровых минут в секунду. */
 export const SPEEDS = [1, 2, 4] as const;
 export type Speed = (typeof SPEEDS)[number];
@@ -103,6 +105,8 @@ export interface SummaryView {
   news: { id: string; text: string }[];
   /** песочница: касса и репутация за день */
   cash?: CashView;
+  /** кампания: какие задания выполнены за день (тексты) и сколько пришло писем */
+  chapterDay?: { done: string[]; letters: number };
 }
 
 export interface ShiftView {
@@ -164,6 +168,8 @@ let store: RawStore | null = null;
 let session: Session | null = null;
 /** режим живой партии или той, что читается; status — про неё */
 let mode: Mode = 'shift';
+/** кампания: какая карьера (слот) */
+let career = 1;
 let status: ShiftView['status'] = 'idle';
 let loading: Promise<void> | null = null;
 let saving: Promise<unknown> = Promise.resolve();
@@ -190,9 +196,10 @@ export function setStore(s: RawStore) {
 
 /** Сохранение от этой базы: всё, на что оно ссылается, в ней есть (после обновления — может не быть). */
 export function compatible(s: ShiftState | undefined): boolean {
-  if (!s || (s.meta?.mode !== 'shift' && s.meta?.mode !== 'sandbox') || typeof s.patients !== 'object') return false;
+  if (!s || (s.meta?.mode !== 'shift' && s.meta?.mode !== 'sandbox' && s.meta?.mode !== 'campaign') || typeof s.patients !== 'object') return false;
   const has = (table: Record<string, unknown>) => (id: Id) => table[id] !== undefined;
-  if (s.meta.mode === 'sandbox') {
+  if (s.meta.mode === 'campaign' && (!s.campaign || !db.chapters[s.campaign.chapter])) return false;
+  if (s.meta.mode === 'sandbox' || s.meta.mode === 'campaign') {
     const h = s.hospital;
     if (!h || !s.economy || !Array.isArray(h.rooms)) return false;
     const ok = h.rooms.every(r => db.rooms[r.type]?.sizes.some(z => z.id === r.size) && r.equipment.every(e => e === null || has(db.equipment)(e)));
@@ -218,16 +225,18 @@ export function compatible(s: ShiftState | undefined): boolean {
  * Без режима — тот, что уже выбран (сначала практика). Другой режим — живая партия
  * записывается и уступает место.
  */
-export function loadShift(which?: Mode): Promise<void> {
+export function loadShift(which?: Mode, careerNo?: number): Promise<void> {
   const want = which ?? mode;
-  if (loading) return loading.then(() => loadShift(want));
-  if (mode === want && (session || status === 'none')) return Promise.resolve();
+  const wantCareer = want === 'campaign' ? (careerNo ?? career) : career;
+  if (loading) return loading.then(() => loadShift(want, wantCareer));
+  if (mode === want && career === wantCareer && (session || status === 'none')) return Promise.resolve();
   if (session) {
     save(true);
     session = null;
     decisions.clear();
   }
   mode = want;
+  career = wantCareer;
   const st = store;
   if (!st) {
     status = 'none';
@@ -236,7 +245,7 @@ export function loadShift(which?: Mode): Promise<void> {
   }
   status = 'loading';
   changed();
-  loading = loadSlot<ShiftState>(st, slotOf(want), e => e.schemaVersion === SHIFT_SCHEMA_VERSION && compatible(e.data) && e.data.meta.mode === want)
+  loading = loadSlot<ShiftState>(st, slotOf(want, wantCareer), e => fits(e, want, wantCareer))
     .then(r => {
       if (r && !session) {
         session = fresh(r.envelope.data, r.from === 'prev-1' || r.from === 'prev-2');
@@ -251,6 +260,11 @@ export function loadShift(which?: Mode): Promise<void> {
       changed();
     });
   return loading;
+}
+
+/** Сохранение этой партии: версия схемы, совместимо с базой, тот режим и та карьера. */
+function fits(e: { schemaVersion: number; data: ShiftState }, m: Mode, c: number): boolean {
+  return e.schemaVersion === SHIFT_SCHEMA_VERSION && compatible(e.data) && e.data.meta.mode === m && (m !== 'campaign' || (e.data.meta.career ?? 1) === c);
 }
 
 /** Отложенная запись, если она уже назначена. */
@@ -276,7 +290,7 @@ function flush(): Promise<unknown> {
   // партия — своя в каждой записи: сменилась на другую, пока запись ждала очереди, — пишется прежняя в свой слот
   const s = session?.s;
   saving = saving
-    .then(() => (s && st ? saveSlot(st, slotOf(s.meta.mode), s, SHIFT_SCHEMA_VERSION, new Date().toISOString()) : undefined))
+    .then(() => (s && st ? saveSlot(st, slotOf(s.meta.mode, s.meta.career), s, SHIFT_SCHEMA_VERSION, new Date().toISOString()) : undefined))
     .catch(() => undefined); // не записалось — попробуем в следующий раз; игра продолжается
   return saving;
 }
@@ -316,10 +330,16 @@ export function startSandbox(opts: { start: 'empty' | 'clinic'; budget: Budget; 
   }));
 }
 
+/** Новая карьера в слоте `career`: глава 1, её больница и бюджет, письма. Прежняя в этом слоте перезаписывается. */
+export function startCampaign(opts: { career: number; difficulty: Difficulty; seed?: number; season?: Season }) {
+  begin(newCampaign(db, { seed: opts.seed ?? Date.now() % 0x7fffffff, season: opts.season ?? seasonOf(new Date()), difficulty: opts.difficulty, career: opts.career }));
+}
+
 function begin(s: ShiftState) {
   if (session) save(true); // прежняя партия — в свой слот
   session = fresh(s, false);
   mode = s.meta.mode;
+  if (s.meta.career) career = s.meta.career;
   status = 'ready';
   decisions.clear();
   save();
@@ -332,6 +352,7 @@ export function forgetShift() {
   deferred = null;
   session = null;
   mode = 'shift';
+  career = 1;
   status = 'idle';
   loading = null;
   decisions.clear();
@@ -696,6 +717,8 @@ export interface BuildView {
   reputation: number;
   /** тариф ОМС за приём по уровню амбулатории — строкой */
   level: string;
+  /** кампания: какие помещения можно строить в главе; нет — любые */
+  allowed?: Id[];
 }
 
 function buildBuildView(): BuildView | undefined {
@@ -709,6 +732,7 @@ function buildBuildView(): BuildView | undefined {
   return {
     version, hospital: s.hospital, plan, cash: s.economy.cash, undo: s.undo?.length ?? 0, problems, open: openBlocks(db, plan, working, staffed),
     reputation: s.economy.reputation ?? db.economy.reputation.start, level: levelText(db, levelOf(db, plan, working)),
+    ...(s.campaign && db.chapters[s.campaign.chapter] ? { allowed: db.chapters[s.campaign.chapter].build } : {}),
   };
 }
 
@@ -733,6 +757,10 @@ export interface GameSummary {
   clock: string;
   difficulty: Difficulty;
   cash?: number;
+  /** кампания: слот карьеры, глава и основные задания — выполнено из скольких */
+  career?: number;
+  chapter?: string;
+  mains?: { done: number; of: number };
 }
 
 /** Обе партии с диска, последняя записанная — первой. Живая партия сначала записывается. */
@@ -741,16 +769,100 @@ export async function savedGames(): Promise<GameSummary[]> {
   if (!st) return [];
   await saved();
   const out: GameSummary[] = [];
-  for (const m of ['shift', 'sandbox'] as Mode[]) {
-    const r = await loadSlot<ShiftState>(st, slotOf(m), e => e.schemaVersion === SHIFT_SCHEMA_VERSION && compatible(e.data) && e.data.meta.mode === m).catch(() => null);
+  const slots: [Mode, number][] = [['shift', 1], ['sandbox', 1], ...CAREERS.map(c => ['campaign', c] as [Mode, number])];
+  for (const [m, c] of slots) {
+    const r = await loadSlot<ShiftState>(st, slotOf(m, c), e => fits(e, m, c)).catch(() => null);
     if (!r) continue;
     const s = r.envelope.data;
+    const ch = s.campaign ? db.chapters[s.campaign.chapter] : undefined;
+    const mains = ch?.missions.filter(x => x.main) ?? [];
     out.push({
       mode: m, savedAt: r.envelope.savedAt, day: s.day, clock: hhmm(minuteOfDay(s.t)), difficulty: s.meta.difficulty ?? 'doctor',
       ...(s.economy ? { cash: s.economy.cash } : {}),
+      ...(ch && s.campaign ? { career: c, chapter: ch.id, mains: { done: mains.filter(x => s.campaign!.done[x.id] !== undefined).length, of: mains.length } } : {}),
     });
   }
   return out.sort((a, b) => (a.savedAt < b.savedAt ? 1 : a.savedAt > b.savedAt ? -1 : 0));
+}
+
+// --- кампания (spec 2026-09-campaign) ---------------------------------------------------------
+
+/** Письмо в главе: от кого, портрет, текст, когда пришло, прочитано ли. */
+export interface LetterView {
+  id: string;
+  from: string;
+  role: string;
+  portrait: { seed: number; sex: 'm' | 'f'; age: number };
+  text: string;
+  day: number;
+  read: boolean;
+}
+
+/** Задание главы: текст, основное ли, ход словами, выполнено ли и в какой день. */
+export interface MissionView {
+  id: string;
+  text: string;
+  main: boolean;
+  progress: string;
+  done?: number;
+}
+
+/** Глава для экрана между сменами и для итогов дня. */
+export interface CampaignView {
+  version: number;
+  title: string;
+  place: string;
+  /** день главы: первый — первая смена в ней */
+  day: number;
+  letters: LetterView[];
+  missions: MissionView[];
+  /** все основные задания выполнены */
+  complete: boolean;
+}
+
+function buildCampaignView(): CampaignView | undefined {
+  const s = session?.s;
+  const c = s?.campaign;
+  const ch = c ? db.chapters[c.chapter] : undefined;
+  if (!s || !c || !ch) return undefined;
+  const t = T.campaign;
+  const letters = [...c.letters].reverse().flatMap(l => {
+    const rec = ch.letters.find(x => x.id === l.id);
+    const who = rec ? db.characters[rec.from] : undefined;
+    if (!rec || !who) return [];
+    return [{ id: l.id, from: who.short.ru, role: who.role.ru, portrait: { seed: who.portrait, sex: who.sex, age: who.age }, text: rec.text.ru, day: l.day - c.since, read: !!l.read }];
+  });
+  const cv = { campaign: c, history: s.history, hospital: s.hospital, staff: s.staff };
+  const missions = ch.missions.map(m => {
+    const p = missionProgress(db, cv, m);
+    const done = c.done[m.id];
+    return {
+      id: m.id, text: m.text.ru, main: m.main,
+      progress: done !== undefined ? t.doneOn(done - c.since) : m.kind === 'seen' ? t.seenProgress(p.value, p.target, p.accuracy ?? 0) : m.kind === 'roomWorks' ? t.notYet : t.dayProgress(p.value, p.target),
+      ...(done !== undefined ? { done: done - c.since } : {}),
+    };
+  });
+  return { version, title: t.chapter(ch.order, ch.name.ru), place: ch.place.ru, day: s.day - c.since, letters, missions, complete: c.complete !== undefined };
+}
+
+let campaignCache: { version: number; view: CampaignView | undefined } | null = null;
+
+export function campaignView(): CampaignView | undefined {
+  if (campaignCache?.version !== version) campaignCache = { version, view: buildCampaignView() };
+  return campaignCache.view;
+}
+
+export function useCampaign(): CampaignView | undefined {
+  return useSyncExternalStore(subscribe, campaignView, campaignView);
+}
+
+/** Письмо прочитано — отметка в сохранении карьеры, не ход игры. */
+export function readLetter(id: string) {
+  const l = session?.s.campaign?.letters.find(x => x.id === id);
+  if (!l || l.read) return;
+  l.read = true;
+  save();
+  changed();
 }
 
 // --- «за это время» ------------------------------------------------------------------------
@@ -835,6 +947,12 @@ function summaryOf(s: ShiftState): SummaryView | undefined {
     cases: cases.map(p => ({ id: p.id, name: nameOf(p), verdict: p.closed!.verdict, overall: p.closed!.grades.overall, diagnosis: db.conditions[p.closed!.diagnosis].name.ru })),
     news,
     ...(h.economy ? { cash: cashView(db, h.economy) } : {}),
+    ...(h.campaign && s.campaign ? {
+      chapterDay: {
+        done: h.campaign.done.map(id => db.chapters[s.campaign!.chapter]?.missions.find(m => m.id === id)?.text.ru ?? id),
+        letters: h.campaign.letters.length,
+      },
+    } : {}),
   };
 }
 

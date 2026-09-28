@@ -380,6 +380,58 @@ export const economySchema = z.strictObject({
   }),
 });
 
+// --- кампания (spec 2026-09-campaign) ---------------------------------------------------------
+
+const slug = z.string().regex(/^[a-z][a-zA-Z0-9]*$/);
+const count = z.number().int().min(1);
+
+/** Персонаж кампании — наставник, главврач: не человек, портрет рисуется кодом по зерну. */
+export const characterSchema = z.strictObject({
+  id: z.string().regex(/^char\.[a-z0-9_]+$/),
+  name: text,
+  /** как подписывает письма: «Анна Сергеевна» */
+  short: text,
+  sex: z.enum(['m', 'f']),
+  age: z.number().int().min(18).max(100),
+  portrait: int,
+  role: text,
+});
+
+/** Условие дня для заданий «N дней»: без непоказанного антибиотика, без ушедших, касса в плюсе. */
+const dayKind = z.enum(['noNeedlessAntibiotic', 'noLeft', 'cashPositive']);
+
+/** Задание главы: вид — в движке, числа и текст — здесь. */
+const missionSchema = z.discriminatedUnion('kind', [
+  z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('seen'), count, accuracy: pct, text }),
+  z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('roomWorks'), room: roomId, text }),
+  z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('streak'), days: count, day: dayKind, text }),
+  z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('days'), days: count, day: dayKind, text }),
+]);
+
+/** Письмо: от кого, когда — в начале главы, после дня N, при задании, в конце главы. */
+const letterSchema = z.strictObject({
+  id: slug,
+  from: z.string().regex(/^char\.[a-z0-9_]+$/),
+  when: z.union([z.literal('start'), z.literal('end'), z.strictObject({ afterDay: count }), z.strictObject({ mission: slug })]),
+  text,
+});
+
+/** Глава кампании: больница, бюджет, что можно строить, задания и письма. */
+export const chapterSchema = z.strictObject({
+  id: z.string().regex(/^chapter\.[a-z0-9_]+$/),
+  order: count,
+  name: text,
+  place: text,
+  preset: z.string().regex(/^preset\.[a-z0-9_]+$/),
+  budget: int,
+  department: z.string().regex(/^dept\.[a-z0-9_]+$/),
+  build: z.array(roomId).min(1),
+  /** первые пациенты главы — заданные болезни (обучение с наставником) */
+  tutorial: z.array(z.string().regex(/^cond\.[a-z0-9_]+$/)).default([]),
+  missions: z.array(missionSchema).min(1),
+  letters: z.array(letterSchema).default([]),
+});
+
 export const versionSchema = z.strictObject({ contentVersion: z.number().int().min(1) });
 
 export type ConditionSrc = z.infer<typeof conditionSchema>;
@@ -392,5 +444,7 @@ export type EquipmentSrc = z.infer<typeof equipmentSchema>;
 export type RoleSrc = z.infer<typeof roleSchema>;
 export type PresetSrc = z.infer<typeof presetSchema>;
 export type EconomySrc = z.infer<typeof economySchema>;
+export type CharacterSrc = z.infer<typeof characterSchema>;
+export type ChapterSrc = z.infer<typeof chapterSchema>;
 export type LinkSrc = z.infer<typeof link>;
 export type ProbabilitySrc = z.infer<typeof probability>;

@@ -11,7 +11,7 @@ import { problemsOf } from '../../src/engine/hospital/requirements';
 import { fingerprint } from '../../src/engine/core/hash';
 import { findBrand } from './brands';
 import {
-  BANDS, type ConditionSrc, conditionSchema, type EconomySrc, economySchema, type EquipmentSrc, equipmentSchema, type ExamSrc, examSchema, type FindingSrc, findingSchema,
+  BANDS, type ChapterSrc, chapterSchema, type CharacterSrc, characterSchema, type ConditionSrc, conditionSchema, type EconomySrc, economySchema, type EquipmentSrc, equipmentSchema, type ExamSrc, examSchema, type FindingSrc, findingSchema,
   type LinkSrc, PREVALENCE, type PresetSrc, presetSchema, type ProbabilitySrc, type RiskSrc, type RoleSrc, riskSchema, roleSchema, type RoomSrc, roomSchema,
   type TreatmentSrc, treatmentSchema, versionSchema,
 } from './schema';
@@ -78,6 +78,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   const equipment: Record<string, EquipmentSrc> = {};
   const roles: Record<string, RoleSrc> = {};
   const presets: Record<string, PresetSrc> = {};
+  const characters: Record<string, CharacterSrc> = {};
+  const chapters: Record<string, ChapterSrc> = {};
   let economy: EconomySrc | undefined;
   let contentVersion = 0;
 
@@ -141,8 +143,14 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       if (p) { expectId(p.id, 'preset'); put(presets, p); }
     } else if (rel === 'hospital/economy.yaml') {
       economy = check(economySchema);
+    } else if (top === 'campaign' && rel.split('/')[1] === 'characters') {
+      const c = check(characterSchema);
+      if (c) { expectId(c.id, 'char'); put(characters, c); }
+    } else if (top === 'campaign' && rel.split('/')[1] === 'chapters') {
+      const c = check(chapterSchema);
+      if (c) { expectId(c.id, 'chapter'); put(chapters, c); }
     } else {
-      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/economy.yaml)`);
+      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/economy.yaml, campaign/characters, campaign/chapters)`);
     }
   }
   if (!contentVersion) errors.push('version.yaml: нет contentVersion');
@@ -233,6 +241,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     list.flatMap(([x0, y0, x1, y1]) => Array.from({ length: (y1 - y0 + 1) * (x1 - x0 + 1) }, (_, i) => [x0 + (i % (x1 - x0 + 1)), y0 + Math.floor(i / (x1 - x0 + 1))] as Cell));
   const db: ContentDb = {
     contentVersion, hash: '', conditions: {}, findings: {}, exams: {}, risks: {}, treatments: {}, rooms: {}, equipment: {}, roles: {}, presets: {},
+    characters: Object.fromEntries(Object.values(characters).sort((a, b) => (a.id < b.id ? -1 : 1)).map(c => [c.id, c])),
+    chapters: Object.fromEntries(Object.values(chapters).sort((a, b) => a.order - b.order).map(c => [c.id, c])),
     economy: economy
       ? { ...economy, sandbox: { ...economy.sandbox, corridor: rects(economy.sandbox.corridor) } }
       : NO_ECONOMY,
@@ -348,6 +358,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   }
   if (errors.length === 0) {
     checkPresets(db, errors);
+    checkCampaign(db, errors);
     // готовая амбулатория помещается на участок песочницы, вход песочницы — в краю
     const sb = db.economy.sandbox;
     for (const p of Object.values(db.presets)) {
@@ -360,6 +371,42 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   }
   db.hash = fingerprint({ ...db, hash: '' });
   return { db, errors, warnings, files: files.length };
+}
+
+/**
+ * Кампания (spec 2026-09-campaign): главы ссылаются на готовую больницу, помещения, болезни
+ * своего отделения и персонажей; письма «при задании» — на задание этой главы.
+ */
+function checkCampaign(db: ContentDb, errors: string[]) {
+  const orders = new Set<number>();
+  for (const c of Object.values(db.chapters)) {
+    const at = (what: string) => errors.push(`${c.id}: ${what}`);
+    if (orders.has(c.order)) at(`порядок ${c.order} уже у другой главы`);
+    orders.add(c.order);
+    if (!db.presets[c.preset]) at(`готовая больница ${c.preset} не найдена`);
+    for (const r of c.build) if (!db.rooms[r]) at(`помещение ${r} не найдено`);
+    if (!Object.values(db.conditions).some(x => x.presenting && x.department === c.department)) at(`в отделении ${c.department} нет болезней`);
+    for (const t of c.tutorial) {
+      const cond = db.conditions[t];
+      if (!cond) at(`болезнь обучения ${t} не найдена`);
+      else if (!cond.presenting || cond.department !== c.department) at(`болезнь обучения ${t} — не из приёма отделения ${c.department}`);
+    }
+    const missions = new Set<string>();
+    for (const m of c.missions) {
+      if (missions.has(m.id)) at(`задание ${m.id} повторяется`);
+      missions.add(m.id);
+      if (m.kind === 'roomWorks' && !db.rooms[m.room]) at(`задание ${m.id}: помещение ${m.room} не найдено`);
+      if (m.kind === 'roomWorks' && !c.build.includes(m.room) && !db.presets[c.preset]?.rooms.some(r => r.type === m.room)) at(`задание ${m.id}: ${m.room} нельзя построить в главе`);
+    }
+    if (!c.missions.some(m => m.main)) at('нет основных заданий');
+    const letters = new Set<string>();
+    for (const l of c.letters) {
+      if (letters.has(l.id)) at(`письмо ${l.id} повторяется`);
+      letters.add(l.id);
+      if (!db.characters[l.from]) at(`письмо ${l.id}: персонаж ${l.from} не найден`);
+      if (typeof l.when === 'object' && 'mission' in l.when && !missions.has(l.when.mission)) at(`письмо ${l.id}: задания ${l.when.mission} в главе нет`);
+    }
+  }
 }
 
 /**

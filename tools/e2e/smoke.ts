@@ -103,7 +103,7 @@ try {
   await page.goto(base);
   await page.getByTestId('accept-disclaimer').waitFor({ timeout: 30_000 });
   await page.screenshot({ path: join(OUT, '01-disclaimer.png') });
-  check((await page.getByTestId('menu-shift').count()) === 0, 'первый запуск: оговорка — до меню');
+  check((await page.getByTestId('menu-quick').count()) === 0, 'первый запуск: оговорка — до меню');
   await page.getByTestId('accept-disclaimer').click();
   // потом — имя и пол врача: имя уже подставлено, пол меняет подсказанное имя
   await page.getByTestId('doctor-first').waitFor({ timeout: 5000 });
@@ -120,9 +120,9 @@ try {
   await page.getByTestId('menu-settings').waitFor({ timeout: 5000 });
   check((await text(page, 'menu-profile')).includes('Анна Петрова'), `меню: профиль — «${(await text(page, 'menu-profile')).replace(/\n/g, ' · ')}»`);
   await page.screenshot({ path: join(OUT, '01-menu.png') });
-  check(await page.getByTestId('menu-campaign').isDisabled(), 'меню: практика, настройки; кампания — «скоро»');
+  check(!(await page.getByTestId('menu-campaign').isDisabled()) && await page.getByTestId('menu-quick').isVisible(), 'меню: кампания, быстрая игра, энциклопедия, профиль, настройки');
   await page.goto(base);
-  await page.getByTestId('menu-shift').waitFor({ timeout: 30_000 });
+  await page.getByTestId('menu-quick').waitFor({ timeout: 30_000 });
   check((await page.getByTestId('accept-disclaimer').count()) === 0, 'оговорка — только при первом запуске');
 
   // настройки сохраняются; «Об игре» — версия, оговорка, почта, источники базы
@@ -316,6 +316,7 @@ try {
 
   // Этап 2: смена — часы на карте, приём, «отпустить ждать результатов», итог, продолжение
   await page.goto(base);
+  await page.getByTestId('menu-quick').click();
   await page.getByTestId('menu-shift').click();
   await page.getByTestId('shift-start').waitFor({ timeout: 15_000 });
   // сложность выбирают при начале практики; по умолчанию — «Студент» с подсказками
@@ -403,13 +404,14 @@ try {
   const practice = await visibleText(page, 'enc-practice');
   check(practice.startsWith('Встречалось в вашей практике: 1'), `энциклопедия: «${practice}»`);
   await page.goto(base);
+  await page.getByTestId('menu-quick').click();
   await page.getByTestId('menu-shift').waitFor({ timeout: 10_000 });
   // начать заново — только после вопроса: сохранение одно
   await page.getByTestId('menu-shift').click();
   await page.getByTestId('restart-sheet').waitFor({ timeout: 5000 });
   await page.getByTestId('restart-sheet-close').click();
   await page.getByTestId('restart-sheet').waitFor({ state: 'detached', timeout: 5000 });
-  check(await page.getByTestId('menu-continue').isVisible(), 'меню: «Отмена» — практика на месте');
+  check((await text(page, 'menu-shift')).includes('продолжить или начать заново'), 'быстрая игра: «Отмена» — практика на месте');
   await page.getByTestId('menu-shift').click();
   await page.getByTestId('restart-confirm').click();
   await page.getByTestId('shift-clock').waitFor({ timeout: 10_000 });
@@ -418,6 +420,7 @@ try {
   // песочница: пустой участок → регистратура (призрак тянут пальцем) → коридор кистью → отмена
   // и снова → карточка помещения → «Готово»; в меню «Продолжить» — песочница
   await page.goto(base);
+  await page.getByTestId('menu-quick').click();
   await page.getByTestId('menu-sandbox').click();
   await page.getByTestId('sandbox-start').waitFor({ timeout: 10_000 });
   await page.getByTestId('sandbox-budget-generous').click();
@@ -430,10 +433,16 @@ try {
   await page.getByTestId('build-map').waitFor({ timeout: 10_000 });
   await page.waitForTimeout(500);
   const [plotW, plotH] = sandboxPlot;
+  // где на экране клетка: масштаб — «весь участок на экране»; сдвиг — по подписи построенного
+  // помещения (панель снизу меняет высоту карты, а камера стоит), пока его нет — участок по центру
+  let anchor: { id: string; x: number; y: number } | undefined;
   const cellPoint = async (x: number, y: number) => {
     const box = (await page.getByTestId('build-map').boundingBox())!;
     const z = Math.min(box.width / (plotW * 16), box.height / (plotH * 16));
-    return { x: box.x + (box.width - plotW * 16 * z) / 2 + (x + 0.5) * 16 * z, y: box.y + (box.height - plotH * 16 * z) / 2 + (y + 0.5) * 16 * z };
+    const c = 16 * z;
+    const label = anchor ? await page.getByTestId('build-map').getByTestId(`label-${anchor.id}`).boundingBox() : null;
+    if (anchor && label) return { x: label.x + (x - anchor.x - 1 + 0.5) * c, y: label.y + (y - anchor.y - 1 + 0.5) * c };
+    return { x: box.x + (box.width - plotW * c) / 2 + (x + 0.5) * c, y: box.y + (box.height - plotH * c) / 2 + (y + 0.5) * c };
   };
   const drag = async (cells: [number, number][]) => {
     const a = await cellPoint(...cells[0]);
@@ -457,6 +466,7 @@ try {
   await page.screenshot({ path: join(OUT, '12-build-ghost.png') });
   await page.getByTestId('build-place').click();
   await page.getByTestId('build-tool-corridor').waitFor({ timeout: 5000 });
+  anchor = { id: 'r1', x: 12, y: 10 };
   const cash1 = await text(page, 'build-cash');
   check(cash1 !== cash0 && (await page.getByTestId('build-undo').innerText()).includes('(1)'), `стройка: регистратура построена — ${cash0} → ${cash1}`);
   await page.getByTestId('build-tool-corridor').click();
@@ -550,6 +560,7 @@ try {
 
   // песочница заново — с готовой амбулаторией: штат на местах; продали иммунохимический
   // анализатор — ТТГ в карте пациента серым с причиной; «Открыть смену» — день 1 на своём плане
+  await page.getByTestId('menu-quick').click();
   await page.getByTestId('menu-sandbox').click();
   await page.getByTestId('restart-confirm').click();
   await page.getByTestId('sandbox-from-clinic').click();
@@ -558,6 +569,7 @@ try {
   await page.getByTestId('sandbox-build').click();
   await page.getByTestId('build-map').waitFor({ timeout: 10_000 });
   await page.waitForTimeout(500);
+  anchor = undefined; // другая песочница: участок снова по центру
   const lab = await cellPoint(25, 3);
   await page.mouse.click(lab.x, lab.y);
   await page.getByTestId('room-sell-3').click();
@@ -593,9 +605,10 @@ try {
   // у приёма — оплата после экспертизы
   // сначала — в меню: живой партии в памяти нет, её сохранение уже на диске; потом подменить его
   await page.goto(base);
-  await page.getByTestId('menu-sandbox').waitFor({ timeout: 10_000 });
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
   await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', sandboxEndOfDaySave()]);
   await page.goto(base);
+  await page.getByTestId('menu-quick').click();
   await page.getByTestId('menu-sandbox').click();
   await page.getByTestId('restart-continue').click();
   await page.getByTestId('shift-close-day').waitFor({ timeout: 15_000 });
@@ -609,6 +622,32 @@ try {
   await page.locator('[data-testid^="case-"]').first().click();
   await page.getByTestId('visit-payment').waitFor({ timeout: 10_000 });
   check(/^оплата\n(омс|дмс|платно): \d/i.test(await text(page, 'visit-payment')), `песочница, итог приёма: ${(await text(page, 'visit-payment')).replace(/\n/g, ' · ')}`);
+
+  // кампания: карьера 1 → глава 1 — письма и задания; письмо наставника; смена открывается;
+  // «Продолжить» в меню — карьера (spec 2026-09-campaign)
+  await page.goto(base);
+  await page.getByTestId('menu-campaign').click();
+  await page.getByTestId('career-1').waitFor({ timeout: 10_000 });
+  await page.getByTestId('career-1').click();
+  await page.getByTestId('career-begin').click();
+  await page.getByTestId('chapter').waitFor({ timeout: 10_000 });
+  check((await text(page, 'chapter')).startsWith('Глава 1. Участок') && (await page.locator('[data-testid^="mission-"]').count()) === 5,
+    `кампания: глава 1 — ${(await text(page, 'chapter-day'))}, заданий ${await page.locator('[data-testid^="mission-"]').count()}`);
+  await page.getByTestId('letter-hello').click();
+  await page.getByTestId('letter-text').waitFor({ timeout: 5000 });
+  check((await text(page, 'letter-text')).startsWith('Здравствуйте, коллега'), 'кампания: письмо наставника');
+  await page.screenshot({ path: join(OUT, '15-campaign-letter.png') });
+  await page.getByTestId('letter-sheet-close').click();
+  await page.getByTestId('letter-sheet').waitFor({ state: 'detached', timeout: 5000 });
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(OUT, '15-campaign-chapter.png'), fullPage: true });
+  await page.getByTestId('sandbox-open').click();
+  await page.getByTestId('shift-skip').click();
+  await page.getByTestId('shift-call').waitFor({ timeout: 5000 });
+  check(await page.getByTestId('clinic-map').isVisible(), 'кампания: смена в амбулатории посёлка');
+  await page.goto(base);
+  await page.getByTestId('menu-continue').waitFor({ timeout: 10_000 });
+  check((await text(page, 'menu-continue')).includes('Карьера 1: Глава 1. Участок'), `меню: «Продолжить» — ${(await text(page, 'menu-continue')).replace(/\n/g, ' · ')}`);
 
   // конец дня из сохранения: закрыть день, итоги, разбор случая из итогов, следующий день
   const day = await browser.newContext({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2 });

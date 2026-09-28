@@ -374,6 +374,51 @@ export interface Economy {
   };
 }
 
+/** Персонаж кампании — наставник, главврач (spec 2026-09-campaign). */
+export interface Character {
+  id: Id;
+  name: Text;
+  short: Text;
+  sex: 'm' | 'f';
+  age: number;
+  portrait: number;
+  role: Text;
+}
+
+/** Условие дня для заданий «N дней». */
+export type DayKind = 'noNeedlessAntibiotic' | 'noLeft' | 'cashPositive';
+
+export type Mission = { id: string; main: boolean; text: Text } & (
+  | { kind: 'seen'; count: number; accuracy: number }
+  | { kind: 'roomWorks'; room: Id }
+  | { kind: 'streak'; days: number; day: DayKind }
+  | { kind: 'days'; days: number; day: DayKind }
+);
+
+export type LetterWhen = 'start' | 'end' | { afterDay: number } | { mission: string };
+
+export interface Letter {
+  id: string;
+  from: Id;
+  when: LetterWhen;
+  text: Text;
+}
+
+/** Глава кампании: больница, бюджет, что можно строить, задания и письма. */
+export interface Chapter {
+  id: Id;
+  order: number;
+  name: Text;
+  place: Text;
+  preset: Id;
+  budget: number;
+  department: Id;
+  build: Id[];
+  tutorial: Id[];
+  missions: Mission[];
+  letters: Letter[];
+}
+
 export interface ContentDb {
   contentVersion: number;
   hash: string;
@@ -387,6 +432,8 @@ export interface ContentDb {
   roles: Record<Id, StaffRole>;
   presets: Record<Id, Preset>;
   economy: Economy;
+  characters: Record<Id, Character>;
+  chapters: Record<Id, Chapter>;
   /** производное: какие обследования проверяют признак */
   revealedBy: Record<Id, Id[]>;
 }

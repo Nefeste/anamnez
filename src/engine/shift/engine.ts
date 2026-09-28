@@ -9,6 +9,7 @@ import { fnv1a } from '../core/hash';
 import {
   caseIncome, consumablesOf, emptyLedger, expensesOf, flowOf, incomeOf, interestOf, type Ledger, levelOf, payerOf, reputationAfter, salariesOf, upkeepOf,
 } from '../economy/economy';
+import { campaignEvening, chapterOf, startChapter } from '../campaign/campaign';
 import { build, emptyPlot, type HospitalState, type Plan, planOf, presetHospital, UNDO_DEPTH } from '../hospital/build';
 import { examWhere, openBlocks, type Staffing, workingRooms } from '../hospital/requirements';
 import { applicantsOf, grow, memberAt, presetStaff, readingOf, type StaffMember, speedOf, staffingOf } from '../hospital/staff';
@@ -157,6 +158,42 @@ export function newSandbox(db: ContentDb, opts: { seed: number; season: Season; 
 }
 
 /**
+ * Кампания (spec 2026-09-campaign): карьера в слоте `career`, первая глава — по порядку.
+ * Больница главы — её готовая больница на участке песочницы со штатом, касса — бюджет главы;
+ * в начале — письма «в начале главы». Остальное — как в песочнице.
+ */
+export function newCampaign(db: ContentDb, opts: { seed: number; season: Season; difficulty?: Difficulty; career: number; chapter?: Id }): ShiftState {
+  const ch = opts.chapter ? db.chapters[opts.chapter] : Object.values(db.chapters)[0];
+  const preset = db.presets[ch.preset];
+  const hired = applicantsOf(db, opts.seed >>> 0, 0, 1);
+  return {
+    meta: {
+      schemaVersion: SHIFT_SCHEMA_VERSION, contentVersion: db.contentVersion, rngVersion: RNG_VERSION, mode: 'campaign', career: opts.career,
+      seed: opts.seed >>> 0, season: opts.season, department: ch.department, difficulty: opts.difficulty ?? 'doctor',
+    },
+    t: 0,
+    day: 0,
+    dayOpen: false,
+    patients: {},
+    queue: [],
+    events: [],
+    seq: 0,
+    rooms: {},
+    returns: [],
+    summary: emptySummary(0),
+    history: [],
+    journal: [],
+    hospital: presetHospital(db, preset, db.economy.sandbox.plot).hospital,
+    economy: { cash: ch.budget, reputation: db.economy.reputation.start, ledger: emptyLedger() },
+    undo: [],
+    staff: presetStaff(db, preset),
+    candidates: hired.list,
+    nextStaff: hired.next,
+    campaign: startChapter(db, ch.id, 0),
+  };
+}
+
+/**
  * Действие врача или ход времени. Недопустимая команда ничего не меняет (но пишется в журнал).
  * Ходы времени подряд журнал сливает в один: прожить a, затем b — то же, что прожить a + b,
  * а часы на карте тикают по четыре раза в секунду.
@@ -268,6 +305,8 @@ function building(db: ContentDb, s: ShiftState, cmd: Extract<Command, { kind: 'b
     }
     return;
   }
+  // в главе кампании строят только то, что глава разрешает
+  if (s.campaign && cmd.cmd.kind === 'room' && !chapterOf(db, s.campaign)?.build.includes(cmd.cmd.type)) return;
   const r = build(db, { hospital: s.hospital, cash: s.economy.cash }, cmd.cmd);
   if (!r.ok) return;
   s.undo = [...(s.undo ?? []), { hospital: s.hospital, cash: s.economy.cash }].slice(-UNDO_DEPTH);
@@ -361,6 +400,12 @@ function closeDay(db: ContentDb, s: ShiftState) {
   s.dayOpen = false;
   if (s.economy && s.hospital) settle(db, s);
   s.history.push({ ...s.summary, grades: { ...s.summary.grades } });
+  // кампания: задания и письма — по итогам дня, в том числе сегодняшнего
+  if (s.campaign) {
+    const got = campaignEvening(db, { campaign: s.campaign, history: s.history, hospital: s.hospital, staff: s.staff }, s.day);
+    s.summary.campaign = got;
+    s.history[s.history.length - 1].campaign = got;
+  }
   // песочница: кто работал — на смену опытнее; вечером — новые кандидаты
   if (s.staff && s.hospital) {
     s.staff = s.staff.map(m => grow(db, m));
@@ -538,6 +583,10 @@ function finish(db: ContentDb, s: ShiftState): Notice[] {
   sum.seen++;
   sum[closed.verdict]++;
   sum.grades[closed.grades.overall]++;
+  // кампания: антибиотик, который не показан, — для задания «дни без него»
+  if (s.campaign && closed.notes.some(n => n.code === 'tx.notIndicated' && db.treatments[n.tx]?.class?.startsWith('antibiotic.'))) {
+    sum.needlessAntibiotic = (sum.needlessAntibiotic ?? 0) + 1;
+  }
   const back = closed.outcome.returns;
   if (back) {
     s.returns.push({ day: s.day + Math.max(1, back.day), of: p.id, reason: back.reason });

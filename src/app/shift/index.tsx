@@ -17,11 +17,12 @@ import { CLINIC } from '@/state/clinicMap';
 import { blockText, type CashView } from '@/state/sandboxView';
 import {
   callPatient, closeDay, loadShift, nextDay, openCase, pauseClock, type QueueRow, type ShiftView, SPEEDS, type Speed, type SummaryView,
-  type RoomView, saveNow, setSpeed, skipIdle, startSandbox, startShift, TICK_MS, tick, useBuild, useShift, type WhoView,
+  type RoomView, saveNow, setSpeed, skipIdle, startSandbox, startShift, TICK_MS, tick, useBuild, useCampaign, useShift, type WhoView,
 } from '@/state/session';
 import { CaseRow } from '@/ui/case/CaseRow';
 import { Button, Card, Chip, Chips, H, P, Screen, Sheet, Tabs } from '@/ui/components';
 import { DifficultyChoice } from '@/ui/difficulty';
+import { ChapterCard } from '@/ui/campaign';
 import { NewSandbox } from '@/ui/sandbox';
 import { colors, radius, space, touch } from '@/ui/theme';
 
@@ -40,14 +41,33 @@ export default function ShiftScreen() {
       </Screen>
     );
   }
-  if (v.status === 'none') return v.mode === 'sandbox' ? <NewSandbox onStart={opts => startSandbox(opts)} /> : <NewPractice />;
-  // песочница между сменами — своя больница: стройка, персонал, «Открыть смену» (spec 2026-09-own-hospital)
-  if (v.mode === 'sandbox' && !v.dayOpen && v.day === 0) return <Evening v={v} />;
+  if (v.status === 'none') return v.mode === 'sandbox' ? <NewSandbox onStart={opts => startSandbox(opts)} /> : v.mode === 'campaign' ? <NoCareer /> : <NewPractice />;
+  // своя больница между сменами — песочница и глава кампании: стройка, персонал, «Открыть
+  // смену» (spec 2026-09-own-hospital, 2026-09-campaign)
+  const own = v.mode === 'sandbox' || v.mode === 'campaign';
+  if (own && !v.dayOpen && v.day === 0) return <Evening v={v} />;
   return (
     <>
-      {v.mode === 'sandbox' && <Stack.Screen options={{ title: T.sandbox.title }} />}
+      {own && <OwnTitle mode={v.mode} />}
       {v.dayOpen ? <Queue v={v} /> : <Summary v={v} />}
     </>
+  );
+}
+
+/** Заголовок своей больницы: в песочнице — «Своя больница», в кампании — глава. */
+function OwnTitle({ mode }: { mode: ShiftView['mode'] }) {
+  const c = useCampaign();
+  return <Stack.Screen options={{ title: mode === 'campaign' ? (c?.title ?? T.campaign.title) : T.sandbox.title }} />;
+}
+
+/** Кампания без сохранения в этом слоте — к списку карьер. */
+function NoCareer() {
+  return (
+    <Screen footer={<Button testID="to-campaign" title={T.campaign.title} onPress={() => router.replace('/campaign')} />}>
+      <Card>
+        <P>{T.campaign.careersHint}</P>
+      </Card>
+    </Screen>
   );
 }
 
@@ -55,6 +75,7 @@ export default function ShiftScreen() {
 function Evening({ v }: { v: ShiftView }) {
   const t = T.sandbox;
   const b = useBuild();
+  const c = useCampaign();
   const { width } = useWindowDimensions();
   if (!b) return null;
   const w = Math.min(width, 640) - 32;
@@ -62,7 +83,8 @@ function Evening({ v }: { v: ShiftView }) {
   const labels = b.plan.rooms.map(r => ({ id: r.id, name: db.rooms[r.type].name.ru, x: r.x, y: r.y, w: r.w, down: b.problems[r.id].length > 0 }));
   return (
     <Screen footer={<Button testID="sandbox-build" title={t.build} hint={t.buildHint} onPress={() => router.push('/sandbox/build')} />}>
-      <Stack.Screen options={{ title: t.title }} />
+      <Stack.Screen options={{ title: v.mode === 'campaign' ? (c?.title ?? T.campaign.title) : t.title }} />
+      {v.mode === 'campaign' && c && <ChapterCard c={c} />}
       <Card>
         <H>{v.day === 0 ? t.beforeOpening : t.day(v.day)}</H>
         <P testID="sandbox-summary">{`${t.cash(T.common.rub(v.cash ?? 0))} · ${t.rooms(b.plan.rooms.length)}`}</P>
@@ -317,7 +339,7 @@ function Summary({ v }: { v: ShiftView }) {
   const [confirm, setConfirm] = useState(false);
   const s = v.summary;
   if (!s) return null;
-  const own = v.mode === 'sandbox';
+  const own = v.mode === 'sandbox' || v.mode === 'campaign';
   const open = (id: string) => {
     openCase(id);
     router.push('/shift/outcome');
@@ -335,6 +357,8 @@ function Summary({ v }: { v: ShiftView }) {
         <P>{t.returns(s.returnsPlanned, s.returnsToday)}</P>
         {!own && <P muted>{t.moneyNote}</P>}
       </Card>
+
+      {s.chapterDay && <CampaignDay d={s.chapterDay} />}
 
       {s.cash && <Cash c={s.cash} />}
 
@@ -365,6 +389,22 @@ function Summary({ v }: { v: ShiftView }) {
         }} />
       </Sheet>
     </Screen>
+  );
+}
+
+/** Кампания в итогах дня: что выполнено сегодня, сколько пришло писем, и вся глава. */
+function CampaignDay({ d }: { d: NonNullable<SummaryView['chapterDay']> }) {
+  const c = useCampaign();
+  return (
+    <>
+      {(d.done.length > 0 || d.letters > 0) && (
+        <Card testID="summary-campaign">
+          {d.done.map(x => <P key={x}>{T.campaign.todayDone(x)}</P>)}
+          {d.letters > 0 && <P muted>{T.campaign.todayLetters(d.letters)}</P>}
+        </Card>
+      )}
+      {c && <ChapterCard c={c} />}
+    </>
   );
 }
 

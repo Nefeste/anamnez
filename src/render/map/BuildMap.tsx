@@ -284,7 +284,7 @@ export function BuildMap({ plan, width, height, tool, ghost, selected, labels, l
       </GestureDetector>
       <Animated.View pointerEvents="none" style={[styles.overlay, { width: plotW, height: plotH }, overlay]}>
         {labels.map(l => (
-          <View key={l.id} style={[styles.label, { left: (l.x + 1) * CELL_PX, top: (l.y + 1) * CELL_PX, maxWidth: (l.w - 1.2) * CELL_PX }]}>
+          <View key={l.id} testID={`label-${l.id}`} style={[styles.label, { left: (l.x + 1) * CELL_PX, top: (l.y + 1) * CELL_PX, maxWidth: (l.w - 1.2) * CELL_PX }]}>
             {l.down && <View style={styles.down} />}
             <Text numberOfLines={1} style={[styles.name, l.down && { color: RED }]}>{l.name}</Text>
           </View>

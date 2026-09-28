@@ -17,4 +17,4 @@ mkdirSync(OUT, { recursive: true });
 writeFileSync(join(OUT, 'bundle.json'), JSON.stringify(db));
 const n = (r: object) => Object.keys(r).length;
 const drafts = [...Object.values(db.conditions), ...Object.values(db.findings), ...Object.values(db.exams), ...Object.values(db.treatments)].filter(x => x.review === 'draft').length;
-console.log(`База ${db.contentVersion} (${db.hash}): состояний ${n(db.conditions)}, признаков ${n(db.findings)}, обследований ${n(db.exams)}, факторов риска ${n(db.risks)}, лечений ${n(db.treatments)}; черновиков ${drafts}. Больница: помещений ${n(db.rooms)}, аппаратов ${n(db.equipment)}, должностей ${n(db.roles)}.`);
+console.log(`База ${db.contentVersion} (${db.hash}): состояний ${n(db.conditions)}, признаков ${n(db.findings)}, обследований ${n(db.exams)}, факторов риска ${n(db.risks)}, лечений ${n(db.treatments)}; черновиков ${drafts}. Больница: помещений ${n(db.rooms)}, аппаратов ${n(db.equipment)}, должностей ${n(db.roles)}. Кампания: глав ${n(db.chapters)}, персонажей ${n(db.characters)}.`);

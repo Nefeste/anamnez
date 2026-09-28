@@ -10,6 +10,7 @@ import { db } from '@/content';
 import type { Cell, Id, RoomSizeId } from '@/content/types';
 import { sizeOf } from '@/engine/hospital/build';
 import { T } from '@/i18n';
+import { useSettings } from '@/state/settings';
 import { BuildMap, type Tool } from '@/render/map/BuildMap';
 import { buildAction, type BuildView, endBuild, undoBuild, useBuild, useStaff } from '@/state/session';
 import { buildErrorText, centered, type GhostSpec, ghostOf, rotated, statusText } from '@/state/sandboxView';
@@ -18,6 +19,8 @@ import { Text } from '@/ui/text';
 import { colors, radius, space, touch } from '@/ui/theme';
 
 const rub = (n: number) => T.common.rub(n);
+/** Межстрочный подсказки под картой, px при обычном размере текста. */
+const HINT_LINE = 18;
 
 export default function BuildScreen() {
   const b = useBuild();
@@ -35,6 +38,7 @@ export default function BuildScreen() {
 
 function Builder({ b }: { b: BuildView }) {
   const t = T.sandbox;
+  const { textScale } = useSettings();
   const [area, setArea] = useState({ w: 0, h: 0 });
   const [tool, setTool] = useState<Tool>('look');
   const [picking, setPicking] = useState<Id | 'types'>();
@@ -95,7 +99,8 @@ function Builder({ b }: { b: BuildView }) {
         <Text testID="build-cash" style={styles.cash}>{t.cash(rub(b.cash))}</Text>
         <Small testID="build-undo" title={t.undo(b.undo)} disabled={b.undo === 0} onPress={undoBuild} />
       </View>
-      <Text testID="build-hint" style={[styles.hint, (why || (tool === 'room' && status)) && styles.warn]}>{why ?? hint}</Text>
+      {/* место под подсказку — всегда две строки: панель не меняет высоту, и карта не сдвигается под пальцем */}
+      <Text testID="build-hint" style={[styles.hint, { minHeight: HINT_LINE * 2 * textScale }, (why || (tool === 'room' && status)) && styles.warn]}>{why ?? hint}</Text>
       {tool === 'room' ? (
         <View style={styles.row}>
           <Small testID="build-rotate" title={t.rotate} onPress={() => spec && setSpec(rotated(db, spec))} />
@@ -137,7 +142,7 @@ function Builder({ b }: { b: BuildView }) {
           />
         )}
       </View>
-      <RoomPicker picking={picking} onPick={setPicking} onChoose={choose} />
+      <RoomPicker picking={picking} allowed={b.allowed} onPick={setPicking} onChoose={choose} />
       {selected && <RoomCard b={b} id={selected} onClose={() => setSelected(undefined)} onDemolish={() => setDemolish(selected)} act={act} />}
       <Sheet visible={!!demolish} onClose={() => setDemolish(undefined)} closeTitle={t.cancel} testID="demolish-sheet">
         {demolish && <Demolish b={b} id={demolish} onDone={() => { act({ kind: 'demolish', room: demolish }); setDemolish(undefined); setSelected(undefined); }} />}
@@ -147,7 +152,9 @@ function Builder({ b }: { b: BuildView }) {
 }
 
 /** Выбор помещения: тип (что открывает и почём), потом размер. */
-function RoomPicker({ picking, onPick, onChoose }: { picking?: Id | 'types'; onPick: (p?: Id | 'types') => void; onChoose: (type: Id, size: RoomSizeId) => void }) {
+function RoomPicker({ picking, allowed, onPick, onChoose }: {
+  picking?: Id | 'types'; allowed?: Id[]; onPick: (p?: Id | 'types') => void; onChoose: (type: Id, size: RoomSizeId) => void;
+}) {
   const t = T.sandbox;
   const type = picking && picking !== 'types' ? db.rooms[picking] : undefined;
   return (
@@ -164,7 +171,7 @@ function RoomPicker({ picking, onPick, onChoose }: { picking?: Id | 'types'; onP
       ) : (
         <>
           <H>{t.pickRoom}</H>
-          {Object.values(db.rooms).map(r => (
+          {Object.values(db.rooms).filter(r => !allowed || allowed.includes(r.id)).map(r => (
             <Button
               key={r.id}
               testID={`room-type-${r.id}`}
@@ -268,7 +275,7 @@ const styles = StyleSheet.create({
   panel: { gap: space.s },
   row: { flexDirection: 'row', gap: space.s, alignItems: 'center' },
   cash: { flex: 1, fontSize: 16, fontWeight: '700', color: colors.ink },
-  hint: { fontSize: 13, color: colors.muted },
+  hint: { fontSize: 13, lineHeight: HINT_LINE, color: colors.muted },
   warn: { color: colors.danger },
   small: {
     flex: 1, minHeight: touch, borderRadius: radius, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.card,

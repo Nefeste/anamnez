@@ -300,7 +300,12 @@ interface GameState {
   // навык 1–5, черта, зарплата за смену, помещение (нет — резерв), отработанные смены;
   // у ожидающего результата — помещение и время процедуры; у пациента без доврачебного
   // кабинета — triaged: false
-  career?: { chapter: Id; missions: Record<Id, MissionState> };
+  campaign?: {                           // 0.0.24, src/engine/campaign/campaign.ts
+    chapter: Id; since: number;          // глава и последний день прежней
+    done: Record<string, number>;        // выполненные задания главы → день
+    letters: { id: string; day: number; read?: boolean }[];
+    complete?: number;                   // день, когда выполнены все основные
+  };                                     // meta.career — слот карьеры (1–3)
   journal: Command[];                    // команды за текущий день (отчёт об ошибке, тесты)
 }
 
