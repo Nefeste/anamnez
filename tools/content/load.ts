@@ -244,6 +244,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (!revealedBy[f]) errors.push(`${f}: ни одно обследование его не открывает`);
     else revealedBy[f].sort();
   }
+  checkWho({ conditions, findings, exams, risks }, errors);
   checkHospital({ rooms, equipment, roles, exams, conditions }, errors);
 
   // --- сборка ---
@@ -307,6 +308,9 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (e.collect) out.collect = e.collect;
     if (e.radiation) out.radiation = e.radiation;
     if (e.routine) out.routine = true;
+    if (e.sex) out.sex = e.sex;
+    if (e.ageMin !== undefined) out.ageMin = e.ageMin;
+    if (e.ageMax !== undefined) out.ageMax = e.ageMax;
     db.exams[e.id] = out;
   }
   for (const r of Object.values(risks).sort((a, b) => (a.id < b.id ? -1 : 1))) {
@@ -485,6 +489,48 @@ function checkPresets(db: ContentDb, errors: string[]) {
     const staffed = (room: string, role: string) => p.staff.some(s => `r${s.room + 1}` === room && s.role === role);
     for (const r of plan.rooms) {
       for (const pr of problemsOf(db, plan, r, staffed)) errors.push(`${p.id}: ${r.type} (${r.id}) не работает: ${pr.kind}${pr.kind === 'noStaff' ? ` ${pr.role}` : ''}`);
+    }
+  }
+}
+
+/**
+ * Кому делают обследование — по его признакам. Все признаки бывают только у одного пола — и
+ * обследование только для него: мужчине не отвечают «беременности нет, насколько она знает».
+ * Возраст обследования — не уже, чем у болезней и факторов, которые дают его признаки: иначе
+ * признак некому открыть. Фон популяции (`leak`) бывает у всех.
+ */
+function checkWho(c: {
+  conditions: Record<string, ConditionSrc>; findings: Record<string, FindingSrc>; exams: Record<string, ExamSrc>; risks: Record<string, RiskSrc>;
+}, errors: string[]) {
+  type Who = { m: boolean; f: boolean; min: number; max: number };
+  const sexes: Record<string, { m: boolean; f: boolean }> = {};
+  const ages: Record<string, { min: number; max: number }> = {};
+  const add = (id: string, w: Who) => {
+    const s = sexes[id];
+    sexes[id] = { m: (s?.m ?? false) || w.m, f: (s?.f ?? false) || w.f };
+    const a = ages[id];
+    ages[id] = { min: Math.min(a?.min ?? w.min, w.min), max: Math.max(a?.max ?? w.max, w.max) };
+  };
+  for (const f of Object.values(c.findings)) if (f.leak !== 'never') sexes[f.id] = { m: true, f: true };
+  for (const cond of Object.values(c.conditions)) {
+    const sex = cond.epidemiology.sex;
+    const w = { m: !sex || sex.m > 0, f: !sex || sex.f > 0, min: cond.epidemiology.age.min, max: cond.epidemiology.age.max ?? 120 };
+    for (const l of cond.findings) add(l.f, w);
+  }
+  for (const r of Object.values(c.risks)) {
+    const w = { m: r.prevalence.m > 0, f: r.prevalence.f > 0, min: r.ageMin ?? 0, max: r.ageMax ?? 120 };
+    for (const l of r.findings) add(l.f, w);
+  }
+  for (const e of Object.values(c.exams)) {
+    const own = e.checks.map(ch => sexes[ch.f]).filter(x => x !== undefined);
+    if (own.length > 0 && !own.some(x => x.m) && e.sex !== 'f') errors.push(`${e.id}: его признаки бывают только у женщин — нужно sex: f`);
+    if (own.length > 0 && !own.some(x => x.f) && e.sex !== 'm') errors.push(`${e.id}: его признаки бывают только у мужчин — нужно sex: m`);
+    if (e.ageMin !== undefined && e.ageMax !== undefined && e.ageMin > e.ageMax) errors.push(`${e.id}: ageMin больше ageMax`);
+    for (const ch of e.checks) {
+      const a = ages[ch.f];
+      if (!a) continue;
+      if (e.ageMin !== undefined && e.ageMin > a.min) errors.push(`${e.id}: признак ${ch.f} бывает с ${a.min} лет, а обследование — с ${e.ageMin}`);
+      if (e.ageMax !== undefined && e.ageMax < a.max) errors.push(`${e.id}: признак ${ch.f} бывает до ${a.max} лет, а обследование — до ${e.ageMax}`);
     }
   }
 }

@@ -3,13 +3,13 @@
 // внизу. Общая для прототипа П4 и смены: вид и действия приходят снаружи.
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { Text } from '../text';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { buzz, play } from '@/audio/sounds';
 import { T } from '@/i18n';
 import { Portrait } from '@/render/Portrait';
-import { examInfo, examsByAction, examTerm, findingInfo, type TermInfo, type VisitView } from '@/state/caseView';
+import { examInfo, examsByAction, examTerm, findingInfo, type Line, type ResultGroup, type TermInfo, type VisitView } from '@/state/caseView';
 import { Button, Card, Chip, Chips, H, P, Screen, Tabs } from '@/ui/components';
 import { TermSheet } from '@/ui/TermSheet';
 import { colors, radius, space } from '@/ui/theme';
@@ -28,11 +28,19 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
   const tab: Tab = picked.patient === v.portrait.key ? picked.tab : 'ask';
   const setTab = (next: Tab) => setPicked({ patient: v.portrait.key, tab: next });
   const [term, setTerm] = useState<TermInfo | null>(null);
+  // что раскрыл игрок — у этого пациента; новый пациент начинается свёрнутым
+  const [opened, setOpened] = useState<{ patient: number; keys: string[] }>({ patient: v.portrait.key, keys: [] });
+  const openKeys = opened.patient === v.portrait.key ? opened.keys : [];
+  const isOpen = (key: string) => openKeys.includes(key);
+  const toggle = (key: string) => setOpened({ patient: v.portrait.key, keys: isOpen(key) ? openKeys.filter(k => k !== key) : [...openKeys, key] });
   // подсказка «нажмите, чтобы узнать» — пока игрок ни разу не открыл справку
   const [hinted, setHinted] = useState(false);
   const t = T.spikes.patient;
   const d = T.spikes.decision;
-  const groups = examsByAction();
+  const groups = examsByAction(v.portrait);
+  // «Известно»: новое, то, где что-то нашли, и снимки — на виду; где ничего не нашли — одной строкой
+  const loud = v.groups.filter(g => g.fresh || found(g) || g.image);
+  const quiet = v.groups.filter(g => !loud.includes(g));
 
   useEffect(() => {
     if (v.meanwhile.length > 0) {
@@ -90,17 +98,20 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
           <Text style={styles.label}>{t.known}</Text>
           {v.freshCount > 0 && <Text testID="visit-fresh-count" style={styles.freshCount}>{t.freshCount(v.freshCount)}</Text>}
         </View>
-        {v.groups.length === 0 ? <P muted>{t.none}</P> : v.groups.map(g => (
-          // новые результаты — сверху, выделены и появляются с движением
-          <Animated.View key={g.key} entering={FadeInDown.duration(350)} testID={g.fresh ? 'visit-fresh' : undefined} style={[styles.group, g.fresh && styles.groupFresh]}>
-            <View style={styles.groupHead}>
-              <Text style={styles.groupTitle}>{`${g.name} · ${t.at(g.at)}`}</Text>
-              {g.fresh && <Text style={styles.badge}>{t.fresh}</Text>}
-            </View>
-            {g.image && <ResultPicture image={g.image} />}
-            <Chips>{g.lines.map((r, i) => <Chip key={`${r.f}${i}`} text={r.text} strong={r.shown} onPress={() => explain(findingInfo(r.f))} />)}</Chips>
-          </Animated.View>
-        ))}
+        {v.groups.length === 0 ? <P muted>{t.none}</P> : (
+          <>
+            {/* новые результаты — сверху, выделены и целиком; прежние — что нашли, остальное свёрнуто */}
+            {loud.map(g => <KnownGroup key={g.key} g={g} open={g.fresh || isOpen(g.key)} onToggle={() => toggle(g.key)} explain={explain} />)}
+            {quiet.length > 0 && (
+              <Pressable testID="visit-quiet" accessibilityRole="button" aria-expanded={isOpen('quiet')} onPress={() => toggle('quiet')}
+                style={({ pressed }) => [styles.quiet, pressed && styles.pressed]}>
+                <Text style={styles.quietText}>{t.quiet(quiet.map(g => g.name).join(', '))}</Text>
+                <Text style={styles.chevron}>{isOpen('quiet') ? '▴' : '▾'}</Text>
+              </Pressable>
+            )}
+            {isOpen('quiet') && quiet.map(g => <KnownGroup key={g.key} g={g} open explain={explain} />)}
+          </>
+        )}
         {v.pending.map((p, i) => <P key={i} muted>{t.pending(p.name, p.at)}</P>)}
         {v.pending.length > 0 && !v.decision && !readOnly && (
           <>
@@ -133,11 +144,30 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
           <Card>
             {groups[tab].map(id => {
               const info = examInfo(id);
-              const done = v.done.includes(id);
+              // сделанное — с ответом на месте: не нужно листать вверх к «Известно» (отзыв на 0.0.37);
+              // только что пришедшее — целиком, прежнее — строкой «что нашли», касание раскрывает
+              if (v.done.includes(id)) {
+                const g = v.groups.find(x => x.exam === id);
+                const wait = v.pending.find(x => x.exam === id);
+                const key = `done:${id}`;
+                const open = !!g && (g.fresh || isOpen(key));
+                const summary = g ? g.lines.filter(l => l.shown).map(l => l.text).join('; ') || t.nothingFound : wait ? t.readyAt(wait.at) : t.done;
+                return (
+                  <Animated.View key={id} entering={FadeInDown.duration(250)} testID={`done-${id}`} style={[styles.done, g?.fresh && styles.groupFresh]}>
+                    <Pressable accessibilityRole="button" aria-expanded={open} accessibilityLabel={`${info.name}: ${open ? t.collapse : t.expand}`} disabled={!g || g.fresh}
+                      onPress={() => toggle(key)} style={({ pressed }) => [styles.groupHead, pressed && styles.pressed]}>
+                      <Text style={styles.groupTitle}>{`✓ ${info.name}`}</Text>
+                      {g?.fresh ? <Text style={styles.badge}>{t.fresh}</Text> : g ? <Text style={styles.chevron}>{open ? '▴' : '▾'}</Text> : null}
+                    </Pressable>
+                    {open ? <Chips>{g!.lines.map((r, i) => <Chip key={`${r.f}${i}`} text={r.text} strong={r.shown} onPress={() => explain(findingInfo(r.f))} />)}</Chips>
+                      : <Text numberOfLines={2} style={styles.summary}>{summary}</Text>}
+                  </Animated.View>
+                );
+              }
               // своя больница: нет помещения, аппарата или человека — серым, с причиной
               const why = v.unavailable[id];
               return (
-                <Button key={id} testID={`exam-${id}`} kind="plain" disabled={done || !!why} title={info.name} hint={done ? t.done : why ?? t.cost(info.minutes, info.cost)}
+                <Button key={id} testID={`exam-${id}`} kind="plain" disabled={!!why} title={info.name} hint={why ?? t.cost(info.minutes, info.cost)}
                   onPress={() => doExam(id)} onInfo={() => explain(examTerm(id))} infoLabel={t.whatIsIt} />
               );
             })}
@@ -147,6 +177,33 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
 
       <TermSheet term={term} onClose={() => setTerm(null)} label={t.whatIsIt} closeTitle={t.gotIt} />
     </Screen>
+  );
+}
+
+/** Выявил ли обследование хоть что-то: признак показан (в том числе ложно). */
+const found = (g: ResultGroup) => g.lines.some((l: Line) => l.shown);
+
+/**
+ * Результаты одного обследования в «Известно». Раскрытое — все строки; свёрнутое — только то,
+ * что нашли, и «ещё N без особенностей», касание раскрывает (отзыв на 0.0.37: меньше листать).
+ */
+function KnownGroup({ g, open, onToggle, explain }: { g: ResultGroup; open: boolean; onToggle?: () => void; explain: (info: TermInfo) => void }) {
+  const t = T.spikes.patient;
+  const lines = open ? g.lines : g.lines.filter(l => l.shown);
+  const hidden = g.lines.length - lines.length;
+  return (
+    <Animated.View entering={FadeInDown.duration(350)} testID={g.fresh ? 'visit-fresh' : undefined} style={[styles.group, g.fresh && styles.groupFresh]}>
+      <View style={styles.groupHead}>
+        <Text style={styles.groupTitle}>{`${g.name} · ${t.at(g.at)}`}</Text>
+        {g.fresh && <Text style={styles.badge}>{t.fresh}</Text>}
+      </View>
+      {g.image && <ResultPicture image={g.image} />}
+      <Chips>
+        {lines.map((r, i) => <Chip key={`${r.f}${i}`} text={r.text} strong={r.shown} onPress={() => explain(findingInfo(r.f))} />)}
+        {hidden > 0 && onToggle && <Chip testID={`more-${g.exam}`} text={t.moreQuiet(hidden)} onPress={onToggle} />}
+        {open && !g.fresh && onToggle && found(g) && g.lines.some(l => !l.shown) && <Chip text={t.collapse} onPress={onToggle} />}
+      </Chips>
+    </Animated.View>
   );
 }
 
@@ -162,4 +219,10 @@ const styles = StyleSheet.create({
   groupHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.s },
   groupTitle: { flex: 1, fontSize: 13, fontWeight: '600', color: colors.muted },
   badge: { fontSize: 12, fontWeight: '700', color: '#fff', backgroundColor: colors.yellow, borderRadius: 10, paddingHorizontal: space.s, paddingVertical: 2, overflow: 'hidden' },
+  done: { gap: space.xs, padding: space.m, borderRadius: radius, borderWidth: 1, borderColor: colors.line },
+  summary: { fontSize: 14, color: colors.ink },
+  chevron: { fontSize: 14, color: colors.muted },
+  pressed: { opacity: 0.7 },
+  quiet: { flexDirection: 'row', alignItems: 'center', gap: space.s, minHeight: 44, paddingHorizontal: space.s, borderRadius: radius, backgroundColor: '#EEF1F1' },
+  quietText: { flex: 1, fontSize: 13, color: colors.muted },
 });

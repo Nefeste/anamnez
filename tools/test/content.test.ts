@@ -49,6 +49,13 @@ describe('валидатор базы', () => {
     expect(errors.some(e => e.includes('upper'))).toBe(true);
   });
 
+  test('обследование, все признаки которого бывают только у женщин, — только для женщин; возраст не уже признаков', () => {
+    const noSex = broken(d => edit(d, 'exams/ask_pregnancy.yaml', 'sex: f\n', ''));
+    expect(noSex.some(e => e.startsWith('exam.ask_pregnancy') && e.includes('только у женщин'))).toBe(true);
+    const narrow = broken(d => edit(d, 'exams/ask_pregnancy.yaml', 'ageMax: 50', 'ageMax: 40'));
+    expect(narrow.some(e => e.startsWith('exam.ask_pregnancy') && e.includes('до 50 лет'))).toBe(true);
+  });
+
   test('опечатка в имени поля — ошибка, а не молча пропущенное поле', () => {
     const errors = broken(d => edit(d, 'conditions/therapy/arvi.yaml', 'severity: minor', 'severety: minor'));
     expect(errors.some(e => e.includes('arvi.yaml'))).toBe(true);

@@ -15,7 +15,7 @@ import { DOCTOR, doctorRoom, examWhere, openBlocks, type Staffing, workingRooms 
 import { applicantsOf, doctorOf, grow, memberAt, presetStaff, readingOf, type StaffMember, speedOf, staffingOf } from '../hospital/staff';
 import { RNG_VERSION, Rng } from '../core/rng';
 import { observe } from '../med/course';
-import { complaintObservations, type ExamSkill, NORMAL_SKILL, runExam } from '../med/exams';
+import { complaintObservations, type ExamSkill, examFits, NORMAL_SKILL, runExam } from '../med/exams';
 import { generatePatient, typicalPatient } from '../med/generate';
 import { knownFacts, posterior } from '../med/infer';
 import { evaluatePlan } from '../med/plan';
@@ -582,7 +582,7 @@ function exam(db: ContentDb, s: ShiftState, examId: Id): Notice[] {
  */
 function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pct = 100): number | null {
   const e = db.exams[examId];
-  if (!e || p.done.includes(examId)) return null;
+  if (!e || p.done.includes(examId) || !examFits(e, p.patient)) return null;
   const ctx = hospitalCtx(db, s);
   const where = examWhere(db, ctx.plan, ctx.working, ctx.staffed, examId);
   if ('block' in where) return null;

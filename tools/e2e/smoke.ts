@@ -328,6 +328,10 @@ try {
   await page.getByTestId('exam-exam.ask_complaints').waitFor({ timeout: 5000 });
   check((await page.getByTestId('term-sheet').count()) === 0, 'П4: из статьи «назад» — в карту пациента');
   await page.getByTestId('exam-exam.ask_complaints').click();
+  // ответ — на месте вопроса, листать вверх к «Известно» не нужно (отзыв на 0.0.37)
+  await page.getByTestId('done-exam.ask_complaints').waitFor({ timeout: 5000 });
+  const asked = await text(page, 'done-exam.ask_complaints');
+  check(asked.split('\n').length > 1 && (await page.getByTestId('exam-exam.ask_complaints').count()) === 0, `П4: ответ под вопросом — «${asked.replace(/\n/g, ' · ')}»`);
   await page.getByTestId('tab-examine').click();
   await page.getByTestId('exam-exam.lung_auscultation').click();
   await page.getByTestId('visit-fresh').first().waitFor({ timeout: 5000 });
@@ -776,7 +780,7 @@ try {
   await page.screenshot({ path: join(OUT, '14-hired-colleague-case.png'), fullPage: true });
   await page.getByTestId('colleague-take').click();
   await visible(page, 'visit-decide').waitFor({ timeout: 10_000 });
-  check((await page.locator('[data-testid="visit-colleague"]:visible').count()) === 0 && (await visible(page, 'exam-exam.ask_onset').count()) === 1,
+  check((await page.locator('[data-testid="visit-colleague"]:visible').count()) === 0 && (await visible(page, 'exam-exam.ask_onset').count()) + (await visible(page, 'done-exam.ask_onset').count()) === 1,
     'забрали себе: пациент у вас в кабинете, карта — ваша');
 
   // нанятый врач (spec 2026-09-hired-doctors): песочница с терапевтом во втором кабинете — в

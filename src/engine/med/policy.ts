@@ -3,7 +3,7 @@
 // (spec 2026-09-hired-doctors): тот делает шаги по одному, с порогами своего навыка.
 import type { ContentDb, Id, Setting } from '../../content/types';
 import { Rng } from '../core/rng';
-import { complaintObservations, runExam } from './exams';
+import { complaintObservations, examFits, runExam } from './exams';
 import { type Belief, expectedGain, knownFacts, posterior } from './infer';
 import { type Plan, possibleFor, SETTING_ORDER } from './plan';
 import type { Observation, Patient } from './types';
@@ -150,7 +150,9 @@ function bestExam(db: ContentDb, beliefs: Belief[], ctx: Parameters<typeof expec
  * противопоказаниях к лечению (об аллергиях — перед антибиотиком; о беременности не
  * спрашивают мужчину и женщину 64 лет), и план.
  */
-export function nextStep(db: ContentDb, patient: Patient, obs: readonly Observation[], done: readonly Id[], phase: DoctorPhase, opt: StepOptions): { step: DoctorStep; phase: DoctorPhase } {
+export function nextStep(db: ContentDb, patient: Patient, obs: readonly Observation[], done: readonly Id[], phase: DoctorPhase, options: StepOptions): { step: DoctorStep; phase: DoctorPhase } {
+  // о месячных и беременности мужчину не спрашивают: только то, что пациенту подходит
+  const opt = { ...options, exams: options.exams.filter(id => examFits(db.exams[id], patient)) };
   let now = phase;
   if (now.diagnosis === undefined) {
     const routine = opt.exams.find(id => db.exams[id].routine && !done.includes(id));
@@ -208,7 +210,7 @@ export function runDoctor(db: ContentDb, patient: Patient, strategy: Strategy, r
     }
   } else {
     // «всё подряд» спрашивает и назначает всё; ленивый решает по жалобам
-    if (strategy === 'shotgun') for (const id of opt.exams) doExam(id);
+    if (strategy === 'shotgun') for (const id of opt.exams) if (examFits(db.exams[id], patient)) doExam(id);
     const top = posterior(db, opt.candidates, obs, ctxOf())[0];
     decision = { diagnosis: top.id, confidence: top.p, plan: choosePlan(db, top.id, obs) };
   }
