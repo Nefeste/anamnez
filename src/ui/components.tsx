@@ -103,7 +103,11 @@ function SheetBody({ onClose, closeTitle, children, testID }: SheetProps) {
 /**
  * Вкладки одной полосой. Подпись всегда в одну строку: на узком экране или с крупным
  * системным шрифтом она уменьшается, а не обрезается многоточием (отзыв на 0.0.5).
+ * Вкладка — 40 dp с полем полосы вокруг; касание добирает до 48 (NFR-ACC-1) полем сверху и
+ * снизу, а не сбоку — иначе соседние вкладки делили бы щель между собой.
  */
+const TAB_SLOP = { top: space.xs, bottom: space.xs };
+
 export function Tabs<K extends string>({ items, value, onChange, testPrefix = 'tab' }: { items: { key: K; title: string }[]; value: K; onChange: (k: K) => void; testPrefix?: string }) {
   return (
     <View style={styles.tabs} accessibilityRole="tablist">
@@ -115,6 +119,7 @@ export function Tabs<K extends string>({ items, value, onChange, testPrefix = 't
             testID={`${testPrefix}-${key}`}
             accessibilityRole="tab"
             aria-selected={on}
+            hitSlop={TAB_SLOP}
             onPress={() => onChange(key)}
             style={({ pressed }) => [styles.tab, on && styles.tabOn, pressed && styles.btnPressed]}>
             <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={[styles.tabText, on && styles.tabTextOn]}>{title}</Text>
@@ -141,7 +146,8 @@ export function Toggle({ title, hint, value, onChange, testID }: { title: string
         <Text style={styles.p}>{title}</Text>
         {hint ? <Text style={[styles.toggleHint, styles.muted]}>{hint}</Text> : null}
       </View>
-      <View style={styles.inert}>
+      {/* переключатель только показывает состояние: для чтения с экрана строка — один элемент */}
+      <View style={styles.inert} aria-hidden importantForAccessibility="no-hide-descendants">
         <Switch value={value} trackColor={{ false: colors.line, true: colors.accent }} thumbColor={colors.card} />
       </View>
     </Pressable>
