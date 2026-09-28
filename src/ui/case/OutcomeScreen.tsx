@@ -29,9 +29,10 @@ export function OutcomeScreen({ view, next, back }: { view: VisitView | undefine
   return (
     <Screen footer={<Button testID={next.testID} title={next.title} onPress={next.run} />}>
       <Card>
+        {view.byDoctor ? <P testID="visit-by-doctor">{view.byDoctor}</P> : null}
         <H>{x.verdict === 'correct' ? t.correct : x.verdict === 'partly' ? t.partly : t.wrong}</H>
         <P testID="visit-truth">{t.truth(x.truthName)}</P>
-        <P muted>{t.confidence(x.outOf10)}</P>
+        <P muted>{view.byDoctor ? t.doctorConfidence(x.outOf10) : t.confidence(x.outOf10)}</P>
         <Text style={styles.label}>{t.outcomeLabel}</Text>
         <P testID="visit-outcome">{x.outcome}</P>
         {view.firstTry && <P muted testID="visit-first-try">{view.firstTry}</P>}
@@ -70,7 +71,7 @@ export function OutcomeScreen({ view, next, back }: { view: VisitView | undefine
             {x.notes.map((n, i) => <P key={i}>{`• ${n}`}</P>)}
           </>
         )}
-        <Text style={styles.label}>{t.yourPlan}</Text>
+        <Text style={styles.label}>{view.byDoctor ? t.doctorPlan : t.yourPlan}</Text>
         {x.plan.length === 0 ? <P muted>{t.noTreatment}</P> : x.plan.map((p, i) => <P key={i}>{`${p.name} — ${p.role}`}</P>)}
         <P muted>{`${t.settingLabel}: ${x.settingName}`}</P>
       </Card>
@@ -85,7 +86,7 @@ export function OutcomeScreen({ view, next, back }: { view: VisitView | undefine
             <P>{x.idle.join(', ')}</P>
           </>
         )}
-        <Text style={styles.label}>{t.timelineLabel}</Text>
+        <Text style={styles.label}>{view.byDoctor ? t.doctorTimeline : t.timelineLabel}</Text>
         {x.timeline.map((p, i) => <P key={i} muted>{`${p.label}: ${p.truth} · ${p.chosen}`}</P>)}
         <Text style={styles.label}>{t.causes}</Text>
         {x.causes.map((c, i) => <P key={i}>{`${c.finding} — ${c.cause}`}</P>)}

@@ -13,12 +13,16 @@ import { examInfo, examsByAction, examTerm, findingInfo, type TermInfo, type Vis
 import { Button, Card, Chip, Chips, H, P, Screen, Tabs } from '@/ui/components';
 import { TermSheet } from '@/ui/TermSheet';
 import { colors, radius, space } from '@/ui/theme';
-import type { CaseActions } from './actions';
+import type { CaseActions, FooterAction } from './actions';
 import { ResultPicture } from './ResultPicture';
 
 type Tab = 'ask' | 'examine' | 'order';
 
-export function PatientCard({ view: v, actions }: { view: VisitView; actions: CaseActions }) {
+/**
+ * `readOnly` — приём ведёт нанятый врач (spec 2026-09-hired-doctors, часть 19): видно, что он
+ * узнал, но действий и решения нет; внизу — своя кнопка («Забрать себе»).
+ */
+export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; actions: CaseActions; readOnly?: { note: string; footer: FooterAction & { hint?: string } } }) {
   // вкладка привязана к пациенту: новый начинается с «Спросить»
   const [picked, setPicked] = useState<{ patient: number; tab: Tab }>({ patient: v.portrait.key, tab: 'ask' });
   const tab: Tab = picked.patient === v.portrait.key ? picked.tab : 'ask';
@@ -49,9 +53,11 @@ export function PatientCard({ view: v, actions }: { view: VisitView; actions: Ca
   };
 
   // внизу, под большим пальцем: до решения — «Решение», после — итог и разбор
-  const footer = v.decision
-    ? <Button testID="visit-to-outcome" title={d.toOutcome} onPress={() => router.push(actions.routes.outcome)} />
-    : <Button testID="visit-decide" title={`${d.open} ▶`} hint={v.draft.diagnosis ? d.diagnosis(v.draftDiagnosisName ?? '') : undefined} onPress={() => router.push(actions.routes.decision)} />;
+  const footer = readOnly
+    ? <Button testID={readOnly.footer.testID} title={readOnly.footer.title} hint={readOnly.footer.hint} onPress={readOnly.footer.run} />
+    : v.decision
+      ? <Button testID="visit-to-outcome" title={d.toOutcome} onPress={() => router.push(actions.routes.outcome)} />
+      : <Button testID="visit-decide" title={`${d.open} ▶`} hint={v.draft.diagnosis ? d.diagnosis(v.draftDiagnosisName ?? '') : undefined} onPress={() => router.push(actions.routes.decision)} />;
 
   return (
     <Screen resetKey={v.portrait.key} footer={footer}>
@@ -62,6 +68,7 @@ export function PatientCard({ view: v, actions }: { view: VisitView; actions: Ca
             <H>{v.title}</H>
             <P muted testID="visit-clock">{`${t.clock(v.clock)} · ${t.spent(v.minutesSpent, T.common.rub(v.money))}`}</P>
             {v.returnNote ? <P testID="visit-return">{v.returnNote}</P> : null}
+            {readOnly ? <P testID="visit-colleague">{readOnly.note}</P> : null}
             {v.payerNote ? <P muted testID="visit-payer">{v.payerNote}</P> : null}
           </View>
         </View>
@@ -95,7 +102,7 @@ export function PatientCard({ view: v, actions }: { view: VisitView; actions: Ca
           </Animated.View>
         ))}
         {v.pending.map((p, i) => <P key={i} muted>{t.pending(p.name, p.at)}</P>)}
-        {v.pending.length > 0 && !v.decision && (
+        {v.pending.length > 0 && !v.decision && !readOnly && (
           <>
             <Button kind="plain" testID="visit-wait" title={t.wait} onPress={actions.waitForResults} />
             {v.canSendAway && actions.sendAway && <Button kind="plain" testID="visit-send-away" title={t.sendAway} hint={t.sendAwayHint} onPress={actions.sendAway} />}
@@ -104,7 +111,7 @@ export function PatientCard({ view: v, actions }: { view: VisitView; actions: Ca
         {!hinted && <P muted>{t.tapForHint}</P>}
       </Card>
 
-      {v.decision ? (
+      {readOnly ? null : v.decision ? (
         <Card>
           <H>{d.finished}</H>
           <P testID="visit-finished">{v.decision.outcome}</P>

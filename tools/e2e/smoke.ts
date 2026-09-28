@@ -110,10 +110,10 @@ function sandboxEndOfDaySave(): string {
 }
 
 /**
- * Песочница с нанятым терапевтом (spec 2026-09-hired-doctors) в конце дня 1: справа от
- * амбулатории — коридор, ординаторская и второй кабинет; врач принял своих, вы — остальных.
+ * Песочница с нанятым терапевтом (spec 2026-09-hired-doctors), день 1 открыт: справа от
+ * амбулатории — коридор, ординаторская и второй кабинет.
  */
-function hiredEndOfDaySave(): string {
+function hiredDayOne() {
   const { db } = buildDb();
   const s = newSandbox(db, { seed: 43, season: 'winter', difficulty: 'doctor', start: 'clinic', budget: db.economy.sandbox.budgets.normal });
   const cells: [number, number][] = [];
@@ -127,6 +127,31 @@ function hiredEndOfDaySave(): string {
   apply(db, s, { kind: 'hire', id: therapist.id });
   apply(db, s, { kind: 'assign', id: therapist.id, room: office });
   apply(db, s, { kind: 'nextDay' });
+  return { db, s };
+}
+
+/**
+ * Посреди дня 1 (часть 19): вы свободны, терапевт ведёт приём — уже есть результаты, и ещё
+ * 10 минут он будет у врача (проверено на копии дня), чтобы часы до паузы в сценарии не успели.
+ */
+function hiredMidDaySave(): { save: string; id: string } {
+  const { db, s } = hiredDayOne();
+  const stays = (id: string) => {
+    const copy = structuredClone(s);
+    for (let i = 0; i < 10; i++) apply(db, copy, { kind: 'advance', seconds: 60 });
+    return copy.patients[id].status === 'inRoom' && copy.patients[id].by === s.patients[id].by;
+  };
+  const busy = () => Object.values(s.patients).find(p => p.by !== undefined && p.status === 'inRoom' && p.results.length > 1 && stays(p.id));
+  for (let i = 0; i < 9 * 60 && !busy(); i++) apply(db, s, { kind: 'advance', seconds: 60 });
+  const p = busy()!;
+  return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s }), id: p.id };
+}
+
+/**
+ * Песочница с нанятым терапевтом в конце дня 1: врач принял своих, вы — остальных.
+ */
+function hiredEndOfDaySave(): string {
+  const { db, s } = hiredDayOne();
   const see = () => {
     apply(db, s, { kind: 'call', id: s.queue[0] });
     apply(db, s, { kind: 'exam', exam: 'exam.ask_complaints' });
@@ -701,8 +726,38 @@ try {
   await page.getByTestId('visit-payment').waitFor({ timeout: 10_000 });
   check(/^оплата\n(омс|дмс|платно): \d/i.test(await text(page, 'visit-payment')), `песочница, итог приёма: ${(await text(page, 'visit-payment')).replace(/\n/g, ' · ')}`);
 
+  // нанятый врач, часть 19: посреди дня его пациент — в разделе «У врачей»; открыть — карта
+  // только для чтения, «Забрать себе» — пациент у вас в кабинете со всем, что врач узнал
+  const mid = hiredMidDaySave();
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', mid.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId('shift-colleagues').waitFor({ timeout: 15_000 });
+  await page.getByTestId('tab-pause').click();
+  const atDoctor = await text(page, `colleague-${mid.id}`);
+  // подпись раздела — заглавными (стиль подписей), innerText отдаёт как на экране
+  check(/^у врачей\n/i.test(await text(page, 'shift-colleagues')) && /\nтерапевт .+ · на приёме с \d\d:\d\d$/.test(atDoctor),
+    `нанятый врач, «У врачей»: ${atDoctor.replace(/\n/g, ' · ')}`);
+  await page.waitForTimeout(1500); // лист меню «Продолжить» ещё уезжает вниз (веб)
+  await page.screenshot({ path: join(OUT, '14-hired-colleagues.png'), fullPage: true });
+  await page.getByTestId(`colleague-${mid.id}`).click();
+  await page.getByTestId('visit-colleague').waitFor({ timeout: 10_000 });
+  const took = await text(page, 'colleague-take');
+  check((await text(page, 'visit-colleague')).startsWith('Приём ведёт терапевт') && took.includes('Забрать себе') && took.includes('Сразу к вам в кабинет')
+    && (await page.getByTestId('visit-decide').count()) === 0 && (await page.getByTestId('exam-exam.ask_onset').count()) === 0,
+    `приём врача — только для чтения: ${await text(page, 'visit-colleague')} · ${took.replace(/\n/g, ' · ')}`);
+  await page.screenshot({ path: join(OUT, '14-hired-colleague-case.png'), fullPage: true });
+  await page.getByTestId('colleague-take').click();
+  await visible(page, 'visit-decide').waitFor({ timeout: 10_000 });
+  check((await page.locator('[data-testid="visit-colleague"]:visible').count()) === 0 && (await visible(page, 'exam-exam.ask_onset').count()) === 1,
+    'забрали себе: пациент у вас в кабинете, карта — ваша');
+
   // нанятый врач (spec 2026-09-hired-doctors): песочница с терапевтом во втором кабинете — в
-  // итогах дня его строка, а в «Персонале» он — во втором кабинете врача
+  // итогах дня его строка и его приёмы к разбору, а в «Персонале» он — во втором кабинете врача
   await page.goto(base);
   await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
   await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', hiredEndOfDaySave()]);
@@ -718,6 +773,14 @@ try {
     `нанятый врач, итоги дня: ${await text(page, 'summary-seen')} · ${colleagues.replace(/\n/g, ' · ')}`);
   await page.waitForTimeout(1500); // лист меню «Продолжить» ещё уезжает вниз (веб)
   await page.screenshot({ path: join(OUT, '14-hired-summary.png'), fullPage: true });
+  // разбор приёма врача — как ваш: кто вёл, его лечение, как прошёл бы разумный
+  await page.getByTestId('summary-colleagues').locator('[data-testid^="case-"]').first().click();
+  await page.getByTestId('visit-by-doctor').waitFor({ timeout: 10_000 });
+  check(/^Приём (вёл|вела) терапевт /.test(await text(page, 'visit-by-doctor')) && (await page.getByTestId('visit-truth').count()) === 1,
+    `разбор приёма врача: ${await text(page, 'visit-by-doctor')}`);
+  await page.screenshot({ path: join(OUT, '14-hired-review.png'), fullPage: true });
+  await page.getByTestId('shift-to-summary').click();
+  await page.getByTestId('summary-colleagues').waitFor({ timeout: 10_000 });
   await page.getByTestId('sandbox-staff').click();
   await page.getByTestId('staff-total').waitFor({ timeout: 10_000 });
   const staffTexts = await page.locator('[data-testid^="staff-s"]').allInnerTexts();

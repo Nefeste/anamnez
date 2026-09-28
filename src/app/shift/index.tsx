@@ -16,7 +16,7 @@ import { ClinicMap } from '@/render/map/ClinicMap';
 import { CLINIC } from '@/state/clinicMap';
 import { blockText, type CashView } from '@/state/sandboxView';
 import {
-  callPatient, closeDay, loadShift, nextDay, openCase, pauseClock, type QueueRow, type ShiftView, SPEEDS, type Speed, type SummaryView,
+  callPatient, closeDay, leaveCase, loadShift, nextDay, openCase, openColleagueCase, pauseClock, type QueueRow, type ShiftView, SPEEDS, type Speed, type SummaryView,
   type RoomView, saveNow, setSpeed, skipIdle, startSandbox, startShift, TICK_MS, tick, useBuild, useCampaign, useShift, type WhoView,
 } from '@/state/session';
 import { CaseRow } from '@/ui/case/CaseRow';
@@ -209,7 +209,15 @@ function Queue({ v }: { v: ShiftView }) {
   };
   const enter = () => {
     setEntering(undefined);
+    leaveCase(); // карта — вашего пациента, а не открытого приёма врача
     openVisit();
+  };
+  // приём нанятого врача — только для чтения, оттуда «Забрать себе» (spec 2026-09-hired-doctors, часть 19)
+  const openColleague = (id: string) => {
+    buzz('tap');
+    setSelected(undefined);
+    openColleagueCase(id);
+    router.push('/shift/colleague');
   };
 
   const first = v.queue[0];
@@ -242,7 +250,9 @@ function Queue({ v }: { v: ShiftView }) {
         room={v.rooms && room ? room : undefined}
         onRoom={v.rooms ? setRoom : undefined}
       />
-      {who && selected !== undefined ? <WhoStrip who={who} onCall={who.callable ? () => call(selected) : undefined} /> : null}
+      {who && selected !== undefined ? (
+        <WhoStrip who={who} onCall={who.callable ? () => call(selected) : undefined} onOpen={who.colleague ? () => openColleague(selected) : undefined} />
+      ) : null}
       {!who && room && v.rooms?.[room] ? <RoomStrip room={v.rooms[room]} /> : null}
     </>
   );
@@ -283,6 +293,13 @@ function Queue({ v }: { v: ShiftView }) {
         </Card>
       )}
 
+      {v.colleagues.length > 0 && (
+        <Card testID="shift-colleagues">
+          <Text style={styles.label}>{t.colleagueCase.list}</Text>
+          {v.colleagues.map(c => <Button key={c.id} testID={`colleague-${c.id}`} kind="plain" title={c.name} hint={c.hint} onPress={() => openColleague(c.id)} />)}
+        </Card>
+      )}
+
       {v.log.length > 0 && (
         <Card>
           <Text style={styles.label}>{t.log}</Text>
@@ -301,8 +318,8 @@ function Queue({ v }: { v: ShiftView }) {
 
 const TRIAGE_COLOR: Record<Triage, string> = { red: colors.red, yellow: colors.yellow, green: colors.green };
 
-/** Кого коснулись на карте: кто это и что делает; ждущего приёма можно пригласить. */
-function WhoStrip({ who, onCall }: { who: WhoView; onCall?: () => void }) {
+/** Кого коснулись на карте: кто это и что делает; ждущего приёма можно пригласить, приём нанятого врача — открыть. */
+function WhoStrip({ who, onCall, onOpen }: { who: WhoView; onCall?: () => void; onOpen?: () => void }) {
   return (
     <View testID="map-who" style={styles.who}>
       <View style={styles.itemHead}>
@@ -315,6 +332,10 @@ function WhoStrip({ who, onCall }: { who: WhoView; onCall?: () => void }) {
         {onCall ? (
           <Pressable testID="map-invite" accessibilityRole="button" onPress={onCall} style={({ pressed }) => [styles.invite, pressed && styles.pressed]}>
             <Text style={styles.inviteText}>{`${T.shift.map.invite} ▶`}</Text>
+          </Pressable>
+        ) : onOpen ? (
+          <Pressable testID="map-open-colleague" accessibilityRole="button" onPress={onOpen} style={({ pressed }) => [styles.invite, pressed && styles.pressed]}>
+            <Text style={styles.inviteText}>{`${T.shift.colleagueCase.open} ▶`}</Text>
           </Pressable>
         ) : null}
       </View>
@@ -400,6 +421,10 @@ function Summary({ v }: { v: ShiftView }) {
             <View key={c.id} style={styles.colleague}>
               <P>{c.title}</P>
               <P muted>{c.line}</P>
+              {/* его приёмы — к разбору, как ваши (часть 19) */}
+              {c.cases.map(r => (
+                <CaseRow key={r.id} testID={`case-${r.id}`} verdict={r.verdict} title={r.name} subtitle={r.diagnosis} grade={r.overall} onPress={() => open(r.id)} />
+              ))}
             </View>
           ))}
         </Card>
