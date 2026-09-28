@@ -81,7 +81,7 @@ Gradle не считает переменные окружения входом 
   `AD_ID`, значки лаунчеров, push, install referrer — вырезаны в `app.json`
   (`blockedPermissions`), любое лишнее разрешение — ошибка сборки. Белый список сейчас:
   `VIBRATE` (вибрация), `MODIFY_AUDIO_SETTINGS` (`expo-audio`, обычное разрешение без
-  запроса у игрока) и служебное `com.anamnez.game.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`;
+  запроса у игрока) и служебное `games.gornitsa.anamnez.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`;
   окончательно сверяется с манифестом первой подписанной сборки. `WAKE_LOCK` объявляет
   плеер `media3-exoplayer` внутри `expo-audio` для режима «не засыпать при
   воспроизведении»; `expo-audio` этот режим не включает, поэтому разрешение вырезано в

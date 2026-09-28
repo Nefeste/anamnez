@@ -53,7 +53,7 @@ npm run store -- --only icons            # только иконки (store/icon
 - [x] почта поддержки — support@gornitsa.games, вписана во все тексты (27.09.2026)
 - [ ] раздел «Анамнез» — в единой политике студии https://gornitsa.games/privacy.html (текст —
       `privacy.ru.md`, `privacy.en.md`); страница игры — https://gornitsa.games/anamnez/ (PR сайта #9)
-- [ ] в консоли RuStore: новое приложение → тип «Игра», пакет `com.anamnez.game`,
+- [ ] в консоли RuStore: новое приложение → тип «Игра», пакет `games.gornitsa.anamnez`,
       категория «Симуляторы», возраст 16+; тексты — из `listing.ru.md`, иконка и снимки —
       из этой папки, анкеты — по `forms.md`
 - [ ] включить предзаказ и указать ожидаемую дату выхода; сверить условия предзаказа в
