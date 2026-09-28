@@ -319,6 +319,7 @@ function riskArticle(db: ContentDb, r: Risk): Article {
     return k ? [ref(db, x.id, e.level[k.level])] : [];
   }).sort(byTitle);
   if (limits.length > 0) blocks.push({ key: 'limits', title: e.limits, refs: limits });
+  blocks.push(sources(db, r));
   return { id: r.id, section: 'risks', title: r.name.ru, subtitle: e.riskKind, blocks };
 }
 

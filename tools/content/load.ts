@@ -314,7 +314,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     db.exams[e.id] = out;
   }
   for (const r of Object.values(risks).sort((a, b) => (a.id < b.id ? -1 : 1))) {
-    const out: Risk = { id: r.id, name: r.name, p: { m: Math.round(r.prevalence.m * 100), f: Math.round(r.prevalence.f * 100) }, findings: r.findings.map(compileLink), review: r.review };
+    const out: Risk = { id: r.id, name: r.name, p: { m: Math.round(r.prevalence.m * 100), f: Math.round(r.prevalence.f * 100) }, findings: r.findings.map(compileLink), sources: r.sources, review: r.review };
     if (r.ageMin) out.ageMin = r.ageMin;
     if (r.ageMax) out.ageMax = r.ageMax;
     db.risks[r.id] = out;

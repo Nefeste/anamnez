@@ -11,7 +11,9 @@ describe('об игре: источники базы', () => {
     const all = groups.flatMap(g => g.items);
     expect(all.length).toBeGreaterThan(50);
     expect(new Set(all).size).toBe(all.length);
-    const notes = [...Object.values(db.conditions), ...Object.values(db.exams), ...Object.values(db.treatments)]
+    // источники факторов риска — тоже: доли людей с ними взяты оттуда
+    expect(all).toContain('Минздрав РФ. Ожирение, 2024');
+    const notes = [...Object.values(db.conditions), ...Object.values(db.exams), ...Object.values(db.treatments), ...Object.values(db.risks)]
       .flatMap(x => x.sources)
       .flatMap(s => (s.note ? [s.note] : []));
     expect(notes.length).toBeGreaterThan(0);
