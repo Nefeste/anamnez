@@ -19,6 +19,8 @@ export const PROFILE_SCHEMA_VERSION = 1;
 export const ARCHIVE_SIZE = 50;
 /** Сколько ключей закрытых дней помнить: день не засчитывается достижениям дважды. */
 export const DAY_KEYS = 60;
+/** Портретов врача на выбор в форме (profileView.DOCTOR_PORTRAITS). */
+export const PORTRAITS = 6;
 /** «Принесла» прежняя практика: достижение за приёмы до 0.0.26 — строки на итоге у него нет. */
 export const EARLIER = 'earlier';
 /** Сколько дней «Случая дня» хранить: в списке — последние 30. */
@@ -30,6 +32,8 @@ export interface Doctor {
   first: string;
   last: string;
   sex: 'm' | 'f';
+  /** какой из портретов формы врача (profileView.DOCTOR_PORTRAITS); нет — первый */
+  portrait?: number;
 }
 
 export interface ProfileStats {
@@ -40,6 +44,14 @@ export interface ProfileStats {
   grades: Record<Grade, number>;
   /** сколько стоили обследования всех приёмов, ₽ */
   money: number;
+  /**
+   * С 0.0.30 (spec 2026-09-profile, часть 16): минуты врача — и у скольких приёмов они есть
+   * (у прежних нет); антибиотики — назначены и показаны; опасное — встретилось и распознано.
+   */
+  minutes: number;
+  timed: number;
+  antibiotics: { given: number; indicated: number };
+  danger: { met: number; caught: number };
 }
 
 /** Закрытый приём — всё, из чего заново строится его разбор (session.ts, archiveCaseView). */
@@ -116,7 +128,10 @@ export interface ProfileView extends Profile {
 }
 
 const GRADES: Grade[] = ['A', 'B', 'C', 'D'];
-const emptyStats = (): ProfileStats => ({ cases: 0, correct: 0, partly: 0, wrong: 0, grades: { A: 0, B: 0, C: 0, D: 0 }, money: 0 });
+const emptyStats = (): ProfileStats => ({
+  cases: 0, correct: 0, partly: 0, wrong: 0, grades: { A: 0, B: 0, C: 0, D: 0 }, money: 0,
+  minutes: 0, timed: 0, antibiotics: { given: 0, indicated: 0 }, danger: { met: 0, caught: 0 },
+});
 const emptyProgress = (): CareerProgress => ({ got: {}, days: 0, run: 0, gradeA: 0, thrift: 0, allergy: 0, noLeftDays: 0, daily: 0, closedDays: [] });
 const empty = (): Profile => ({ stats: emptyStats(), seen: {}, archive: [], achievements: emptyProgress(), daily: {}, best: {} });
 const VERDICTS = ['correct', 'partly', 'wrong'] as const;
@@ -167,13 +182,19 @@ export function sanitizeProfile(data: unknown): Profile {
   const doc = d.doctor;
   if (isObject(doc) && typeof doc.first === 'string' && typeof doc.last === 'string' && (doc.sex === 'm' || doc.sex === 'f')) {
     out.doctor = { first: doc.first, last: doc.last, sex: doc.sex };
+    if (Number.isInteger(doc.portrait) && (doc.portrait as number) >= 0 && (doc.portrait as number) < PORTRAITS) out.doctor.portrait = doc.portrait as number;
   }
   const st = isObject(d.stats) ? d.stats : {};
   const grades = isObject(st.grades) ? st.grades : {};
+  const ab = isObject(st.antibiotics) ? st.antibiotics : {};
+  const dn = isObject(st.danger) ? st.danger : {};
   out.stats = {
     cases: count(st.cases), correct: count(st.correct), partly: count(st.partly), wrong: count(st.wrong),
     grades: { A: count(grades.A), B: count(grades.B), C: count(grades.C), D: count(grades.D) },
     money: count(st.money),
+    minutes: count(st.minutes), timed: count(st.timed),
+    antibiotics: { given: count(ab.given), indicated: count(ab.indicated) },
+    danger: { met: count(dn.met), caught: count(dn.caught) },
   };
   if (isObject(d.seen)) for (const [id, n] of Object.entries(d.seen)) if (count(n) > 0) out.seen[id] = count(n);
   const a = isObject(d.achievements) ? d.achievements : {};
@@ -255,7 +276,8 @@ function persist(): Promise<unknown> {
 
 /** Имя и пол врача: при первом запуске и из профиля. */
 export function setDoctor(doctor: Doctor): Promise<unknown> {
-  current = { ...current, doctor: { first: doctor.first.trim(), last: doctor.last.trim(), sex: doctor.sex } };
+  const portrait = Number.isInteger(doctor.portrait) && doctor.portrait! >= 0 && doctor.portrait! < PORTRAITS ? { portrait: doctor.portrait } : {};
+  current = { ...current, doctor: { first: doctor.first.trim(), last: doctor.last.trim(), sex: doctor.sex, ...portrait } };
   changed();
   return persist();
 }
@@ -275,7 +297,9 @@ export function recordCases(cases: readonly Omit<CaseRecord, 'key'>[]): number {
     .filter(c => c.patient.closed && !known.has(caseKey(c.seed, c.patient.id)))
     .sort((a, b) => a.patient.closed!.at - b.patient.closed!.at);
   if (fresh.length === 0) return 0;
-  const stats: ProfileStats = { ...current.stats, grades: { ...current.stats.grades } };
+  const stats: ProfileStats = {
+    ...current.stats, grades: { ...current.stats.grades }, antibiotics: { ...current.stats.antibiotics }, danger: { ...current.stats.danger },
+  };
   const seen = { ...current.seen };
   const ach = { ...current.achievements, got: { ...current.achievements.got } };
   const added: CaseRecord[] = [];
@@ -288,6 +312,16 @@ export function recordCases(cases: readonly Omit<CaseRecord, 'key'>[]): number {
     stats.money += c.patient.spent.money;
     for (const cond of c.patient.patient.truth.conditions) seen[cond.id] = (seen[cond.id] ?? 0) + 1;
     const f = caseFacts(db, c.patient);
+    stats.minutes += Math.round(c.patient.spent.seconds / 60);
+    stats.timed++;
+    if (f.antibiotic) {
+      stats.antibiotics.given++;
+      if (f.antibioticIndicated) stats.antibiotics.indicated++;
+    }
+    if (f.danger) {
+      stats.danger.met++;
+      if (f.caught) stats.danger.caught++;
+    }
     ach.run = f.correct ? ach.run + 1 : 0;
     if (f.gradeA) ach.gradeA++;
     if (f.thrift) ach.thrift++;

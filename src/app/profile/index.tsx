@@ -1,13 +1,14 @@
-// Профиль (spec 2026-09-first-shift, «Профиль-минимум»): имя врача, итоги практики, достижения
-// (spec 2026-09-campaign, часть 13) и архив последних 50 приёмов — каждый открывается тем же
-// разбором, что в итогах дня.
+// Профиль (spec 2026-09-first-shift, «Профиль-минимум»): имя, портрет и звание врача
+// (spec 2026-09-profile, часть 16), итоги, достижения (spec 2026-09-campaign, часть 13) и архив
+// последних 50 приёмов — каждый открывается тем же разбором, что в итогах дня.
 import { router } from 'expo-router';
 import { useEffect } from 'react';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Text } from '@/ui/text';
 import { T } from '@/i18n';
+import { Portrait } from '@/render/Portrait';
 import { loadProfile, useProfile } from '@/state/profile';
-import { achievementCount, archiveRows, doctorName, practiceLines } from '@/state/profileView';
+import { achievementCount, archiveRows, DOCTOR_AGE, doctorName, portraitSeed, practiceLines, rankLadder, rankName } from '@/state/profileView';
 import { CaseRow } from '@/ui/case/CaseRow';
 import { Button, Card, P, Screen } from '@/ui/components';
 import { colors, space } from '@/ui/theme';
@@ -24,7 +25,14 @@ export default function ProfileScreen() {
   return (
     <Screen>
       <Card>
-        <Text testID="profile-name" style={styles.name}>{p.doctor ? doctorName(p.doctor) : t.title}</Text>
+        <View style={styles.head}>
+          {p.doctor ? <Portrait seed={portraitSeed(p.doctor)} sex={p.doctor.sex} age={DOCTOR_AGE} size={64} /> : null}
+          <View style={styles.fill}>
+            <Text testID="profile-name" style={styles.name}>{p.doctor ? doctorName(p.doctor) : t.title}</Text>
+            <Text testID="profile-rank" style={styles.rank}>{rankName(p.stats.cases)}</Text>
+          </View>
+        </View>
+        <P muted>{rankLadder()}</P>
         <Button kind="plain" testID="profile-edit" title={t.edit} onPress={() => router.push('/profile/doctor')} />
       </Card>
       <Card>
@@ -56,6 +64,9 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
+  head: { flexDirection: 'row', alignItems: 'center', gap: space.m },
+  fill: { flex: 1 },
   name: { fontSize: 22, fontWeight: '700', color: colors.ink },
+  rank: { fontSize: 15, fontWeight: '600', color: colors.accent, marginTop: 2 },
   label: { fontSize: 13, fontWeight: '700', color: colors.muted, textTransform: 'uppercase', marginBottom: space.xs },
 });

@@ -18,6 +18,31 @@ export interface ArchiveRow {
 
 export const doctorName = (d: Doctor) => T.profile.doctor(d.first, d.last);
 
+/**
+ * Портреты врача на выбор (spec 2026-09-profile, часть 16): зёрна рисунка кодом, как у
+ * пациентов; у врача-мужчины и врача-женщины при одном зерне — разные лица. Возраст —
+ * молодого врача.
+ */
+export const DOCTOR_PORTRAITS = [3, 14, 27, 38, 49, 60] as const;
+export const DOCTOR_AGE = 31;
+export const portraitSeed = (d: Doctor) => DOCTOR_PORTRAITS[d.portrait ?? 0] ?? DOCTOR_PORTRAITS[0];
+
+/** Звание — по числу принятых пациентов во всех режимах; только растёт. */
+export const RANK_CASES = [0, 25, 100, 300] as const;
+
+export function rankOf(cases: number): number {
+  let r = 0;
+  RANK_CASES.forEach((n, i) => {
+    if (cases >= n) r = i;
+  });
+  return r;
+}
+
+export const rankName = (cases: number) => T.profile.ranks[rankOf(cases)];
+
+/** Лестница званий целиком — без «осталось». */
+export const rankLadder = () => T.profile.rankLadder(RANK_CASES.map((n, i) => ({ name: T.profile.ranks[i], cases: n })));
+
 /** Сколько болезней базы встречалось в практике и сколько их всего. */
 export function seenCount(p: Profile): { seen: number; total: number } {
   const ids = Object.keys(db.conditions);
@@ -35,6 +60,10 @@ export function practiceLines(p: Profile): string[] {
     t.verdicts(s.correct, s.partly, s.wrong, Math.round((s.correct / s.cases) * 100)),
     t.grades(s.grades.A, s.grades.B, s.grades.C, s.grades.D),
     t.money(T.common.rub(Math.round(s.money / s.cases))),
+    // с 0.0.30: у прежних приёмов этих счётчиков нет — у строк своё «из скольких»
+    ...(s.timed > 0 ? [t.minutes(Math.round(s.minutes / s.timed))] : []),
+    ...(s.antibiotics.given > 0 ? [t.antibiotics(s.antibiotics.indicated, s.antibiotics.given)] : []),
+    ...(s.danger.met > 0 ? [t.danger(s.danger.caught, s.danger.met)] : []),
     t.seen(seen, total),
   ];
 }

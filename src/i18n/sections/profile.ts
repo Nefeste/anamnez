@@ -9,7 +9,7 @@ export const profile = {
   title: 'Профиль',
   // первый запуск и правка имени
   doctorTitle: 'Кто вы в игре',
-  doctorText: 'Имя и пол врача — для обращений в игре. Их можно поменять в профиле.',
+  doctorText: 'Имя, пол и портрет врача — для обращений в игре. Их можно поменять в профиле.',
   sex: { f: 'Женщина', m: 'Мужчина' } as Record<string, string>,
   first: 'Имя',
   last: 'Фамилия',
@@ -27,6 +27,14 @@ export const profile = {
   verdicts: (correct: number, partly: number, wrong: number, pct: number) => `Диагноз верен: ${correct} (${pct}\u00a0%) · почти: ${partly} · неверно: ${wrong}`,
   grades: (a: number, b: number, c: number, d: number) => `Оценки приёмов: A — ${a} · B — ${b} · C — ${c} · D — ${d}`,
   money: (rub: string) => `Обследования в среднем: ${rub} на приём`,
+  minutes: (n: number) => `В среднем на приём — ${n}\u00a0мин`,
+  antibiotics: (ok: number, all: number) => `Антибиотик по показаниям — ${ok} из ${all}\u00a0${pluralRu(all, 'назначения', 'назначений', 'назначений')}`,
+  danger: (ok: number, all: number) => `Нужны были стационар или скорая — направлено ${ok} из ${all}`,
+  ranks: ['Интерн', 'Ординатор', 'Врач', 'Врач высшей категории'],
+  rankLadder: (steps: { name: string; cases: number }[]) =>
+    `Звание растёт с принятыми пациентами: ${steps.map((x, i) => (i === 0 ? x.name.toLowerCase() : `${x.name.toLowerCase()} (${x.cases})`)).join(' → ')}.`,
+  portrait: 'Портрет',
+  portraitN: (n: number) => `Портрет ${n}`,
   seen: (n: number, total: number) => `Встречалось болезней: ${n} из ${total}`,
   archive: 'Архив приёмов',
   archiveHint: 'Последние 50 приёмов — с разбором, как в итогах дня.',

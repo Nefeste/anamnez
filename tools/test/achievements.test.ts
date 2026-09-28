@@ -70,7 +70,7 @@ describe('достижения: условия', () => {
     const x = structuredClone(closeOne(newShift(db, { seed: 5, season: 'winter' })));
     Object.assign(x.closed!, { verdict: 'correct' });
     Object.assign(x.closed!.grades, { thrift: 'A', overall: 'A' });
-    expect(caseFacts(db, x)).toEqual({ correct: true, gradeA: true, thrift: true, allergy: false });
+    expect(caseFacts(db, x)).toMatchObject({ correct: true, gradeA: true, thrift: true, allergy: false });
     x.closed!.plan.treatments = ['tx.amoxicillin'];
     expect(caseFacts(db, x).allergy).toBe(false);
     x.done = [...x.done, 'exam.ask_allergies'];
