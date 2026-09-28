@@ -14,7 +14,40 @@ export interface Plan {
 export type TxRole = 'firstLine' | 'acceptable' | 'supportive' | 'notIndicated' | 'harmful';
 const ROLES: TxRole[] = ['firstLine', 'acceptable', 'supportive', 'notIndicated', 'harmful'];
 
-export const SETTING_ORDER: Record<Setting, number> = { home: 0, ward: 1, ambulance: 2 };
+/** Насколько серьёзна помощь: чем выше, тем срочнее и сложнее. */
+export const SETTING_ORDER: Record<Setting, number> = { home: 0, ward: 1, admit: 1, ambulance: 2, surgery: 3, transfer: 3 };
+
+/**
+ * Что закрывает выбор врача (spec 2026-09-chapter-2, «Место лечения»): «Вызвать скорую» везёт
+ * в больницу, где сделают нужное, — и операцию, и центр; своя палата — стационар сразу, но не
+ * операцию и не центр.
+ */
+const COVERS: Record<Setting, readonly Setting[]> = {
+  home: ['home'],
+  ward: ['ward'],
+  ambulance: ['ambulance', 'surgery', 'transfer'],
+  admit: ['ward', 'ambulance'],
+  surgery: ['surgery'],
+  transfer: ['ambulance', 'surgery', 'transfer'],
+};
+
+/** Подходит ли выбор к тому, что нужно пациенту: да, меньше нужного, больше нужного. */
+export function settingFit(need: Setting, chosen: Setting): 'ok' | 'under' | 'over' {
+  if (COVERS[chosen].includes(need)) return 'ok';
+  return SETTING_ORDER[chosen] < SETTING_ORDER[need] ? 'under' : 'over';
+}
+
+/** Где свободна своя койка — там стационар свой (часть 26); операционная и перевод — с главой 2. */
+export interface Venue {
+  ward?: boolean;
+}
+
+/** Что выбрать при такой нужде здесь: в амбулатории — направить или скорая, со своей палатой — в неё. */
+export function choiceFor(need: Setting, venue: Venue = {}): Setting {
+  if (need === 'home') return 'home';
+  if (need === 'ward' || need === 'ambulance') return venue.ward ? 'admit' : need;
+  return 'ambulance';
+}
 
 export interface Violation {
   tx: Id;

@@ -23,6 +23,8 @@ export interface ClinicLayout extends HospitalLayout {
   offices: Record<string, Cell>;
   /** ваш кабинет — первый кабинет врача, до которого можно дойти */
   mine?: string;
+  /** койки палат по помещениям: номер койки лежащего (spec 2026-09-chapter-2, часть 26) */
+  beds: Record<string, Cell[]>;
   /** стулья зоны ожидания — очередь к врачу; ближний к двери ряд первым */
   seats: Cell[];
   /** скамьи в коридоре — ждут результатов обследований */
@@ -80,6 +82,7 @@ export function layoutOf(plan: Plan, staff: { room: string; role: Id; stands?: I
     offices: Object.fromEntries(plan.rooms.filter(r => r.type === 'room.office' && r.patient).map(r => [r.id, r.patient!])),
     ...(mine ? { mine } : {}),
     seats: plan.rooms.flatMap(r => r.seats),
+    beds: Object.fromEntries(plan.rooms.filter(r => r.beds.length > 0).map(r => [r.id, r.beds])),
     benches: plan.objects.filter(o => o.kind === 'bench').map(o => [o.x, o.y] as Cell),
   };
 }
@@ -113,7 +116,7 @@ export function cropPlan(plan: Plan): Plan {
     grid: { w: nw, h: nh, cells: out },
     rooms: plan.rooms.map(r => ({
       ...r, x: r.x - x0, y: r.y - y0, door: r.door.map(at), staff: Object.fromEntries(Object.entries(r.staff).map(([k, c]) => [k, at(c)])),
-      ...(r.patient ? { patient: at(r.patient) } : {}), seats: r.seats.map(at), slots: r.slots.map(at),
+      ...(r.patient ? { patient: at(r.patient) } : {}), seats: r.seats.map(at), beds: r.beds.map(at), slots: r.slots.map(at),
     })),
     objects: plan.objects.map(o => ({ ...o, x: o.x - x0, y: o.y - y0 })),
     entrance: at(plan.entrance),

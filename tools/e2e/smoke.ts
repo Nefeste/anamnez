@@ -5,7 +5,7 @@ import { extname, join } from 'node:path';
 import { chromium, type Page } from 'playwright';
 import { clinicLayout } from '../../src/engine/hospital/clinic';
 import { apply, newSandbox, newShift, newSingle } from '../../src/engine/shift/engine';
-import { SHIFT_SCHEMA_VERSION } from '../../src/engine/shift/types';
+import { DAY, SHIFT_END, SHIFT_SCHEMA_VERSION } from '../../src/engine/shift/types';
 import { buildDb } from '../content/load';
 
 const ROOT = join(import.meta.dir, '../..');
@@ -166,6 +166,44 @@ function hiredEndOfDaySave(): string {
   while (s.queue.length > 0) see();
   for (let i = 0; i < 600 && busy(); i++) apply(db, s, { kind: 'advance', seconds: 60 });
   return JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s });
+}
+
+/**
+ * Песочница с палатой на четыре койки (spec 2026-09-chapter-2, часть 26), день 2 после
+ * рабочих часов: вчера одного положили в палату, сегодня следующий — у вас в кабинете,
+ * диагноз поставлен; день можно закрыть.
+ */
+function wardSave(): { save: string; admitted: string; next: string } {
+  const { db } = buildDb();
+  const s = newSandbox(db, { seed: 21, season: 'winter', difficulty: 'student', start: 'clinic', budget: db.economy.sandbox.budgets.generous });
+  const cells: [number, number][] = [];
+  for (let x = 29; x <= 38; x++) for (let y = 7; y <= 9; y++) cells.push([x, y]);
+  apply(db, s, { kind: 'build', cmd: { kind: 'corridor', cells } });
+  apply(db, s, { kind: 'build', cmd: { kind: 'room', type: 'room.ward', size: 'M', x: 29, y: 0, rot: 0 } });
+  apply(db, s, { kind: 'buildEnd' });
+  const ward = s.hospital!.rooms[s.hospital!.rooms.length - 1].id;
+  apply(db, s, { kind: 'assign', id: s.staff!.find(m => m.role === 'role.nurse' && m.room === 'r7')!.id, room: ward });
+  // диагноз — настоящий, лечение — типичное из записи
+  const see = () => {
+    for (let i = 0; i < 600 && s.queue.length === 0; i++) apply(db, s, { kind: 'advance', seconds: 60 });
+    const id = s.queue[0];
+    const truth = s.patients[id].patient.truth.conditions[0].id;
+    apply(db, s, { kind: 'call', id });
+    apply(db, s, { kind: 'exam', exam: 'exam.vitals' });
+    apply(db, s, { kind: 'diagnose', id: truth });
+    const typical = db.conditions[truth].treatment;
+    for (const tx of typical?.plan ?? typical?.firstLine ?? []) apply(db, s, { kind: 'toggleTreatment', id: tx });
+    return id;
+  };
+  apply(db, s, { kind: 'nextDay' });
+  const admitted = see();
+  apply(db, s, { kind: 'setting', setting: 'admit' });
+  apply(db, s, { kind: 'finish' });
+  apply(db, s, { kind: 'closeDay' });
+  apply(db, s, { kind: 'nextDay' });
+  const next = see();
+  while (s.t < (s.day - 1) * DAY + SHIFT_END) apply(db, s, { kind: 'advance', seconds: 10 * 60 });
+  return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s }), admitted, next };
 }
 
 /** Песочница до открытия: готовая амбулатория, бюджет «обычный» — экран «Перед открытием». */
@@ -836,6 +874,62 @@ try {
   await page.getByTestId('staff-total').waitFor({ timeout: 10_000 });
   const staffTexts = await page.locator('[data-testid^="staff-s"]').allInnerTexts();
   check(staffTexts.some(x => x.includes('Терапевт') && x.includes('работает: кабинет врача №\u00a02')), `нанятый врач в «Персонале»: ${staffTexts.find(x => x.includes('Терапевт'))?.replace(/\n/g, ' · ')}`);
+
+  // стационар (spec 2026-09-chapter-2, часть 26): утро дня 2 — вчерашний пациент в палате,
+  // «Обход · 1»; на обходе — сутки, как идёт болезнь, температура по суткам; в решении
+  // следующего — «В палату» со свободными койками; положили — лежат двое; выписали первого —
+  // в итогах дня стационар, в кассе — случай стационара и койко-дни
+  const w = wardSave();
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', w.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId('rounds-open').waitFor({ timeout: 15_000 });
+  await page.getByTestId('tab-pause').click();
+  check((await text(page, 'rounds-open')).startsWith('Обход · 1'), `стационар: на экране смены — ${(await text(page, 'rounds-open')).replace(/\n/g, ' · ')}`);
+  await page.getByTestId('rounds-open').click();
+  await page.getByTestId(`round-${w.admitted}`).waitFor({ timeout: 10_000 });
+  const round = await text(page, `round-${w.admitted}`);
+  check(round.includes('В стационаре 1\u00a0сутки · обычно до ') && /\nТемпература: \d+,\d → \d+,\d\u00a0°C\n/.test(round) && round.includes('Лечение: '),
+    `стационар, обход: ${round.replace(/\n/g, ' · ')}`);
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(OUT, '16-ward-rounds.png'), fullPage: true });
+  await page.goBack();
+  await page.getByTestId('shift-continue').click();
+  await visible(page, 'visit-decide').waitFor({ timeout: 10_000 });
+  await visible(page, 'visit-decide').click();
+  await page.getByTestId('decision-to-plan').click();
+  await page.getByTestId('setting-admit').waitFor({ timeout: 5000 });
+  const admit = await text(page, 'setting-admit');
+  check(admit.startsWith('В палату') && admit.includes('свободно 3 из 4') && (await text(page, 'setting-ward')).startsWith('Направить в другую больницу'),
+    `стационар, решение: ${admit.replace(/\n/g, ' · ')} · ${(await text(page, 'setting-ward')).replace(/\n/g, ' · ')}`);
+  await page.getByTestId('setting-admit').click();
+  await page.screenshot({ path: join(OUT, '16-ward-decision.png'), fullPage: true });
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-outcome').waitFor({ timeout: 10_000 });
+  check((await text(page, 'visit-outcome')).includes('Лежит в палате'), `стационар, итог приёма: ${await text(page, 'visit-outcome')}`);
+  await page.getByTestId('shift-to-queue').click();
+  await page.getByTestId('rounds-open').waitFor({ timeout: 10_000 });
+  check((await text(page, 'rounds-open')).startsWith('Обход · 2'), `стационар: положили второго — ${(await text(page, 'rounds-open')).replace(/\n/g, ' · ')}`);
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId('rounds-open').click();
+  await page.getByTestId(`round-discharge-${w.admitted}`).click();
+  await page.getByTestId(`round-${w.admitted}`).waitFor({ state: 'detached', timeout: 5000 });
+  check((await page.locator('[data-testid^="round-state-"]').count()) === 1, 'стационар: выписан — на обходе остался один');
+  await page.goBack();
+  await page.locator('[data-testid="shift-close-day-early"], [data-testid="shift-close-day"]').first().click();
+  await page.getByTestId('summary-ward').waitFor({ timeout: 10_000 });
+  const wardDay = await text(page, 'summary-ward');
+  check(wardDay.includes('Поступили: 1, выписаны: 1, переведены: 0. Лежат: 1.') && (await page.getByTestId('cash-ward').count()) === 1,
+    `стационар, итоги дня: ${wardDay.replace(/\n/g, ' · ')} · ${(await text(page, 'summary-cash')).replace(/\n/g, ' · ')}`);
+  check((await text(page, 'summary-cash')).includes('Стационар: койко-дни'), 'стационар, касса: койко-дни — отдельной статьёй');
+  // первая — лёгкая кишечная инфекция: лечится дома, за госпитализацию без показаний страховая не платит
+  check((await text(page, 'cash-ward-note')) === 'Госпитализация без показаний — 1: не оплачено', `стационар, касса: ${await text(page, 'cash-ward-note')}`);
+  await page.waitForTimeout(1500); // лист меню «Продолжить» ещё уезжает вниз (веб)
+  await page.screenshot({ path: join(OUT, '16-ward-summary.png'), fullPage: true });
 
   // кампания: карьера 1 → глава 1 — письма и задания; письмо наставника; смена открывается;
   // «Продолжить» в меню — карьера (spec 2026-09-campaign)

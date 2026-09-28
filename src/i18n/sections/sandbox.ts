@@ -149,12 +149,21 @@ export const sandbox = {
     ].filter(Boolean).join(', '),
   level: (pct: number) => `Тариф ОМС за приём — ${pct}\u00a0%`,
   levelMissing: (pct: number, gens: string) => `Тариф ОМС за приём — ${pct}\u00a0%: нет ${gens}`,
+  // стационар (spec 2026-09-chapter-2, часть 26): ОМС за случай — при выписке
+  wardLine: (n: number) => `Стационар — ${n}\u00a0${pluralRu(n, 'случай', 'случая', 'случаев')}`,
+  // прерванные — доля тарифа; без показаний — экспертиза не оплатила (часть 26)
+  wardNote: (interrupted: number, unindicated: number, share: number) =>
+    [
+      interrupted > 0 ? `прерваны переводом или ранней выпиской — ${interrupted}: ${share}\u00a0% тарифа` : '',
+      unindicated > 0 ? `госпитализация без показаний — ${unindicated}: не оплачено` : '',
+    ].filter(Boolean).join('; '),
   expensesTitle: 'Расходы',
   expense: {
     salaries: 'Зарплаты',
     equipment: 'Обслуживание аппаратов',
     rooms: 'Содержание помещений',
     consumables: 'Расходники',
+    ward: 'Стационар: койко-дни',
     interest: 'Проценты по долгу',
   },
   net: (rub: string) => `Итог дня: ${rub}`,

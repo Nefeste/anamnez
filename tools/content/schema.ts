@@ -55,7 +55,8 @@ const link = z.strictObject({
 const riskMultiplier = z.strictObject({ id: z.string(), x: z.number().positive() });
 const txId = z.string().regex(/^tx\.[a-z0-9_]+$/);
 /** Где лечить: дома, направить в стационар, вызвать скорую (перевод). */
-export const SETTINGS = ['home', 'ward', 'ambulance'] as const;
+/** что нужно пациенту; `admit` — только выбор врача, в базе его нет */
+export const SETTINGS = ['home', 'ward', 'ambulance', 'surgery', 'transfer'] as const;
 const setting = z.enum(SETTINGS);
 const season = z.strictObject({ winter: z.number(), spring: z.number(), summer: z.number(), autumn: z.number() });
 
@@ -92,6 +93,8 @@ export const conditionSchema = z.strictObject({
     selfLimiting: z.boolean().optional(),
     /** без действенного лечения: с какой вероятностью и на какой день становится хуже */
     untreated: z.strictObject({ band: probability, days: z.tuple([z.number().int().min(0), z.number().int().min(0)]) }).optional(),
+    /** в стационаре при действенном лечении: через сколько суток можно выписывать (spec 2026-09-chapter-2, часть 26) */
+    stay: z.tuple([z.number().int().min(1), z.number().int().min(1)]).optional(),
   }),
   /** тактика (`04-medical-model.md` §8): пять списков и где лечить */
   treatment: z.strictObject({
@@ -260,6 +263,8 @@ export const roomSchema = z.strictObject({
   needsEquipment: z.boolean().default(false),
   /** стулья — места в очереди */
   seats: z.boolean().default(false),
+  /** койки — места лежащих пациентов (палата, spec 2026-09-chapter-2, часть 26) */
+  beds: z.boolean().default(false),
   sizes: z.array(roomSize).min(1),
   texts: z.strictObject({ hint }),
 });
@@ -369,6 +374,8 @@ export const economySchema = z.strictObject({
   /** тарифы: ОМС по тяжести диагноза, доля по обоснованности и без подтверждения; ДМС и платно — обращение и прайс, % цены */
   tariffs: z.strictObject({
     oms: z.strictObject({ minor: int, moderate: int, serious: int, critical: int }),
+    /** случай стационара: по тяжести диагноза, при выписке (spec 2026-09-chapter-2, часть 26) */
+    omsWard: z.strictObject({ minor: int, moderate: int, serious: int, critical: int }),
     omsQuality: z.strictObject({ A: pct, B: pct, C: pct, D: pct }),
     omsUnconfirmed: pct,
     omsExam: int,
@@ -383,6 +390,8 @@ export const economySchema = z.strictObject({
   consumables: z.strictObject({ ask: int, physical: int, bedside: int, lab: int, rapid: int, functional: int, imaging: int }),
   /** процент на долг в день, сотые доли процента */
   interest: int,
+  /** стационар: койко-день — питание и расходники лежащего, ₽; доля тарифа за прерванный случай, % */
+  ward: z.strictObject({ bedDay: int, interrupted: pct }),
   /** репутация: начало, шаг к оценке дня, %; поправки оценки за ожидание и санузел */
   reputation: z.strictObject({
     start: pct, pull: z.number().int().min(1).max(100),

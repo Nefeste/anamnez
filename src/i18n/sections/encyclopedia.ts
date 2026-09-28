@@ -67,7 +67,7 @@ export const encyclopedia = {
   supportive: 'Облегчить состояние',
   notIndicated: 'Не нужно',
   harmful: 'Опасно',
-  setting: { home: 'дома', ward: 'в стационаре', ambulance: 'скорая, больница' },
+  setting: { home: 'дома', ward: 'в стационаре', ambulance: 'скорая, больница', admit: 'в стационаре', surgery: 'операция', transfer: 'скорая, перевод в центр' },
   whereTitle: 'Где лечить',
   whereDefault: (s: string) => `Обычно — ${s}.`,
   whereIf: (when: string, s: string) => `${when[0].toUpperCase()}${when.slice(1)} — ${s}.`,
@@ -124,8 +124,8 @@ export const encyclopedia = {
   needMachine: 'Аппарат — хотя бы один',
   machines: 'Аппараты',
   sizes: 'Размеры и цена',
-  sizeLine: (id: string, w: number, h: number, cost: string, upkeep: string, seats: number) =>
-    `${id} — ${w}\u00a0×\u00a0${h}\u00a0м, ${cost}, содержание ${upkeep} в\u00a0день${seats > 0 ? `, ${seats}\u00a0${pluralRu(seats, 'место', 'места', 'мест')}` : ''}.`,
+  sizeLine: (id: string, w: number, h: number, cost: string, upkeep: string, seats: number, beds = 0) =>
+    `${id} — ${w}\u00a0×\u00a0${h}\u00a0м, ${cost}, содержание ${upkeep} в\u00a0день${seats > 0 ? `, ${seats}\u00a0${pluralRu(seats, 'место', 'места', 'мест')}` : ''}${beds > 0 ? `, ${beds}\u00a0${pluralRu(beds, 'койка', 'койки', 'коек')}` : ''}.`,
   sizeNote: 'Размер — вместе со стенами; соседние помещения делят стену.',
   equipmentKind: 'Аппарат',
   examsBy: 'Что им делают',

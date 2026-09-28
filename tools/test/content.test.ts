@@ -118,7 +118,7 @@ describe('валидатор базы', () => {
     expect(risk.some(e => e.includes('неизвестного фактора risk.pregnant'))).toBe(true);
     const plan = broken(d => edit(d, 'conditions/therapy/cystitis.yaml', 'plan: [tx.fosfomycin]', 'plan: [tx.amoxicillin]'));
     expect(plan.some(e => e.includes('в типичном назначении tx.amoxicillin'))).toBe(true);
-    const home = broken(d => edit(d, 'conditions/therapy/appendicitis.yaml', 'setting: { default: ambulance }', 'setting: { default: home }'));
+    const home = broken(d => edit(d, 'conditions/therapy/appendicitis.yaml', 'setting: { default: surgery }', 'setting: { default: home }'));
     expect(home.some(e => e.includes('cond.appendicitis: лечат дома, а первой линии нет'))).toBe(true);
     const excl = broken(d => edit(d, 'conditions/therapy/hypertension_new.yaml', 'excludes: [cond.hypertension]', 'excludes: [cond.acs]'));
     expect(excl.some(e => e.includes('исключающее cond.acs'))).toBe(true);
@@ -144,7 +144,7 @@ describe('валидатор базы', () => {
 describe('каталог больницы', () => {
   test('собран: у помещений — что открывают, у аппаратов — какие обследования, у должностей — где работают', () => {
     const { db } = buildDb();
-    expect(Object.keys(db.rooms)).toHaveLength(10);
+    expect(Object.keys(db.rooms)).toHaveLength(11);
     // нанятый врач (spec 2026-09-hired-doctors): встаёт на место врача, нужна ординаторская с местами
     expect(db.roles['role.therapist']).toMatchObject({ hire: true, stands: 'role.doctor', needs: 'room.staff', rooms: ['room.office'] });
     expect(db.rooms['room.staff'].sizes.map(z => z.places)).toEqual([2, 4]);
@@ -154,7 +154,10 @@ describe('каталог больницы', () => {
     expect(db.rooms['room.lab'].equipment).toContain('eq.biochem_analyzer');
     expect(db.equipment['eq.immuno_analyzer'].exams).toEqual(['exam.tsh']);
     expect(db.equipment['eq.xray_digital'].upgradeOf).toBe('eq.xray_analog');
-    expect(db.roles['role.nurse'].rooms).toEqual(['room.ecg', 'room.procedure', 'room.triage']);
+    expect(db.roles['role.nurse'].rooms).toEqual(['room.ecg', 'room.procedure', 'room.triage', 'room.ward']);
+    // палата (spec 2026-09-chapter-2, часть 26): койки — места лежащих
+    expect(db.rooms['room.ward'].sizes.map(z => z.beds)).toEqual([2, 4]);
+    expect(db.rooms['room.office'].sizes.every(z => z.beds === 0)).toBe(true);
     expect(db.roles['role.doctor'].hire).toBe(false);
     expect(db.rooms['room.waiting'].sizes.map(z => z.seats)).toEqual([6, 10, 18]);
     // у каждого обследования в лаборатории, ЭКГ и рентгене — аппарат

@@ -4,7 +4,6 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { Text } from '../text';
-import type { Setting } from '@/content/types';
 import { T } from '@/i18n';
 import { conditionTerm, diagnosisGroups, type TermInfo, treatmentTerm, type VisitView } from '@/state/caseView';
 import { Button, Card, Chip, Chips, H, P, Screen } from '@/ui/components';
@@ -13,7 +12,6 @@ import { makeStyles, space } from '@/ui/theme';
 import type { CaseActions } from './actions';
 
 type Step = 'diagnosis' | 'plan';
-const SETTINGS: Setting[] = ['home', 'ward', 'ambulance'];
 
 export function DecisionScreen({ view: v, actions }: { view: VisitView; actions: CaseActions }) {
   const styles = useStyles();
@@ -40,7 +38,7 @@ export function DecisionScreen({ view: v, actions }: { view: VisitView; actions:
 
   const footer = step === 'diagnosis'
     ? <Button testID="decision-to-plan" title={d.toPlan} hint={v.draft.diagnosis ? undefined : d.needDiagnosis} disabled={!v.draft.diagnosis} onPress={() => setStep('plan')} />
-    : <Button testID="visit-finish" title={t.finish} hint={d.summary(v.draft.treatments.length, t.setting[v.draft.setting])} onPress={done} />;
+    : <Button testID="visit-finish" title={t.finish} hint={d.summary(v.draft.treatments.length, v.settings.find(o => o.key === v.draft.setting)?.title ?? t.setting[v.draft.setting])} onPress={done} />;
 
   return (
     <Screen resetKey={step} footer={footer}>
@@ -91,8 +89,9 @@ export function DecisionScreen({ view: v, actions }: { view: VisitView; actions:
           <Card>
             <Text style={styles.label}>{t.settingLabel}</Text>
             {/* столбиком: в ряд «В стационар» рвётся посреди слова, а шрифт на телефоне бывает крупнее */}
-            {SETTINGS.map(k => (
-              <Button key={k} testID={`setting-${k}`} kind={v.draft.setting === k ? 'primary' : 'plain'} title={t.setting[k]} onPress={() => actions.chooseSetting(k)} />
+            {v.settings.map(o => (
+              <Button key={o.key} testID={`setting-${o.key}`} kind={v.draft.setting === o.key ? 'primary' : 'plain'} title={o.title} hint={o.hint}
+                disabled={o.disabled} onPress={() => actions.chooseSetting(o.key)} />
             ))}
           </Card>
         </>

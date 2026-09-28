@@ -40,7 +40,13 @@ export interface Link {
 }
 
 /** Где лечить: дома, направить в стационар, вызвать скорую (перевод). */
-export type Setting = 'home' | 'ward' | 'ambulance';
+/**
+ * Место лечения. В базе — что нужно пациенту: дома, стационар, срочно в стационар, операция,
+ * центр, которого в районе нет. У врача — что он выбрал: домой, направить в стационар,
+ * вызвать скорую, в свою палату, в свою операционную, перевести (spec 2026-09-chapter-2,
+ * «Место лечения»).
+ */
+export type Setting = 'home' | 'ward' | 'ambulance' | 'admit' | 'surgery' | 'transfer';
 
 /** Система органов в порядке показа: простуда и ЛОР, лёгкие, сердце, живот, мочевые, обмен, голова и спина. */
 export const SYSTEMS = ['airways', 'lungs', 'heart', 'digestive', 'urinary', 'metabolic', 'nerves'] as const;
@@ -129,6 +135,8 @@ export interface Condition {
   selfLimiting?: boolean;
   /** без действенного лечения: вероятность ухудшения и на какой день */
   untreated?: { p: P; days: [number, number] };
+  /** в стационаре при действенном лечении: через сколько суток можно выписывать */
+  stay?: [number, number];
   /** тактика; есть у всех, с чем приходят (валидатор) */
   treatment?: Tactics;
   texts: { summary: Text };
@@ -248,6 +256,8 @@ export interface RoomSize {
   patient?: Cell;
   /** стулья зоны ожидания — места в очереди */
   seats: number;
+  /** койки палаты — места лежащих */
+  beds: number;
   /** мест для нанятых врачей — ординаторская */
   places: number;
 }
@@ -261,6 +271,7 @@ export interface RoomType {
   staff: Id[];
   needsEquipment: boolean;
   seats: boolean;
+  beds: boolean;
   sizes: RoomSize[];
   /** производное: какие аппараты ставят сюда и какие обследования здесь делают или берут материал */
   equipment: Id[];
@@ -362,6 +373,8 @@ export interface Economy {
    */
   tariffs: {
     oms: Record<'minor' | 'moderate' | 'serious' | 'critical', number>;
+    /** случай стационара по тяжести диагноза — при выписке */
+    omsWard: Record<'minor' | 'moderate' | 'serious' | 'critical', number>;
     omsQuality: Record<'A' | 'B' | 'C' | 'D', number>;
     omsUnconfirmed: number;
     /** показанные обследования, % цены в базе */
@@ -377,6 +390,8 @@ export interface Economy {
   consumables: Record<Exam['kind'], number>;
   /** процент на долг в день, сотые доли процента */
   interest: number;
+  /** стационар: койко-день, ₽; доля тарифа за прерванный случай (перевод, выписка раньше срока), % */
+  ward: { bedDay: number; interrupted: number };
   /** репутация 0–100: начало, на сколько % вечером сдвигается к оценке дня, поправки оценки */
   reputation: {
     start: number; pull: number;

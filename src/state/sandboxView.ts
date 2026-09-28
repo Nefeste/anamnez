@@ -122,9 +122,12 @@ export function levelText(db: ContentDb, l: { level: number; rooms: Id[] }): str
 }
 
 export interface CashView {
-  income: { key: Payer; title: string; sum: string }[];
+  /** по плательщикам; `ward` — случаи своего стационара (часть 26) */
+  income: { key: Payer | 'ward'; title: string; sum: string }[];
   /** экспертиза страховых: сколько не оплатила и почему */
   audit?: { sum: string; why: string };
+  /** стационар: сколько случаев прервано и сколько без показаний (часть 26) */
+  wardNote?: string;
   level: string;
   expenses: { key: keyof Ledger['expenses']; title: string; sum: string }[];
   net: string;
@@ -161,12 +164,19 @@ export function cashView(db: ContentDb, e: NonNullable<DaySummary['economy']>): 
   const net = incomeOf(l) - expensesOf(l);
   const rep = e.reputation;
   return {
-    income: PAYERS.filter(k => l.cases[k] > 0 || l.income[k] > 0).map(k => ({ key: k, title: t.payerLine(cap(t.payers[k]), l.cases[k]), sum: rub(l.income[k]) })),
+    income: [
+      ...PAYERS.filter(k => l.cases[k] > 0 || l.income[k] > 0).map(k => ({ key: k, title: t.payerLine(cap(t.payers[k]), l.cases[k]), sum: rub(l.income[k]) })),
+      // стационар (spec 2026-09-chapter-2, часть 26): случаи при выписке и переводе
+      ...(l.ward && l.ward.cases > 0 ? [{ key: 'ward' as const, title: t.wardLine(l.ward.cases), sum: rub(l.ward.income) }] : []),
+    ],
+    ...(l.ward && (l.ward.interrupted > 0 || l.ward.unindicated > 0)
+      ? { wardNote: cap(t.wardNote(l.ward.interrupted, l.ward.unindicated, db.economy.ward.interrupted)) }
+      : {}),
     ...(l.audit.cut > 0 ? { audit: { sum: t.audit(rub(l.audit.cut)), why: t.auditWhy(l.audit.weak, l.audit.unconfirmed, l.audit.unindicated) } } : {}),
     level: levelText(db, e.level),
-    expenses: (['salaries', 'equipment', 'rooms', 'consumables', 'interest'] as const)
-      .filter(k => k !== 'interest' || l.expenses.interest > 0)
-      .map(k => ({ key: k, title: t.expense[k], sum: rub(l.expenses[k]) })),
+    expenses: (['salaries', 'equipment', 'rooms', 'consumables', 'ward', 'interest'] as const)
+      .filter(k => (k !== 'interest' && k !== 'ward') || (l.expenses[k] ?? 0) > 0)
+      .map(k => ({ key: k, title: t.expense[k], sum: rub(l.expenses[k] ?? 0) })),
     net: t.net(signed(net)),
     cash: t.cashNow(rub(e.cash)),
     ...(e.cash < 0 ? { debt: t.debt(rub(-e.cash), rub(l.expenses.interest)) } : {}),

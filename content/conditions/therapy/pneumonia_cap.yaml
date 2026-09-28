@@ -22,6 +22,9 @@ course:
     - { id: resolution, days: [7, 21], needs: treatment }
   presentation: [2, 7]
   untreated: { band: usually, days: [2, 5] }
+  # в стационаре при действенном лечении: критерии клинической стабильности — в среднем через
+  # 3–5 суток от начала лечения (654_2, раздел 3.2), а стабильность — первый критерий выписки (раздел 6)
+  stay: [3, 5]
 findings:
   - { f: sym.cough, band: usually, attrs: { character: { productive: 70, dry: 30 } } }
   - { f: sym.fever_hx, band: usually }

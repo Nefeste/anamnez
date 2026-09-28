@@ -2,7 +2,7 @@
 // замечаний; слова к ним — в src/i18n (на экране разбора).
 import type { Id, Setting } from '../../content/types';
 import type { Outcome } from './course';
-import { type PlanEval, SETTING_ORDER } from './plan';
+import { choiceFor, type PlanEval, settingFit } from './plan';
 
 export type Grade = 'A' | 'B' | 'C' | 'D';
 
@@ -10,6 +10,7 @@ export type ScoreNote =
   | { code: 'tx.harmful' | 'tx.notIndicated' | 'tx.acceptable'; tx: Id }
   | { code: 'tx.noCure' | 'tx.none' }
   | { code: 'tx.preHospitalMissing'; tx: Id }
+  /** `recommended` — что надо было выбрать здесь: в амбулатории «вызвать скорую», со своей палатой — «в палату» */
   | { code: 'setting.under' | 'setting.over'; recommended: Setting }
   | { code: 'safety.knownViolation' | 'safety.unaskedViolation'; tx: Id; by: Id }
   | { code: 'safety.notAsked'; by: Id }
@@ -28,6 +29,8 @@ export interface CaseInput {
   selfLimiting: boolean;
   /** красные флаги основного состояния, которые у пациента есть, и какие из них врач видел */
   redFlags: { f: Id; seen: boolean }[];
+  /** что выбрать здесь при нужном месте лечения; нет — как в амбулатории (plan.ts, choiceFor) */
+  should?: Setting;
 }
 
 export interface CaseScore {
@@ -63,9 +66,9 @@ export function scoreCase(x: CaseInput): CaseScore {
     if (r.role === 'notIndicated') { treatment = worst(treatment, x.plan.effective ? 'B' : 'C'); notes.push({ code: 'tx.notIndicated', tx: r.tx }); }
   }
   if (x.plan.violations.length > 0) treatment = 'D';
-  // направленного лечат дальше в стационаре: лечения причины здесь не ждут, а то, что
-  // делают до приезда скорой (ОКС — ацетилсалициловая кислота), — ждут
-  const referred = SETTING_ORDER[x.plan.setting.chosen] > SETTING_ORDER.home;
+  // направленного лечат дальше в другом стационаре: лечения причины здесь не ждут, а то, что
+  // делают до приезда скорой (ОКС — ацетилсалициловая кислота), — ждут; в своей палате лечат сами
+  const referred = x.plan.setting.chosen !== 'home' && x.plan.setting.chosen !== 'admit' && x.plan.setting.chosen !== 'surgery';
   if (!x.plan.effective && !x.selfLimiting && !referred) { treatment = 'D'; notes.push({ code: 'tx.noCure' }); }
   if (referred && x.plan.preHospital.length > 0 && !roles.some(r => x.plan.preHospital.includes(r.tx))) {
     treatment = worst(treatment, 'B');
@@ -80,9 +83,11 @@ export function scoreCase(x: CaseInput): CaseScore {
 
   // место лечения
   const { chosen, recommended } = x.plan.setting;
+  const fit = settingFit(recommended, chosen);
+  const should = x.should ?? choiceFor(recommended);
   let setting: Grade = 'A';
-  if (SETTING_ORDER[chosen] < SETTING_ORDER[recommended]) { setting = 'D'; notes.push({ code: 'setting.under', recommended }); }
-  else if (SETTING_ORDER[chosen] > SETTING_ORDER[recommended]) { setting = 'C'; notes.push({ code: 'setting.over', recommended }); }
+  if (fit === 'under') { setting = 'D'; notes.push({ code: 'setting.under', recommended: should }); }
+  else if (fit === 'over') { setting = 'C'; notes.push({ code: 'setting.over', recommended: should }); }
 
   // безопасность
   let safety: Grade = 'A';

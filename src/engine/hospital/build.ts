@@ -352,6 +352,8 @@ export interface PlacedRoom {
   patient?: Cell;
   /** стулья зоны ожидания: ближний к двери ряд — первым */
   seats: Cell[];
+  /** койки палаты по порядку — номер койки лежащего (spec 2026-09-chapter-2, часть 26) */
+  beds: Cell[];
   slots: Cell[];
   equipment: (Id | null)[];
 }
@@ -406,10 +408,11 @@ export function planOf(db: ContentDb, hs: HospitalState): Plan {
         .sort((a, b) => b.row - a.row || a.cell[1] - b.cell[1] || a.cell[0] - b.cell[0])
         .map(o => o.cell)
       : [];
+    const beds = db.rooms[r.type].beds ? z.objects.filter(o => o.kind === 'bed').map(o => at([o.x, o.y])) : [];
     const ok = doorOk(z, r, r.door, hs, occ);
     rooms.push({
       id: r.id, type: r.type, size: r.size, rot: r.rot, x: r.x, y: r.y, w, h,
-      door: ok ? doorCells(z, r, r.door).cells : [], staff, ...(z.patient ? { patient: at(z.patient) } : {}), seats, slots, equipment: r.equipment,
+      door: ok ? doorCells(z, r, r.door).cells : [], staff, ...(z.patient ? { patient: at(z.patient) } : {}), seats, beds, slots, equipment: r.equipment,
     });
   }
   for (const r of rooms) for (const [x, y] of r.door) set(x, y, CELL.door);
