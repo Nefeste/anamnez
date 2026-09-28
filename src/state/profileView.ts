@@ -20,12 +20,15 @@ export const doctorName = (d: Doctor) => T.profile.doctor(d.first, d.last);
 
 /**
  * Портреты врача на выбор (spec 2026-09-profile, часть 16): зёрна рисунка кодом, как у
- * пациентов; у врача-мужчины и врача-женщины при одном зерне — разные лица. Возраст —
- * молодого врача.
+ * пациентов. С 0.0.31 у врача-женщины — свои: все шесть с длинными волосами разного цвета;
+ * второй, пятый и шестой — прежние, у них волосы и были длинными. Возраст — молодого врача.
  */
-export const DOCTOR_PORTRAITS = [3, 14, 27, 38, 49, 60] as const;
+export const DOCTOR_PORTRAITS: Readonly<Record<Doctor['sex'], readonly number[]>> = {
+  m: [3, 14, 27, 38, 49, 60],
+  f: [16, 14, 71, 20, 49, 60],
+};
 export const DOCTOR_AGE = 31;
-export const portraitSeed = (d: Doctor) => DOCTOR_PORTRAITS[d.portrait ?? 0] ?? DOCTOR_PORTRAITS[0];
+export const portraitSeed = (d: Doctor) => DOCTOR_PORTRAITS[d.sex][d.portrait ?? 0] ?? DOCTOR_PORTRAITS[d.sex][0];
 
 /** Звание — по числу принятых пациентов во всех режимах; только растёт. */
 export const RANK_CASES = [0, 25, 100, 300] as const;
