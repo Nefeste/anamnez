@@ -13,9 +13,9 @@ beforeEach(() => {
 });
 
 describe('настройки', () => {
-  test('файла нет — умолчания: звук полный, вибрация и автопауза включены, оговорка не прочитана, текст обычный, тема как в телефоне', async () => {
+  test('файла нет — умолчания: звук полный, фон и вибрация включены, автопауза тоже, оговорка не прочитана, текст обычный, тема как в телефоне', async () => {
     await loadSettings();
-    expect(settings()).toEqual({ sound: 1, vibration: true, pauseOnRed: true, pauseOnResults: true, disclaimerAccepted: false, textScale: 1, theme: 'system' });
+    expect(settings()).toEqual({ sound: 1, ambience: true, vibration: true, pauseOnRed: true, pauseOnResults: true, disclaimerAccepted: false, textScale: 1, theme: 'system' });
   });
 
   test('поменяли — записано; после «перезапуска» — те же', async () => {
@@ -49,6 +49,9 @@ describe('настройки', () => {
     expect(sanitize({ theme: 'dark' }).theme).toBe('dark');
     expect(sanitize({ theme: 'blue' }).theme).toBe('system');
     expect(sanitize({ sound: 0.7, textScale: 1.15 }).theme).toBe('system');
+    // фон амбулатории — в файле прежней версии его нет: включён
+    expect(sanitize({ sound: 0.35 }).ambience).toBe(true);
+    expect(sanitize({ ambience: false }).ambience).toBe(false);
     expect(sanitize(null)).toEqual(DEFAULTS);
     expect(sanitize([1, 2])).toEqual(DEFAULTS);
   });

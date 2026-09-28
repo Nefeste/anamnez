@@ -7,7 +7,7 @@ import { router, Stack, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, useWindowDimensions, View } from 'react-native';
 import { Text } from '@/ui/text';
-import { buzz, play } from '@/audio/sounds';
+import { buzz, play, setAmbient } from '@/audio/sounds';
 import { db } from '@/content';
 import type { Difficulty } from '@/engine/shift/types';
 import { T } from '@/i18n';
@@ -147,6 +147,9 @@ function NewPractice() {
 type SpeedKey = 'pause' | 'x1' | 'x2' | 'x4';
 const speedKey = (s: Speed): SpeedKey => (s === 1 ? 'x1' : s === 2 ? 'x2' : 'x4');
 
+/** Звук двери при приходе пациента — не чаще, чем раз в столько миллисекунд. */
+const DOOR_GAP_MS = 6000;
+
 /** Карта пациента открывается один раз, даже если он вошёл и игрок коснулся кнопки разом. */
 let enteredAt = 0;
 function openVisit() {
@@ -170,10 +173,13 @@ function Queue({ v }: { v: ShiftView }) {
   const [room, setRoom] = useState<string>();
   const [entering, setEntering] = useState<string>();
 
-  // часы — только пока экран на виду: поверх него карта пациента или разбор
+  // часы — только пока экран на виду: поверх него карта пациента или разбор. Пока на виду —
+  // и фон амбулатории; в кабинете, за закрытой дверью, тихо
   useFocusEffect(
     useCallback(() => {
       setFocused(true);
+      setAmbient(true);
+      let door = 0;
       const id = setInterval(() => {
         const notices = tick(TICK_MS);
         if (notices.some(n => n.kind === 'arrived' && n.triage === 'red')) {
@@ -182,10 +188,18 @@ function Queue({ v }: { v: ShiftView }) {
         } else if (notices.some(n => n.kind === 'resultsReady')) {
           play('ready');
           buzz('ready');
+        } else if (notices.some(n => n.kind === 'arrived')) {
+          // дверь — не чаще раза в несколько секунд: на ×4 приходят часто
+          const now = Date.now();
+          if (now - door > DOOR_GAP_MS) {
+            door = now;
+            play('arrived');
+          }
         }
       }, TICK_MS);
       return () => {
         clearInterval(id);
+        setAmbient(false);
         saveNow();
         setFocused(false);
         setEntering(undefined);
@@ -200,6 +214,7 @@ function Queue({ v }: { v: ShiftView }) {
       buzz('urgent');
     } else if (notices.some(n => n.kind === 'resultsReady' || n.kind === 'arrived')) {
       buzz('ready');
+      if (notices.some(n => n.kind === 'arrived')) play('arrived');
     }
   };
 

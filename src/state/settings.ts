@@ -1,5 +1,5 @@
-// Настройки игрока (03-game-design.md §12, spec 2026-09-first-shift): громкость звуков,
-// вибрация, автопауза смены, размер текста, тема (spec 2026-09-own-look) и отметка, что
+// Настройки игрока (03-game-design.md §12, spec 2026-09-first-shift): громкость звуков, фон
+// амбулатории, вибрация, автопауза смены, размер текста, тема (spec 2026-09-own-look) и отметка, что
 // оговорка первого запуска прочитана
 // (11-publishing.md §3). Лежат в слоте `settings` тем же сырым хранилищем, что и смена
 // (ADR 0010): запись атомарная, с копиями. Модуль, как session.ts, не знает про платформу —
@@ -21,6 +21,8 @@ export type ThemeChoice = (typeof THEME_CHOICES)[number];
 export interface Settings {
   /** громкость звуков игры, 0–1 */
   sound: number;
+  /** фон амбулатории на экране смены: вентиляция, шаги, двери */
+  ambience: boolean;
   vibration: boolean;
   /** автопауза смены: пришёл срочный пациент */
   pauseOnRed: boolean;
@@ -34,7 +36,7 @@ export interface Settings {
   theme: ThemeChoice;
 }
 
-export const DEFAULTS: Settings = { sound: 1, vibration: true, pauseOnRed: true, pauseOnResults: true, disclaimerAccepted: false, textScale: 1, theme: 'system' };
+export const DEFAULTS: Settings = { sound: 1, ambience: true, vibration: true, pauseOnRed: true, pauseOnResults: true, disclaimerAccepted: false, textScale: 1, theme: 'system' };
 
 export interface SettingsView extends Settings {
   /** ready — прочитаны с диска (или их там нет и действуют умолчания) */
@@ -71,11 +73,11 @@ export function setSettingsStore(s: RawStore) {
  */
 export function sanitize(data: unknown): Settings {
   const d = (data !== null && typeof data === 'object' ? data : {}) as Record<string, unknown>;
-  const flag = (k: 'vibration' | 'pauseOnRed' | 'pauseOnResults' | 'disclaimerAccepted') => (typeof d[k] === 'boolean' ? (d[k] as boolean) : DEFAULTS[k]);
+  const flag = (k: 'ambience' | 'vibration' | 'pauseOnRed' | 'pauseOnResults' | 'disclaimerAccepted') => (typeof d[k] === 'boolean' ? (d[k] as boolean) : DEFAULTS[k]);
   const sound = typeof d.sound === 'number' && d.sound >= 0 && d.sound <= 1 ? d.sound : DEFAULTS.sound;
   const textScale = (TEXT_SCALES as readonly number[]).includes(d.textScale as number) ? (d.textScale as number) : DEFAULTS.textScale;
   const theme = (THEME_CHOICES as readonly unknown[]).includes(d.theme) ? (d.theme as ThemeChoice) : DEFAULTS.theme;
-  return { sound, vibration: flag('vibration'), pauseOnRed: flag('pauseOnRed'), pauseOnResults: flag('pauseOnResults'), disclaimerAccepted: flag('disclaimerAccepted'), textScale, theme };
+  return { sound, ambience: flag('ambience'), vibration: flag('vibration'), pauseOnRed: flag('pauseOnRed'), pauseOnResults: flag('pauseOnResults'), disclaimerAccepted: flag('disclaimerAccepted'), textScale, theme };
 }
 
 /** Прочитать настройки, если ещё не читали; файла нет или он испорчен — умолчания. */

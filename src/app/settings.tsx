@@ -47,6 +47,7 @@ export default function SettingsScreen() {
         <H>{t.sound}</H>
         <P muted>{t.volume}</P>
         <Tabs<Level> testPrefix="sound" value={levelOf(s.sound)} onChange={setVolume} items={t.volumes.map((title, i) => ({ key: String(i) as Level, title }))} />
+        <Toggle testID="settings-ambience" title={t.ambience} hint={t.ambienceHint} value={s.ambience} onChange={v => updateSettings({ ambience: v })} />
         <Toggle testID="settings-vibration" title={t.vibration} hint={t.vibrationHint} value={s.vibration} onChange={v => updateSettings({ vibration: v })} />
       </Card>
       <Card>
