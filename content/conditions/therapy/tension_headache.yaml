@@ -41,6 +41,6 @@ pearls:
   - ru: "Сжимающая двусторонняя боль без тошноты, которая не мешает ходить, — головная боль напряжения; триптаны при ней не помогают."
   - ru: "Если обезболивающие нужны больше 10–15 дней в месяц, сами таблетки начинают поддерживать боль."
 sources:
-  - { kind: guideline, title: "Головная боль напряжения", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru; частоты — черновик" }
+  - { kind: guideline, title: "Головная боль напряжения (ГБН)", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/162_3", note: "ID 162_3, опубликованы 28.10.2024, применяются; сверено с рубрикатором 28.09.2026; частоты — черновик" }
   - { kind: guideline, title: "Headache Classification Committee of the International Headache Society. The International Classification of Headache Disorders, 3rd edition. Cephalalgia 2018;38(1):1–211" }
 review: draft

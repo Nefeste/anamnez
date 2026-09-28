@@ -62,6 +62,6 @@ pearls:
   - ru: "Чистые лёгкие при аускультации не исключают пневмонию — решает рентген."
   - ru: "Нормальные температура, пульс и частота дыхания делают пневмонию маловероятной."
 sources:
-  - { kind: guideline, title: "Внебольничная пневмония у взрослых", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru; частоты — черновик прототипа" }
+  - { kind: guideline, title: "Внебольничная пневмония у взрослых", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/654_2", note: "ID 654_2, опубликованы 23.12.2024, применяются; сверено с рубрикатором 28.09.2026; частоты — черновик прототипа" }
   - { kind: paper, title: "Metlay JP, Kapoor WN, Fine MJ. Does this patient have community-acquired pneumonia? JAMA 1997;278(17):1440–1445" }
 review: draft

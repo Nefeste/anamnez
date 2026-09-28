@@ -43,6 +43,6 @@ pearls:
   - ru: "Приступ снимают НПВС или триптанами — чем раньше, тем лучше. Первая в жизни внезапная сильнейшая боль — не мигрень, а повод искать опасную причину."
 simplified: "Опасные причины головной боли (кровоизлияние, менингит) и неврологический осмотр — позже, с неврологией."
 sources:
-  - { kind: guideline, title: "Мигрень", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru; частоты — черновик" }
+  - { kind: guideline, title: "Мигрень", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/295_4", note: "ID 295_4, опубликованы 25.10.2024, применяются; сверено с рубрикатором 28.09.2026; частоты — черновик" }
   - { kind: guideline, title: "Headache Classification Committee of the International Headache Society. The International Classification of Headache Disorders, 3rd edition. Cephalalgia 2018;38(1):1–211" }
 review: draft

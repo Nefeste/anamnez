@@ -39,6 +39,6 @@ pearls:
   - ru: "Один анализ решает: ТТГ повышен — функция железы снижена."
 simplified: "Субклинический гипотиреоз и свободный Т4 — позже, с эндокринологией."
 sources:
-  - { kind: guideline, title: "Гипотиреоз", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru; частоты — черновик" }
+  - { kind: guideline, title: "Гипотиреоз", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/531_4", note: "ID 531_4, опубликованы 18.09.2024, применяются; сверено с рубрикатором 28.09.2026; частоты — черновик" }
   - { kind: review, title: "Chaker L et al. Hypothyroidism. Lancet 2017;390(10101):1550–1562" }
 review: draft

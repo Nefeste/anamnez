@@ -50,7 +50,7 @@ pearls:
   - ru: "Обезболивание не «смазывает картину» — это миф; опасно другое: отпустить домой с «отравлением»."
 simplified: "Шкала Альварадо, УЗИ и КТ — позже; в поликлинике задача — заподозрить и отправить к хирургу."
 sources:
-  - { kind: guideline, title: "Острый аппендицит у взрослых", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru; частоты — черновик" }
+  - { kind: guideline, title: "Острый аппендицит у взрослых", org: "Минздрав РФ", year: 2023, url: "https://cr.minzdrav.gov.ru/view-cr/325_2", note: "ID 325_2, опубликованы 24.11.2023, применяются; сверено с рубрикатором 28.09.2026; частоты — черновик" }
   - { kind: guideline, title: "Di Saverio S et al. Diagnosis and treatment of acute appendicitis: 2020 update of the WSES Jerusalem guidelines. World J Emerg Surg 2020;15:27" }
   - { kind: paper, title: "Wagner JM, McKinney WP, Carpenter JL. Does this patient have appendicitis? JAMA 1996;276(19):1589–1594" }
 review: draft

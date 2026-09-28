@@ -11,6 +11,5 @@ texts:
   hint:
     ru: "Снижают выработку кислоты в желудке. Основное лечение рефлюксной болезни и диспепсии: изжога проходит за несколько дней. Долго без показаний их не принимают."
 sources:
-  - { kind: guideline, title: "Гастроэзофагеальная рефлюксная болезнь", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru" }
-  - { kind: guideline, title: "Katz PO et al. ACG Clinical Guideline for the Diagnosis and Management of Gastroesophageal Reflux Disease. Am J Gastroenterol 2022;117(1):27–56" }
+  - { kind: guideline, title: "Katz PO et al. ACG Clinical Guideline for the Diagnosis and Management of Gastroesophageal Reflux Disease. Am J Gastroenterol 2022;117(1):27–56", url: "https://pubmed.ncbi.nlm.nih.gov/34807007/" }
 review: draft

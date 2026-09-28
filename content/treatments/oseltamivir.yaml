@@ -10,6 +10,6 @@ texts:
   hint:
     ru: "Противовирусное против гриппа: укорачивает болезнь примерно на сутки, если начать в первые двое суток, и важнее всего людям из групп риска. На другие вирусы не действует."
 sources:
-  - { kind: guideline, title: "Грипп у взрослых", org: "Минздрав РФ", note: "черновик: название и редакцию сверить на cr.minzdrav.gov.ru" }
+  - { kind: guideline, title: "Грипп у взрослых", org: "Минздрав РФ", year: 2025, url: "https://cr.minzdrav.gov.ru/view-cr/749_2", note: "ID 749_2, опубликованы 20.10.2025, применяются; сверено с рубрикатором 28.09.2026" }
   - { kind: review, title: "Jefferson T et al. Neuraminidase inhibitors for preventing and treating influenza in adults and children. Cochrane Database Syst Rev 2014;(4):CD008965", note: "черновик: величину эффекта сверить" }
 review: draft

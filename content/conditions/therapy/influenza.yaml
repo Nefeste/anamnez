@@ -52,7 +52,7 @@ pearls:
   - ru: "Внезапное начало с высокой температурой и ломотой в сезон гриппа — главный довод."
   - ru: "Отрицательный экспресс-тест не исключает грипп: его чувствительность около 60 %."
 sources:
-  - { kind: guideline, title: "Грипп у взрослых", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru; частоты — черновик прототипа" }
+  - { kind: guideline, title: "Грипп у взрослых", org: "Минздрав РФ", year: 2025, url: "https://cr.minzdrav.gov.ru/view-cr/749_2", note: "ID 749_2, опубликованы 20.10.2025, применяются; сверено с рубрикатором 28.09.2026; частоты — черновик прототипа" }
   - { kind: paper, title: "Call SA et al. Does this patient have influenza? JAMA 2005;293(8):987–997" }
   - { kind: paper, title: "Chartrand C et al. Accuracy of rapid influenza diagnostic tests: a meta-analysis. Ann Intern Med 2012;156(7):500–511" }
 review: draft

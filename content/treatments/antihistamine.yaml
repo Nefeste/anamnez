@@ -11,5 +11,5 @@ texts:
     ru: "Таблетки от аллергии: убирают чихание, зуд и насморк при аллергическом рините, почти не вызывая сонливости. При простуде и синусите не помогают."
 sources:
   - { kind: guideline, title: "Brożek JL et al. Allergic Rhinitis and its Impact on Asthma (ARIA) guidelines — 2016 revision. J Allergy Clin Immunol 2017;140(4):950–958" }
-  - { kind: guideline, title: "Аллергический ринит", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru" }
+  - { kind: guideline, title: "Аллергический ринит", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/261_2", note: "ID 261_2, опубликованы 11.07.2024, применяются; сверено с рубрикатором 28.09.2026" }
 review: draft

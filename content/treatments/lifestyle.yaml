@@ -12,5 +12,7 @@ texts:
   hint:
     ru: "Питание, снижение веса, физическая активность, отказ от курения, меньше алкоголя и соли. Основа лечения гипертонии и диабета 2 типа; при рефлюксе — не есть на ночь и поднять изголовье."
 sources:
-  - { kind: guideline, title: "Гастроэзофагеальная рефлюксная болезнь", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru" }
+  - { kind: guideline, title: "Katz PO et al. ACG Clinical Guideline for the Diagnosis and Management of Gastroesophageal Reflux Disease. Am J Gastroenterol 2022;117(1):27–56", url: "https://pubmed.ncbi.nlm.nih.gov/34807007/" }
+  - { kind: guideline, title: "Артериальная гипертензия у взрослых", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/62_3", note: "ID 62_3, опубликованы 03.10.2024, применяются; сверено с рубрикатором 28.09.2026" }
+  - { kind: guideline, title: "Сахарный диабет 2 типа у взрослых", org: "Минздрав РФ", year: 2022, url: "https://cr.minzdrav.gov.ru/view-cr/290_2", note: "ID 290_2, опубликованы 12.07.2022, применяются; сверено с рубрикатором 28.09.2026" }
 review: draft

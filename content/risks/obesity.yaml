@@ -4,5 +4,5 @@ prevalence: { m: 22, f: 26 }
 findings:
   - { f: sign.obesity, band: always }
 sources:
-  - { kind: guideline, title: "Ожирение", org: "Минздрав РФ", note: "распространённость у взрослых в России — черновик; сверить на cr.minzdrav.gov.ru" }
+  - { kind: guideline, title: "Ожирение", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/28_3", note: "ID 28_3, опубликованы 25.12.2024, применяются; сверено с рубрикатором 28.09.2026; распространённость у взрослых в России — черновик" }
 review: draft

@@ -51,7 +51,7 @@ pearls:
   - ru: "При неосложнённом цистите — фосфомицин или нитрофурантоин. Фторхинолоны берегут для пиелонефрита."
 simplified: "Цистит у мужчин и осложнённые инфекции мочевых путей — позже, с урологией."
 sources:
-  - { kind: guideline, title: "Цистит у женщин", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru; частоты — черновик" }
+  - { kind: guideline, title: "Цистит у женщин", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/14_3", note: "ID 14_3, опубликованы 02.11.2024, применяются; сверено с рубрикатором 28.09.2026; частоты — черновик" }
   - { kind: guideline, title: "EAU Guidelines on Urological Infections", org: "European Association of Urology", year: 2024 }
   - { kind: paper, title: "Bent S et al. Does this woman have an acute uncomplicated urinary tract infection? JAMA 2002;287(20):2701–2710" }
 review: draft

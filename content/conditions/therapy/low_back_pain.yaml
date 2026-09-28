@@ -42,5 +42,5 @@ pearls:
 simplified: "Тревожные признаки (травма, онемение в промежности, похудание, онкология в анамнезе) и корешковый синдром — позже, с неврологией."
 sources:
   - { kind: guideline, title: "Low back pain and sciatica in over 16s: assessment and management. NICE guideline NG59", org: "NICE", year: 2016, note: "частоты — черновик" }
-  - { kind: guideline, title: "Хроническая боль в спине", org: "Минздрав РФ", note: "точное название и редакцию сверить на cr.minzdrav.gov.ru; об острой боли — сверить действующий документ" }
+  - { kind: guideline, title: "Скелетно-мышечные (неспецифические) боли в нижней части спины", org: "Минздрав РФ", year: 2023, url: "https://cr.minzdrav.gov.ru/view-cr/778_1", note: "ID 778_1, опубликованы 07.12.2023, применяются; сверено с рубрикатором 28.09.2026" }
 review: draft
