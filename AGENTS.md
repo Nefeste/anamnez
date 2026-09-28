@@ -113,6 +113,11 @@ charter's `docs/05-rules.md` and are not repeated here. Project rules:
   manifest by a config plugin, debug keeps it for Metro. Any new permission must be added to the
   CI whitelist consciously.
 - The app's own confirm window is `Sheet` in `src/ui/components.tsx` (instead of `Alert`).
+- Colors and fonts come from the current theme (`docs/specs/2026-09-own-look.md`): screens call
+  `useTheme()` and style with `makeStyles(t => …)` from `src/ui/theme.ts`. No hex, `rgb()` or
+  module-level `StyleSheet.create` in `src/app` and `src/ui` outside `src/ui/palette.ts` —
+  `tools/test/theme.test.ts` guards it. The hospital plan, portraits and images (`src/render`)
+  keep their own colors in both themes.
 - React Compiler memoizes calls by argument identity, and the engine mutates its state in place:
   screens read data from the view rebuilt per version (`ShiftView` in `src/state/session.ts`),
   never compute from the live state during render (`docs/06-architecture.md` §12).

@@ -2,18 +2,19 @@
 // подставлено — из тех же списков, что у пациентов, — его можно оставить, поменять или взять
 // другое; портрет — один из шести, нарисованных кодом (spec 2026-09-profile, часть 16).
 import { useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { Text, TextInput } from './text';
 import { T } from '@/i18n';
 import { Portrait } from '@/render/Portrait';
 import type { Doctor } from '@/state/profile';
 import { DOCTOR_AGE, DOCTOR_PORTRAITS, suggestDoctor } from '@/state/profileView';
 import { Button, Card, H, P, Screen, Tabs } from './components';
-import { colors, radius, space, touch } from './theme';
+import { makeStyles, space, touch } from './theme';
 
 const MAX = 30;
 
 export function DoctorForm({ initial, submitTitle, onSubmit }: { initial?: Doctor; submitTitle: string; onSubmit: (d: Doctor) => void }) {
+  const styles = useStyles();
   const t = T.profile;
   const [d, setD] = useState<Doctor>(() => initial ?? suggestDoctor(Math.random() < 0.5 ? 'f' : 'm', Math.random));
   // пока имя не трогали, смена пола подставляет подходящее имя
@@ -84,21 +85,21 @@ export function DoctorForm({ initial, submitTitle, onSubmit }: { initial?: Docto
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles(t => ({
   // по три в ряд — два ровных ряда на любом экране
   portraits: { flexDirection: 'row', flexWrap: 'wrap', rowGap: space.s },
   portrait: { width: '33.33%', minHeight: touch, alignItems: 'center', justifyContent: 'center' },
-  frame: { padding: 3, borderRadius: radius, borderWidth: 2, borderColor: 'transparent' },
-  frameOn: { borderColor: colors.accent },
-  label: { fontSize: 13, fontWeight: '700', color: colors.muted, textTransform: 'uppercase', marginTop: space.s },
+  frame: { padding: 3, borderRadius: t.shape.radius, borderWidth: 2, borderColor: 'transparent' },
+  frameOn: { borderColor: t.colors.accent },
+  label: { fontSize: 13, fontWeight: '700', color: t.colors.muted, textTransform: 'uppercase', marginTop: space.s },
   input: {
     minHeight: touch,
-    backgroundColor: colors.bg,
-    borderRadius: radius,
+    backgroundColor: t.colors.bg,
+    borderRadius: t.shape.radius,
     borderWidth: 1,
-    borderColor: colors.line,
+    borderColor: t.colors.line,
     paddingHorizontal: space.l,
     fontSize: 16,
-    color: colors.ink,
+    color: t.colors.ink,
   },
-});
+}));

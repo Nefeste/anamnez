@@ -12,9 +12,10 @@ import Animated, { useAnimatedStyle, useDerivedValue, useSharedValue, withTiming
 import { scheduleOnRN } from 'react-native-worklets';
 import type { Cell } from '@/content/types';
 import type { Plan } from '@/engine/hospital/build';
-import { colors } from '@/ui/theme';
+import { useTheme } from '@/ui/theme';
 import { CELL_PX, recordFloor, recordGridLines } from './floor';
 import { doorOnTop, roomLabel } from './labels';
+import { PLAN_MUTED } from './metrics';
 import { angleOf, objectTurns } from './orient';
 import { atlasPx, buildAtlas } from './sprites';
 import { cellXform } from './xform';
@@ -98,6 +99,7 @@ export function BuildMap({ plan, width, height, tool, ghost, selected, labels, l
   onStroke: (cells: Cell[]) => void;
   onTapCell: (x: number, y: number) => void;
 }) {
+  const t = useTheme();
   const plotW = plan.grid.w * CELL_PX;
   const plotH = plan.grid.h * CELL_PX;
   const fit = Math.min(width / plotW, height / plotH);
@@ -274,15 +276,15 @@ export function BuildMap({ plan, width, height, tool, ghost, selected, labels, l
             <Picture picture={lines} />
             <Atlas image={atlas.image} sprites={objectSprites} transforms={objectXforms} />
             {chosen && (
-              <Rect x={(chosen.x + 0.5) * CELL_PX} y={(chosen.y + 0.5) * CELL_PX} width={(chosen.w - 1) * CELL_PX} height={(chosen.h - 1) * CELL_PX} style="stroke" strokeWidth={2.5} color={colors.accent} />
+              <Rect x={(chosen.x + 0.5) * CELL_PX} y={(chosen.y + 0.5) * CELL_PX} width={(chosen.w - 1) * CELL_PX} height={(chosen.h - 1) * CELL_PX} style="stroke" strokeWidth={2.5} color={t.colors.mark} />
             )}
-            <Path path={painted} color={tool === 'erase' ? 'rgba(200, 69, 60, 0.45)' : 'rgba(26, 138, 134, 0.45)'} />
+            <Path path={painted} color={tool === 'erase' ? RED : t.colors.mark} opacity={0.45} />
             {ghost && (
               <Group>
-                <Rect x={ghost.x * CELL_PX} y={ghost.y * CELL_PX} width={ghost.w * CELL_PX} height={ghost.h * CELL_PX} color={ok ? 'rgba(26, 138, 134, 0.28)' : 'rgba(200, 69, 60, 0.2)'} />
-                <Rect x={ghost.x * CELL_PX} y={ghost.y * CELL_PX} width={ghost.w * CELL_PX} height={ghost.h * CELL_PX} style="stroke" strokeWidth={2} color={ok ? colors.accent : RED} />
+                <Rect x={ghost.x * CELL_PX} y={ghost.y * CELL_PX} width={ghost.w * CELL_PX} height={ghost.h * CELL_PX} color={ok ? t.colors.mark : RED} opacity={ok ? 0.24 : 0.2} />
+                <Rect x={ghost.x * CELL_PX} y={ghost.y * CELL_PX} width={ghost.w * CELL_PX} height={ghost.h * CELL_PX} style="stroke" strokeWidth={2} color={ok ? t.colors.mark : RED} />
                 {ghost.door.map(([x, y]) => (
-                  <Rect key={`${x},${y}`} x={x * CELL_PX + 2} y={y * CELL_PX + 2} width={CELL_PX - 4} height={CELL_PX - 4} color={ok ? colors.accent : RED} />
+                  <Rect key={`${x},${y}`} x={x * CELL_PX + 2} y={y * CELL_PX + 2} width={CELL_PX - 4} height={CELL_PX - 4} color={ok ? t.colors.mark : RED} />
                 ))}
                 <Path path={hatch} style="stroke" strokeWidth={1.5} color={RED} />
               </Group>
@@ -311,5 +313,5 @@ const styles = StyleSheet.create({
   overlay: { position: 'absolute', left: 0, top: 0, transformOrigin: 'left top' },
   label: { position: 'absolute', flexDirection: 'row', alignItems: 'center' },
   down: { width: 5, height: 5, borderRadius: 3, backgroundColor: RED, marginRight: 2 },
-  name: { flexShrink: 1, fontWeight: '600', color: colors.muted },
+  name: { flexShrink: 1, fontWeight: '600', color: PLAN_MUTED },
 });

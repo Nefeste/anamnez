@@ -3,7 +3,7 @@
 // последних 50 приёмов — каждый открывается тем же разбором, что в итогах дня.
 import { router } from 'expo-router';
 import { useEffect } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import { Text } from '@/ui/text';
 import { T } from '@/i18n';
 import { Portrait } from '@/render/Portrait';
@@ -11,9 +11,10 @@ import { loadProfile, useProfile } from '@/state/profile';
 import { achievementCount, archiveRows, DOCTOR_AGE, doctorName, portraitSeed, practiceLines, rankLadder, rankName } from '@/state/profileView';
 import { CaseRow } from '@/ui/case/CaseRow';
 import { Button, Card, P, Screen } from '@/ui/components';
-import { colors, space } from '@/ui/theme';
+import { makeStyles, space } from '@/ui/theme';
 
 export default function ProfileScreen() {
+  const styles = useStyles();
   const p = useProfile();
   useEffect(() => {
     loadProfile();
@@ -63,10 +64,10 @@ export default function ProfileScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles(t => ({
   head: { flexDirection: 'row', alignItems: 'center', gap: space.m },
   fill: { flex: 1 },
-  name: { fontSize: 22, fontWeight: '700', color: colors.ink },
-  rank: { fontSize: 15, fontWeight: '600', color: colors.accent, marginTop: 2 },
-  label: { fontSize: 13, fontWeight: '700', color: colors.muted, textTransform: 'uppercase', marginBottom: space.xs },
-});
+  name: { fontSize: 22, fontWeight: '700', color: t.colors.ink },
+  rank: { fontSize: 15, fontWeight: '600', color: t.colors.accent, marginTop: 2 },
+  label: { fontSize: 13, fontWeight: '700', color: t.colors.muted, textTransform: 'uppercase', marginBottom: space.xs },
+}));

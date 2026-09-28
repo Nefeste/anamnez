@@ -5,7 +5,7 @@
 // его карта открывается, когда он вошёл.
 import { router, Stack, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Pressable, useWindowDimensions, View } from 'react-native';
 import { Text } from '@/ui/text';
 import { buzz, play } from '@/audio/sounds';
 import { db } from '@/content';
@@ -21,11 +21,11 @@ import {
 } from '@/state/session';
 import { CaseRow } from '@/ui/case/CaseRow';
 import { gradeColor } from '@/ui/case/OutcomeScreen';
-import { Button, Card, Chip, Chips, H, P, Screen, Sheet, Tabs } from '@/ui/components';
+import { Button, Card, Chip, Chips, H, Lamp, P, Screen, Sheet, Tabs } from '@/ui/components';
 import { DifficultyChoice } from '@/ui/difficulty';
 import { ChapterCard } from '@/ui/campaign';
 import { NewSandbox } from '@/ui/sandbox';
-import { colors, radius, space, touch } from '@/ui/theme';
+import { makeStyles, space, touch, useTheme } from '@/ui/theme';
 
 export default function ShiftScreen() {
   const v = useShift();
@@ -157,6 +157,7 @@ function openVisit() {
 }
 
 function Queue({ v }: { v: ShiftView }) {
+  const styles = useStyles();
   const t = T.shift;
   const { width } = useWindowDimensions();
   const [focused, setFocused] = useState(true);
@@ -224,7 +225,7 @@ function Queue({ v }: { v: ShiftView }) {
   const footer = v.inRoom
     ? <Button testID="shift-continue" title={`${entering === v.inRoom.id ? t.entering(v.inRoom.name) : t.continueVisit(v.inRoom.name)} ▶`} onPress={enter} />
     : first
-      ? <Button testID="shift-call" title={`${t.call(first.name)} ▶`} hint={v.queue.length > 1 ? t.callHint : undefined} onPress={() => call(first.id)} />
+      ? <Button testID="shift-call" lamp title={`${t.call(first.name)} ▶`} hint={v.queue.length > 1 ? t.callHint : undefined} onPress={() => call(first.id)} />
       : v.allDone
         ? <Button testID="shift-close-day" title={t.closeDay} hint={t.closeDayHint(0)} onPress={closeDay} />
         : <Button testID="shift-skip" title={t.skip} hint={t.skipHint(v.away.length)} onPress={skip} />;
@@ -317,21 +318,25 @@ function Queue({ v }: { v: ShiftView }) {
   );
 }
 
-const TRIAGE_COLOR: Record<Triage, string> = { red: colors.red, yellow: colors.yellow, green: colors.green };
+/** текст на плашке срочности — по её цвету */
+const ON_TRIAGE = { red: 'onRed', yellow: 'onYellow', green: 'onGreen' } as const satisfies Record<Triage, string>;
 
 /** Кого коснулись на карте: кто это и что делает; ждущего приёма можно пригласить, приём нанятого врача — открыть. */
 function WhoStrip({ who, onCall, onOpen }: { who: WhoView; onCall?: () => void; onOpen?: () => void }) {
+  const styles = useStyles();
+  const t = useTheme();
   return (
     <View testID="map-who" style={styles.who}>
       <View style={styles.itemHead}>
         <Text style={styles.itemName} numberOfLines={1}>{who.title}</Text>
-        {who.triage ? <Text style={[styles.pill, styles.whoPill, { backgroundColor: TRIAGE_COLOR[who.triage] }]}>{T.shift.triage[who.triage]}</Text> : null}
+        {who.triage ? <Text style={[styles.pill, { backgroundColor: t.colors[who.triage], color: t.colors[ON_TRIAGE[who.triage]] }]}>{T.shift.triage[who.triage]}</Text> : null}
       </View>
       {who.complaint ? <Text style={styles.itemText} numberOfLines={1}>{`«${who.complaint}»`}</Text> : null}
       <View style={styles.whoFoot}>
         <Text style={[styles.itemMeta, styles.whoDoing]}>{who.doing}</Text>
         {onCall ? (
-          <Pressable testID="map-invite" accessibilityRole="button" onPress={onCall} style={({ pressed }) => [styles.invite, pressed && styles.pressed]}>
+          <Pressable testID="map-invite" accessibilityRole="button" onPress={onCall} style={({ pressed }) => [styles.invite, styles.inviteLamp, pressed && styles.pressed]}>
+            <Lamp />
             <Text style={styles.inviteText}>{`${T.shift.map.invite} ▶`}</Text>
           </Pressable>
         ) : onOpen ? (
@@ -346,6 +351,7 @@ function WhoStrip({ who, onCall, onOpen }: { who: WhoView; onCall?: () => void; 
 
 /** Какого помещения коснулись на карте своей больницы: что это, работает ли, кто в нём и что там сейчас. */
 function RoomStrip({ room }: { room: RoomView }) {
+  const styles = useStyles();
   return (
     <View testID="map-room" style={styles.who}>
       <Text style={styles.itemName} numberOfLines={1}>{room.title}</Text>
@@ -356,16 +362,18 @@ function RoomStrip({ room }: { room: RoomView }) {
 }
 
 function QueueItem({ r, disabled, onPress }: { r: QueueRow; disabled: boolean; onPress: () => void }) {
+  const styles = useStyles();
+  const t = useTheme();
   return (
     <Pressable
       testID={`queue-${r.id}`}
       accessibilityRole="button"
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [styles.item, { borderLeftColor: TRIAGE_COLOR[r.triage] }, disabled && styles.itemDisabled, pressed && styles.pressed]}>
+      style={({ pressed }) => [styles.item, { borderLeftColor: t.colors[r.triage] }, disabled && styles.itemDisabled, pressed && styles.pressed]}>
       <View style={styles.itemHead}>
         <Text style={styles.itemName}>{`${r.name}, ${r.age}`}</Text>
-        <Text style={[styles.pill, { backgroundColor: TRIAGE_COLOR[r.triage] }]}>{T.shift.triage[r.triage]}</Text>
+        <Text style={[styles.pill, { backgroundColor: t.colors[r.triage], color: t.colors[ON_TRIAGE[r.triage]] }]}>{T.shift.triage[r.triage]}</Text>
       </View>
       <Text style={styles.itemText}>{`«${r.complaint}»`}</Text>
       <Text style={styles.itemMeta}>{[...r.badges, r.waits].join(' · ')}</Text>
@@ -374,6 +382,7 @@ function QueueItem({ r, disabled, onPress }: { r: QueueRow; disabled: boolean; o
 }
 
 function Summary({ v }: { v: ShiftView }) {
+  const styles = useStyles();
   const t = T.shift.summary;
   const [confirm, setConfirm] = useState(false);
   const s = v.summary;
@@ -459,6 +468,8 @@ function Summary({ v }: { v: ShiftView }) {
 
 /** «Смена»: оценки по категориям, общая, кого приняли и сколько минут на приём, лучший здесь. */
 function SingleCard({ r }: { r: NonNullable<SummaryView['single']> }) {
+  const styles = useStyles();
+  const theme = useTheme();
   const t = T.single;
   return (
     <Card testID="single-result">
@@ -467,13 +478,13 @@ function SingleCard({ r }: { r: NonNullable<SummaryView['single']> }) {
         <View style={styles.grades}>
           {r.grades.map(g => (
             <View key={g.key} style={styles.gradeCell}>
-              <Text testID={`single-${g.key}`} style={[styles.gradeLetter, gradeColor(g.grade)]}>{g.grade}</Text>
+              <Text testID={`single-${g.key}`} style={[styles.gradeLetter, gradeColor(theme, g.grade)]}>{g.grade}</Text>
               <Text style={styles.gradeName}>{g.label}</Text>
             </View>
           ))}
           {r.overall && (
             <View style={[styles.gradeCell, styles.gradeTotal]}>
-              <Text testID="single-overall" style={[styles.gradeLetter, gradeColor(r.overall)]}>{r.overall}</Text>
+              <Text testID="single-overall" style={[styles.gradeLetter, gradeColor(theme, r.overall)]}>{r.overall}</Text>
               <Text style={styles.gradeName}>{t.overall}</Text>
             </View>
           )}
@@ -503,6 +514,7 @@ function CampaignDay({ d }: { d: NonNullable<SummaryView['chapterDay']> }) {
 
 /** Песочница: касса за день и репутация — из чего сложились (spec 2026-09-own-hospital, часть 9). */
 function Cash({ c }: { c: CashView }) {
+  const styles = useStyles();
   const t = T.sandbox;
   return (
     <>
@@ -531,6 +543,7 @@ function Cash({ c }: { c: CashView }) {
 
 /** Строка кассы: название слева, сумма справа. */
 function Line({ title, sum, testID }: { title: string; sum: string; testID?: string }) {
+  const styles = useStyles();
   return (
     <View testID={testID} style={styles.line}>
       <Text style={styles.lineTitle}>{title}</Text>
@@ -540,6 +553,7 @@ function Line({ title, sum, testID }: { title: string; sum: string; testID?: str
 }
 
 function Grades({ s }: { s: SummaryView }) {
+  const styles = useStyles();
   return (
     <Card>
       <Text style={styles.label}>{T.shift.summary.grades}</Text>
@@ -550,32 +564,32 @@ function Grades({ s }: { s: SummaryView }) {
   );
 }
 
-const styles = StyleSheet.create({
-  label: { fontSize: 13, fontWeight: '700', color: colors.muted, textTransform: 'uppercase', marginTop: space.s },
-  room: { backgroundColor: colors.accentSoft },
+const useStyles = makeStyles(t => ({
+  label: { fontSize: 13, fontWeight: '700', color: t.colors.muted, textTransform: 'uppercase', marginTop: space.s },
+  room: { backgroundColor: t.colors.accentSoft },
   colleague: { gap: 2 },
-  item: { borderLeftWidth: 5, borderRadius: radius, backgroundColor: colors.bg, paddingVertical: space.s, paddingHorizontal: space.m, gap: 2 },
+  item: { borderLeftWidth: 5, borderRadius: t.shape.radius, backgroundColor: t.colors.bg, paddingVertical: space.s, paddingHorizontal: space.m, gap: 2 },
   itemDisabled: { opacity: 0.6 },
   pressed: { opacity: 0.8 },
   itemHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.s },
-  itemName: { flexShrink: 1, fontSize: 15, fontWeight: '600', color: colors.ink },
-  itemText: { fontSize: 14, color: colors.ink },
-  itemMeta: { fontSize: 13, color: colors.muted },
-  pill: { fontSize: 12, fontWeight: '700', color: '#fff', borderRadius: 10, paddingHorizontal: space.s, paddingVertical: 2, overflow: 'hidden' },
-  who: { gap: 2, width: '100%', maxWidth: 640, paddingHorizontal: space.l, paddingVertical: space.s, borderTopWidth: 1, borderTopColor: colors.line },
-  whoPill: { flexShrink: 0 },
+  itemName: { flexShrink: 1, fontSize: 15, fontWeight: '600', color: t.colors.ink },
+  itemText: { fontSize: 14, color: t.colors.ink },
+  itemMeta: { fontSize: 13, color: t.colors.muted },
+  pill: { flexShrink: 0, fontSize: 12, fontWeight: '700', borderRadius: 10, paddingHorizontal: space.s, paddingVertical: 2, overflow: 'hidden' },
+  who: { gap: 2, width: '100%', maxWidth: 640, paddingHorizontal: space.l, paddingVertical: space.s, borderTopWidth: 1, borderTopColor: t.colors.line },
   whoFoot: { flexDirection: 'row', alignItems: 'center', gap: space.m },
   whoDoing: { flex: 1 },
-  invite: { minHeight: touch, justifyContent: 'center', paddingHorizontal: space.l, borderRadius: radius, backgroundColor: colors.accent },
-  inviteText: { fontSize: 15, fontWeight: '700', color: '#fff' },
-  log: { fontSize: 14, lineHeight: 20, color: colors.ink },
+  invite: { minHeight: touch, justifyContent: 'center', paddingHorizontal: space.l, borderRadius: t.shape.radius, backgroundColor: t.colors.accent },
+  inviteLamp: { flexDirection: 'row', alignItems: 'center', gap: space.s },
+  inviteText: { fontSize: 15, fontWeight: '700', color: t.colors.onAccent },
+  log: { fontSize: 14, lineHeight: 20, color: t.colors.ink },
   line: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: space.m },
   grades: { flexDirection: 'row', flexWrap: 'wrap', gap: space.s },
-  gradeCell: { width: '30%', minWidth: 90, alignItems: 'center', paddingVertical: space.s, borderRadius: radius, backgroundColor: colors.bg },
-  gradeTotal: { backgroundColor: colors.accentSoft },
+  gradeCell: { width: '30%', minWidth: 90, alignItems: 'center', paddingVertical: space.s, borderRadius: t.shape.radius, backgroundColor: t.colors.bg },
+  gradeTotal: { backgroundColor: t.colors.accentSoft },
   gradeLetter: { fontSize: 24, fontWeight: '800' },
-  gradeName: { fontSize: 12, color: colors.muted, textAlign: 'center' },
-  lineTitle: { flexShrink: 1, fontSize: 15, lineHeight: 22, color: colors.ink },
-  lineSum: { fontSize: 15, lineHeight: 22, fontWeight: '600', color: colors.ink, fontVariant: ['tabular-nums'] },
-  logRed: { color: colors.red, fontWeight: '600' },
-});
+  gradeName: { fontSize: 12, color: t.colors.muted, textAlign: 'center' },
+  lineTitle: { flexShrink: 1, fontSize: 15, lineHeight: 22, color: t.colors.ink },
+  lineSum: { fontSize: 15, lineHeight: 22, fontWeight: '600', color: t.colors.ink, fontVariant: ['tabular-nums'] },
+  logRed: { color: t.colors.red, fontWeight: '600' },
+}));

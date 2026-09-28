@@ -1,13 +1,14 @@
 // П2 · Карта больницы на Skia: кадры в секунду и худший кадр видны сверху.
 import { useMemo, useState } from 'react';
-import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Text, useWindowDimensions, View } from 'react-native';
 import { spikeHospital } from '@/engine/hospital/grid';
 import { T } from '@/i18n';
 import { type FrameStats, HospitalMap } from '@/render/map/HospitalMap';
 import { Button } from '@/ui/components';
-import { colors, space } from '@/ui/theme';
+import { makeStyles, space } from '@/ui/theme';
 
 export default function MapSpike() {
+  const styles = useStyles();
   const { width, height } = useWindowDimensions();
   const layout = useMemo(() => spikeHospital(1), []);
   const [stats, setStats] = useState<FrameStats>({ fps: 0, worstMs: 0 });
@@ -33,10 +34,10 @@ export default function MapSpike() {
   );
 }
 
-const styles = StyleSheet.create({
-  fill: { flex: 1, backgroundColor: colors.bg },
-  bar: { padding: space.m, gap: 2, backgroundColor: colors.card, borderBottomWidth: 1, borderColor: colors.line },
-  stat: { fontSize: 16, fontWeight: '700', color: colors.ink },
-  muted: { fontSize: 13, color: colors.muted },
+const useStyles = makeStyles(t => ({
+  fill: { flex: 1, backgroundColor: t.colors.bg },
+  bar: { padding: space.m, gap: 2, backgroundColor: t.colors.card, borderBottomWidth: 1, borderColor: t.colors.line },
+  stat: { fontSize: 16, fontWeight: '700', color: t.colors.ink },
+  muted: { fontSize: 13, color: t.colors.muted },
   bottom: { padding: space.m },
-});
+}));

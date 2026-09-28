@@ -13,9 +13,9 @@ beforeEach(() => {
 });
 
 describe('настройки', () => {
-  test('файла нет — умолчания: звук полный, вибрация и автопауза включены, оговорка не прочитана, текст обычный', async () => {
+  test('файла нет — умолчания: звук полный, вибрация и автопауза включены, оговорка не прочитана, текст обычный, тема как в телефоне', async () => {
     await loadSettings();
-    expect(settings()).toEqual({ sound: 1, vibration: true, pauseOnRed: true, pauseOnResults: true, disclaimerAccepted: false, textScale: 1 });
+    expect(settings()).toEqual({ sound: 1, vibration: true, pauseOnRed: true, pauseOnResults: true, disclaimerAccepted: false, textScale: 1, theme: 'system' });
   });
 
   test('поменяли — записано; после «перезапуска» — те же', async () => {
@@ -45,6 +45,10 @@ describe('настройки', () => {
     // размер текста — только одна из ступеней
     expect(sanitize({ textScale: 1.3 }).textScale).toBe(1.3);
     expect(sanitize({ textScale: 5 }).textScale).toBe(1);
+    // тема — одна из трёх; в файле прежней версии её нет — как в телефоне
+    expect(sanitize({ theme: 'dark' }).theme).toBe('dark');
+    expect(sanitize({ theme: 'blue' }).theme).toBe('system');
+    expect(sanitize({ sound: 0.7, textScale: 1.15 }).theme).toBe('system');
     expect(sanitize(null)).toEqual(DEFAULTS);
     expect(sanitize([1, 2])).toEqual(DEFAULTS);
   });

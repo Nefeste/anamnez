@@ -16,9 +16,10 @@ import type { ClinicLayout } from '@/engine/hospital/clinic';
 import { T } from '@/i18n';
 import type { Placement } from '@/state/clinicMap';
 import { LAMP_ROOMS, type RoomSign } from '@/state/roomSigns';
-import { colors } from '@/ui/theme';
+import { useTheme } from '@/ui/theme';
 import { CELL_PX, recordFloor } from './floor';
 import { badgeAt, doorOnTop, roomLabel } from './labels';
+import { PLAN_CARD, PLAN_INK, PLAN_LINE, PLAN_MUTED, PLAN_RED } from './metrics';
 import { angleOf, objectTurns } from './orient';
 import { lampAt, objectRooms } from './signs';
 import { atlasPx, BODY_AT, buildAtlas, COLS, HEAD_AT, LIT_KINDS } from './sprites';
@@ -89,6 +90,7 @@ export function ClinicMap({ layout, people, signs = [], width, active, label, se
   /** коснулись помещения мимо людей; нет — касание помещений не нужно (практика) */
   onRoom?: (id: string | undefined) => void;
 }) {
+  const t = useTheme();
   const scale = width / (layout.grid.w * CELL_PX);
   const height = layout.grid.h * CELL_PX * scale;
   const cell = CELL_PX * scale;
@@ -239,14 +241,14 @@ export function ClinicMap({ layout, people, signs = [], width, active, label, se
             <Picture picture={floor} />
             {chosenRoom && (
               <Rect x={(chosenRoom.x + 0.5) * CELL_PX} y={(chosenRoom.y + 0.5) * CELL_PX} width={(chosenRoom.w - 1) * CELL_PX} height={(chosenRoom.h - 1) * CELL_PX}
-                style="stroke" strokeWidth={CELL_PX * 0.2} color={colors.accent} />
+                style="stroke" strokeWidth={CELL_PX * 0.2} color={t.colors.mark} />
             )}
             {machines.map((m, i) => <Glow key={i} x={m.x} y={m.y} color={m.color} room={m.room} on={on} />)}
             <Atlas image={atlas.image} sprites={objectSprites} transforms={objectXforms} />
             {machines.length > 0 && <Atlas image={atlas.image} sprites={litSprites} transforms={litXforms} />}
             {lamps.map(l => <Lamp key={l.room} x={l.x} y={l.y} room={l.room} on={on} />)}
-            <Circle cx={ringX} cy={ringY} r={CELL_PX * 0.72} color={colors.accentSoft} />
-            <Circle cx={ringX} cy={ringY} r={CELL_PX * 0.72} style="stroke" strokeWidth={CELL_PX * 0.12} color={colors.accent} />
+            <Circle cx={ringX} cy={ringY} r={CELL_PX * 0.72} color={t.colors.markSoft} />
+            <Circle cx={ringX} cy={ringY} r={CELL_PX * 0.72} style="stroke" strokeWidth={CELL_PX * 0.12} color={t.colors.mark} />
             <Atlas image={atlas.image} sprites={bodySprites} transforms={personXforms} />
             <Atlas image={atlas.image} sprites={headSprites} transforms={personXforms} />
           </Group>
@@ -310,15 +312,15 @@ function Lamp({ x, y, room, on }: { x: number; y: number; room: number; on: Shar
 function Person({ size, crossed }: { size: number; crossed: boolean }) {
   return (
     <View style={{ width: size * 0.84, height: size, alignItems: 'center', justifyContent: 'flex-end' }}>
-      <View style={{ width: size * 0.44, height: size * 0.44, borderRadius: size, backgroundColor: colors.ink }} />
-      <View style={{ width: size * 0.84, height: size * 0.42, marginTop: size * 0.06, borderTopLeftRadius: size * 0.42, borderTopRightRadius: size * 0.42, backgroundColor: colors.ink }} />
-      {crossed && <View style={{ position: 'absolute', top: size * 0.44, width: size * 1.15, height: size * 0.13, borderRadius: size, backgroundColor: colors.red, transform: [{ rotate: '-45deg' }] }} />}
+      <View style={{ width: size * 0.44, height: size * 0.44, borderRadius: size, backgroundColor: PLAN_INK }} />
+      <View style={{ width: size * 0.84, height: size * 0.42, marginTop: size * 0.06, borderTopLeftRadius: size * 0.42, borderTopRightRadius: size * 0.42, backgroundColor: PLAN_INK }} />
+      {crossed && <View style={{ position: 'absolute', top: size * 0.44, width: size * 1.15, height: size * 0.13, borderRadius: size, backgroundColor: PLAN_RED, transform: [{ rotate: '-45deg' }] }} />}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  room: { position: 'absolute', fontWeight: '600', color: colors.muted },
-  badge: { position: 'absolute', flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.line },
-  badgeText: { fontWeight: '700', color: colors.ink },
+  room: { position: 'absolute', fontWeight: '600', color: PLAN_MUTED },
+  badge: { position: 'absolute', flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: PLAN_CARD, borderWidth: 1, borderColor: PLAN_LINE },
+  badgeText: { fontWeight: '700', color: PLAN_INK },
 });

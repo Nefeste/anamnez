@@ -5,17 +5,10 @@
 // прямоугольниками, подряд одного цвета — одним: запись проигрывается на каждом кадре.
 import { PaintStyle, Skia, type SkPaint, type SkPicture } from '@shopify/react-native-skia';
 import { CELL, type Grid, type RoomType } from '@/engine/hospital/grid';
-import { CELL_PX, WALL_IN, WALL_OUT } from './metrics';
+import { CELL_PX, CORRIDOR, OUTSIDE, ROOM_TINT, WALL_IN, WALL_OUT } from './metrics';
 
-export { CELL_PX } from './metrics';
+export { CELL_PX, CORRIDOR, OUTSIDE } from './metrics';
 
-const ROOM_TINT: Record<RoomType, string> = {
-  reception: '#FAF1E4', waiting: '#FAF6E8', office: '#E7F3F2', triage: '#F8ECEC', procedure: '#F8ECEC',
-  lab: '#F1ECF8', ecg: '#EEF5E6', xray: '#E9ECED', ultrasound: '#EEF5E6', ward: '#ECEFF9',
-  surgery: '#E4F3EA', staff: '#F3F0EA', toilet: '#E8EFF5',
-};
-export const OUTSIDE = '#DDE4E3';
-export const CORRIDOR = '#F6F3ED';
 const SEAM = '#E9E2D4';
 export const WALL = '#46555A';
 /** Толща между двумя стенами вплотную, где пола рядом нет. */

@@ -1,15 +1,16 @@
 // Достижения (spec 2026-09-campaign, часть 13): по группам; у полученных — дата, у остальных —
 // что нужно сделать, без счётчиков «осталось» и без упрёков.
 import { useEffect } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import { T } from '@/i18n';
 import { loadProfile, useProfile } from '@/state/profile';
 import { achievementCount, achievementGroups } from '@/state/profileView';
 import { Card, P, Screen } from '@/ui/components';
 import { Text } from '@/ui/text';
-import { colors, space } from '@/ui/theme';
+import { makeStyles, space } from '@/ui/theme';
 
 export default function AchievementsScreen() {
+  const styles = useStyles();
   const p = useProfile();
   useEffect(() => {
     loadProfile();
@@ -40,13 +41,13 @@ export default function AchievementsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  label: { fontSize: 13, fontWeight: '700', color: colors.muted, textTransform: 'uppercase', marginBottom: space.xs },
+const useStyles = makeStyles(t => ({
+  label: { fontSize: 13, fontWeight: '700', color: t.colors.muted, textTransform: 'uppercase', marginBottom: space.xs },
   row: { flexDirection: 'row', gap: space.s, alignItems: 'flex-start', paddingVertical: 4 },
-  mark: { width: 20, fontSize: 16, lineHeight: 22, color: colors.muted },
-  markGot: { color: colors.green, fontWeight: '700' },
+  mark: { width: 20, fontSize: 16, lineHeight: 22, color: t.colors.muted },
+  markGot: { color: t.colors.green, fontWeight: '700' },
   text: { flex: 1, gap: 1 },
-  name: { fontSize: 15, lineHeight: 21, fontWeight: '600', color: colors.ink },
+  name: { fontSize: 15, lineHeight: 21, fontWeight: '600', color: t.colors.ink },
   nameMuted: { fontWeight: '400' },
-  meta: { fontSize: 13, lineHeight: 18, color: colors.muted },
-});
+  meta: { fontSize: 13, lineHeight: 18, color: t.colors.muted },
+}));

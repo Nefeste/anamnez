@@ -3,16 +3,16 @@
 // песочницы; сложность; зерно — случайное или своё. Где смену не открыть — с причиной.
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
-import { StyleSheet } from 'react-native';
 import type { Difficulty } from '@/engine/shift/types';
 import { T } from '@/i18n';
 import { singleVenues, startSingle, type VenueView } from '@/state/session';
 import { Button, Card, Chip, Chips, P, Screen } from '@/ui/components';
 import { DifficultyChoice } from '@/ui/difficulty';
 import { Text, TextInput } from '@/ui/text';
-import { colors, radius, space, touch } from '@/ui/theme';
+import { makeStyles, space, touch } from '@/ui/theme';
 
 export default function SingleScreen() {
+  const styles = useStyles();
   const t = T.single;
   const [venues, setVenues] = useState<VenueView[]>([]);
   const [venue, setVenue] = useState('preset.clinic');
@@ -61,8 +61,7 @@ export default function SingleScreen() {
           <Chip testID="seed-own" text={t.seedOwn} strong={own} onPress={() => setOwn(true)} />
         </Chips>
         {own && (
-          <TextInput testID="seed-input" value={seed} onChangeText={setSeed} keyboardType="number-pad" placeholder={t.seedPlaceholder}
-            placeholderTextColor={colors.muted} style={styles.input} />
+          <TextInput testID="seed-input" value={seed} onChangeText={setSeed} keyboardType="number-pad" placeholder={t.seedPlaceholder} style={styles.input} />
         )}
         <P muted>{t.seedHint}</P>
         {failed && <P testID="single-failed">{t.cantStart}</P>}
@@ -71,10 +70,10 @@ export default function SingleScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  label: { fontSize: 13, fontWeight: '700', color: colors.muted, textTransform: 'uppercase', marginBottom: space.xs },
+const useStyles = makeStyles(t => ({
+  label: { fontSize: 13, fontWeight: '700', color: t.colors.muted, textTransform: 'uppercase', marginBottom: space.xs },
   input: {
-    minHeight: touch, backgroundColor: colors.card, borderRadius: radius, borderWidth: 1, borderColor: colors.line, paddingHorizontal: space.l,
-    fontSize: 16, color: colors.ink,
+    minHeight: touch, backgroundColor: t.colors.card, borderRadius: t.shape.radius, borderWidth: 1, borderColor: t.colors.line, paddingHorizontal: space.l,
+    fontSize: 16, color: t.colors.ink,
   },
-});
+}));

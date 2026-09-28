@@ -231,6 +231,29 @@ try {
   const large = await fontOf();
   check(Math.abs(large / normal - 1.3) < 0.02, `настройки: размер текста «Крупный» — ${normal} → ${large} px`);
   await page.getByTestId('text-size-0').click();
+  // тема (spec 2026-09-own-look): по умолчанию — как в телефоне, у сценария телефон светлый;
+  // «Тёмная» меняет вид сразу, без перезапуска, и остаётся после перезапуска
+  const sheetBg = () => page.getByTestId('settings-about').evaluate(el => getComputedStyle(el).backgroundColor);
+  const LIGHT_CARD = 'rgb(255, 253, 248)';
+  const DARK_CARD = 'rgb(21, 38, 42)';
+  check((await page.getByTestId('theme-system').getAttribute('aria-checked')) === 'true' && (await sheetBg()) === LIGHT_CARD, `настройки: тема как в телефоне — светлая «Медкарта» (${await sheetBg()})`);
+  await page.getByTestId('theme-dark').click();
+  check((await sheetBg()) === DARK_CARD, `настройки: «Тёмная» — сразу тёмный «Монитор» (${await sheetBg()})`);
+  await page.screenshot({ path: join(OUT, '10-settings-dark.png') });
+  await page.goto(`${base}/settings`);
+  await page.getByTestId('settings-about').waitFor({ timeout: 10_000 });
+  check((await page.getByTestId('theme-dark').getAttribute('aria-checked')) === 'true' && (await sheetBg()) === DARK_CARD, 'настройки: тёмная тема — та же после перезапуска');
+  await page.getByTestId('theme-system').click();
+  check((await sheetBg()) === LIGHT_CARD, 'настройки: снова как в телефоне — светлая');
+  {
+    // телефон в тёмной теме — «как в телефоне» даёт тёмную без выбора в настройках
+    const dark = await browser.newPage({ viewport: { width: 412, height: 915 }, colorScheme: 'dark' });
+    await dark.goto(`${base}/settings`);
+    await dark.getByTestId('settings-about').waitFor({ timeout: 30_000 });
+    const bg = await dark.getByTestId('settings-about').evaluate(el => getComputedStyle(el).backgroundColor);
+    check(bg === DARK_CARD && (await dark.getByTestId('theme-system').getAttribute('aria-checked')) === 'true', `настройки: тёмный телефон — «Монитор» по умолчанию (${bg})`);
+    await dark.close();
+  }
   // отчёт об ошибке: весь текст виден, описание — первой строкой
   await page.getByTestId('settings-report').click();
   await page.getByTestId('report-text').waitFor({ timeout: 5000 });

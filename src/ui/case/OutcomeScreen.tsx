@@ -1,17 +1,19 @@
 // Итог приёма и разбор (03-game-design.md §5): что было на самом деле, что было дальше,
 // оценки по категориям, затем разбор. Главная кнопка — внизу, под большим пальцем: у
 // прототипа «Следующий пациент», у смены — к очереди или к итогам дня.
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import { Text } from '../text';
 import { db } from '@/content';
 import { T } from '@/i18n';
 import type { VisitView } from '@/state/caseView';
 import { Button, Card, H, P, Screen } from '@/ui/components';
 import { openArticle } from '@/ui/encyclopedia';
-import { colors, radius, space } from '@/ui/theme';
+import { makeStyles, space, type Theme, useTheme } from '@/ui/theme';
 import type { FooterAction } from './actions';
 
 export function OutcomeScreen({ view, next, back }: { view: VisitView | undefined; next: FooterAction; back: FooterAction }) {
+  const styles = useStyles();
+  const theme = useTheme();
   const t = T.spikes.patient;
   const d = T.spikes.decision;
   const x = view?.decision;
@@ -56,12 +58,12 @@ export function OutcomeScreen({ view, next, back }: { view: VisitView | undefine
         <View style={styles.grades}>
           {x.grades.map(g => (
             <View key={g.key} style={styles.gradeCell}>
-              <Text style={[styles.gradeLetter, gradeColor(g.grade)]}>{g.grade}</Text>
+              <Text style={[styles.gradeLetter, gradeColor(theme, g.grade)]}>{g.grade}</Text>
               <Text style={styles.gradeName}>{g.label}</Text>
             </View>
           ))}
           <View style={[styles.gradeCell, styles.gradeTotal]}>
-            <Text testID="visit-overall" style={[styles.gradeLetter, gradeColor(x.overall)]}>{x.overall}</Text>
+            <Text testID="visit-overall" style={[styles.gradeLetter, gradeColor(theme, x.overall)]}>{x.overall}</Text>
             <Text style={styles.gradeName}>{t.grade.overall}</Text>
           </View>
         </View>
@@ -102,15 +104,16 @@ export function OutcomeScreen({ view, next, back }: { view: VisitView | undefine
   );
 }
 
-export function gradeColor(g: string) {
-  return { color: g === 'A' ? colors.green : g === 'B' ? colors.accent : g === 'C' ? colors.yellow : colors.red };
+/** Цвет буквы оценки: A — зелёный, B — синий, C — жёлтый, D — красный. */
+export function gradeColor(t: Theme, g: string) {
+  return { color: g === 'A' ? t.colors.green : g === 'B' ? t.colors.info : g === 'C' ? t.colors.yellowText : t.colors.red };
 }
 
-const styles = StyleSheet.create({
-  label: { fontSize: 13, fontWeight: '700', color: colors.muted, textTransform: 'uppercase', marginTop: space.s },
+const useStyles = makeStyles(t => ({
+  label: { fontSize: 13, fontWeight: '700', color: t.colors.muted, textTransform: 'uppercase', marginTop: space.s },
   grades: { flexDirection: 'row', flexWrap: 'wrap', gap: space.s },
-  gradeCell: { width: '30%', minWidth: 90, alignItems: 'center', paddingVertical: space.s, borderRadius: radius, backgroundColor: colors.bg },
-  gradeTotal: { backgroundColor: colors.accentSoft },
+  gradeCell: { width: '30%', minWidth: 90, alignItems: 'center', paddingVertical: space.s, borderRadius: t.shape.radius, backgroundColor: t.colors.bg },
+  gradeTotal: { backgroundColor: t.colors.accentSoft },
   gradeLetter: { fontSize: 24, fontWeight: '800' },
-  gradeName: { fontSize: 12, color: colors.muted, textAlign: 'center' },
-});
+  gradeName: { fontSize: 12, color: t.colors.muted, textAlign: 'center' },
+}));

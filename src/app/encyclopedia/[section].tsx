@@ -2,7 +2,6 @@
 // по группам — как в карте пациента и решении. У болезней — сколько раз встречались в
 // практике игрока (профиль).
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { StyleSheet } from 'react-native';
 import { Text } from '@/ui/text';
 import { db } from '@/content';
 import { T } from '@/i18n';
@@ -11,9 +10,10 @@ import { useProfile } from '@/state/profile';
 import { seenCount } from '@/state/profileView';
 import { Card, P, Screen } from '@/ui/components';
 import { EncyclopediaNote, ListRow, openArticle } from '@/ui/encyclopedia';
-import { colors, space } from '@/ui/theme';
+import { makeStyles, space } from '@/ui/theme';
 
 export default function SectionScreen() {
+  const styles = useStyles();
   const { section } = useLocalSearchParams<{ section: string }>();
   const s: Section = SECTIONS.find(x => x === section) ?? 'conditions';
   const v = sectionView(db, s);
@@ -43,6 +43,6 @@ export default function SectionScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  label: { fontSize: 13, fontWeight: '700', color: colors.muted, textTransform: 'uppercase', marginBottom: space.xs },
-});
+const useStyles = makeStyles(t => ({
+  label: { fontSize: 13, fontWeight: '700', color: t.colors.muted, textTransform: 'uppercase', marginBottom: space.xs },
+}));

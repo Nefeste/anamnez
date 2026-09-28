@@ -1,12 +1,12 @@
 // Выбор сложности (03-game-design.md §14): при начале практики и при «Начать заново».
-import { StyleSheet } from 'react-native';
 import { Text } from './text';
 import type { Difficulty } from '@/engine/shift/types';
 import { T } from '@/i18n';
 import { P, Tabs } from './components';
-import { colors, space } from './theme';
+import { makeStyles, space } from './theme';
 
 export function DifficultyChoice({ value, onChange }: { value: Difficulty; onChange: (d: Difficulty) => void }) {
+  const styles = useStyles();
   const t = T.shift.difficulty;
   return (
     <>
@@ -17,6 +17,6 @@ export function DifficultyChoice({ value, onChange }: { value: Difficulty; onCha
   );
 }
 
-const styles = StyleSheet.create({
-  label: { fontSize: 13, fontWeight: '700', color: colors.muted, textTransform: 'uppercase', marginTop: space.s },
-});
+const useStyles = makeStyles(t => ({
+  label: { fontSize: 13, fontWeight: '700', color: t.colors.muted, textTransform: 'uppercase', marginTop: space.s },
+}));

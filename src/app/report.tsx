@@ -2,7 +2,7 @@
 // текст — версия игры и базы, телефон, последние сбои, зерно и журнал дня — и отправляет
 // его сам через «Поделиться». Смена на это время стоит: её экран не на виду.
 import { useState } from 'react';
-import { Share, StyleSheet } from 'react-native';
+import { Share } from 'react-native';
 import { db } from '@/content';
 import { T } from '@/i18n';
 import { BUILD, SUPPORT_EMAIL, VERSION } from '@/info';
@@ -12,9 +12,10 @@ import { shiftState, useShift } from '@/state/session';
 import { Button, Card, P, Screen } from '@/ui/components';
 import { device } from '@/ui/device';
 import { Text, TextInput } from '@/ui/text';
-import { colors, radius, space, touch } from '@/ui/theme';
+import { makeStyles, space, touch } from '@/ui/theme';
 
 export default function ReportScreen() {
+  const styles = useStyles();
   const t = T.report;
   const shift = useShift();
   const [description, setDescription] = useState('');
@@ -35,7 +36,6 @@ export default function ReportScreen() {
           value={description}
           onChangeText={setDescription}
           placeholder={t.placeholder}
-          placeholderTextColor={colors.muted}
           multiline
           style={styles.input}
         />
@@ -48,8 +48,8 @@ export default function ReportScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  label: { fontSize: 13, fontWeight: '700', color: colors.muted, textTransform: 'uppercase', marginTop: space.s },
-  input: { minHeight: touch * 2, backgroundColor: colors.bg, borderRadius: radius, borderWidth: 1, borderColor: colors.line, padding: space.m, fontSize: 16, color: colors.ink, textAlignVertical: 'top' },
-  text: { fontSize: 13, lineHeight: 18, color: colors.ink, fontFamily: 'monospace' },
-});
+const useStyles = makeStyles(t => ({
+  label: { fontSize: 13, fontWeight: '700', color: t.colors.muted, textTransform: 'uppercase', marginTop: space.s },
+  input: { minHeight: touch * 2, backgroundColor: t.colors.bg, borderRadius: t.shape.radius, borderWidth: 1, borderColor: t.colors.line, padding: space.m, fontSize: 16, color: t.colors.ink, textAlignVertical: 'top' },
+  text: { fontSize: 13, lineHeight: 18, color: t.colors.ink, fontFamily: 'monospace' },
+}));

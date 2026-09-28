@@ -3,7 +3,7 @@
 // внизу. Общая для прототипа П4 и смены: вид и действия приходят снаружи.
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { Text } from '../text';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { buzz, play } from '@/audio/sounds';
@@ -12,7 +12,7 @@ import { Portrait } from '@/render/Portrait';
 import { examInfo, examsByAction, examTerm, findingInfo, type Line, type ResultGroup, type TermInfo, type VisitView } from '@/state/caseView';
 import { Button, Card, Chip, Chips, H, P, Screen, Tabs } from '@/ui/components';
 import { TermSheet } from '@/ui/TermSheet';
-import { colors, radius, space } from '@/ui/theme';
+import { makeStyles, space } from '@/ui/theme';
 import type { CaseActions, FooterAction } from './actions';
 import { ResultPicture } from './ResultPicture';
 
@@ -23,6 +23,7 @@ type Tab = 'ask' | 'examine' | 'order';
  * узнал, но действий и решения нет; внизу — своя кнопка («Забрать себе»).
  */
 export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; actions: CaseActions; readOnly?: { note: string; footer: FooterAction & { hint?: string } } }) {
+  const styles = useStyles();
   // вкладка привязана к пациенту: новый начинается с «Спросить»
   const [picked, setPicked] = useState<{ patient: number; tab: Tab }>({ patient: v.portrait.key, tab: 'ask' });
   const tab: Tab = picked.patient === v.portrait.key ? picked.tab : 'ask';
@@ -135,8 +136,10 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
               {v.hints.map(h => <P key={h.id} testID={`likely-${h.id}`}>{`${h.name} — ${t.similar(h.outOf10)}`}</P>)}
             </Card>
           )}
-          {/* три действия — подписи вмещаются и на узком экране; решение — отдельным шагом внизу */}
+          {/* три действия — подписи вмещаются и на узком экране; решение — отдельным шагом внизу.
+              В «Медкарте» — закладки картотеки над листом */}
           <Tabs<Tab>
+            folder
             value={tab}
             onChange={setTab}
             items={[{ key: 'ask', title: t.ask }, { key: 'examine', title: t.examine }, { key: 'order', title: t.order }]}
@@ -188,6 +191,7 @@ const found = (g: ResultGroup) => g.lines.some((l: Line) => l.shown);
  * что нашли, и «ещё N без особенностей», касание раскрывает (отзыв на 0.0.37: меньше листать).
  */
 function KnownGroup({ g, open, onToggle, explain }: { g: ResultGroup; open: boolean; onToggle?: () => void; explain: (info: TermInfo) => void }) {
+  const styles = useStyles();
   const t = T.spikes.patient;
   const lines = open ? g.lines : g.lines.filter(l => l.shown);
   const hidden = g.lines.length - lines.length;
@@ -207,22 +211,22 @@ function KnownGroup({ g, open, onToggle, explain }: { g: ResultGroup; open: bool
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles(t => ({
   row: { flexDirection: 'row', gap: space.m, alignItems: 'center' },
   headText: { flex: 1, gap: 2 },
-  label: { fontSize: 13, fontWeight: '700', color: colors.muted, textTransform: 'uppercase', marginTop: space.s },
-  notice: { backgroundColor: colors.accentSoft },
+  label: { fontSize: 13, fontWeight: '700', color: t.colors.muted, textTransform: 'uppercase', marginTop: space.s },
+  notice: { backgroundColor: t.colors.accentSoft },
   knownHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: space.s },
-  freshCount: { fontSize: 13, fontWeight: '700', color: colors.accent },
-  group: { gap: space.s, paddingVertical: space.s, paddingHorizontal: space.s, borderRadius: radius, borderWidth: 1, borderColor: 'transparent' },
-  groupFresh: { backgroundColor: '#FFF6DE', borderColor: colors.yellow },
+  freshCount: { fontSize: 13, fontWeight: '700', color: t.colors.accent },
+  group: { gap: space.s, paddingVertical: space.s, paddingHorizontal: space.s, borderRadius: t.shape.radius, borderWidth: 1, borderColor: 'transparent' },
+  groupFresh: { backgroundColor: t.colors.fresh, borderColor: t.colors.freshLine },
   groupHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.s },
-  groupTitle: { flex: 1, fontSize: 13, fontWeight: '600', color: colors.muted },
-  badge: { fontSize: 12, fontWeight: '700', color: '#fff', backgroundColor: colors.yellow, borderRadius: 10, paddingHorizontal: space.s, paddingVertical: 2, overflow: 'hidden' },
-  done: { gap: space.xs, padding: space.m, borderRadius: radius, borderWidth: 1, borderColor: colors.line },
-  summary: { fontSize: 14, color: colors.ink },
-  chevron: { fontSize: 14, color: colors.muted },
+  groupTitle: { flex: 1, fontSize: 13, fontWeight: '600', color: t.colors.muted },
+  badge: { fontSize: 12, fontWeight: '700', color: t.colors.onYellow, backgroundColor: t.colors.yellow, borderRadius: 10, paddingHorizontal: space.s, paddingVertical: 2, overflow: 'hidden' },
+  done: { gap: space.xs, padding: space.m, borderRadius: t.shape.radius, borderWidth: 1, borderColor: t.colors.line },
+  summary: { fontSize: 14, color: t.colors.ink },
+  chevron: { fontSize: 14, color: t.colors.muted },
   pressed: { opacity: 0.7 },
-  quiet: { flexDirection: 'row', alignItems: 'center', gap: space.s, minHeight: 44, paddingHorizontal: space.s, borderRadius: radius, backgroundColor: '#EEF1F1' },
-  quietText: { flex: 1, fontSize: 13, color: colors.muted },
-});
+  quiet: { flexDirection: 'row', alignItems: 'center', gap: space.s, minHeight: 44, paddingHorizontal: space.s, borderRadius: t.shape.radius, backgroundColor: t.colors.chip },
+  quietText: { flex: 1, fontSize: 13, color: t.colors.muted },
+}));

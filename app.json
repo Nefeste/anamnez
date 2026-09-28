@@ -3,18 +3,18 @@
     "name": "Анамнез",
     "slug": "anamnez",
     "scheme": "anamnez",
-    "version": "0.0.38",
+    "version": "0.0.39",
     "orientation": "portrait",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "icon": "./assets/icon.png",
-    "backgroundColor": "#F4F7F7",
+    "backgroundColor": "#F3EEE3",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "games.gornitsa.anamnez"
     },
     "android": {
       "package": "games.gornitsa.anamnez",
-      "versionCode": 38,
+      "versionCode": 39,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundImage": "./assets/adaptive-icon-background.png",
@@ -48,6 +48,105 @@
           "recordAudioAndroid": false,
           "enableBackgroundPlayback": false,
           "enableBackgroundRecording": false
+        }
+      ],
+      [
+        "expo-font",
+        {
+          "android": {
+            "fonts": [
+              {
+                "fontFamily": "PT Serif",
+                "fontDefinitions": [
+                  {
+                    "path": "./assets/fonts/PTSerif-Regular.ttf",
+                    "weight": 400
+                  },
+                  {
+                    "path": "./assets/fonts/PTSerif-Italic.ttf",
+                    "weight": 400,
+                    "style": "italic"
+                  },
+                  {
+                    "path": "./assets/fonts/PTSerif-Bold.ttf",
+                    "weight": 700
+                  }
+                ]
+              },
+              {
+                "fontFamily": "PT Sans",
+                "fontDefinitions": [
+                  {
+                    "path": "./assets/fonts/PTSans-Regular.ttf",
+                    "weight": 400
+                  },
+                  {
+                    "path": "./assets/fonts/PTSans-Bold.ttf",
+                    "weight": 700
+                  }
+                ]
+              },
+              {
+                "fontFamily": "PT Mono",
+                "fontDefinitions": [
+                  {
+                    "path": "./assets/fonts/PTMono-Regular.ttf",
+                    "weight": 400
+                  }
+                ]
+              },
+              {
+                "fontFamily": "Golos Text",
+                "fontDefinitions": [
+                  {
+                    "path": "./assets/fonts/GolosText-Regular.ttf",
+                    "weight": 400
+                  },
+                  {
+                    "path": "./assets/fonts/GolosText-Medium.ttf",
+                    "weight": 500
+                  },
+                  {
+                    "path": "./assets/fonts/GolosText-SemiBold.ttf",
+                    "weight": 600
+                  },
+                  {
+                    "path": "./assets/fonts/GolosText-Bold.ttf",
+                    "weight": 700
+                  }
+                ]
+              },
+              {
+                "fontFamily": "JetBrains Mono",
+                "fontDefinitions": [
+                  {
+                    "path": "./assets/fonts/JetBrainsMono-Medium.ttf",
+                    "weight": 500
+                  },
+                  {
+                    "path": "./assets/fonts/JetBrainsMono-Bold.ttf",
+                    "weight": 700
+                  }
+                ]
+              }
+            ]
+          },
+          "ios": {
+            "fonts": [
+              "./assets/fonts/PTSerif-Regular.ttf",
+              "./assets/fonts/PTSerif-Italic.ttf",
+              "./assets/fonts/PTSerif-Bold.ttf",
+              "./assets/fonts/PTSans-Regular.ttf",
+              "./assets/fonts/PTSans-Bold.ttf",
+              "./assets/fonts/PTMono-Regular.ttf",
+              "./assets/fonts/GolosText-Regular.ttf",
+              "./assets/fonts/GolosText-Medium.ttf",
+              "./assets/fonts/GolosText-SemiBold.ttf",
+              "./assets/fonts/GolosText-Bold.ttf",
+              "./assets/fonts/JetBrainsMono-Medium.ttf",
+              "./assets/fonts/JetBrainsMono-Bold.ttf"
+            ]
+          }
         }
       ],
       "./plugins/with-release-signing",

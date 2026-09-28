@@ -2,16 +2,16 @@
 // оговорка одной строкой (11-publishing.md §3).
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { StyleSheet } from 'react-native';
 import { TextInput } from '@/ui/text';
 import { db } from '@/content';
 import { T } from '@/i18n';
 import { search, sectionsOf } from '@/state/encyclopedia';
 import { Card, P, Screen } from '@/ui/components';
 import { EncyclopediaNote, ListRow, openArticle } from '@/ui/encyclopedia';
-import { colors, radius, space, touch } from '@/ui/theme';
+import { makeStyles, space, touch } from '@/ui/theme';
 
 export default function EncyclopediaScreen() {
+  const styles = useStyles();
   const t = T.encyclopedia;
   const [query, setQuery] = useState('');
   const found = query.trim() ? search(db, query) : null;
@@ -23,7 +23,6 @@ export default function EncyclopediaScreen() {
         value={query}
         onChangeText={setQuery}
         placeholder={t.search}
-        placeholderTextColor={colors.muted}
         autoCorrect={false}
         returnKeyType="search"
         style={styles.search}
@@ -47,15 +46,15 @@ export default function EncyclopediaScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles(t => ({
   search: {
     minHeight: touch,
-    backgroundColor: colors.card,
-    borderRadius: radius,
+    backgroundColor: t.colors.card,
+    borderRadius: t.shape.radius,
     borderWidth: 1,
-    borderColor: colors.line,
+    borderColor: t.colors.line,
     paddingHorizontal: space.l,
     fontSize: 16,
-    color: colors.ink,
+    color: t.colors.ink,
   },
-});
+}));
