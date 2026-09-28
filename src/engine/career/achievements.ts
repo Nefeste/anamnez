@@ -3,6 +3,7 @@
 // выполнены) → какие достижения получены. Даты и хранение — профиль (src/state/profile.ts):
 // у движка нет часов (ADR 0004).
 import type { Achievement, ContentDb, Id } from '../../content/types';
+import { primaryOf, recommendedSetting, SETTING_ORDER, txRole } from '../med/plan';
 import type { ShiftPatient } from '../shift/types';
 
 /** Вопрос об аллергии — для «Сначала спросить». */
@@ -62,19 +63,44 @@ export function newAchievements(db: ContentDb, f: CareerFacts, got: Readonly<Rec
   return Object.values(db.achievements).filter(a => got[a.id] === undefined && achieved(db, a, f)).map(a => a.id);
 }
 
+export interface CaseFacts {
+  correct: boolean;
+  gradeA: boolean;
+  thrift: boolean;
+  allergy: boolean;
+  /** назначен антибиотик — и все назначенные показаны настоящей болезни (первая линия или замена) */
+  antibiotic: boolean;
+  antibioticIndicated: boolean;
+  /** лечить надо не дома — и врач выбрал место не ниже нужного */
+  danger: boolean;
+  caught: boolean;
+}
+
+const NONE: CaseFacts = { correct: false, gradeA: false, thrift: false, allergy: false, antibiotic: false, antibioticIndicated: false, danger: false, caught: false };
+
 /**
- * Что закрытый приём даёт достижениям: верный ли диагноз, итог A, бережливость (верный
- * диагноз и обследования не дороже, чем у разумного врача), вопрос об аллергии перед
- * лекарством.
+ * Что закрытый приём даёт достижениям и статистике профиля: верный ли диагноз, итог A,
+ * бережливость (верный диагноз и обследования не дороже, чем у разумного врача), вопрос об
+ * аллергии перед лекарством; антибиотик по показаниям — та же мерка ролей лечения, что у
+ * «виртуального врача»; опасное распознано — место лечения не ниже нужного
+ * (spec 2026-09-profile, часть 16).
  */
-export function caseFacts(db: ContentDb, p: ShiftPatient): { correct: boolean; gradeA: boolean; thrift: boolean; allergy: boolean } {
+export function caseFacts(db: ContentDb, p: ShiftPatient): CaseFacts {
   const c = p.closed;
-  if (!c) return { correct: false, gradeA: false, thrift: false, allergy: false };
+  if (!c) return NONE;
   const drug = c.plan.treatments.some(id => db.treatments[id]?.kind === 'drug');
+  const primary = primaryOf(p.patient).id;
+  const antibiotics = c.plan.treatments.filter(id => db.treatments[id]?.class?.startsWith('antibiotic.'));
+  const recommended = recommendedSetting(db, p.patient);
+  const danger = SETTING_ORDER[recommended] > SETTING_ORDER.home;
   return {
     correct: c.verdict === 'correct',
     gradeA: c.grades.overall === 'A',
     thrift: c.verdict === 'correct' && c.grades.thrift === 'A',
     allergy: drug && p.done.includes(ALLERGY_EXAM),
+    antibiotic: antibiotics.length > 0,
+    antibioticIndicated: antibiotics.length > 0 && antibiotics.every(id => ['firstLine', 'acceptable'].includes(txRole(db, primary, id))),
+    danger,
+    caught: danger && SETTING_ORDER[c.plan.setting] >= SETTING_ORDER[recommended],
   };
 }

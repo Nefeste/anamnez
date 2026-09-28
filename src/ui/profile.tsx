@@ -1,11 +1,13 @@
-// Имя и пол врача: при первом запуске, после оговорки, и из профиля. Имя уже подставлено — из
-// тех же списков, что у пациентов, — его можно оставить, поменять или взять другое.
+// Имя, пол и портрет врача: при первом запуске, после оговорки, и из профиля. Имя уже
+// подставлено — из тех же списков, что у пациентов, — его можно оставить, поменять или взять
+// другое; портрет — один из шести, нарисованных кодом (spec 2026-09-profile, часть 16).
 import { useState } from 'react';
-import { StyleSheet } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { Text, TextInput } from './text';
 import { T } from '@/i18n';
+import { Portrait } from '@/render/Portrait';
 import type { Doctor } from '@/state/profile';
-import { suggestDoctor } from '@/state/profileView';
+import { DOCTOR_AGE, DOCTOR_PORTRAITS, suggestDoctor } from '@/state/profileView';
 import { Button, Card, H, P, Screen, Tabs } from './components';
 import { colors, radius, space, touch } from './theme';
 
@@ -17,10 +19,12 @@ export function DoctorForm({ initial, submitTitle, onSubmit }: { initial?: Docto
   // пока имя не трогали, смена пола подставляет подходящее имя
   const [edited, setEdited] = useState(initial !== undefined);
   const ok = d.first.trim().length > 0 && d.last.trim().length > 0;
-  const onSex = (sex: 'm' | 'f') => setD(edited ? { ...d, sex } : suggestDoctor(sex, Math.random));
+  // портрет выбран отдельно: смена пола и «другое имя» его не сбрасывают
+  const keep = (x: Doctor): Doctor => (d.portrait === undefined ? x : { ...x, portrait: d.portrait });
+  const onSex = (sex: 'm' | 'f') => setD(edited ? { ...d, sex } : keep(suggestDoctor(sex, Math.random)));
   const another = () => {
     setEdited(false);
-    setD(suggestDoctor(d.sex, Math.random));
+    setD(keep(suggestDoctor(d.sex, Math.random)));
   };
   return (
     <Screen footer={<Button testID="doctor-submit" title={submitTitle} disabled={!ok} onPress={() => onSubmit(d)} />}>
@@ -28,6 +32,26 @@ export function DoctorForm({ initial, submitTitle, onSubmit }: { initial?: Docto
         <H>{t.doctorTitle}</H>
         <P>{t.doctorText}</P>
         <Tabs<'m' | 'f'> testPrefix="doctor-sex" value={d.sex} onChange={onSex} items={[{ key: 'f', title: t.sex.f }, { key: 'm', title: t.sex.m }]} />
+        <Text style={styles.label}>{t.portrait}</Text>
+        <View style={styles.portraits} accessibilityRole="radiogroup">
+          {DOCTOR_PORTRAITS.map((seed, i) => {
+            const on = (d.portrait ?? 0) === i;
+            return (
+              <Pressable
+                key={seed}
+                testID={`doctor-portrait-${i}`}
+                accessibilityRole="radio"
+                accessibilityLabel={t.portraitN(i + 1)}
+                aria-checked={on}
+                onPress={() => setD({ ...d, portrait: i })}
+                style={styles.portrait}>
+                <View style={[styles.frame, on && styles.frameOn]}>
+                  <Portrait seed={seed} sex={d.sex} age={DOCTOR_AGE} size={52} />
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
         <Text style={styles.label}>{t.first}</Text>
         <TextInput
           testID="doctor-first"
@@ -61,6 +85,11 @@ export function DoctorForm({ initial, submitTitle, onSubmit }: { initial?: Docto
 }
 
 const styles = StyleSheet.create({
+  // по три в ряд — два ровных ряда на любом экране
+  portraits: { flexDirection: 'row', flexWrap: 'wrap', rowGap: space.s },
+  portrait: { width: '33.33%', minHeight: touch, alignItems: 'center', justifyContent: 'center' },
+  frame: { padding: 3, borderRadius: radius, borderWidth: 2, borderColor: 'transparent' },
+  frameOn: { borderColor: colors.accent },
   label: { fontSize: 13, fontWeight: '700', color: colors.muted, textTransform: 'uppercase', marginTop: space.s },
   input: {
     minHeight: touch,

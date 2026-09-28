@@ -139,6 +139,8 @@ try {
   await page.getByTestId('doctor-sex-f').click();
   await page.getByTestId('doctor-first').fill('Анна');
   await page.getByTestId('doctor-last').fill('Петрова');
+  await page.getByTestId('doctor-portrait-2').click();
+  check((await page.getByTestId('doctor-portrait-2').getAttribute('aria-checked')) === 'true', 'первый запуск: портрет врача выбран — третий из шести');
   await page.screenshot({ path: join(OUT, '01-doctor.png') });
   await page.getByTestId('doctor-submit').click();
   await page.getByTestId('menu-settings').waitFor({ timeout: 5000 });
@@ -427,6 +429,9 @@ try {
   const cases = await text(page, 'profile-line-0');
   const archived = page.locator('[data-testid^="archive-"]');
   check((await text(page, 'profile-name')) === 'Анна Петрова' && cases === 'Принято: 1' && (await archived.count()) === 1, `профиль: «${cases}», в архиве — ${await archived.count()}`);
+  const profileLines = await page.locator('[data-testid^="profile-line-"]').allInnerTexts();
+  check((await text(page, 'profile-rank')) === 'Интерн' && profileLines.some(l => /^В среднем на приём — \d+\s?мин$/.test(l.trim())),
+    `профиль: звание «${await text(page, 'profile-rank')}», ${profileLines.find(l => l.startsWith('В среднем')) ?? 'нет строки о минутах'}`);
   await page.screenshot({ path: join(OUT, '09-profile.png') });
   await archived.first().click();
   await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });

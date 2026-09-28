@@ -8,6 +8,7 @@ import type { ShiftPatient, ShiftState } from '../../src/engine/shift/types';
 import {
   ARCHIVE_SIZE, caseKey, forgetProfile, loadProfile, PROFILE_SLOT, profile, profileSaved, recordCases, sanitizeProfile, setDoctor, setProfileStore,
 } from '../../src/state/profile';
+import { practiceLines, rankLadder, rankName, rankOf } from '../../src/state/profileView';
 import { loadSlot, memoryStore, saveSlot } from '../../src/state/saves';
 import {
   archiveCaseView, callPatient, chooseDiagnosis, chooseSetting, examine, finishCase, forgetShift, loadShift, saved, setStore, shiftCaseView, shiftState,
@@ -138,5 +139,57 @@ describe('профиль и смена', () => {
     forgetShift();
     await loadShift();
     expect(profile().stats.cases).toBe(1);
+  });
+});
+
+describe('профиль: портрет, звание, статистика (spec 2026-09-profile, часть 16)', () => {
+  test('портрет пишется и читается; неверный — без портрета; звание — по числу приёмов, лестница без «осталось»', async () => {
+    await loadProfile();
+    await setDoctor({ first: 'Анна', last: 'Петрова', sex: 'f', portrait: 4 });
+    await profileSaved();
+    forgetProfile();
+    await loadProfile();
+    expect(profile().doctor).toEqual({ first: 'Анна', last: 'Петрова', sex: 'f', portrait: 4 });
+    expect(sanitizeProfile({ doctor: { first: 'А', last: 'Б', sex: 'm', portrait: 99 } }).doctor).toEqual({ first: 'А', last: 'Б', sex: 'm' });
+    expect([0, 24, 25, 99, 100, 299, 300, 5000].map(rankOf)).toEqual([0, 0, 1, 1, 2, 2, 3, 3]);
+    expect([rankName(0), rankName(25), rankName(100), rankName(300)]).toEqual(['Интерн', 'Ординатор', 'Врач', 'Врач высшей категории']);
+    expect(rankLadder()).toBe('Звание растёт с принятыми пациентами: интерн → ординатор (25) → врач (100) → врач высшей категории (300).');
+  });
+
+  test('минуты, антибиотик по показаниям и опасное — из закрытых приёмов; прежний профиль — с нулями', async () => {
+    await loadProfile();
+    const s = newShift(db, { seed: 21, season: 'winter' });
+    // три приёма: ангина с амоксициллином (показан), ОРВИ с амоксициллином (не показан), ОКС домой и в скорую
+    const see = (dx: string, tx: string[], setting: 'home' | 'ward' | 'ambulance', truth?: string) => {
+      for (let i = 0; i < 600 && s.queue.length === 0; i++) apply(db, s, { kind: 'advance', seconds: 60 });
+      const id = s.queue[0];
+      const p = s.patients[id];
+      if (truth) p.patient.truth.conditions = [{ ...p.patient.truth.conditions[0], id: truth, role: 'primary' }];
+      apply(db, s, { kind: 'call', id });
+      apply(db, s, { kind: 'exam', exam: 'exam.ask_complaints' });
+      apply(db, s, { kind: 'diagnose', id: dx });
+      for (const t of tx) apply(db, s, { kind: 'toggleTreatment', id: t });
+      apply(db, s, { kind: 'setting', setting });
+      apply(db, s, { kind: 'finish' });
+      return s.patients[id];
+    };
+    const cases = [
+      see('cond.strep_pharyngitis', ['tx.amoxicillin'], 'home', 'cond.strep_pharyngitis'),
+      see('cond.arvi', ['tx.amoxicillin'], 'home', 'cond.arvi'),
+      see('cond.acs', ['tx.aspirin_acs'], 'ambulance', 'cond.acs'),
+      see('cond.arvi', ['tx.rest_fluids'], 'home', 'cond.acs'),
+    ];
+    recordCases(asRecords(s, cases));
+    const st = profile().stats;
+    expect(st.antibiotics).toEqual({ given: 2, indicated: 1 });
+    expect(st.danger).toEqual({ met: 2, caught: 1 });
+    expect([st.timed, st.minutes]).toEqual([4, cases.reduce((a, p) => a + Math.round(p.spent.seconds / 60), 0)]);
+    expect(practiceLines(profile())).toContain('Антибиотик по показаниям — 1 из 2\u00a0назначений');
+    expect(practiceLines(profile())).toContain('Нужны были стационар или скорая — направлено 1 из 2');
+    expect(practiceLines(profile()).some(l => /^В среднем на приём — \d+ мин$/.test(l))).toBe(true);
+    // профиль до 0.0.30 — без новых счётчиков: нули, и строк о них нет
+    const old = sanitizeProfile({ stats: { cases: 5, correct: 5 } });
+    expect([old.stats.timed, old.stats.antibiotics.given, old.stats.danger.met]).toEqual([0, 0, 0]);
+    expect(practiceLines(old).some(l => l.startsWith('В среднем') || l.startsWith('Антибиотик') || l.startsWith('Нужны'))).toBe(false);
   });
 });
