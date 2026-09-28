@@ -52,7 +52,8 @@ describe('тактика и место лечения', () => {
 
   test('ОКС — скорая; до её приезда — ацетилсалициловая кислота, ибупрофен вреден', () => {
     const p = find('cond.acs');
-    expect(recommendedSetting(db, p)).toBe('ambulance');
+    // нужен центр с чрескожным вмешательством; из амбулатории туда везёт скорая
+    expect(recommendedSetting(db, p)).toBe('transfer');
     const withAspirin = scoreCase(base({ treatments: ['tx.aspirin_acs', 'tx.nitroglycerin'], setting: 'ambulance' }, p));
     expect(withAspirin.treatment).toBe('A');
     expect(withAspirin.setting).toBe('A');

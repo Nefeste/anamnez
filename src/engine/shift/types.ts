@@ -13,6 +13,7 @@ import type { StaffMember } from '../hospital/staff';
 import type { DoctorPhase } from '../med/policy';
 import type { Grade, ScoreNote } from '../med/score';
 import type { Observation, Patient } from '../med/types';
+import type { Stay, StayResult } from './ward';
 
 export const SHIFT_SCHEMA_VERSION = 1;
 
@@ -37,7 +38,8 @@ export type Triage = 'red' | 'yellow' | 'green';
  */
 export type Difficulty = 'student' | 'doctor';
 
-export type PatientStatus = 'coming' | 'waiting' | 'inRoom' | 'away' | 'done' | 'left' | 'unseen';
+/** admitted — лежит в палате своей больницы (spec 2026-09-chapter-2, часть 26). */
+export type PatientStatus = 'coming' | 'waiting' | 'inRoom' | 'away' | 'done' | 'left' | 'unseen' | 'admitted';
 
 /** Практика в готовой амбулатории или песочница — своя больница (spec 2026-09-own-hospital). */
 /** Практика, песочница, кампания (spec 2026-09-campaign) — у каждой свои сохранения. */
@@ -105,6 +107,8 @@ export interface ShiftPatient {
   from?: string;
   /** где он в приёме: ищет диагноз или спрашивает о противопоказаниях перед лечением */
   phase?: DoctorPhase;
+  /** лежит в палате своей больницы: койка, план, как идёт болезнь (часть 26) */
+  stay?: Stay;
 }
 
 export interface ClosedCase {
@@ -124,6 +128,8 @@ export interface ClosedCase {
   by?: string;
   /** вы продолжили приём, забрав его у нанятого врача (номер человека) */
   from?: string;
+  /** лежал в палате: сколько суток, обычный срок, как ушёл (часть 26) */
+  stay?: StayResult;
 }
 
 export type ShiftEvent =
@@ -162,7 +168,11 @@ export type Command =
   | { kind: 'fire'; id: string }
   | { kind: 'assign'; id: string; room?: string }
   /** забрать себе пациента нанятого врача (spec 2026-09-hired-doctors, часть 19) */
-  | { kind: 'takeOver'; id: string };
+  | { kind: 'takeOver'; id: string }
+  /** обход (spec 2026-09-chapter-2, часть 26): выписать, перевести, сменить лечение лежащего */
+  | { kind: 'discharge'; id: string }
+  | { kind: 'transfer'; id: string }
+  | { kind: 'replan'; id: string; treatments: Id[] };
 
 /** Что случилось — для интерфейса: звук, автопауза, сводка «за это время». */
 export type Notice =
@@ -194,6 +204,18 @@ export interface DaySummary {
   campaign?: { done: string[]; letters: string[] };
   /** нанятые врачи: номер человека из штата → его приёмы за день; прежние строки — ваши приёмы */
   colleagues?: Record<string, ColleagueDay>;
+  /** стационар за день (часть 26): поступили, выписаны (из них рано), переведены, лежат вечером; суток и обычных сроков у выписанных */
+  ward?: WardDay;
+}
+
+export interface WardDay {
+  admitted: number;
+  discharged: number;
+  early: number;
+  transferred: number;
+  lying: number;
+  stayDays: number;
+  stayNorm: number;
 }
 
 /** Приёмы нанятого врача за день (spec 2026-09-hired-doctors). */

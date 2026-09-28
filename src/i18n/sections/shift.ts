@@ -86,6 +86,15 @@ export const shift = {
     cases: 'Приёмы дня',
     noCases: 'Сегодня никого не приняли',
     news: 'Что стало с прошлыми пациентами',
+    // стационар за день (spec 2026-09-chapter-2, часть 26)
+    ward: {
+      title: 'Стационар',
+      moves: (admitted: number, discharged: number, transferred: number, lying: number) =>
+        `Поступили: ${admitted}, выписаны: ${discharged}, переведены: ${transferred}. Лежат: ${lying}.`,
+      early: (n: number) => `Выписаны рано: ${n} — вернутся хуже.`,
+      stay: (mean: number, norm: number) =>
+        `В среднем в стационаре ${String(mean).replace('.', ',')}\u00a0сут. при обычных ${String(norm).replace('.', ',')}.`,
+    },
     nextDay: 'Следующий день ▶',
     restart: 'Начать практику заново',
     restartConfirm: 'Все дни практики будут стёрты. Начать заново?',
@@ -108,6 +117,8 @@ export const shift = {
       ecg: 'ЭКГ',
       xray: 'Рентген',
       toilet: 'Санузел',
+      // палата (spec 2026-09-chapter-2, часть 26)
+      ward: 'Палата',
     } as Record<string, string>,
     // для чтения с экрана: что на карте, словами
     label: (waiting: number, away: number, inRoom: string | undefined) =>
@@ -156,7 +167,46 @@ export const shift = {
       results: (hh: string) => `Ждёт результатов — будут к ${hh}`,
       leaving: 'Приём окончен — уходит',
       left: (female: boolean) => ago(female, 'Не дождался приёма и уходит', 'Не дождалась приёма и уходит'),
+      // палата (spec 2026-09-chapter-2, часть 26): день поступления — «первые сутки»
+      ward: (days: number) => `В палате: ${days + 1}-е\u00a0сутки`,
     },
+  },
+  // стационар своей больницы (spec 2026-09-chapter-2, часть 26)
+  ward: {
+    admit: 'В палату',
+    freeBeds: (free: number, all: number) => `свободно ${free} из ${all}`,
+    noBeds: 'свободных коек нет',
+    refer: 'Направить в другую больницу',
+    // обход
+    title: 'Обход',
+    open: (n: number) => `Обход · ${n}`,
+    openHint: 'лежащие в палатах: как идёт лечение, кого выписать',
+    empty: 'В палатах никого нет.',
+    today: (female: boolean) => (female ? 'Поступила сегодня' : 'Поступил сегодня'),
+    days: (days: number, norm: number) =>
+      `В стационаре ${days}\u00a0${pluralRu(days, 'сутки', 'суток', 'суток')} · обычно до ${norm}`,
+    state: {
+      better: 'Лучше: лечение действует',
+      same: 'Без перемен',
+      worse: 'Хуже: лечение не помогает',
+      ready: 'Жалоб нет, показатели в норме',
+      reaction: (tx: string, by: string) => `Реакция на ${tx.toLowerCase()}: ${by.toLowerCase()}`,
+    } as Record<'better' | 'same' | 'worse' | 'ready', string> & { reaction: (tx: string, by: string) => string },
+    readyHint: 'можно выписывать',
+    vital: {
+      'vital.fever': 'Температура',
+      'vital.tachycardia': 'Пульс',
+      'vital.tachypnea': 'Дыхание',
+      'vital.spo2_low': 'Сатурация',
+      'vital.bp_high': 'Давление',
+    } as Record<string, string>,
+    treatments: (list: string) => `Лечение: ${list}`,
+    noTreatment: 'не назначено',
+    discharge: 'Выписать',
+    replan: 'Сменить лечение',
+    transfer: 'Перевести',
+    replanTitle: 'Сменить лечение',
+    replanDone: 'Готово',
   },
   entering: (name: string) => `${name} идёт к вам`,
   // пациенты нанятых врачей (spec 2026-09-hired-doctors, часть 19)

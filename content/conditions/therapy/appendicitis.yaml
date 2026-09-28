@@ -38,7 +38,7 @@ redFlags: [sign.peritoneal_signs]
 treatment:
   supportive: [tx.paracetamol]
   notIndicated: [tx.amoxicillin, tx.amoxicillin_clavulanate, tx.macrolide, tx.fluoroquinolone, tx.cephalosporin_oral, tx.ors, tx.ppi, tx.antacid]
-  setting: { default: ambulance }
+  setting: { default: surgery }
 texts:
   summary:
     ru: >-

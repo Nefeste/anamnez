@@ -33,7 +33,9 @@ export type Doing =
   | { kind: 'examQueue'; room: ExamRoom }
   | { kind: 'results'; readyAt: number }
   | { kind: 'leaving' }
-  | { kind: 'left' };
+  | { kind: 'left' }
+  /** лежит в палате своей больницы; `days` — сутки в стационаре (spec 2026-09-chapter-2, часть 26) */
+  | { kind: 'ward'; days: number };
 
 export interface Placement {
   id: string;
@@ -142,6 +144,10 @@ export function placements(db: ContentDb, layout: ClinicLayout, s: ShiftState): 
       out.push({ id: p.id, figure, look, ...awayPlace(db, layout, p, s.t) });
     } else if (p.status === 'done' && p.closed && s.t - p.closed.at < LEAVING) {
       out.push({ id: p.id, figure, look, where: exit, doing: { kind: 'leaving' }, leaving: true });
+    } else if (p.status === 'admitted' && p.stay) {
+      // лежит на своей койке; палату снесли — на карте его нет, пока не выпишут
+      const bed = layout.beds[p.stay.room]?.[p.stay.bed];
+      if (bed) out.push({ id: p.id, figure, look, where: { cell: bed }, doing: { kind: 'ward', days: Math.max(0, s.day - p.stay.since) } });
     } else if (p.status === 'left' && s.t - (p.queuedT + p.patience) < LEAVING) {
       // не дождался: ушёл, когда кончилось терпение (engine.ts, событие patience)
       out.push({ id: p.id, figure, look, where: exit, doing: { kind: 'left' }, leaving: true });

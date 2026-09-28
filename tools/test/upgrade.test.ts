@@ -3,10 +3,14 @@
 // 0.0.17 (tools/test/fixtures/saves/0.0.17.json): профиль с тремя приёмами и практика посреди
 // первого дня — один пациент на анализе, другой в кабинете с начатым расспросом. Изменится
 // формат сохранения или уйдёт из базы то, на что они ссылаются, — этот тест скажет, что прежние
-// сохранения нужно переводить.
+// сохранения нужно переводить. С 0.0.43 — ещё песочница, записанная кодом 0.0.42
+// (fixtures/saves/0.0.42-sandbox.json): день 1 закрыт с кассой, день 2 идёт, пациент в кабинете;
+// стационара в ней нет, а построить палату можно.
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { db } from '../../src/content';
+import { apply, freeBeds, wardBeds } from '../../src/engine/shift/engine';
 import { achievementsBy, EARLIER, forgetProfile, loadProfile, profile, setProfileStore } from '../../src/state/profile';
 import { memoryStore } from '../../src/state/saves';
 import {
@@ -63,5 +67,49 @@ describe('обновление с 0.0.17', () => {
     expect(shiftView().clock).toBe('08:00');
     // три приёма, закрытых в 0.0.17, в профиле уже были — второй раз не засчитаны
     expect(profile().stats.cases).toBe(sum.seen);
+  });
+});
+
+describe('обновление с 0.0.42', () => {
+  test('песочница посреди дня 2: приём доигрывается, день закрывается; стационара нет, палату можно построить', async () => {
+    const store = memoryStore();
+    const saved = JSON.parse(readFileSync(join(import.meta.dir, 'fixtures/saves/0.0.42-sandbox.json'), 'utf8')) as Record<string, unknown>;
+    for (const [name, envelope] of Object.entries(saved)) store.files.set(name, JSON.stringify(envelope));
+    setStore(store);
+    setProfileStore(store);
+    forgetShift();
+    forgetProfile();
+    await loadProfile();
+    await loadShift('sandbox');
+    const s = shiftState()!;
+    expect([s.meta.mode, s.day, s.current, s.history.length]).toEqual(['sandbox', 2, '2-01', 1]);
+    // вчерашняя касса — без стационара: ни случаев, ни койко-дней
+    expect(s.history[0].economy!.ledger.ward).toBeUndefined();
+    expect(s.history[0].economy!.ledger.expenses.ward).toBeUndefined();
+    expect(shiftView().inpatients).toBe(0);
+    expect(wardBeds(db, s)).toEqual([]);
+    const c = shiftCaseView()!;
+    expect(c.settings.map(o => o.key)).toEqual(['home', 'ward', 'ambulance']);
+    chooseDiagnosis(c.hints[0]?.id ?? 'cond.arvi');
+    finishCase();
+    closeDay();
+    const sum = shiftView().summary!;
+    expect(sum.cash).toBeDefined();
+    expect(sum.wardLines).toBeUndefined();
+    expect(sum.cash!.expenses.map(x => x.key)).not.toContain('ward');
+    nextDay();
+    expect(shiftView().clock).toBe('08:00');
+    // в той же песочнице — палата у нового коридора, медсестра ЭКГ — в неё
+    const cells: [number, number][] = [];
+    for (let x = 29; x <= 38; x++) for (let y = 7; y <= 9; y++) cells.push([x, y]);
+    const st = shiftState()!;
+    apply(db, st, { kind: 'closeDay' });
+    apply(db, st, { kind: 'build', cmd: { kind: 'corridor', cells } });
+    apply(db, st, { kind: 'build', cmd: { kind: 'room', type: 'room.ward', size: 'S', x: 29, y: 0, rot: 0 } });
+    apply(db, st, { kind: 'buildEnd' });
+    const ward = st.hospital!.rooms[st.hospital!.rooms.length - 1];
+    expect(ward.type).toBe('room.ward');
+    apply(db, st, { kind: 'assign', id: st.staff!.find(m => m.role === 'role.nurse' && m.room === 'r7')!.id, room: ward.id });
+    expect(freeBeds(db, st)).toHaveLength(2);
   });
 });

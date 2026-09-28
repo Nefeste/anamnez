@@ -285,6 +285,8 @@ export function setDoctor(doctor: Doctor): Promise<unknown> {
 /**
  * Записать закрытые приёмы, которых в профиле ещё нет: статистика, «встречалось в
  * практике», архив (новые первыми, не больше ARCHIVE_SIZE). Отдаёт, сколько добавлено.
+ * Лежавший в своём стационаре (часть 26) записан при поступлении; выписан или переведён —
+ * в архиве его приём заменяется нынешним, с исходом, а статистика не считается второй раз.
  */
 export function recordCases(cases: readonly Omit<CaseRecord, 'key'>[]): number {
   // профиль ещё не прочитан: запись поверх файла стёрла бы его — ждём чтения
@@ -293,10 +295,23 @@ export function recordCases(cases: readonly Omit<CaseRecord, 'key'>[]): number {
     return 0;
   }
   const known = new Set(current.archive.map(r => r.key));
+  const left = new Map(cases.filter(c => c.patient.status !== 'admitted').map(c => [caseKey(c.seed, c.patient.id), c]));
+  const archive = current.archive.map(r => {
+    const now = r.patient.status === 'admitted' ? left.get(r.key) : undefined;
+    return now?.patient.closed ? { ...r, patient: copy(now.patient) } : r;
+  });
+  const discharged = archive.some((r, i) => r !== current.archive[i]);
   const fresh = cases
     .filter(c => c.patient.closed && !known.has(caseKey(c.seed, c.patient.id)))
     .sort((a, b) => a.patient.closed!.at - b.patient.closed!.at);
-  if (fresh.length === 0) return 0;
+  if (fresh.length === 0) {
+    if (discharged) {
+      current = { ...current, archive };
+      changed();
+      void persist();
+    }
+    return 0;
+  }
   const stats: ProfileStats = {
     ...current.stats, grades: { ...current.stats.grades }, antibiotics: { ...current.stats.antibiotics }, danger: { ...current.stats.danger },
   };
@@ -329,7 +344,7 @@ export function recordCases(cases: readonly Omit<CaseRecord, 'key'>[]): number {
     earn(ach, factsOf(stats, seen, ach), key);
     added.unshift({ ...c, key, patient: copy(c.patient) });
   }
-  current = { ...current, stats, seen, achievements: ach, archive: [...added, ...current.archive].slice(0, ARCHIVE_SIZE) };
+  current = { ...current, stats, seen, achievements: ach, archive: [...added, ...archive].slice(0, ARCHIVE_SIZE) };
   changed();
   void persist();
   return added.length;

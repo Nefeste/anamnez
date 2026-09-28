@@ -1,6 +1,6 @@
 {
-  "version": "0.0.42",
-  "base": 19,
+  "version": "0.0.43",
+  "base": 20,
   "ids": {
     "achievements": [
       "ach.allergy_10",
@@ -353,6 +353,7 @@
       "room.toilet",
       "room.triage",
       "room.waiting",
+      "room.ward",
       "room.xray"
     ],
     "rooms.sizes": [
@@ -369,6 +370,8 @@
       "room.waiting/L",
       "room.waiting/M",
       "room.waiting/S",
+      "room.ward/M",
+      "room.ward/S",
       "room.xray/M"
     ],
     "tips": [

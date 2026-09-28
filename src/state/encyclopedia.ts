@@ -338,7 +338,7 @@ function roomArticle(db: ContentDb, r: RoomType): Article {
   blocks.push({
     key: 'sizes',
     title: e.sizes,
-    text: r.sizes.map(z => e.sizeLine(z.id, z.w, z.h, rub(z.cost), rub(z.upkeep), z.seats)),
+    text: r.sizes.map(z => e.sizeLine(z.id, z.w, z.h, rub(z.cost), rub(z.upkeep), z.seats, z.beds)),
     note: e.sizeNote,
   });
   const from = Math.min(...r.sizes.map(z => z.cost));

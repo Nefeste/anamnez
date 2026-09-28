@@ -5,7 +5,7 @@ import type { ContentDb, Id, Setting } from '../../content/types';
 import { Rng } from '../core/rng';
 import { complaintObservations, examFits, runExam } from './exams';
 import { type Belief, expectedGain, knownFacts, posterior } from './infer';
-import { type Plan, possibleFor, SETTING_ORDER } from './plan';
+import { choiceFor, type Plan, possibleFor, SETTING_ORDER, type Venue } from './plan';
 import type { Observation, Patient } from './types';
 
 export type Strategy = 'rational' | 'lazy' | 'shotgun';
@@ -67,7 +67,11 @@ function askingExam(db: ContentDb, contraindication: Id): Id | undefined {
  * первая допустимая замена) и место лечения — по умолчанию или выше, если врач видел
  * красный флаг этого состояния.
  */
-export function choosePlan(db: ContentDb, diagnosis: Id, observations: readonly Observation[]): Plan {
+/**
+ * Типичное назначение и место лечения: что нужно пациенту по тому, что известно, — и что это
+ * значит здесь (`venue`: своя палата со свободной койкой; нет — амбулатория).
+ */
+export function choosePlan(db: ContentDb, diagnosis: Id, observations: readonly Observation[], venue: Venue = {}): Plan {
   const t = db.conditions[diagnosis]?.treatment;
   if (!t) return { treatments: [], setting: 'home' };
   const known = knownFacts(db, observations);
@@ -87,7 +91,7 @@ export function choosePlan(db: ContentDb, diagnosis: Id, observations: readonly 
   };
   if (t.setting.redFlag && (db.conditions[diagnosis].redFlags ?? []).some(f => seen.has(f))) raise(t.setting.redFlag);
   for (const r of t.setting.risks ?? []) if (known.risks.includes(r.id)) raise(r.setting);
-  return { treatments: [...new Set(treatments)].sort(), setting };
+  return { treatments: [...new Set(treatments)].sort(), setting: choiceFor(setting, venue) };
 }
 
 /**
@@ -122,6 +126,8 @@ export interface StepOptions {
   minGain: number;
   /** пропустить вопрос перед лечением — так забывает нанятый врач невысокого навыка */
   skipAsk?: (exam: Id) => boolean;
+  /** что есть в больнице: своя палата со свободной койкой — стационар в ней (часть 26) */
+  venue?: Venue;
 }
 
 /** Самое полезное на единицу цены из несделанных; польза ниже `minGain` — не назначается. */
@@ -178,7 +184,7 @@ export function nextStep(db: ContentDb, patient: Patient, obs: readonly Observat
   const ask = (now.ask ?? []).filter(id => !done.includes(id));
   if (ask.length > 0) return { step: { kind: 'exam', exam: ask[0] }, phase: { ...now, ask: ask.slice(1) } };
   const diagnosis = now.diagnosis!;
-  return { step: { kind: 'decide', diagnosis, confidence: now.confidence ?? 0, plan: choosePlan(db, diagnosis, obs) }, phase: { ...now, ask: [] } };
+  return { step: { kind: 'decide', diagnosis, confidence: now.confidence ?? 0, plan: choosePlan(db, diagnosis, obs, opt.venue) }, phase: { ...now, ask: [] } };
 }
 
 export function runDoctor(db: ContentDb, patient: Patient, strategy: Strategy, rng: Rng, opt: DoctorOptions): DoctorResult {

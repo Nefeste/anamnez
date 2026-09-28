@@ -19,12 +19,17 @@ import { type ClinicLayout, cropPlan, layoutOf } from '@/engine/hospital/clinic'
 import { memberAt, type StaffMember, staffingOf } from '@/engine/hospital/staff';
 import { missionProgress } from '@/engine/campaign/campaign';
 import { levelOf } from '@/engine/economy/economy';
-import { apply, current, type HospitalCtx, hospitalCtx, newCampaign, newSandbox, newShift, newSingle, observationsOf, reviewFor, SANDBOX_VENUE } from '@/engine/shift/engine';
+import {
+  apply, current, freeBeds, type HospitalCtx, hospitalCtx, inpatientsOf, newCampaign, newSandbox, newShift, newSingle, observationsOf, reviewFor, SANDBOX_VENUE, wardBeds,
+} from '@/engine/shift/engine';
 import {
   type Command, DAY, type Difficulty, type Mode, type Notice, SHIFT_END, SHIFT_SCHEMA_VERSION, type ShiftPatient, type ShiftState, type Triage,
 } from '@/engine/shift/types';
 import { T } from '@/i18n';
-import { type Arrival, type Decision, decisionOf, hhmm, makeCaseView, outcomeText, patientName, type VisitView } from './caseView';
+import {
+  type Arrival, type Decision, decisionOf, hhmm, makeCaseView, outcomeText, patientName, type SettingOption, treatmentGroupsFor, type VisitView,
+} from './caseView';
+import { daysIn, stayNorm, vitalOn, WARD_VITALS, type WardState, wardState } from '@/engine/shift/ward';
 import { CLINIC, type Doing, type Placement, placements } from './clinicMap';
 import { type RoomSign, roomSigns } from './roomSigns';
 import { achievementsBy, archivedCase, caseKey, type DayRecord, profile, recordCases, recordDay, recordSingle } from './profile';
@@ -122,6 +127,8 @@ export interface SummaryView {
   achievements: string[];
   /** «Смена»: итог по категориям и лучший результат в этой больнице */
   single?: SingleView;
+  /** стационар за день (spec 2026-09-chapter-2, часть 26): поступили, выписаны, лежат; сроки у выписанных */
+  wardLines?: string[];
 }
 
 /** Итог «Смены»: оценки по категориям, общая, строки, лучший в этой больнице. */
@@ -189,6 +196,8 @@ export interface ShiftView {
   signs: RoomSign[];
   /** пациенты нанятых врачей (spec 2026-09-hired-doctors, часть 19): кто, у кого, что сейчас */
   colleagues: { id: string; name: string; hint: string }[];
+  /** сколько лежит в палатах своей больницы — кнопка «Обход» (spec 2026-09-chapter-2, часть 26) */
+  inpatients: number;
 }
 
 interface Session {
@@ -1242,12 +1251,22 @@ function summaryOf(s: ShiftState): SummaryView | undefined {
     } : {}),
     achievements: achievementNames(dayKey(s, h.day)),
     ...(s.meta.mode === 'single' ? { single: singleView(s) } : {}),
+    ...(h.ward ? { wardLines: wardLines(h.ward) } : {}),
   };
+}
+
+/** Стационар за день — строками итогов: сколько поступило, выписано (из них рано), переведено, лежит; сроки. */
+function wardLines(w: NonNullable<ShiftState['summary']['ward']>): string[] {
+  const t = T.shift.summary.ward;
+  const out = [t.moves(w.admitted, w.discharged, w.transferred, w.lying)];
+  if (w.early > 0) out.push(t.early(w.early));
+  if (w.discharged > 0) out.push(t.stay(Math.round((w.stayDays / w.discharged) * 10) / 10, Math.round((w.stayNorm / w.discharged) * 10) / 10));
+  return out;
 }
 
 const EMPTY: Omit<ShiftView, 'version' | 'status' | 'mode'> = {
   difficulty: 'student', day: 0, clock: '', dayOpen: false, afterHours: false, allDone: false, speed: 1, paused: false,
-  queue: [], away: [], log: [], counts: { seen: 0, left: 0, waiting: 0, unseen: 0 }, restored: false, people: [], who: {}, colleagues: [], signs: [],
+  queue: [], away: [], log: [], counts: { seen: 0, left: 0, waiting: 0, unseen: 0 }, restored: false, people: [], who: {}, colleagues: [], signs: [], inpatients: 0,
 };
 
 function buildShiftView(): ShiftView {
@@ -1285,6 +1304,7 @@ function buildShiftView(): ShiftView {
     who: whoOf(s, people),
     signs: roomSigns(layout ?? CLINIC, s, s.hospital ? understaffed(s) : undefined),
     colleagues: colleagueRows(s),
+    inpatients: inpatientsOf(s).length,
     ...(s.hospital ? { rooms: roomsOf(s) } : {}),
     ...(layout ? { layout } : {}),
   };
@@ -1425,10 +1445,107 @@ function doingText(s: ShiftState, p: ShiftPatient, d: Doing): string {
       return t.leaving;
     case 'left':
       return t.left(female(p));
+    case 'ward':
+      return t.ward(d.days);
     case 'staff':
       return '';
   }
 }
+
+// --- обход (spec 2026-09-chapter-2, часть 26) --------------------------------------------------
+
+/** Карточка лежащего на обходе. */
+export interface RoundCard {
+  id: string;
+  title: string;
+  diagnosis: string;
+  day: string;
+  state: WardState;
+  stateText: string;
+  /** «Студент»: болезнь прошла — можно выписывать */
+  readyHint?: string;
+  vitals: { label: string; values: string }[];
+  treatments: string;
+  treatmentIds: Id[];
+}
+
+const fmtVital = (f: Id, v: number) => {
+  const spec = db.findings[f]!.value!;
+  const main = v.toFixed(spec.decimals).replace('.', ',');
+  const dia = spec.derived?.dia;
+  return dia ? `${main}/${Math.round(v * dia)}` : main;
+};
+
+/** Лежащие сейчас — карточками обхода: сутки, как идёт болезнь, витальные по суткам, лечение. */
+export function roundsView(): RoundCard[] {
+  const sess = session;
+  if (!sess) return [];
+  const s = sess.s;
+  const t = T.shift.ward;
+  const student = s.meta.difficulty === 'student';
+  return inpatientsOf(s).map(p => {
+    const stay = p.stay!;
+    const days = daysIn(stay, s.day);
+    const state = wardState(stay, days);
+    const from = Math.max(0, days - 5);
+    const range = Array.from({ length: days - from + 1 }, (_, i) => from + i);
+    const vitals = WARD_VITALS.flatMap(f => {
+      const spec = db.findings[f]?.value;
+      const series = range.map(d => vitalOn(db, p.patient, stay, f, d));
+      if (!spec || series.some(v => v === undefined)) return [];
+      // температура — всегда; остальное — если выходило за норму
+      const off = series.some(v => v! < spec.ref[0] || v! > spec.ref[1]);
+      if (f !== 'vital.fever' && !off) return [];
+      return [{ label: t.vital[f] ?? f, values: `${series.map(v => fmtVital(f, v!)).join(' → ')}\u00a0${spec.unit}` }];
+    });
+    const dx = p.closed?.diagnosis;
+    return {
+      id: p.id,
+      title: `${nameOf(p)}, ${T.spikes.patient.years(p.patient.age)}`,
+      diagnosis: dx ? db.conditions[dx]?.name.ru ?? dx : '',
+      day: days === 0 ? t.today(female(p)) : t.days(days, stayNorm(db, dx ?? '')),
+      state,
+      stateText: state === 'reaction' && stay.reaction
+        ? t.state.reaction(db.treatments[stay.reaction.tx]?.name.ru ?? stay.reaction.tx, db.risks[stay.reaction.by]?.name.ru ?? db.conditions[stay.reaction.by]?.name.ru ?? stay.reaction.by)
+        : t.state[state === 'reaction' ? 'same' : state],
+      ...(student && state === 'ready' ? { readyHint: t.readyHint } : {}),
+      vitals,
+      treatments: stay.plan.treatments.length > 0 ? stay.plan.treatments.map(tx => db.treatments[tx]?.name.ru ?? tx).join(', ') : t.noTreatment,
+      treatmentIds: [...stay.plan.treatments],
+    };
+  });
+}
+
+let roundsCache: { version: number; view: RoundCard[] } | null = null;
+
+function roundsCached(): RoundCard[] {
+  if (roundsCache?.version !== version) roundsCache = { version, view: roundsView() };
+  return roundsCache.view;
+}
+
+export function useRounds(): RoundCard[] {
+  return useSyncExternalStore(subscribe, roundsCached, roundsCached);
+}
+
+/** Лечение по группам для смены плана лежащего — с тем, что о нём известно. */
+export function replanChoices(id: string): ReturnType<typeof treatmentGroupsFor> {
+  const p = session?.s.patients[id];
+  return p ? treatmentGroupsFor(observationsOf(p)) : [];
+}
+
+function wardAct(cmd: Command) {
+  const sess = session;
+  if (!sess || !sess.s.dayOpen) return;
+  run(sess, cmd);
+  // выписан или переведён — в архиве профиля его приём с исходом
+  if (cmd.kind !== 'replan') recordCases(closedCases(sess.s));
+  save();
+  changed();
+}
+
+export const dischargePatient = (id: string) => wardAct({ kind: 'discharge', id });
+export const transferPatient = (id: string) => wardAct({ kind: 'transfer', id });
+export const replanPatient = (id: string, treatments: Id[]) => wardAct({ kind: 'replan', id, treatments });
 
 /** Итог и разбор закрытого случая: разбор пересчитывается той же ветвью зерна (engine/reviewFor). */
 const decisions = new Map<string, Decision>();
@@ -1442,7 +1559,8 @@ function outcomeKnown(s: ShiftState, p: ShiftPatient): boolean {
 
 function decisionFor(meta: Pick<ShiftState['meta'], 'seed' | 'department'>, p: ShiftPatient, arrived: Arrival[], known: boolean): Decision {
   const c = p.closed!;
-  const key = `${meta.seed}:${p.id}:${known}`;
+  // исход лежащего меняется при выписке — ключ с ним
+  const key = `${meta.seed}:${p.id}:${known}:${c.outcome.kind}`;
   const cached = decisions.get(key);
   if (cached) return cached;
   const ev = evaluatePlan(db, p.patient, c.plan, observationsOf(p));
@@ -1492,6 +1610,23 @@ export function archiveCaseView(key: string): VisitView | undefined {
   });
 }
 
+/**
+ * Где лечить в больнице со своей палатой (spec 2026-09-chapter-2, часть 26): домой, в палату
+ * (сколько коек свободно; нет свободных — нельзя), направить в другую больницу, скорая.
+ */
+function settingOptions(s: ShiftState): SettingOption[] {
+  const all = wardBeds(db, s).length;
+  const free = freeBeds(db, s).length;
+  const t = T.shift.ward;
+  const setting = T.spikes.patient.setting;
+  return [
+    { key: 'home', title: setting.home },
+    { key: 'admit', title: t.admit, hint: free > 0 ? t.freeBeds(free, all) : t.noBeds, disabled: free === 0 },
+    { key: 'ward', title: t.refer },
+    { key: 'ambulance', title: setting.ambulance },
+  ];
+}
+
 function buildCaseView(): VisitView | undefined {
   const sess = session;
   if (!sess) return undefined;
@@ -1523,6 +1658,7 @@ function buildCaseView(): VisitView | undefined {
     returnNote: p.returnReason && prev?.closed ? T.shift.returnNote(p.returnReason, closedDay(prev), female(p)) : undefined,
     difficulty: s.meta.difficulty ?? 'doctor',
     ...(s.hospital ? { unavailable: unavailableOf(s) } : {}),
+    ...(wardBeds(db, s).length > 0 ? { settings: settingOptions(s) } : {}),
     ...(p.payer ? { payerNote: T.sandbox.payerNote[p.payer] } : {}),
     ...(p.paid && p.closed ? { payment: paymentText(db, p.payer ?? 'oms', p.paid, p.closed) } : {}),
     ...(p.closed ? { achievements: achievementNames(caseKey(s.meta.seed, p.id)) } : {}),

@@ -74,6 +74,14 @@ export interface Decision {
   timeline: { label: string; truth: number; chosen: number }[];
 }
 
+/** Вариант «где лечить» на экране решения: своя палата — со свободными койками (spec 2026-09-chapter-2, часть 26). */
+export interface SettingOption {
+  key: Setting;
+  title: string;
+  hint?: string;
+  disabled?: boolean;
+}
+
 /** Решение до «Завершить приём»: можно менять и дальше обследовать. */
 export interface Draft {
   diagnosis?: Id;
@@ -103,6 +111,8 @@ export interface VisitView {
   done: Id[];
   /** обследования, которых в этой больнице не сделать, — и почему */
   unavailable: Record<Id, string>;
+  /** где лечить: варианты этой больницы */
+  settings: SettingOption[];
   hints: { id: Id; name: string; outOf10: number }[];
   /** всё лечение базы по алфавиту; warning — противопоказание, о котором врач уже знает */
   treatments: { id: Id; name: string; warning?: string }[];
@@ -161,6 +171,8 @@ export interface CaseInput {
   difficulty?: Difficulty;
   /** своя больница: обследования, которых здесь не сделать, — и почему (spec 2026-09-own-hospital) */
   unavailable?: Record<Id, string>;
+  /** где лечить — что есть в этой больнице; нет — как в амбулатории: домой, в стационар, скорая */
+  settings?: SettingOption[];
   payerNote?: string;
   payment?: string[];
   achievements?: string[];
@@ -229,6 +241,11 @@ function groupTreatments(items: VisitView['treatments']): VisitView['treatmentGr
   return TX_GROUP_ORDER
     .map(key => ({ key, title: titles[key], items: items.filter(x => txGroup(x.id) === key) }))
     .filter(g => g.items.length > 0);
+}
+
+/** Лечение по группам с предупреждениями о том, что уже известно, — для смены плана на обходе. */
+export function treatmentGroupsFor(obs: readonly Observation[]): VisitView['treatmentGroups'] {
+  return groupTreatments(treatmentChoices(obs));
 }
 
 export function conditionChoices(): { id: Id; name: string }[] {
@@ -314,6 +331,7 @@ export function makeCaseView(c: CaseInput): VisitView {
     ...(c.urgent ? { urgent: true } : {}),
     done: c.done,
     unavailable: c.unavailable ?? {},
+    settings: c.settings ?? (['home', 'ward', 'ambulance'] as const).map(key => ({ key, title: T.spikes.patient.setting[key] })),
     // «0 из 10» ничего не подсказывает — такие не показываем, первую — всегда
     hints: c.difficulty === 'doctor' ? [] : beliefsOf(p, obs).slice(0, HINTS)
       .map(b => ({ id: b.id, name: db.conditions[b.id].name.ru, outOf10: Math.round(b.p * 10) }))
@@ -376,7 +394,8 @@ export function outcomeText(outcome: Outcome, setting: Setting, female: boolean)
     case 'unchanged': return out.unchanged;
     case 'worse': return out.worse(outcome.day);
     case 'reaction': return outcome.reaction ? out.reaction(db.treatments[outcome.reaction.tx].name.ru, riskName(outcome.reaction.by)) : out.unchanged;
-    case 'transferred': return setting === 'ambulance' ? out.ambulance : out.ward(female);
+    case 'transferred': return setting === 'ambulance' ? out.ambulance : setting === 'admit' ? out.transferred(female) : out.ward(female);
+    case 'admitted': return out.admitted;
   }
 }
 
@@ -390,8 +409,8 @@ export function noteText(n: ScoreNote): string {
     case 'tx.noCure': return t.noCure;
     case 'tx.none': return t.none;
     case 'tx.preHospitalMissing': return t.preHospitalMissing(tx(n.tx));
-    case 'setting.under': return t.settingUnder(n.recommended === 'ambulance' ? 'ambulance' : 'ward');
-    case 'setting.over': return t.settingOver(n.recommended === 'home' ? 'home' : 'ward');
+    case 'setting.under': return t.settingUnder(n.recommended);
+    case 'setting.over': return t.settingOver(n.recommended);
     case 'safety.knownViolation': return t.knownViolation(tx(n.tx), riskName(n.by));
     case 'safety.unaskedViolation': return t.unaskedViolation(tx(n.tx), riskName(n.by));
     case 'safety.notAsked': return t.notAsked(riskName(n.by));

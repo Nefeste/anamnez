@@ -47,7 +47,7 @@ interface Tally {
 const grades = (): Record<Grade, number> => ({ A: 0, B: 0, C: 0, D: 0 });
 const empty = (): Tally => ({
   n: 0, correct: 0, correctGroup: 0, money: 0, minutes: 0, exams: 0, confusion: {}, perCondition: {},
-  overall: grades(), treatment: grades(), outcomes: { recovered: 0, improved: 0, unchanged: 0, worse: 0, reaction: 0, transferred: 0 }, needlessAntibiotic: 0,
+  overall: grades(), treatment: grades(), outcomes: { recovered: 0, improved: 0, unchanged: 0, worse: 0, reaction: 0, transferred: 0, admitted: 0 }, needlessAntibiotic: 0,
 });
 const costOf = (r: DoctorResult) => r.exams.reduce((a, id) => a + examCost(db, id), 0);
 const strategies: Strategy[] = ['rational', 'lazy', 'shotgun'];

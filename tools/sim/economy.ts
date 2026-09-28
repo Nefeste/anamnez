@@ -223,7 +223,7 @@ function run(seed: number, sc: Scenario): Run {
     out.profit += incomeOf(e.ledger) - expensesOf(e.ledger);
     out.minCash = Math.min(out.minCash, e.cash);
     for (const k of PAYERS) out.income[k] += e.ledger.income[k];
-    for (const k of Object.keys(out.expenses) as (keyof Ledger['expenses'])[]) out.expenses[k] += e.ledger.expenses[k];
+    for (const k of Object.keys(out.expenses) as (keyof Ledger['expenses'])[]) out.expenses[k] = (out.expenses[k] ?? 0) + (e.ledger.expenses[k] ?? 0);
     out.cut += e.ledger.audit.cut;
     out.unindicated += e.ledger.audit.unindicated;
     const col = Object.values(h.colleagues ?? {});
@@ -296,7 +296,7 @@ for (const sc of SCENARIOS) {
   const n = rs.length * DAYS;
   const sum = <K extends keyof Run>(k: K) => rs.reduce((a, r) => a + (r[k] as number), 0);
   const inc = (p: Payer) => rs.reduce((a, r) => a + r.income[p], 0) / n;
-  const exp = (k: keyof Ledger['expenses']) => rs.reduce((a, r) => a + r.expenses[k], 0) / n;
+  const exp = (k: keyof Ledger['expenses']) => rs.reduce((a, r) => a + (r.expenses[k] ?? 0), 0) / n;
   const payers = (p: Payer) => rs.reduce((a, r) => a + r.payers[p], 0);
   const grades = (g: Grade) => rs.reduce((a, r) => a + r.defensibility[g], 0);
   const oms = sum('oms');

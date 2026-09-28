@@ -1,5 +1,15 @@
 import { pluralRu } from '../plural';
 
+/** Что надо было выбрать — в разборе: «нужно было …» и «хватило бы …» (spec 2026-09-chapter-2, «Место лечения»). */
+const UNDER: Record<string, string> = {
+  home: 'лечить дома', ward: 'направить в стационар', ambulance: 'вызвать скорую', admit: 'положить в палату',
+  surgery: 'взять в операционную', transfer: 'перевести в областную',
+};
+const OVER: Record<string, string> = {
+  home: 'лечения дома', ward: 'направления в стационар', ambulance: 'скорой', admit: 'палаты',
+  surgery: 'операционной', transfer: 'перевода',
+};
+
 export const spikes = {
   engine: {
     title: 'Движок и детерминизм',
@@ -96,7 +106,7 @@ export const spikes = {
     finish: 'Завершить приём',
     finishNeedsDx: 'Выберите диагноз, чтобы завершить приём',
     contraindicated: (by: string) => `Противопоказано: ${by.toLowerCase()}`,
-    setting: { home: 'Дома', ward: 'В стационар', ambulance: 'Вызвать скорую' } as Record<string, string>,
+    setting: { home: 'Дома', ward: 'В стационар', ambulance: 'Вызвать скорую', admit: 'В палату', surgery: 'В операционную', transfer: 'Перевести' } as Record<string, string>,
     role: {
       firstLine: 'препарат выбора',
       acceptable: 'допустимая замена',
@@ -114,6 +124,9 @@ export const spikes = {
       reaction: (tx: string, by: string) => `На следующий день — реакция на ${tx.toLowerCase()} (${by.toLowerCase()}): вернётся на приём`,
       ward: (female: boolean) => (female ? 'Направлена в стационар' : 'Направлен в стационар'),
       ambulance: 'Увезла скорая',
+      // своя палата (spec 2026-09-chapter-2, часть 26)
+      admitted: 'Лежит в палате — чем кончится, покажет обход',
+      transferred: (female: boolean) => (female ? 'Переведена в другую больницу' : 'Переведён в другую больницу'),
     },
     outcomeLabel: 'Что было дальше',
     gradesLabel: 'Оценка случая',
@@ -148,8 +161,8 @@ export const spikes = {
       noCure: 'Не назначено лечение причины болезни',
       none: 'Ничего не рекомендовано — даже при простуде пациенту нужен совет',
       preHospitalMissing: (tx: string) => `До приезда скорой не дали: ${tx.toLowerCase()}`,
-      settingUnder: (need: 'ward' | 'ambulance') => `Недооценили тяжесть: нужно было ${need === 'ward' ? 'направить в стационар' : 'вызвать скорую'}`,
-      settingOver: (enough: 'home' | 'ward') => `Перестраховка: хватило бы ${enough === 'home' ? 'лечения дома' : 'направления в стационар'}`,
+      settingUnder: (should: string) => `Недооценили тяжесть: нужно было ${UNDER[should] ?? UNDER.ambulance}`,
+      settingOver: (should: string) => `Перестраховка: хватило бы ${OVER[should] ?? OVER.ward}`,
       knownViolation: (tx: string, by: string) => `${tx}: противопоказано (${by.toLowerCase()}), и вы об этом знали`,
       unaskedViolation: (tx: string, by: string) => `${tx}: противопоказано (${by.toLowerCase()}) — вы не спросили, а оно было`,
       notAsked: (by: string) => `Перед назначением не спросили: ${by.toLowerCase()}`,

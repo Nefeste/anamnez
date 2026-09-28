@@ -1,0 +1,39 @@
+id: room.ward
+name: { ru: "Палата" }
+gen: { ru: "палаты" }
+staff: [role.nurse]
+beds: true
+sizes:
+  - id: S
+    w: 7
+    h: 7
+    cost: 22000
+    upkeep: 150
+    door: { x: 3 }
+    objects:
+      - [bed, 1, 2]
+      - [cabinet, 2, 2]
+      - [cabinet, 4, 2]
+      - [bed, 5, 2]
+      - [chair, 1, 4]
+      - [sink, 5, 4]
+    staff: { role.nurse: [3, 3] }
+  - id: M
+    w: 9
+    h: 7
+    cost: 34000
+    upkeep: 250
+    door: { x: 4 }
+    objects:
+      - [bed, 1, 2]
+      - [cabinet, 2, 2]
+      - [bed, 1, 4]
+      - [cabinet, 2, 4]
+      - [sink, 4, 2]
+      - [cabinet, 6, 2]
+      - [bed, 7, 2]
+      - [cabinet, 6, 4]
+      - [bed, 7, 4]
+    staff: { role.nurse: [4, 3] }
+texts:
+  hint: { ru: "Койки для тех, кого лечат в стационаре. Медсестра ухаживает за лежащими, врач каждое утро делает обход: помогает ли лечение, пора ли выписывать." }

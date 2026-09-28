@@ -42,7 +42,7 @@ treatment:
   firstLine: [tx.aspirin_acs, tx.nitroglycerin]
   harmful: [tx.ibuprofen]
   notIndicated: [tx.ppi, tx.antacid, tx.amoxicillin, tx.amoxicillin_clavulanate, tx.macrolide]
-  setting: { default: ambulance }
+  setting: { default: transfer }
 texts:
   summary:
     ru: >-

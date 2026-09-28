@@ -19,7 +19,10 @@ export interface Ledger {
   income: Record<Payer, number>;
   /** сколько приёмов закрыто — по плательщикам */
   cases: Record<Payer, number>;
-  expenses: { salaries: number; equipment: number; rooms: number; consumables: number; interest: number };
+  /** `ward` — койко-дни лежащих (spec 2026-09-chapter-2, часть 26); нет — сохранение до 0.0.43 */
+  expenses: { salaries: number; equipment: number; rooms: number; consumables: number; interest: number; ward?: number };
+  /** стационар: сколько случаев закрыто (выписка, перевод), что за них заплатили, ₽; из них прерванных и без показаний */
+  ward?: { cases: number; income: number; interrupted: number; unindicated: number };
   /** экспертиза ОМС и ДМС: сколько не оплатили; диагнозов обоснованных ниже A, без подтверждения; обследований без показаний */
   audit: { cut: number; weak: number; unconfirmed: number; unindicated: number };
 }
@@ -27,12 +30,30 @@ export interface Ledger {
 export const emptyLedger = (): Ledger => ({
   income: { oms: 0, dms: 0, self: 0 },
   cases: { oms: 0, dms: 0, self: 0 },
-  expenses: { salaries: 0, equipment: 0, rooms: 0, consumables: 0, interest: 0 },
+  expenses: { salaries: 0, equipment: 0, rooms: 0, consumables: 0, interest: 0, ward: 0 },
+  ward: { cases: 0, income: 0, interrupted: 0, unindicated: 0 },
   audit: { cut: 0, weak: 0, unconfirmed: 0, unindicated: 0 },
 });
 
-export const incomeOf = (l: Ledger) => l.income.oms + l.income.dms + l.income.self;
-export const expensesOf = (l: Ledger) => l.expenses.salaries + l.expenses.equipment + l.expenses.rooms + l.expenses.consumables + l.expenses.interest;
+export const incomeOf = (l: Ledger) => l.income.oms + l.income.dms + l.income.self + (l.ward?.income ?? 0);
+export const expensesOf = (l: Ledger) => l.expenses.salaries + l.expenses.equipment + l.expenses.rooms + l.expenses.consumables + l.expenses.interest + (l.expenses.ward ?? 0);
+
+/** Как закрыт случай стационара — для оплаты: до выписки в срок, прерван (перевод, выписка раньше срока), без показаний. */
+export type WardClose = 'full' | 'interrupted' | 'unindicated';
+
+/**
+ * Случай стационара (часть 26): ОМС платит за случай, а не за день, — по тяжести диагноза, с той
+ * же долей по обоснованности, что у приёма; прерванный — долю `ward.interrupted`; госпитализацию
+ * без показаний не оплачивает, как экспертиза. Лишние дни ничего не приносят: их цена —
+ * койко-дни в расходах.
+ */
+export function wardIncome(db: ContentDb, diagnosis: Id, defensibility: Grade, close: WardClose): number {
+  if (close === 'unindicated') return 0;
+  const t = db.economy.tariffs;
+  const full = t.omsWard[db.conditions[diagnosis]?.severity ?? 'minor'];
+  const share = close === 'interrupted' ? db.economy.ward.interrupted : 100;
+  return Math.round((full * t.omsQuality[defensibility] * share) / 10000);
+}
 
 /** Между тремя точками (репутация 0, 50, 100) — по прямой, в целых. */
 function along(points: [number, number, number], reputation: number): number {

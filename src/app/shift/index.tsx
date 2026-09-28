@@ -324,6 +324,12 @@ function Queue({ v }: { v: ShiftView }) {
         </Card>
       )}
 
+      {v.inpatients > 0 && v.dayOpen && (
+        <Card testID="shift-rounds">
+          <Button testID="rounds-open" kind="plain" title={T.shift.ward.open(v.inpatients)} hint={T.shift.ward.openHint} onPress={() => router.push('/shift/rounds')} />
+        </Card>
+      )}
+
       {v.colleagues.length > 0 && (
         <Card testID="shift-colleagues">
           <Text style={styles.label}>{t.colleagueCase.list}</Text>
@@ -492,6 +498,13 @@ function Summary({ v }: { v: ShiftView }) {
         </Card>
       )}
 
+      {s.wardLines && (
+        <Card testID="summary-ward">
+          <Text style={styles.label}>{t.ward.title}</Text>
+          {s.wardLines.map(line => <P key={line}>{line}</P>)}
+        </Card>
+      )}
+
       {v.mode === 'shift' && <Button kind="plain" testID="shift-restart" title={t.restart} onPress={() => setConfirm(true)} />}
       <Sheet visible={confirm} onClose={() => setConfirm(false)} closeTitle={t.cancel} testID="restart-sheet">
         <P>{t.restartConfirm}</P>
@@ -560,6 +573,7 @@ function Cash({ c }: { c: CashView }) {
         <H>{t.cashTitle}</H>
         <Text style={styles.label}>{t.income}</Text>
         {c.income.map(x => <Line key={x.key} testID={`cash-${x.key}`} title={x.title} sum={x.sum} />)}
+        {c.wardNote && <P muted testID="cash-ward-note">{c.wardNote}</P>}
         {c.audit && <P muted testID="cash-audit">{c.audit.why ? `${c.audit.sum}: ${c.audit.why}` : c.audit.sum}</P>}
         <P muted testID="cash-level">{c.level}</P>
         <Text style={styles.label}>{t.expensesTitle}</Text>
