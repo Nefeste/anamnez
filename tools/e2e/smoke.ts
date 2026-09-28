@@ -216,6 +216,7 @@ try {
   const vibration = () => page.getByTestId('settings-vibration').getAttribute('aria-checked');
   const quiet = () => page.getByTestId('sound-1').getAttribute('aria-selected');
   check((await vibration()) === 'true' && (await page.getByTestId('sound-3').getAttribute('aria-selected')) === 'true', 'настройки: по умолчанию вибрация включена, звук громкий');
+  check((await page.getByTestId('settings-ambience').getAttribute('aria-checked')) === 'true', 'настройки: фон амбулатории по умолчанию включён');
   await page.getByTestId('settings-vibration').click();
   await page.getByTestId('sound-1').click();
   await page.screenshot({ path: join(OUT, '10-settings.png'), fullPage: true });

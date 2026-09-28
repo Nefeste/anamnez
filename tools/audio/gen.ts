@@ -1,5 +1,7 @@
-// bun tools/audio/gen.ts — звуки прототипа, синтезированные кодом (ADR 0013: только CC0
-// или свои). Детерминированы: шум — из генератора игры с фиксированным зерном.
+// bun tools/audio/gen.ts — звуки, синтезированные кодом (ADR 0013: только CC0 или свои):
+// касание, «готов результат», «срочный». Гул вентиляции (makeAmbient) — основа фона
+// амбулатории: сам фон с шагами и дверями из наборов CC0 собирает tools/audio/clinic.ts.
+// Детерминированы: шум — из генератора игры с фиксированным зерном.
 //
 // Звучат они из динамика телефона, а он почти не воспроизводит частоты ниже ~250 Гц.
 // Поэтому у звуков есть обертоны в полосе 300 Гц – 5 кГц, и фон лежит в этой полосе:
@@ -11,7 +13,7 @@ import { Rng } from '../../src/engine/core/rng';
 export const RATE = 22050;
 const OUT = join(import.meta.dir, '../../assets/audio');
 
-function wav(samples: Float32Array): Buffer {
+export function wav(samples: Float32Array): Buffer {
   const data = Buffer.alloc(samples.length * 2);
   samples.forEach((s, i) => data.writeInt16LE(Math.round(Math.max(-1, Math.min(1, s)) * 32767), i * 2));
   const h = Buffer.alloc(44);
@@ -25,7 +27,7 @@ function wav(samples: Float32Array): Buffer {
 const len = (sec: number) => new Float32Array(Math.round(sec * RATE));
 
 /** Двухполюсный фильтр по «поваренной книге» RBJ. */
-function biquad(input: Float32Array, kind: 'lp' | 'hp' | 'bp', hz: number, q: number): Float32Array {
+export function biquad(input: Float32Array, kind: 'lp' | 'hp' | 'bp', hz: number, q: number): Float32Array {
   const w = (2 * Math.PI * hz) / RATE;
   const alpha = Math.sin(w) / (2 * q);
   const cos = Math.cos(w);
@@ -44,7 +46,7 @@ function biquad(input: Float32Array, kind: 'lp' | 'hp' | 'bp', hz: number, q: nu
   return out;
 }
 
-function noise(n: number, name: string): Float32Array {
+export function noise(n: number, name: string): Float32Array {
   const r = Rng.seeded(20260926).fork(name);
   const out = new Float32Array(n);
   for (let i = 0; i < n; i++) out[i] = (r.u32() / 4294967296) * 2 - 1;
@@ -63,7 +65,7 @@ function note(out: Float32Array, at: number, hz: number, gain: number, partials:
   }
 }
 
-function normalize(x: Float32Array, peak: number): Float32Array {
+export function normalize(x: Float32Array, peak: number): Float32Array {
   let m = 0;
   for (const v of x) {
     if (!Number.isFinite(v)) throw new Error('gen: NaN or Infinity in a sound');
@@ -74,7 +76,7 @@ function normalize(x: Float32Array, peak: number): Float32Array {
 }
 
 /** Мягкое затухание в конце — без щелчка при обрыве. */
-function fadeOut(x: Float32Array, sec: number): Float32Array {
+export function fadeOut(x: Float32Array, sec: number): Float32Array {
   const n = Math.min(x.length, Math.round(sec * RATE));
   for (let i = 0; i < n; i++) x[x.length - 1 - i] *= i / n;
   return x;
@@ -154,6 +156,5 @@ if (import.meta.main) {
   writeFileSync(join(OUT, 'tap.wav'), wav(makeTap()));
   writeFileSync(join(OUT, 'ready.wav'), wav(makeReady()));
   writeFileSync(join(OUT, 'urgent.wav'), wav(makeUrgent()));
-  writeFileSync(join(OUT, 'ambient.wav'), wav(makeAmbient()));
-  console.log('звуки записаны в assets/audio');
+  console.log('звуки записаны в assets/audio; фон амбулатории — tools/audio/clinic.ts');
 }

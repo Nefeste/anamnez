@@ -249,6 +249,7 @@ export const spikes = {
     tap: 'Касание',
     ready: 'Готов результат',
     urgent: 'Срочный пациент',
+    arrived: 'Пришёл пациент',
     ambient: 'Фон больницы',
     ambientOn: 'Фон: вкл',
     ambientOff: 'Фон: выкл',
