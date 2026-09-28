@@ -69,6 +69,9 @@ type SheetProps = { visible: boolean; onClose: () => void; closeTitle: string; c
  * Карточка поверх экрана: закрывается кнопкой, касанием фона и «назад» Android.
  * Modal — отдельное окно, и системные отступы главного экрана на него не действуют:
  * без своего SafeAreaProvider кнопка уходила под панель навигации Android (отзыв на 0.0.2).
+ * Не помещается — содержимое прокручивается, а кнопка остаётся внизу: на экране 360 × 640
+ * верх длинного листа (выбор помещения — девять типов) уходил за край, и выбрать первые
+ * типы было нельзя.
  */
 export function Sheet({ visible, onClose, closeTitle, children, testID }: SheetProps) {
   return (
@@ -80,15 +83,20 @@ export function Sheet({ visible, onClose, closeTitle, children, testID }: SheetP
   );
 }
 
+// Фон — отдельный слой под листом, а не его родитель: касание листа фон не закрывает, и
+// прокрутке листа ничто не мешает.
 function SheetBody({ onClose, closeTitle, children, testID }: SheetProps) {
   const insets = useSafeAreaInsets();
   return (
-    <Pressable style={styles.backdrop} onPress={onClose}>
-      <Pressable testID={testID} style={[styles.sheet, { paddingBottom: space.xl + insets.bottom }]} onPress={() => undefined}>
-        {children}
+    <View style={[styles.backdrop, { paddingTop: space.xl + insets.top }]}>
+      <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessible={false} />
+      <View testID={testID} style={[styles.sheet, { paddingBottom: space.xl + insets.bottom }]}>
+        <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
+          {children}
+        </ScrollView>
         <Button testID={testID ? `${testID}-close` : undefined} title={closeTitle} onPress={onClose} />
-      </Pressable>
-    </Pressable>
+      </View>
+    </View>
   );
 }
 
@@ -175,7 +183,9 @@ const styles = StyleSheet.create({
   info: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' },
   infoText: { fontSize: 17, fontWeight: '700', color: colors.accent },
   backdrop: { flex: 1, backgroundColor: 'rgba(12,24,26,0.45)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: space.xl, gap: space.m, maxWidth: 640, width: '100%', alignSelf: 'center' },
+  sheet: { backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: space.xl, gap: space.m, maxWidth: 640, width: '100%', alignSelf: 'center', flexShrink: 1 },
+  sheetScroll: { flexGrow: 0, flexShrink: 1 },
+  sheetContent: { gap: space.m },
   tabs: { flexDirection: 'row', backgroundColor: colors.card, borderRadius: radius, borderWidth: 1, borderColor: colors.line, padding: space.xs, gap: space.xs },
   tab: { flex: 1, minHeight: touch - 2 * space.xs, borderRadius: radius - space.xs, alignItems: 'center', justifyContent: 'center', paddingHorizontal: space.xs },
   tabOn: { backgroundColor: colors.accent },

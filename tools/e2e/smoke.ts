@@ -109,6 +109,13 @@ function sandboxEndOfDaySave(): string {
   return JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s });
 }
 
+/** Песочница до открытия: готовая амбулатория, бюджет «обычный» — экран «Перед открытием». */
+function sandboxFreshSave(): string {
+  const { db } = buildDb();
+  const s = newSandbox(db, { seed: 5, season: 'winter', difficulty: 'student', start: 'clinic', budget: db.economy.sandbox.budgets.normal });
+  return JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s });
+}
+
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2 });
 const errors: string[] = [];
@@ -782,6 +789,30 @@ try {
   await p2.getByTestId('shift-clock').waitFor({ timeout: 10_000 });
   check((await text(p2, 'shift-clock')) === '08:00', 'следующий день — с 08:00');
   await day.close();
+
+  // маленький экран 360 × 640: длинный лист — выбор помещения — прокручивается, а не уходит
+  // верхом за край; «Отмена» — на экране, последний тип выбирается прокруткой листа
+  const small = await browser.newContext({ viewport: { width: 360, height: 640 }, deviceScaleFactor: 2 });
+  await small.addInitScript(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', sandboxFreshSave()]);
+  const p3 = await small.newPage();
+  p3.on('pageerror', e => errors.push(String(e)));
+  await p3.goto(`${base}/quick`);
+  await p3.getByTestId('menu-sandbox').click();
+  await p3.getByTestId('restart-continue').click();
+  await p3.getByTestId('sandbox-build').click();
+  await p3.getByTestId('build-map').waitFor({ timeout: 10_000 });
+  await p3.getByTestId('build-tool-room').click();
+  await p3.getByTestId('room-type-room.ecg').waitFor({ timeout: 5000 });
+  await p3.waitForTimeout(700); // лист выезжает снизу
+  const firstType = (await p3.getByTestId('room-type-room.ecg').boundingBox())!;
+  const cancel = (await p3.getByTestId('room-picker-close').boundingBox())!;
+  check(firstType.y >= 0 && cancel.y + cancel.height <= 640,
+    `маленький экран: выбор помещения — первый тип (верх ${Math.round(firstType.y)}) и «Отмена» (низ ${Math.round(cancel.y + cancel.height)} из 640) на экране`);
+  await p3.screenshot({ path: join(OUT, '19-small-picker.png') });
+  await p3.getByTestId('room-type-room.xray').click();
+  await p3.getByTestId('build-place').waitFor({ timeout: 5000 });
+  check(await p3.getByTestId('build-place').isVisible(), 'маленький экран: последний тип в листе выбирается прокруткой — призрак рентген-кабинета');
+  await small.close();
 
   const real = errors.filter(e => !/favicon/.test(e));
   check(real.length === 0, `нет ошибок в консоли${real.length ? `: ${real.slice(0, 3).join(' | ')}` : ''}`);
