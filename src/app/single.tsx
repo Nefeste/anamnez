@@ -71,7 +71,7 @@ export default function SingleScreen() {
 }
 
 const useStyles = makeStyles(t => ({
-  label: { fontSize: 13, fontWeight: '700', color: t.colors.muted, textTransform: 'uppercase', marginBottom: space.xs },
+  label: { fontSize: 13, fontWeight: '700', letterSpacing: 1.2, color: t.colors.muted, textTransform: 'uppercase', marginBottom: space.xs },
   input: {
     minHeight: touch, backgroundColor: t.colors.card, borderRadius: t.shape.radius, borderWidth: 1, borderColor: t.colors.line, paddingHorizontal: space.l,
     fontSize: 16, color: t.colors.ink,

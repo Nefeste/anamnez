@@ -49,7 +49,7 @@ export default function ReportScreen() {
 }
 
 const useStyles = makeStyles(t => ({
-  label: { fontSize: 13, fontWeight: '700', color: t.colors.muted, textTransform: 'uppercase', marginTop: space.s },
+  label: { fontSize: 13, fontWeight: '700', letterSpacing: 1.2, color: t.colors.muted, textTransform: 'uppercase', marginTop: space.s },
   input: { minHeight: touch * 2, backgroundColor: t.colors.bg, borderRadius: t.shape.radius, borderWidth: 1, borderColor: t.colors.line, padding: space.m, fontSize: 16, color: t.colors.ink, textAlignVertical: 'top' },
   text: { fontSize: 13, lineHeight: 18, color: t.colors.ink, fontFamily: 'monospace' },
 }));

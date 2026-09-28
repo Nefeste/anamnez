@@ -55,7 +55,7 @@ export default function RootLayout() {
             contentStyle: { backgroundColor: t.colors.bg },
             headerBackTitle: T.common.back,
           }}>
-          <Stack.Screen name="index" options={{ title: T.common.appName }} />
+          <Stack.Screen name="index" options={{ title: T.common.appName, headerShown: false }} />
           <Stack.Screen name="settings" options={{ title: T.settings.title }} />
           <Stack.Screen name="about" options={{ title: T.about.title }} />
           <Stack.Screen name="report" options={{ title: T.report.title }} />

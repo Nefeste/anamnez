@@ -10,9 +10,9 @@ import { buzz, play } from '@/audio/sounds';
 import { T } from '@/i18n';
 import { Portrait } from '@/render/Portrait';
 import { examInfo, examsByAction, examTerm, findingInfo, type Line, type ResultGroup, type TermInfo, type VisitView } from '@/state/caseView';
-import { Button, Card, Chip, Chips, H, P, Screen, Tabs } from '@/ui/components';
+import { Button, Card, Chip, Chips, H, P, RULE, Ruled, Screen, Tabs } from '@/ui/components';
 import { TermSheet } from '@/ui/TermSheet';
-import { makeStyles, space } from '@/ui/theme';
+import { makeStyles, space, useTheme } from '@/ui/theme';
 import type { CaseActions, FooterAction } from './actions';
 import { ResultPicture } from './ResultPicture';
 
@@ -24,6 +24,7 @@ type Tab = 'ask' | 'examine' | 'order';
  */
 export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; actions: CaseActions; readOnly?: { note: string; footer: FooterAction & { hint?: string } } }) {
   const styles = useStyles();
+  const theme = useTheme();
   // вкладка привязана к пациенту: новый начинается с «Спросить»
   const [picked, setPicked] = useState<{ patient: number; tab: Tab }>({ patient: v.portrait.key, tab: 'ask' });
   const tab: Tab = picked.patient === v.portrait.key ? picked.tab : 'ask';
@@ -70,22 +71,27 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
 
   return (
     <Screen resetKey={v.portrait.key} footer={footer}>
-      <Card>
+      {/* лист истории болезни: в «Медкарте» — линовка и поле, жалобы — курсивом, со слов пациента */}
+      <Ruled>
         <View style={styles.row}>
           <Portrait seed={v.portrait.key} sex={v.portrait.sex} age={v.portrait.age} size={64} />
           <View style={styles.headText}>
             <H>{v.title}</H>
-            <P muted testID="visit-clock">{`${t.clock(v.clock)} · ${t.spent(v.minutesSpent, T.common.rub(v.money))}`}</P>
+            <Text testID="visit-clock" style={styles.clock}>{`${t.clock(v.clock)} · ${t.spent(v.minutesSpent, T.common.rub(v.money))}`}</Text>
             {v.returnNote ? <P testID="visit-return">{v.returnNote}</P> : null}
             {readOnly ? <P testID="visit-colleague">{readOnly.note}</P> : null}
             {v.payerNote ? <P muted testID="visit-payer">{v.payerNote}</P> : null}
           </View>
         </View>
         <Text style={styles.label}>{t.complaints}</Text>
-        {v.complaints.length > 0
-          ? <Chips>{v.complaints.map(c => <Chip key={c.f} testID={`complaint-${c.f}`} text={`«${c.text}»`} strong onPress={() => explain(findingInfo(c.f))} />)}</Chips>
-          : <P muted testID="visit-checkup">{t.checkup(v.portrait.sex === 'f')}</P>}
-      </Card>
+        {v.complaints.length === 0 ? <P muted testID="visit-checkup">{t.checkup(v.portrait.sex === 'f')}</P>
+          : theme.shape.ruled ? v.complaints.map(c => (
+            <Pressable key={c.f} testID={`complaint-${c.f}`} accessibilityRole="button" onPress={() => explain(findingInfo(c.f))} style={({ pressed }) => pressed && styles.pressed}>
+              <Text style={styles.said}>{`«${c.text}»`}</Text>
+            </Pressable>
+          ))
+            : <Chips>{v.complaints.map(c => <Chip key={c.f} testID={`complaint-${c.f}`} text={`«${c.text}»`} quote onPress={() => explain(findingInfo(c.f))} />)}</Chips>}
+      </Ruled>
 
       {v.meanwhile.length > 0 && (
         <Card style={styles.notice}>
@@ -170,7 +176,7 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
               // своя больница: нет помещения, аппарата или человека — серым, с причиной
               const why = v.unavailable[id];
               return (
-                <Button key={id} testID={`exam-${id}`} kind="plain" disabled={!!why} title={info.name} hint={why ?? t.cost(info.minutes, info.cost)}
+                <Button key={id} testID={`exam-${id}`} kind="plain" disabled={!!why} title={info.name} hint={why ?? t.cost(info.minutes, info.cost)} hintMono={!why}
                   onPress={() => doExam(id)} onInfo={() => explain(examTerm(id))} infoLabel={t.whatIsIt} />
               );
             })}
@@ -214,7 +220,9 @@ function KnownGroup({ g, open, onToggle, explain }: { g: ResultGroup; open: bool
 const useStyles = makeStyles(t => ({
   row: { flexDirection: 'row', gap: space.m, alignItems: 'center' },
   headText: { flex: 1, gap: 2 },
-  label: { fontSize: 13, fontWeight: '700', color: t.colors.muted, textTransform: 'uppercase', marginTop: space.s },
+  label: { fontSize: 13, fontWeight: '700', letterSpacing: 1.2, color: t.colors.muted, textTransform: 'uppercase', marginTop: space.s },
+  clock: { fontSize: 15, lineHeight: 21, color: t.shape.ruled ? t.colors.muted : t.colors.info },
+  said: { fontFamily: t.fonts.title, fontStyle: 'italic', fontSize: 17, lineHeight: RULE, color: t.colors.ink },
   notice: { backgroundColor: t.colors.accentSoft },
   knownHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: space.s },
   freshCount: { fontSize: 13, fontWeight: '700', color: t.colors.accent },

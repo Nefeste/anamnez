@@ -57,7 +57,7 @@ export default function ArticleScreen() {
 
 const useStyles = makeStyles(t => ({
   title: { fontSize: 22, fontWeight: '700', color: t.colors.ink },
-  label: { fontSize: 13, fontWeight: '700', color: t.colors.muted, textTransform: 'uppercase' },
+  label: { fontSize: 13, fontWeight: '700', letterSpacing: 1.2, color: t.colors.muted, textTransform: 'uppercase' },
   row: { gap: space.xs, marginTop: space.xs },
   rowLabel: { fontSize: 14, fontWeight: '600', color: t.colors.ink },
 }));

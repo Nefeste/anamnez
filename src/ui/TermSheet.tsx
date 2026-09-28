@@ -49,5 +49,5 @@ export function TermSheet({ term, onClose, label, closeTitle }: { term: Term | n
 }
 
 const useStyles = makeStyles(t => ({
-  label: { fontSize: 13, fontWeight: '700', color: t.colors.muted, textTransform: 'uppercase', marginTop: space.s },
+  label: { fontSize: 13, fontWeight: '700', letterSpacing: 1.2, color: t.colors.muted, textTransform: 'uppercase', marginTop: space.s },
 }));

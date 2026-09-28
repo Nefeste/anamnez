@@ -2,7 +2,7 @@
 // Вид — из темы (spec 2026-09-own-look): в «Медкарте» главная кнопка — оттиск штампа с
 // рамкой внутри, листы — бумага, вкладки действий — закладки картотеки; в «Мониторе» — панели
 // и зелёная кнопка.
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, View, type ViewStyle } from 'react-native';
 import { Text } from './text';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,13 +11,14 @@ import { makeStyles, space, touch, useTheme } from './theme';
 /**
  * Экран с прокруткой. Смена `resetKey` возвращает прокрутку наверх (новый пациент).
  * `footer` — полоса внизу поверх прокрутки: главная кнопка экрана всегда под большим
- * пальцем, а не в конце длинного списка. `header` — закреплён сверху (карта смены).
+ * пальцем, а не в конце длинного листа. `header` — закреплён сверху (карта смены). `bare` —
+ * экран без шапки (меню с обложкой): отступ от строки состояния — свой, черты под шапкой нет.
  */
-export function Screen({ children, scroll = true, resetKey, footer, header }: { children: ReactNode; scroll?: boolean; resetKey?: string | number; footer?: ReactNode; header?: ReactNode }) {
+export function Screen({ children, scroll = true, resetKey, footer, header, bare }: { children: ReactNode; scroll?: boolean; resetKey?: string | number; footer?: ReactNode; header?: ReactNode; bare?: boolean }) {
   const styles = useStyles();
   return (
-    <SafeAreaView style={styles.screen} edges={['bottom', 'left', 'right']}>
-      <Rule />
+    <SafeAreaView style={styles.screen} edges={bare ? ['top', 'bottom', 'left', 'right'] : ['bottom', 'left', 'right']}>
+      {bare ? null : <Rule />}
       {header ? <View style={styles.header}>{header}</View> : null}
       {scroll ? <ScrollView key={resetKey} contentContainerStyle={styles.content}>{children}</ScrollView> : <View style={styles.fill}>{children}</View>}
       {footer ? <View style={styles.footer}><View style={styles.footerInner}>{footer}</View></View> : null}
@@ -43,6 +44,42 @@ export function Card({ children, style, testID }: { children: ReactNode; style?:
   return <View testID={testID} style={[styles.card, style]}>{children}</View>;
 }
 
+/** Шаг линовки листа «Медкарты» и отступ поля — в точках. */
+export const RULE = 32;
+const MARGIN = 40;
+
+/**
+ * Лист истории болезни: в «Медкарте» — линовка и поле красной линией, текст — правее поля; в
+ * «Мониторе» — обычная карточка. Линовка — украшение: считается по высоте листа.
+ */
+export function Ruled({ children, testID }: { children: ReactNode; testID?: string }) {
+  const styles = useStyles();
+  const t = useTheme();
+  const [height, setHeight] = useState(0);
+  if (!t.shape.ruled) return <Card testID={testID}>{children}</Card>;
+  const lines = Math.max(0, Math.floor((height - 1) / RULE));
+  return (
+    <View testID={testID} style={[styles.card, styles.ruled]} onLayout={e => setHeight(e.nativeEvent.layout.height)}>
+      <View style={styles.ruling} aria-hidden importantForAccessibility="no-hide-descendants">
+        {Array.from({ length: lines }, (_, i) => <View key={i} style={[styles.ruleLine, { top: (i + 1) * RULE }]} />)}
+        <View style={styles.marginLine} />
+      </View>
+      {children}
+    </View>
+  );
+}
+
+/**
+ * Срочность — цветом, словом и значком (подпись из T.shift.triage): в «Медкарте» — штамп
+ * контуром, чуть повёрнутый; в «Мониторе» — плашка контуром.
+ */
+export function Urgency({ level, label }: { level: 'red' | 'yellow' | 'green'; label: string }) {
+  const styles = useStyles();
+  const t = useTheme();
+  const ink = level === 'yellow' ? t.colors.yellowText : t.colors[level];
+  return <Text style={[styles.urgency, { borderColor: t.colors[level], color: ink }, t.shape.stamp && styles.urgencyStamp]}>{label}</Text>;
+}
+
 export function H({ children }: { children: ReactNode }) {
   const styles = useStyles();
   return <Text style={styles.h}>{children}</Text>;
@@ -57,9 +94,11 @@ export function P({ children, muted, testID }: { children: ReactNode; muted?: bo
  * Кнопка; `onInfo` добавляет справа «?» — справку «Что это?» (нажимается отдельно). `lamp` —
  * лампа вызова перед подписью, как над дверями на плане: у «Пригласить».
  */
-export function Button({ title, onPress, hint, kind = 'primary', disabled, testID, onInfo, infoLabel, lamp }: {
+export function Button({ title, onPress, hint, kind = 'primary', disabled, testID, onInfo, infoLabel, lamp, hintMono }: {
   title: string; onPress: () => void; hint?: string; kind?: 'primary' | 'plain'; disabled?: boolean; testID?: string;
   onInfo?: () => void; infoLabel?: string; lamp?: boolean;
+  /** пояснение — минуты и рубли: моноширинным, в «Мониторе» — цветом времени */
+  hintMono?: boolean;
 }) {
   const styles = useStyles();
   const t = useTheme();
@@ -80,7 +119,7 @@ export function Button({ title, onPress, hint, kind = 'primary', disabled, testI
             <Text style={[styles.btnText, styles.fill, !primary && styles.btnTextPlain]}>{title}</Text>
           </View>
         ) : <Text style={[styles.btnText, !primary && styles.btnTextPlain]}>{title}</Text>}
-        {hint ? <Text style={[styles.btnHint, !primary && styles.muted]}>{hint}</Text> : null}
+        {hint ? <Text style={[styles.btnHint, !primary && styles.muted, hintMono && styles.btnHintMono]}>{hint}</Text> : null}
       </Pressable>
       {onInfo ? (
         <Pressable
@@ -236,10 +275,11 @@ export function Chips({ children }: { children: ReactNode }) {
   return <View style={styles.chips}>{children}</View>;
 }
 
-export function Chip({ text, strong, onPress, testID }: { text: string; strong?: boolean; onPress?: () => void; testID?: string }) {
+/** `quote` — слова пациента: плашка контуром («Монитор»). */
+export function Chip({ text, strong, quote, onPress, testID }: { text: string; strong?: boolean; quote?: boolean; onPress?: () => void; testID?: string }) {
   const styles = useStyles();
   return (
-    <Pressable testID={testID} onPress={onPress} disabled={!onPress} style={({ pressed }) => [styles.chip, strong ? styles.chipStrong : styles.chipWeak, pressed && styles.btnPressed]}>
+    <Pressable testID={testID} onPress={onPress} disabled={!onPress} style={({ pressed }) => [styles.chip, quote ? styles.chipQuote : strong ? styles.chipStrong : styles.chipWeak, pressed && styles.btnPressed]}>
       <Text style={[styles.chipText, !strong && styles.muted]}>{text}</Text>
     </Pressable>
   );
@@ -257,6 +297,12 @@ const useStyles = makeStyles(t => ({
   footer: { borderTopWidth: 1, borderTopColor: t.colors.edge, backgroundColor: t.colors.bg },
   footerInner: { paddingHorizontal: space.l, paddingVertical: space.s, gap: space.s, maxWidth: 640, width: '100%', alignSelf: 'center' },
   card: { backgroundColor: t.colors.card, borderRadius: t.shape.card, padding: space.l, gap: space.s, borderWidth: 1, borderColor: t.colors.edge },
+  ruled: { paddingLeft: MARGIN + space.m, overflow: 'hidden' },
+  ruling: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 },
+  ruleLine: { position: 'absolute', left: 0, right: 0, height: 1, backgroundColor: t.colors.line },
+  marginLine: { position: 'absolute', top: 0, bottom: 0, left: MARGIN, width: 1.5, backgroundColor: t.colors.margin },
+  urgency: { flexShrink: 0, fontSize: 12, fontWeight: '700', borderWidth: 1.5, borderRadius: t.shape.stamp ? 3 : 10, paddingHorizontal: space.s - 1, paddingVertical: 1, overflow: 'hidden' },
+  urgencyStamp: { transform: [{ rotate: '-2deg' }] },
   h: { fontFamily: t.fonts.title, fontSize: 19, fontWeight: '700', color: t.colors.ink },
   p: { fontSize: 15, lineHeight: 21, color: t.colors.ink },
   muted: { color: t.colors.muted },
@@ -268,6 +314,7 @@ const useStyles = makeStyles(t => ({
   btnText: { color: t.colors.onAccent, fontSize: 16, fontWeight: '700' },
   btnTextPlain: { color: t.colors.ink },
   btnHint: { color: t.colors.onAccentHint, fontSize: 13, marginTop: 2 },
+  btnHintMono: { fontFamily: t.fonts.mono, color: t.shape.ruled ? t.colors.muted : t.colors.info },
   btnRow: { flexDirection: 'row', alignItems: 'center', gap: space.s },
   lampRow: { flexDirection: 'row', alignItems: 'center', gap: space.s },
   lamp: { width: 14, height: 14, borderRadius: 7, backgroundColor: t.colors.lamp, borderWidth: 2, borderColor: t.colors.onAccent },
@@ -303,6 +350,7 @@ const useStyles = makeStyles(t => ({
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.s },
   chip: { maxWidth: '100%', borderRadius: t.shape.stamp ? 4 : 16, paddingHorizontal: space.m, paddingVertical: 6 },
   chipStrong: { backgroundColor: t.colors.accentSoft },
+  chipQuote: { backgroundColor: t.colors.card, borderWidth: 1.5, borderColor: t.colors.info, paddingVertical: 5 },
   chipWeak: { backgroundColor: t.colors.chip },
   chipText: { fontSize: 14, color: t.colors.ink },
 }));

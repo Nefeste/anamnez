@@ -13,7 +13,8 @@ import { makeStyles, space, touch } from './theme';
 
 const MAX = 30;
 
-export function DoctorForm({ initial, submitTitle, onSubmit }: { initial?: Doctor; submitTitle: string; onSubmit: (d: Doctor) => void }) {
+/** `bare` — без шапки: первый запуск, на месте меню. */
+export function DoctorForm({ initial, submitTitle, onSubmit, bare }: { initial?: Doctor; submitTitle: string; onSubmit: (d: Doctor) => void; bare?: boolean }) {
   const styles = useStyles();
   const t = T.profile;
   const [d, setD] = useState<Doctor>(() => initial ?? suggestDoctor(Math.random() < 0.5 ? 'f' : 'm', Math.random));
@@ -28,7 +29,7 @@ export function DoctorForm({ initial, submitTitle, onSubmit }: { initial?: Docto
     setD(keep(suggestDoctor(d.sex, Math.random)));
   };
   return (
-    <Screen footer={<Button testID="doctor-submit" title={submitTitle} disabled={!ok} onPress={() => onSubmit(d)} />}>
+    <Screen bare={bare} footer={<Button testID="doctor-submit" title={submitTitle} disabled={!ok} onPress={() => onSubmit(d)} />}>
       <Card>
         <H>{t.doctorTitle}</H>
         <P>{t.doctorText}</P>
@@ -91,7 +92,7 @@ const useStyles = makeStyles(t => ({
   portrait: { width: '33.33%', minHeight: touch, alignItems: 'center', justifyContent: 'center' },
   frame: { padding: 3, borderRadius: t.shape.radius, borderWidth: 2, borderColor: 'transparent' },
   frameOn: { borderColor: t.colors.accent },
-  label: { fontSize: 13, fontWeight: '700', color: t.colors.muted, textTransform: 'uppercase', marginTop: space.s },
+  label: { fontSize: 13, fontWeight: '700', letterSpacing: 1.2, color: t.colors.muted, textTransform: 'uppercase', marginTop: space.s },
   input: {
     minHeight: touch,
     backgroundColor: t.colors.bg,

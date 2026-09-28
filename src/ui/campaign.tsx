@@ -105,7 +105,7 @@ function Mission({ m }: { m: MissionView }) {
 }
 
 const useStyles = makeStyles(t => ({
-  label: { fontSize: 13, fontWeight: '700', color: t.colors.muted, textTransform: 'uppercase', marginTop: space.s },
+  label: { fontSize: 13, fontWeight: '700', letterSpacing: 1.2, color: t.colors.muted, textTransform: 'uppercase', marginTop: space.s },
   head: { flexDirection: 'row', alignItems: 'center', gap: space.m },
   headText: { flex: 1, gap: 2 },
   mission: { flexDirection: 'row', gap: space.s, alignItems: 'flex-start', paddingVertical: 2 },

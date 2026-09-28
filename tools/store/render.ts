@@ -1,7 +1,9 @@
 // npm run store — иконка, графика и снимки экрана для магазина и сайта (store/README.md,
 // 11-publishing.md §8). Сначала `npm run export:web`: снимки — с настоящей игры в
 // веб-сборке (стенд, ADR 0003) размером телефона 360 × 640 при плотности 3 — 1080 × 1920,
-// шрифтом Roboto, как на Android. Состояния смены пишет движок (tools/store/states.ts).
+// шрифтами игры в её двух темах (spec 2026-09-own-look): ЭКГ и итоги дня — в тёмном
+// «Мониторе», остальное — в светлой «Медкарте». Графика магазина — шрифтом Roboto, по
+// брендбуку студии. Состояния смены пишет движок (tools/store/states.ts).
 //
 // Флаги: --only icons|graphics|shots (по умолчанию — всё).
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -29,7 +31,7 @@ const TYPES: Record<string, string> = {
   '.wav': 'audio/wav', '.ttf': 'font/ttf', '.woff2': 'font/woff2',
 };
 
-/** Roboto — те же начертания, что на Android: @font-face из @fontsource с путями к серверу. */
+/** Roboto для графики магазина — по брендбуку: @font-face из @fontsource с путями к серверу. */
 function fontCss(): string {
   const faces = [400, 500, 600, 700, 800, 900].map(w => readFileSync(join(FONTS, `${w}.css`), 'utf8')).join('\n').replaceAll('url(./files/', 'url(/__fonts/');
   return `${faces}\n* { font-family: 'Roboto', sans-serif !important; }`;
@@ -125,13 +127,15 @@ async function framed(browser: Browser, raw: Buffer, caption: string, file: stri
     <div style="position:absolute;left:50%;top:400px;transform:translateX(-50%)">${phone(raw, 820)}</div>`, file);
 }
 
-/** Партия из сохранения в слоте `slot` — на экране `path` (оговорка и имя врача — только у меню). */
-async function openShift(browser: Browser, base: string, save: string, slot = 'shift', path = '/shift'): Promise<Page> {
-  const ctx = await browser.newContext({ viewport: { width: 360, height: 640 }, deviceScaleFactor: 3 });
+/**
+ * Партия из сохранения в слоте `slot` — на экране `path` (оговорка и имя врача — только у
+ * меню). Тема — как у телефона (`scheme`): «Как в телефоне» стоит по умолчанию.
+ */
+async function openShift(browser: Browser, base: string, save: string, slot = 'shift', path = '/shift', scheme: 'light' | 'dark' = 'light'): Promise<Page> {
+  const ctx = await browser.newContext({ viewport: { width: 360, height: 640 }, deviceScaleFactor: 3, colorScheme: scheme });
   await ctx.addInitScript(([key, value]) => localStorage.setItem(key, value), [`anamnez:saves/${slot}.json`, save]);
   const p = await ctx.newPage();
   await p.goto(`${base}${path}`);
-  await p.addStyleTag({ content: fontCss() });
   await p.evaluate(() => document.fonts.ready);
   return p;
 }
@@ -214,8 +218,8 @@ async function shots(browser: Browser): Promise<Record<string, Buffer>> {
     raw['06-outcome.png'] = await snap(p);
     await p.context().close();
 
-    // 3. боль в груди: на ЭКГ подъём ST
-    p = await openShift(browser, base, envelope(acsCase(db)));
+    // 3. боль в груди: на ЭКГ подъём ST — в тёмной теме, как на мониторе
+    p = await openShift(browser, base, envelope(acsCase(db)), 'shift', '/shift', 'dark');
     await p.getByTestId('shift-continue').click();
     await p.getByTestId('result-ecg').waitFor({ timeout: 20_000 });
     await p.getByTestId('visit-fresh').first().evaluate(el => el.scrollIntoView({ block: 'end' }));
@@ -224,8 +228,8 @@ async function shots(browser: Browser): Promise<Record<string, Buffer>> {
     raw['03-ecg.png'] = await snap(p);
     await p.context().close();
 
-    // 7. итоги третьего дня
-    p = await openShift(browser, base, envelope(summaryState(db)));
+    // 7. итоги третьего дня — в тёмной теме
+    p = await openShift(browser, base, envelope(summaryState(db)), 'shift', '/shift', 'dark');
     await p.getByTestId('summary-seen').waitFor({ timeout: 20_000 });
     await p.waitForTimeout(300);
     raw['07-summary.png'] = await snap(p);

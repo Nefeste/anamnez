@@ -44,5 +44,5 @@ export default function SectionScreen() {
 }
 
 const useStyles = makeStyles(t => ({
-  label: { fontSize: 13, fontWeight: '700', color: t.colors.muted, textTransform: 'uppercase', marginBottom: space.xs },
+  label: { fontSize: 13, fontWeight: '700', letterSpacing: 1.2, color: t.colors.muted, textTransform: 'uppercase', marginBottom: space.xs },
 }));

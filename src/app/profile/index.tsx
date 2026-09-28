@@ -69,5 +69,5 @@ const useStyles = makeStyles(t => ({
   fill: { flex: 1 },
   name: { fontSize: 22, fontWeight: '700', color: t.colors.ink },
   rank: { fontSize: 15, fontWeight: '600', color: t.colors.accent, marginTop: 2 },
-  label: { fontSize: 13, fontWeight: '700', color: t.colors.muted, textTransform: 'uppercase', marginBottom: space.xs },
+  label: { fontSize: 13, fontWeight: '700', letterSpacing: 1.2, color: t.colors.muted, textTransform: 'uppercase', marginBottom: space.xs },
 }));

@@ -33,7 +33,10 @@ const TEXT: [Key, Key[]][] = [
   ['onAccentHint', ['accent']],
   ['accent', ['bg', 'card']],
   ['info', ['bg', 'card']],
+  // срочность контуром: слово цветом срочности на листе и на строке очереди
   ['red', ['bg', 'card']],
+  ['green', ['bg', 'card']],
+  ['yellowText', ['bg', 'card']],
   ['danger', ['bg', 'card']],
   ['onRed', ['red']],
   ['onYellow', ['yellow']],

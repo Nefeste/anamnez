@@ -42,7 +42,7 @@ export default function AchievementsScreen() {
 }
 
 const useStyles = makeStyles(t => ({
-  label: { fontSize: 13, fontWeight: '700', color: t.colors.muted, textTransform: 'uppercase', marginBottom: space.xs },
+  label: { fontSize: 13, fontWeight: '700', letterSpacing: 1.2, color: t.colors.muted, textTransform: 'uppercase', marginBottom: space.xs },
   row: { flexDirection: 'row', gap: space.s, alignItems: 'flex-start', paddingVertical: 4 },
   mark: { width: 20, fontSize: 16, lineHeight: 22, color: t.colors.muted },
   markGot: { color: t.colors.green, fontWeight: '700' },
