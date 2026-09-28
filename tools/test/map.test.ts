@@ -1,9 +1,16 @@
-// Рисунок плана (spec 2026-09-living-map, часть 22): куда повёрнуты предметы и люди.
+// Рисунок плана (spec 2026-09-living-map): куда повёрнуты предметы и люди (часть 22) и что
+// показывает помещение — свет аппарата, лампа над дверью, очередь (часть 23).
 import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
 import { clinicLayout } from '../../src/engine/hospital/clinic';
-import { CELL, type Grid, type ObjectKind } from '../../src/engine/hospital/grid';
+import { CELL, type Grid, type ObjectKind, type RoomType } from '../../src/engine/hospital/grid';
+import { apply, newShift } from '../../src/engine/shift/engine';
+import type { ShiftState } from '../../src/engine/shift/types';
 import { angleOf, headingOf, objectTurns, restHeading } from '../../src/render/map/orient';
+import { lampAt, objectRooms } from '../../src/render/map/signs';
+import { DWELL, litAt, Walkers } from '../../src/render/map/walkers';
+import { placements } from '../../src/state/clinicMap';
+import { LAMP_ROOMS, roomSigns } from '../../src/state/roomSigns';
 
 /** Помещение w × h: стены по краю, пол внутри. */
 function room(w: number, h: number): Grid {
@@ -88,5 +95,124 @@ describe('план: куда смотрят люди', () => {
     const turns = objectTurns(g, objects);
     // стол восточнее — лицом на восток
     expect(norm(restHeading(objects, turns, [3, 3])!)).toBeCloseTo((3 * Math.PI) / 2);
+  });
+});
+
+describe('план: знаки помещений (часть 23)', () => {
+  const layout = clinicLayout(db);
+  const indexOf = (type: string) => layout.rooms.findIndex(x => x.type === type);
+  const signOf = (s: ShiftState, type: string, down?: ReadonlySet<string>) => roomSigns(layout, s, down)[indexOf(type)];
+  const first = (s: ShiftState) => {
+    for (let i = 0; i < 300 && s.queue.length === 0; i++) apply(db, s, { kind: 'advance', seconds: 60 });
+    return s.queue[0];
+  };
+
+  test('очередь к вашему кабинету — ждущие вас; лампа — пока пациент на карте у вас в кабинете', () => {
+    const s = newShift(db, { seed: 5, season: 'winter' });
+    const id = first(s);
+    const waiting = Object.values(s.patients).filter(p => p.status === 'waiting' && !p.by).length;
+    expect(signOf(s, 'office').queue).toBe(waiting);
+    const w = new Walkers(layout, 48);
+    const office = indexOf('office');
+    expect(litAt(w.sync(placements(db, layout, s), 0).lights, office, 0)).toBe(false);
+    apply(db, s, { kind: 'call', id });
+    expect(signOf(s, 'office').queue).toBe(waiting - 1);
+    // позвали — идёт; лампа загорается, когда вошёл
+    const f = w.sync(placements(db, layout, s), 10);
+    const at = w.arrivalOf(id)!;
+    expect(at).toBeGreaterThan(10);
+    expect(litAt(f.lights, office, at - 0.05)).toBe(false);
+    expect(litAt(f.lights, office, at)).toBe(true);
+    expect(litAt(f.lights, office, at + 600)).toBe(true);
+    // ушёл из кабинета — погасла
+    apply(db, s, { kind: 'exam', exam: 'exam.xray_chest' });
+    apply(db, s, { kind: 'sendAway' });
+    const g = w.sync(placements(db, layout, s), at + 5);
+    expect(litAt(g.lights, office, at + 5)).toBe(false);
+    // регистратура и зал ожидания — без лампы и без очереди
+    expect(signOf(s, 'waiting')).toMatchObject({ lit: false, queue: 0 });
+  });
+
+  test('к рентгену очередь — кто ждёт его на скамье', () => {
+    const s = newShift(db, { seed: 5, season: 'winter' });
+    for (let i = 0; i < 600 && s.queue.length < 2; i++) apply(db, s, { kind: 'advance', seconds: 60 });
+    const [a, b] = s.queue;
+    for (const id of [a, b]) {
+      apply(db, s, { kind: 'call', id });
+      apply(db, s, { kind: 'exam', exam: 'exam.xray_chest' });
+      apply(db, s, { kind: 'sendAway' });
+    }
+    // первого снимают, второй ждёт аппарат на скамье
+    const xb = s.patients[b].pending.find(r => r.exam === 'exam.xray_chest')!;
+    expect(xb.start!).toBeGreaterThan(s.t);
+    expect(signOf(s, 'xray').queue).toBe(1);
+    apply(db, s, { kind: 'advance', seconds: xb.start! - s.t });
+    expect(signOf(s, 'xray').queue).toBe(0);
+  });
+
+  test('рентген горит, пока пациент на карте у аппарата, — и на ×4, когда смена его обогнала', () => {
+    const s = newShift(db, { seed: 5, season: 'winter' });
+    const id = first(s);
+    const w = new Walkers(layout, 48);
+    w.sync(placements(db, layout, s), 0);
+    apply(db, s, { kind: 'call', id });
+    apply(db, s, { kind: 'exam', exam: 'exam.xray_chest' });
+    apply(db, s, { kind: 'sendAway' });
+    const x = s.patients[id].pending.find(r => r.exam === 'exam.xray_chest')!;
+    expect(x.start!).toBeLessThanOrEqual(s.t);
+    const xray = indexOf('xray');
+    const f = w.sync(placements(db, layout, s), 1);
+    // дошёл до аппарата — за стоянку до конца пути
+    const came = w.arrivalOf(id)! - DWELL.exam!;
+    expect(came).toBeGreaterThan(1);
+    expect(litAt(f.lights, xray, came - 0.05)).toBe(false);
+    expect(litAt(f.lights, xray, came)).toBe(true);
+    // смена ушла вперёд, пока он шёл: снимок кончился — он всё равно доходит и стоит у аппарата
+    apply(db, s, { kind: 'advance', seconds: x.end! - s.t });
+    const g = w.sync(placements(db, layout, s), 1.1);
+    expect(litAt(g.lights, xray, came - 0.05)).toBe(false);
+    expect(litAt(g.lights, xray, came + 0.05)).toBe(true);
+    expect(litAt(g.lights, xray, came + DWELL.exam! - 0.05)).toBe(true);
+    expect(litAt(g.lights, xray, came + DWELL.exam! + 0.05)).toBe(false);
+  });
+
+  test('лаборатория светится, пока анализ крови не готов', () => {
+    const s = newShift(db, { seed: 5, season: 'winter' });
+    const id = first(s);
+    apply(db, s, { kind: 'call', id });
+    apply(db, s, { kind: 'exam', exam: 'exam.cbc' });
+    apply(db, s, { kind: 'sendAway' });
+    const x = s.patients[id].pending.find(r => r.exam === 'exam.cbc')!;
+    // кровь уже взята, анализ ещё идёт
+    expect(x.end!).toBeLessThanOrEqual(s.t);
+    expect(s.t).toBeLessThan(x.readyAt);
+    expect(signOf(s, 'lab').lit).toBe(true);
+    apply(db, s, { kind: 'advance', seconds: x.readyAt - s.t });
+    expect(signOf(s, 'lab').lit).toBe(false);
+  });
+
+  test('«нет персонала» — только у помещений из списка неработающих', () => {
+    const s = newShift(db, { seed: 5, season: 'winter' });
+    const ecg = layout.rooms.find(r => r.type === 'ecg')!;
+    expect(signOf(s, 'ecg', new Set([ecg.id])).noStaff).toBe(true);
+    expect(signOf(s, 'xray', new Set([ecg.id])).noStaff).toBe(false);
+    expect(roomSigns(layout, s).every(x => !x.noStaff)).toBe(true);
+  });
+
+  test('лампа — на стене у двери каждого кабинета с лампой; аппараты — в своих помещениях', () => {
+    for (const r of layout.rooms) {
+      const at = lampAt(layout.grid, r.door);
+      if (!LAMP_ROOMS.has(r.type)) continue;
+      expect(at).toBeDefined();
+      const [x, y] = [Math.floor(at![0]), Math.floor(at![1])];
+      expect(layout.grid.cells[y * layout.grid.w + x]).toBe(CELL.wall);
+      expect(Math.abs(x - r.door[0]) + Math.abs(y - r.door[1])).toBe(1);
+    }
+    const owners = objectRooms(layout.rooms, layout.objects);
+    const where: Record<string, RoomType> = { ecg: 'ecg', analyzer: 'lab', xray: 'xray' };
+    layout.objects.forEach((o, i) => {
+      if (where[o.kind]) expect(layout.rooms[owners[i]].type).toBe(where[o.kind]);
+    });
+    expect(layout.objects.some(o => o.kind === 'analyzer')).toBe(true);
   });
 });

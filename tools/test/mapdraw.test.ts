@@ -1,7 +1,7 @@
-// Рисунок плана (spec 2026-09-living-map, часть 22): фигурки как на портрете, подписи помещаются,
-// люди смотрят по ходу и на стол; и сам рисунок без экрана (Skia через CanvasKit,
+// Рисунок плана (spec 2026-09-living-map, части 22–23): фигурки как на портрете, подписи
+// помещаются, люди смотрят по ходу и на стол; и сам рисунок без экрана (Skia через CanvasKit,
 // tools/imaging/headless.ts) — стена полосой с полом по обе стороны, дверь — проём, у каждого
-// предмета и аппарата свой рисунок.
+// предмета и аппарата свой рисунок, у аппарата — и рисунок «работает».
 import { beforeAll, describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
 import { clinicLayout } from '../../src/engine/hospital/clinic';
@@ -9,7 +9,7 @@ import { CELL } from '../../src/engine/hospital/grid';
 import { T } from '../../src/i18n';
 import { CLOTHES, lookOf, SKIN } from '../../src/render/look';
 import { BODIES, bodyIndex, HAIRS, headIndex, HEADS, patientFigure, STYLES, staffFigure } from '../../src/render/map/figures';
-import { GLYPH, longestLine, MIN_FONT, roomLabel } from '../../src/render/map/labels';
+import { badgeAt, doorOnTop, GLYPH, longestLine, MIN_FONT, roomLabel } from '../../src/render/map/labels';
 import { CELL_PX, WALL_IN, WALL_OUT } from '../../src/render/map/metrics';
 import { headingOf } from '../../src/render/map/orient';
 import { SPEED, Walkers } from '../../src/render/map/walkers';
@@ -97,6 +97,53 @@ describe('план: подписи помещений', () => {
       }
     }
     expect(checked).toBeGreaterThan(20);
+  });
+});
+
+describe('план: значки помещений', () => {
+  test('значок — внутри помещения, в углу дальше от двери: не на створке и не на подписи', () => {
+    type Box = [number, number, number, number];
+    const cross = (a: Box, b: Box) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
+    const inner = 0.5 + WALL_IN / 2;
+    let checked = 0;
+    for (const room of Object.values(db.rooms)) {
+      const type = room.id.slice('room.'.length);
+      // значок бывает у помещений с должностью (нет персонала) и у кабинета, ЭКГ, рентгена (очередь)
+      if (Object.keys(room.sizes[0].staff).length === 0) continue;
+      const name = T.shift.map.rooms[type]!;
+      for (const size of room.sizes) {
+        for (const [w, h] of [[size.w, size.h], [size.h, size.w]]) {
+          const r = { x: 0, y: 0, w, h };
+          // дверь — в любой стене, не у угла (в шаблонах — от второй клетки от угла)
+          const doors: [number, number][] = [];
+          for (let i = 2; i <= w - 3; i++) doors.push([i, 0], [i, h - 1]);
+          for (let i = 2; i <= h - 3; i++) doors.push([0, i], [w - 1, i]);
+          for (const cell of [12, 16, 24]) {
+            for (const door of doors) {
+              const top = doorOnTop(r, [door]);
+              const at = badgeAt(r, cell, top, door);
+              // очередь из двух цифр: поля, фигурка, промежуток, цифры, рамка
+              const bw = at.size * (0.44 + 0.84 * 0.66 + 2 * 0.62 * 0.6) + 4;
+              const badge: Box = at.side === 'left' ? [at.x, at.top, at.x + bw, at.top + at.size] : [at.x - bw, at.top, at.x, at.top + at.size];
+              expect(badge[0]).toBeGreaterThanOrEqual(inner * cell);
+              expect(badge[2]).toBeLessThanOrEqual((w - inner) * cell);
+              expect(badge[1]).toBeGreaterThanOrEqual(inner * cell);
+              expect(badge[3]).toBeLessThanOrEqual((h - inner) * cell);
+              // створка с дугой — четверть круга от косяка внутрь помещения
+              const [dx, dy] = door;
+              const swing: Box = dy === 0 ? [dx, 0.5, dx + 0.92, 1.42] : dy === h - 1 ? [dx, h - 1.42, dx + 0.92, h - 0.5] : dx === 0 ? [0.5, dy, 1.42, dy + 0.92] : [w - 1.42, dy, w - 0.5, dy + 0.92];
+              expect({ type, w, h, door, cell, onDoor: cross(badge, swing.map(v => v * cell) as Box) }).toEqual({ type, w, h, door, cell, onDoor: false });
+              const l = roomLabel(name, r, cell, top);
+              const text = Math.min(l.width, (l.lines === 2 ? longestLine(name) : name.length) * GLYPH * l.fontSize);
+              const label: Box = [l.left, l.top, l.left + text, l.top + l.lines * l.fontSize * 1.25];
+              expect({ type, w, h, door, cell, onLabel: cross(badge, label) }).toEqual({ type, w, h, door, cell, onLabel: false });
+              checked++;
+            }
+          }
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(100);
   });
 });
 
@@ -217,6 +264,7 @@ describe('план: атлас без экрана', () => {
   let width: number;
   let atlas: Awaited<ReturnType<typeof import('../../src/render/map/sprites')['buildAtlas']>>;
   let kinds: readonly string[];
+  let lit: readonly string[];
 
   beforeAll(async () => {
     await loadSkia();
@@ -224,6 +272,7 @@ describe('план: атлас без экрана', () => {
     const s = await import('../../src/render/map/sprites');
     atlas = s.buildAtlas(PX);
     kinds = s.OBJECT_KINDS;
+    lit = s.LIT_KINDS;
     width = atlas.image.width();
     const height = atlas.image.height();
     const rec = Skia.PictureRecorder();
@@ -251,6 +300,21 @@ describe('план: атлас без экрана', () => {
     const seen = new Set(kinds.map(k => block(atlas.objectRect(k as never))));
     expect(seen.size).toBe(kinds.length);
     for (const e of Object.values(db.equipment)) expect(kinds).toContain(e.sprite);
+  });
+
+  test('у аппаратов ЭКГ, анализатора и рентгена — рисунок «работает»: светлый экран, горящая трубка', () => {
+    const all = new Set(kinds.map(k => block(atlas.objectRect(k as never))));
+    for (const k of lit) {
+      const on = block(atlas.objectRect(k as never, true));
+      expect(on).not.toBe(block(atlas.objectRect(k as never)));
+      all.add(on);
+    }
+    expect(all.size).toBe(kinds.length + lit.length);
+    // экран ЭКГ и анализатора: погашен — тёмный, работает — светлый; трубка рентгена — жёлтая
+    expect(near(pick(atlas.objectRect('ecg' as never), 0.32, 0.3), '#2F3B3E')).toBe(true);
+    expect(near(pick(atlas.objectRect('ecg' as never, true), 0.32, 0.3), '#CFF5E2')).toBe(true);
+    expect(near(pick(atlas.objectRect('analyzer' as never, true), 0.7, 0.25), '#CFF5E2')).toBe(true);
+    expect(near(pick(atlas.objectRect('xray' as never, true), 0.5, 0.5), '#FFE9A3')).toBe(true);
   });
 
   test('тело врача — белое, медсестры — голубое, пациента — цвета его одежды; красный обод — у срочного', () => {

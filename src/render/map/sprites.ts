@@ -9,20 +9,27 @@ import { CLOTHES, HAIR, SKIN } from '@/render/look';
 import { BODIES, type Hair, HAIRS, HEADS, STYLES, UNIFORM } from './figures';
 
 export const OBJECT_KINDS: ObjectKind[] = ['bed', 'chair', 'desk', 'couch', 'cabinet', 'machine', 'plant', 'sink', 'bench', 'xray', 'table', 'ecg', 'analyzer'];
+/** Аппараты, у которых есть рисунок «работает» — горит экран или трубка (часть 23). */
+export const LIT_KINDS: ObjectKind[] = ['ecg', 'analyzer', 'xray'];
 
 export interface SpriteAtlas {
   image: SkImage;
   /** сторона клетки в атласе, точек: RSXform сжимает её в клетку карты */
   px: number;
-  objectRect: (k: ObjectKind) => SkRect;
+  /** `lit` — аппарат работает: горит экран или трубка */
+  objectRect: (k: ObjectKind, lit?: boolean) => SkRect;
   bodyRect: (i: number) => SkRect;
   headRect: (i: number) => SkRect;
 }
 
-/** Клеток в строке атласа; тела и головы — после предметов: их номер — смещение плюс номер фигуры. */
+/**
+ * Клеток в строке атласа. Порядок: предметы, работающие аппараты, тела, головы; номер тела и
+ * головы в атласе — смещение плюс номер фигуры.
+ */
 export const COLS = 16;
-export const BODY_AT = OBJECT_KINDS.length;
-export const HEAD_AT = OBJECT_KINDS.length + BODIES;
+const OBJECTS = OBJECT_KINDS.length + LIT_KINDS.length;
+export const BODY_AT = OBJECTS;
+export const HEAD_AT = OBJECTS + BODIES;
 
 /**
  * Сторона клетки атласа, точек: полторы точки экрана на точку клетки — рисунок не мылится при
@@ -56,15 +63,16 @@ export function buildAtlas(px = 64, people = true): SpriteAtlas {
 }
 
 function drawAtlas(px: number, people: boolean): SpriteAtlas {
-  const count = OBJECT_KINDS.length + (people ? BODIES + HEADS : 0);
+  const count = OBJECTS + (people ? BODIES + HEADS : 0);
   const rows = Math.ceil(count / COLS);
   const surface = Skia.Surface.Make(COLS * px, rows * px);
   if (!surface) throw new Error('Skia surface unavailable');
   const c = surface.getCanvas();
   OBJECT_KINDS.forEach((k, i) => drawAt(c, i, px, u => drawObject(u, k)));
+  LIT_KINDS.forEach((k, i) => drawAt(c, OBJECT_KINDS.length + i, px, u => drawObject(u, k, true)));
   if (people) {
-    for (let i = 0; i < BODIES; i++) drawAt(c, OBJECT_KINDS.length + i, px, u => drawBody(u, i));
-    for (let i = 0; i < HEADS; i++) drawAt(c, OBJECT_KINDS.length + BODIES + i, px, u => drawHead(u, i));
+    for (let i = 0; i < BODIES; i++) drawAt(c, BODY_AT + i, px, u => drawBody(u, i));
+    for (let i = 0; i < HEADS; i++) drawAt(c, HEAD_AT + i, px, u => drawHead(u, i));
   }
   surface.flush();
   const image = surface.makeImageSnapshot();
@@ -72,9 +80,9 @@ function drawAtlas(px: number, people: boolean): SpriteAtlas {
   return {
     image,
     px,
-    objectRect: k => rect(OBJECT_KINDS.indexOf(k)),
-    bodyRect: i => rect(OBJECT_KINDS.length + (i % BODIES)),
-    headRect: i => rect(OBJECT_KINDS.length + BODIES + (i % HEADS)),
+    objectRect: (k, lit) => rect(lit && LIT_KINDS.includes(k) ? OBJECT_KINDS.length + LIT_KINDS.indexOf(k) : OBJECT_KINDS.indexOf(k)),
+    bodyRect: i => rect(BODY_AT + (i % BODIES)),
+    headRect: i => rect(HEAD_AT + (i % HEADS)),
   };
 }
 
@@ -154,8 +162,13 @@ const STEEL = '#D5DCDF';
 const STEEL_EDGE = '#A2AEB2';
 const DARK = '#3A4649';
 
-/** Предметы и аппараты сверху: спинка, изголовье, экран — к северу, лицо — к югу. */
-function drawObject(u: Pen, k: ObjectKind) {
+/** Работающий аппарат: экран светлый, трубка рентгена горит (часть 23). */
+const SCREEN_ON = '#CFF5E2';
+const TRACE_ON = '#1F7A55';
+const TUBE_ON = '#FFE9A3';
+
+/** Предметы и аппараты сверху: спинка, изголовье, экран — к северу, лицо — к югу; `lit` — аппарат работает. */
+function drawObject(u: Pen, k: ObjectKind, lit = false) {
   switch (k) {
     case 'bed':
       u.rr(0.16, 0.04, 0.84, 0.96, 0.07, '#FFFFFF', '#A9B8BC');
@@ -224,13 +237,13 @@ function drawObject(u: Pen, k: ObjectKind) {
       u.rr(0.02, 0.36, 0.16, 0.64, 0.03, '#6F7E82');
       u.rr(0.14, 0.46, 0.5, 0.54, 0.02, '#6F7E82');
       u.rr(0.36, 0.37, 0.64, 0.63, 0.07, '#56666B', '#3E4B4F', 0.02);
-      u.circle(0.5, 0.5, 0.07, '#E4EAEC');
+      u.circle(0.5, 0.5, lit ? 0.09 : 0.07, lit ? TUBE_ON : '#E4EAEC');
       break;
     case 'ecg':
       // тележка: экран с кривой, колёса, провод к пациенту
       u.rr(0.18, 0.2, 0.82, 0.84, 0.08, '#E6EAEC', STEEL_EDGE);
-      u.rr(0.26, 0.26, 0.74, 0.52, 0.04, '#2F3B3E');
-      u.line([0.29, 0.43, 0.38, 0.43, 0.42, 0.33, 0.46, 0.47, 0.5, 0.41, 0.71, 0.41], '#7FD4A0', 0.025);
+      u.rr(0.26, 0.26, 0.74, 0.52, 0.04, lit ? SCREEN_ON : '#2F3B3E');
+      u.line([0.29, 0.43, 0.38, 0.43, 0.42, 0.33, 0.46, 0.47, 0.5, 0.41, 0.71, 0.41], lit ? TRACE_ON : '#7FD4A0', 0.025);
       for (const [x, y] of [[0.24, 0.84], [0.76, 0.84], [0.24, 0.2], [0.76, 0.2]]) u.circle(x, y, 0.045, '#56666B');
       u.quad(0.5, 0.84, 0.5, 0.96, 0.7, 0.97, '#56666B', 0.022);
       u.rr(0.34, 0.6, 0.66, 0.72, 0.03, '#CFD6D9');
@@ -244,9 +257,9 @@ function drawObject(u: Pen, k: ObjectKind) {
         u.circle(0.36 + Math.cos(r) * 0.15, 0.5 + Math.sin(r) * 0.15, 0.037, ['#8E7AA6', '#D9A21B', '#5B7FA6', '#7A9E7E'][n % 4]);
       }
       u.circle(0.36, 0.5, 0.06, '#95A3A7');
-      u.rr(0.64, 0.2, 0.88, 0.42, 0.03, '#2F3B3E');
-      u.line([0.67, 0.34, 0.85, 0.34], '#7FC4E6', 0.025);
-      u.circle(0.76, 0.66, 0.045, '#1A8A86');
+      u.rr(0.64, 0.2, 0.88, 0.42, 0.03, lit ? SCREEN_ON : '#2F3B3E');
+      u.line([0.67, 0.34, 0.85, 0.34], lit ? TRACE_ON : '#7FC4E6', 0.025);
+      u.circle(0.76, 0.66, 0.045, lit ? '#3DDC84' : '#1A8A86');
       break;
   }
 }

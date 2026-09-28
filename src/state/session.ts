@@ -26,6 +26,7 @@ import {
 import { T } from '@/i18n';
 import { type Arrival, type Decision, decisionOf, hhmm, makeCaseView, outcomeText, patientName, type VisitView } from './caseView';
 import { CLINIC, type Doing, type Placement, placements } from './clinicMap';
+import { type RoomSign, roomSigns } from './roomSigns';
 import { achievementsBy, archivedCase, caseKey, type DayRecord, profile, recordCases, recordDay, recordSingle } from './profile';
 import { dateText } from './profileView';
 import { SINGLE_CATEGORIES, type SingleCategory, singleResult } from './single';
@@ -184,6 +185,8 @@ export interface ShiftView {
   who: Record<string, WhoView>;
   /** песочница: помещения карты смены — по касанию */
   rooms?: Record<string, RoomView>;
+  /** что показывает помещение на карте: анализы лаборатории, очередь, «нет персонала» (часть 23) */
+  signs: RoomSign[];
   /** пациенты нанятых врачей (spec 2026-09-hired-doctors, часть 19): кто, у кого, что сейчас */
   colleagues: { id: string; name: string; hint: string }[];
 }
@@ -1244,7 +1247,7 @@ function summaryOf(s: ShiftState): SummaryView | undefined {
 
 const EMPTY: Omit<ShiftView, 'version' | 'status' | 'mode'> = {
   difficulty: 'student', day: 0, clock: '', dayOpen: false, afterHours: false, allDone: false, speed: 1, paused: false,
-  queue: [], away: [], log: [], counts: { seen: 0, left: 0, waiting: 0, unseen: 0 }, restored: false, people: [], who: {}, colleagues: [],
+  queue: [], away: [], log: [], counts: { seen: 0, left: 0, waiting: 0, unseen: 0 }, restored: false, people: [], who: {}, colleagues: [], signs: [],
 };
 
 function buildShiftView(): ShiftView {
@@ -1280,10 +1283,24 @@ function buildShiftView(): ShiftView {
     restored: sess.restored,
     people,
     who: whoOf(s, people),
+    signs: roomSigns(layout ?? CLINIC, s, s.hospital ? understaffed(s) : undefined),
     colleagues: colleagueRows(s),
     ...(s.hospital ? { rooms: roomsOf(s) } : {}),
     ...(layout ? { layout } : {}),
   };
+}
+
+// помещения своей больницы без нужной должности — значок «нет персонала» на карте (часть 23)
+const shortStaffed = new WeakMap<HospitalCtx, Set<string>>();
+
+function understaffed(s: ShiftState): Set<string> {
+  const ctx = hospitalCtx(db, s);
+  let out = shortStaffed.get(ctx);
+  if (!out) {
+    out = new Set(ctx.plan.rooms.filter(r => problemsOf(db, ctx.plan, r, ctx.staffed).some(p => p.kind === 'noStaff' || p.kind === 'noPlace')).map(r => r.id));
+    shortStaffed.set(ctx, out);
+  }
+  return out;
 }
 
 // помещения своей больницы: что это, работает ли и кто в нём — на день; что происходит — сейчас

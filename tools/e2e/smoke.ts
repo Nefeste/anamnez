@@ -461,6 +461,9 @@ try {
     seatedWho = (await page.getByTestId('map-who').count()) > 0 ? await text(page, 'map-who') : '';
   }
   check(seatedWho.includes('Ждёт приёма') && (await page.getByTestId('map-invite').isVisible()), `смена: коснулись ждущего в зале — «${seatedWho.replace(/\n/g, ' · ')}»`);
+  // значок у вашего кабинета — сколько ждут вас (spec 2026-09-living-map, часть 23)
+  const officeSign = (await page.getByTestId(`sign-${CLINIC.mine}`).getAttribute('aria-label')) ?? '';
+  check(/^Ждут: [1-9]\d*$/.test(officeSign), `смена: значок очереди у кабинета — «${officeSign}»`);
   await page.screenshot({ path: join(OUT, '08-shift-queue.png') });
   // «Пригласить» — он идёт в кабинет, карта пациента открывается, когда вошёл
   const invited = Date.now();

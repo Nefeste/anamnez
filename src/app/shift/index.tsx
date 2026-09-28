@@ -240,6 +240,7 @@ function Queue({ v }: { v: ShiftView }) {
       <ClinicMap
         layout={v.layout ?? CLINIC}
         people={v.people}
+        signs={v.signs}
         width={Math.min(width, 640)}
         active={focused}
         label={t.map.label(v.queue.length, v.away.length, v.inRoom?.name)}

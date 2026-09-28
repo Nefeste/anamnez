@@ -45,3 +45,17 @@ export function roomLabel(name: string, r: { x: number; y: number; w: number; h?
   const top = bottom && r.h !== undefined ? (r.y + r.h - edge) * cell - fontSize * LINE * lines : (r.y + edge) * cell;
   return { left: (r.x + edge) * cell, top, width, fontSize, lines };
 }
+
+/**
+ * Значок помещения (часть 23): высота, верх и край. По высоте — у стены напротив подписи:
+ * подпись сверху — значок внизу, и наоборот. По ширине — в углу дальше от двери, чтобы не лёг
+ * на створку: дверь правее середины — в левом углу (`side: 'left'`, `x` — левый край), иначе в
+ * правом (`x` — правый край).
+ */
+export function badgeAt(r: { x: number; y: number; w: number; h: number }, cell: number, labelBottom: boolean, door: readonly [number, number]): { side: 'left' | 'right'; x: number; top: number; size: number } {
+  const edge = 0.5 + WALL_IN / 2 + PAD;
+  const size = Math.max(12, cell * 0.95);
+  const top = labelBottom ? (r.y + edge) * cell : (r.y + r.h - edge) * cell - size;
+  const left = door[0] > r.x + (r.w - 1) / 2;
+  return { side: left ? 'left' : 'right', x: (left ? r.x + edge : r.x + r.w - edge) * cell, top, size };
+}

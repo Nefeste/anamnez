@@ -113,6 +113,11 @@ export const shift = {
     label: (waiting: number, away: number, inRoom: string | undefined) =>
       `Карта амбулатории. В зале ожидания: ${patients(waiting)}; на обследованиях: ${patients(away)}; в кабинете: ${inRoom ?? 'никого'}.`,
     invite: 'Пригласить',
+    // значки помещений на карте (spec 2026-09-living-map, часть 23): для чтения с экрана
+    signs: {
+      queue: (n: number) => `Ждут: ${n}`,
+      noStaff: 'Нет персонала',
+    },
     // коснулись человека на карте: кто это и что делает
     staff: {
       registrar: 'Регистратор',

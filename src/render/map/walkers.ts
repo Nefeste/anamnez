@@ -5,10 +5,12 @@
 // немного стоит, даже если по смене он уже дальше; место ожидания (стул, скамья), до которого
 // не дошёл, заменяет следующее; в кабинет врача зовут — туда идут сразу и быстрее. Новый путь
 // начинается там, где человек сейчас, без скачка. Дошедший до выхода исчезает и больше не
-// появляется.
+// появляется. Лампа над дверью и свет аппарата (часть 23) горят, пока человек на карте у
+// медсестры, в кабинете, у аппарата, — а не по часам смены, которые на ×4 его обгоняют.
 import type { Cell, ClinicLayout } from '@/engine/hospital/clinic';
 import { findPath } from '@/engine/sim/path';
 import { assignSeats, type Doing, nearest, type Placement } from '@/state/clinicMap';
+import { LAMP_ROOMS } from '@/state/roomSigns';
 import { headingOf, objectTurns, restHeading, type Turn } from './orient';
 
 /** Шаг — клеток в секунду настоящего времени: на ×4 игровые минуты летят, а люди идут, а не прыгают. */
@@ -19,6 +21,10 @@ export const BRISK = 8;
 export const DWELL: Partial<Record<Doing['kind'], number>> = { registration: 1, triage: 1.5, exam: 1.5 };
 /** Чисел на человека в `meta`: смещение пути, число точек, время выхода, скорость, исчезнуть у цели. */
 export const STRIDE = 5;
+/** С ним что-то делают за дверью с лампой: приём у врача, у медсестры, процедура, обследование. */
+const LIGHTS: ReadonlySet<Doing['kind']> = new Set(['office', 'triage', 'exam']);
+/** Конец стоянки, после которой пути нет: стоит, пока смена не пошлёт дальше. */
+const FOREVER = 1e9;
 
 /** act — там с человеком что-то делают; wait — сидит, ждёт; go — идёт туда без остановок. */
 type LegKind = 'act' | 'wait' | 'go';
@@ -32,6 +38,8 @@ interface Leg {
   dwell: number;
   arrive: number;
   leave: number;
+  /** помещение с лампой, где с человеком что-то делают на этой остановке, — номер в плане; нет — -1 */
+  room: number;
 }
 
 interface Walker {
@@ -64,11 +72,17 @@ export interface Frame {
   heads: number[];
   /** когда дойдёт последний идущий — дальше часы карты стоят и кадры не рисуются */
   until: number;
+  /**
+   * Кто где под лампой: тройки — номер помещения в плане, с какого и до какого времени по часам
+   * карты человек стоит там, где с ним что-то делают.
+   */
+  lights: number[];
   /** изменилось ли что-то для UI-потока с прошлой сверки */
   changed: boolean;
 }
 
 const cellKey = (c: Cell) => `${c[0]},${c[1]}`;
+const inside = (r: { x: number; y: number; w: number; h: number }, [x, y]: Cell) => x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h;
 
 /** Где человек на пути в момент `now`; то же на каждом кадре считает ворклет карты. */
 export function posAt(pts: readonly number[], start: number, speed: number, now: number): [number, number] {
@@ -79,6 +93,13 @@ export function posAt(pts: readonly number[], start: number, speed: number, now:
   const f = s - k;
   const a = k * 2;
   return [pts[a] + (pts[a + 2] - pts[a]) * f, pts[a + 1] + (pts[a + 3] - pts[a + 1]) * f];
+}
+
+/** Горит ли в момент `now` лампа помещения `room` (тройки `Frame.lights`); то же на кадре считает ворклет карты. */
+export function litAt(lights: readonly number[], room: number, now: number): boolean {
+  'worklet';
+  for (let i = 0; i + 2 < lights.length; i += 3) if (lights[i] === room && lights[i + 1] <= now && now < lights[i + 2]) return true;
+  return false;
 }
 
 /** Куда повёрнут на пути в момент `now`: поворот отрезка, по которому идёт, или остановки. */
@@ -165,6 +186,7 @@ export class Walkers {
     const meta = new Array<number>(this.capacity * STRIDE).fill(0);
     const bodies = new Array<number>(this.capacity).fill(0);
     const heads = new Array<number>(this.capacity).fill(0);
+    const lights: number[] = [];
     let until = 0;
     for (const w of this.walkers.values()) {
       const m = w.slot * STRIDE;
@@ -178,8 +200,11 @@ export class Walkers {
       bodies[w.slot] = w.body;
       heads[w.slot] = w.head;
       until = Math.max(until, this.arrival(w));
+      w.legs.forEach((l, i) => {
+        if (l.room >= 0) lights.push(l.room, w.start + l.arrive / w.speed, i === w.legs.length - 1 ? FOREVER : w.start + l.leave / w.speed);
+      });
     }
-    return { route, turns, meta, bodies, heads, until, changed };
+    return { route, turns, meta, bodies, heads, until, lights, changed };
   }
 
   /** Кого коснулись: точка — в клетках, не дальше клетки от фигурки; персонал тоже. */
@@ -292,7 +317,8 @@ export class Walkers {
 
   private leg(p: Placement): Leg {
     const cell = this.targetOf(p);
-    return { key: cellKey(cell), cell, kind: legKind(p.doing), dwell: DWELL[p.doing.kind] ?? 0, arrive: 0, leave: 0 };
+    const room = LIGHTS.has(p.doing.kind) ? this.layout.rooms.findIndex(r => LAMP_ROOMS.has(r.type) && inside(r, cell)) : -1;
+    return { key: cellKey(cell), cell, kind: legKind(p.doing), dwell: DWELL[p.doing.kind] ?? 0, arrive: 0, leave: 0, room };
   }
 
   private targetOf(p: Placement): Cell {
