@@ -241,6 +241,8 @@ const roomSize = z.strictObject({
   staff: z.record(roleId, cellSrc).default({}),
   /** куда встаёт или садится пациент */
   patient: cellSrc.optional(),
+  /** мест для нанятых врачей — ординаторская (spec 2026-09-hired-doctors) */
+  places: z.number().int().min(0).max(8).default(0),
 });
 
 export const roomSchema = z.strictObject({
@@ -286,6 +288,10 @@ export const roleSchema = z.strictObject({
   hire: z.boolean().default(true),
   /** зарплата за смену при навыке 1 и при навыке 5, ₽ */
   salary: z.tuple([z.number().int().min(0), z.number().int().min(0)]),
+  /** встаёт на место этой должности — терапевт на место врача, в любом кабинете, кроме вашего */
+  stands: roleId.optional(),
+  /** без места в этом помещении не работает — терапевту нужна ординаторская */
+  needs: roomId.optional(),
   texts: z.strictObject({ hint }),
 });
 
@@ -326,6 +332,9 @@ const trait = z.strictObject({
   reading: pp.optional(),
   skills: z.tuple([z.number().int().min(1).max(5), z.number().int().min(1).max(5)]).optional(),
   growth: z.number().int().min(1).max(5).optional(),
+  /** нанятый врач: поправка порога уверенности, п. п.; «забыл спросить», п. п. */
+  threshold: z.number().int().min(-20).max(20).optional(),
+  forget: z.number().int().min(-100).max(100).optional(),
 });
 
 /** Баланс своей больницы: числа игровые, настраиваются симулятором экономики. */
@@ -344,6 +353,12 @@ export const economySchema = z.strictObject({
     noTrait: int,
     traits: z.strictObject({
       careful: trait, fast: trait, novice: trait, experienced: trait,
+    }),
+    /** нанятые врачи по навыку 1–5: порог уверенности, %; наименьшая польза обследования, тысячные бита; «забыл спросить», % */
+    doctor: z.strictObject({
+      threshold: z.tuple([pct, pct, pct, pct, pct]),
+      minGain: z.tuple([int, int, int, int, int]),
+      forget: z.tuple([pct, pct, pct, pct, pct]),
     }),
   }),
   /** тарифы: ОМС по тяжести диагноза, доля по обоснованности и без подтверждения; ДМС и платно — обращение и прайс, % цены */

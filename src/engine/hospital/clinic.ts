@@ -6,18 +6,23 @@
 import type { ContentDb, Id } from '../../content/types';
 import { type Plan, planOf, presetHospital } from './build';
 import type { HospitalLayout, Room, RoomType } from './grid';
+import { doctorRoom } from './requirements';
 
 export type Cell = [number, number];
 
-export type StaffRole = 'registrar' | 'nurse' | 'doctor' | 'procedureNurse' | 'labTech' | 'ecgNurse' | 'radiographer' | 'radiologist';
+export type StaffRole = 'registrar' | 'nurse' | 'doctor' | 'therapist' | 'procedureNurse' | 'labTech' | 'ecgNurse' | 'radiographer' | 'radiologist';
 
 export interface ClinicLayout extends HospitalLayout {
   /** вход и выход — дверь на улицу */
   entrance: Cell;
   /** персонал на местах; `id` — когда фигурок одной роли несколько (две медсестры ЭКГ) */
   staff: { role: StaffRole; cell: Cell; id?: string }[];
-  /** куда встаёт или садится пациент */
+  /** куда встаёт или садится пациент; `office` — ваш кабинет */
   spots: { registration: Cell; triage: Cell; office: Cell; procedure: Cell; ecg: Cell; xray: Cell };
+  /** куда садится пациент в каждом кабинете врача — у нанятых врачей свои (spec 2026-09-hired-doctors) */
+  offices: Record<string, Cell>;
+  /** ваш кабинет — первый кабинет врача, до которого можно дойти */
+  mine?: string;
   /** стулья зоны ожидания — очередь к врачу; ближний к двери ряд первым */
   seats: Cell[];
   /** скамьи в коридоре — ждут результатов обследований */
@@ -29,6 +34,7 @@ const FIGURE: Record<string, StaffRole> = {
   'room.reception|role.registrar': 'registrar',
   'room.triage|role.nurse': 'nurse',
   'room.office|role.doctor': 'doctor',
+  'room.office|role.therapist': 'therapist',
   'room.procedure|role.nurse': 'procedureNurse',
   'room.lab|role.lab_tech': 'labTech',
   'room.ecg|role.nurse': 'ecgNurse',
@@ -40,23 +46,29 @@ const SPOT: Record<keyof ClinicLayout['spots'], Id> = {
   registration: 'room.reception', triage: 'room.triage', office: 'room.office', procedure: 'room.procedure', ecg: 'room.ecg', xray: 'room.xray',
 };
 
-/** План и штат (помещение, должность) → места карты смены. Врач — в первом кабинете врача. */
-export function layoutOf(plan: Plan, staff: { room: string; role: Id }[]): ClinicLayout {
+/**
+ * План и штат (помещение, должность; `stands` — на чьём месте стоит: терапевт — на месте врача)
+ * → места карты смены. Вы — в первом кабинете врача.
+ */
+export function layoutOf(plan: Plan, staff: { room: string; role: Id; stands?: Id }[]): ClinicLayout {
   const rooms: Room[] = plan.rooms.map(r => ({
     id: r.id, type: r.type.slice('room.'.length) as RoomType, x: r.x, y: r.y, w: r.w, h: r.h, door: r.door[0] ?? [r.x, r.y],
   }));
-  const office = plan.rooms.find(r => r.type === 'room.office');
-  const people = [...(office ? [{ room: office.id, role: 'role.doctor' }] : []), ...staff];
-  const placed = people.flatMap(({ room, role }) => {
+  const mine = doctorRoom(plan);
+  const people = [...(mine ? [{ room: mine, role: 'role.doctor' }] : []), ...staff];
+  const placed = people.flatMap(({ room, role, stands }: { room: string; role: Id; stands?: Id }) => {
     const r = plan.rooms.find(x => x.id === room);
     const figure = r && FIGURE[`${r.type}|${role}`];
-    const cell = r?.staff[role];
+    const cell = r?.staff[role] ?? (stands ? r?.staff[stands] : undefined);
     return figure && cell ? [{ role: figure, cell, room }] : [];
   });
-  // одна фигурка роли — прежний номер (staff.nurse); несколько — ещё и помещение
+  // одна фигурка роли — прежний номер (staff.nurse); несколько — ещё и помещение; у нанятого
+  // врача помещение в номере всегда: по нему видно, кого он принимает
   const count = (f: StaffRole) => placed.filter(x => x.role === f).length;
-  const staffOut = placed.map(x => (count(x.role) > 1 ? { role: x.role, cell: x.cell, id: `${x.role}.${x.room}` } : { role: x.role, cell: x.cell }));
-  const spot = (type: Id): Cell => plan.rooms.find(r => r.type === type)?.patient ?? plan.entrance;
+  const staffOut = placed.map(x => (count(x.role) > 1 || x.role === 'therapist' ? { role: x.role, cell: x.cell, id: `${x.role}.${x.room}` } : { role: x.role, cell: x.cell }));
+  // ваш кабинет — тот, что по правилам больницы (doctorRoom), остальное — первое помещение типа
+  const spot = (type: Id): Cell => (type === 'room.office' && mine ? plan.rooms.find(r => r.id === mine)?.patient : undefined)
+    ?? plan.rooms.find(r => r.type === type)?.patient ?? plan.entrance;
   const spots = Object.fromEntries(Object.entries(SPOT).map(([k, type]) => [k, spot(type)])) as ClinicLayout['spots'];
   return {
     grid: plan.grid,
@@ -65,6 +77,8 @@ export function layoutOf(plan: Plan, staff: { room: string; role: Id }[]): Clini
     entrance: plan.entrance,
     staff: staffOut,
     spots,
+    offices: Object.fromEntries(plan.rooms.filter(r => r.type === 'room.office' && r.patient).map(r => [r.id, r.patient!])),
+    ...(mine ? { mine } : {}),
     seats: plan.rooms.flatMap(r => r.seats),
     benches: plan.objects.filter(o => o.kind === 'bench').map(o => [o.x, o.y] as Cell),
   };

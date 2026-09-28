@@ -1,5 +1,6 @@
 // npm run doctor — «виртуальный врач» по базе (`docs/05-content.md` §6, `docs/09-testing.md` §3).
-// Три стратегии на одних и тех же пациентах: разумный, ленивый, «всё подряд».
+// Три стратегии на одних и тех же пациентах: разумный, ленивый, «всё подряд»; и нанятый врач
+// своей больницы по навыку 1–5 (spec 2026-09-hired-doctors) — тот же разумный с порогами навыка.
 // Флаги: --n 10000 (пациентов), --season winter|spring|summer|autumn|all, --json (для CI).
 import { Rng } from '../../src/engine/core/rng';
 import { observe, type OutcomeKind } from '../../src/engine/med/course';
@@ -17,6 +18,8 @@ const N = Number(arg('n', '3000'));
 const seasonArg = arg('season', 'all');
 const asJson = process.argv.includes('--json');
 const threshold = Number(arg('threshold', '0.9'));
+/** нанятый врач по навыку — на первых стольких пациентах: навык 5 берётся из прогона разумного */
+const HN = Math.min(N, Number(arg('hired-n', '1000')));
 
 const { db, errors } = buildDb();
 if (errors.length) {
@@ -49,6 +52,9 @@ const empty = (): Tally => ({
 const costOf = (r: DoctorResult) => r.exams.reduce((a, id) => a + examCost(db, id), 0);
 const strategies: Strategy[] = ['rational', 'lazy', 'shotgun'];
 const tally: Record<Strategy, Tally> = { rational: empty(), lazy: empty(), shotgun: empty() };
+/** разумный на первых HN пациентах — это нанятый врач навыка 5 */
+interface Case { truth: string; correct: boolean; correctGroup: boolean; money: number; minutes: number; exams: number; needless: boolean; reaction: boolean }
+const rationalCases: Case[] = [];
 const timing: Record<Strategy, number> = { rational: 0, lazy: 0, shotgun: 0 };
 
 const t0 = performance.now();
@@ -75,7 +81,11 @@ for (let i = 0; i < N; i++) {
     x.overall[score.overall]++;
     x.treatment[score.treatment]++;
     x.outcomes[outcome.kind]++;
-    if (cond.selfLimiting && ev.roles.some(v => v.role === 'notIndicated' && db.treatments[v.tx].class?.startsWith('antibiotic.'))) x.needlessAntibiotic++;
+    const needless = cond.selfLimiting === true && ev.roles.some(v => v.role === 'notIndicated' && db.treatments[v.tx].class?.startsWith('antibiotic.'));
+    if (needless) x.needlessAntibiotic++;
+    if (s === 'rational' && i < HN) {
+      rationalCases.push({ truth, correct: r.correct, correctGroup: r.correctGroup, money: r.money, minutes: r.minutes, exams: r.exams.length, needless, reaction: outcome.kind === 'reaction' });
+    }
     x.n++;
     x.money += r.money;
     x.minutes += r.minutes;
@@ -90,6 +100,34 @@ for (let i = 0; i < N; i++) {
   }
 }
 const total = performance.now() - t0;
+
+// Нанятый врач (spec 2026-09-hired-doctors): те же пациенты и те же результаты обследований, что у
+// разумного (ветвь `doctor:rational`), пороги — навыка из economy.yaml. Навык 5 — это и есть
+// разумный врач, его приёмы берутся из прогона выше; навыки 1–4 — на тех же первых HN пациентах.
+const SKILLS = [1, 2, 3, 4, 5] as const;
+interface Hired { skill: number; cases: Case[] }
+const t1 = performance.now();
+const hired: Hired[] = SKILLS.map(skill => {
+  const d = db.economy.staff.doctor;
+  const [thr, gain, forget] = [d.threshold[skill - 1] / 100, d.minGain[skill - 1] / 1000, d.forget[skill - 1]];
+  if (thr === threshold && gain === 0.02 && forget === 0) return { skill, cases: rationalCases };
+  const cases: Case[] = [];
+  for (let i = 0; i < HN; i++) {
+    const season = seasons[i % seasons.length];
+    const patient = generatePatient(db, 9_000_000 + i, { department, season });
+    const truth = patient.truth.conditions[0].id;
+    const forgot = Rng.seeded(patient.seed).fork('forget');
+    const r = runDoctor(db, patient, 'rational', Rng.seeded(patient.seed).fork('doctor:rational'), {
+      candidates, exams, threshold: thr, minGain: gain, skipAsk: q => forget > 0 && forgot.fork(q).chance(forget * 100),
+    });
+    const ev = evaluatePlan(db, patient, r.plan, r.observations);
+    const outcome = observe(db, patient, r.plan, ev, Rng.seeded(patient.seed).fork('outcome:rational'));
+    const needless = db.conditions[truth].selfLimiting === true && ev.roles.some(v => v.role === 'notIndicated' && db.treatments[v.tx].class?.startsWith('antibiotic.'));
+    cases.push({ truth, correct: r.correct, correctGroup: r.correctGroup, money: r.money, minutes: r.minutes, exams: r.exams.length, needless, reaction: outcome.kind === 'reaction' });
+  }
+  return { skill, cases };
+});
+const hiredMs = performance.now() - t1;
 
 const pct = (a: number, b: number) => (b ? (100 * a) / b : 0);
 const report = strategies.map(s => {
@@ -115,6 +153,23 @@ const report = strategies.map(s => {
   };
 });
 const [rational, lazy, shotgun] = report;
+const hiredReport = hired.map(({ skill, cases }) => {
+  const n = cases.length;
+  const per: Record<string, { n: number; g: number }> = {};
+  for (const c of cases) {
+    const x = (per[c.truth] ??= { n: 0, g: 0 });
+    x.n++;
+    if (c.correctGroup) x.g++;
+  }
+  const count = (f: (c: Case) => boolean) => cases.filter(f).length;
+  const sum = (f: (c: Case) => number) => cases.reduce((a, c) => a + f(c), 0) / Math.max(1, n);
+  return {
+    skill, patients: n, accuracy: pct(count(c => c.correct), n), groupAccuracy: pct(count(c => c.correctGroup), n),
+    balanced: Object.values(per).reduce((a, v) => a + pct(v.g, v.n), 0) / Math.max(1, Object.keys(per).length),
+    money: sum(c => c.money), minutes: sum(c => c.minutes), exams: sum(c => c.exams), needlessAntibiotic: pct(count(c => c.needless), n), reactions: pct(count(c => c.reaction), n),
+  };
+});
+const byGroup = hiredReport.map(h => h.groupAccuracy);
 // Пороги 05-content.md §6: точность — до группы с одинаковой тактикой; ленивый сравнивается
 // с разумным по сбалансированной точности — иначе самая частая болезнь (ОРВИ больше
 // половины обращений) вытягивает его сама.
@@ -126,10 +181,17 @@ const thresholds = {
   // лечение (spec 2026-09-first-shift): разумный врач почти не вредит и не даёт антибиотик без показаний
   rationalReactions: { value: rational.outcomes.reaction, need: '≤ 1 %', ok: rational.outcomes.reaction <= 1 },
   rationalNeedlessAntibiotic: { value: rational.needlessAntibiotic, need: '≤ 3 %', ok: rational.needlessAntibiotic <= 3 },
+  // нанятые врачи (spec 2026-09-hired-doctors, критерий 1): точность растёт с навыком; навык 5 —
+  // почти разумный, навык 1 — лучше ленивого, но заметно хуже навыка 3
+  hiredSkill5: { value: byGroup[4], need: '≥ 88', ok: byGroup[4] >= 88 },
+  hiredGrows: { value: byGroup[4] - byGroup[0], need: 'растёт с каждым навыком', ok: byGroup.every((v, i) => i === 0 || v >= byGroup[i - 1]) },
+  hiredSkill1: { value: byGroup[0], need: `выше ленивого (${lazy.groupAccuracy.toFixed(1)}) и ниже навыка 3 (${byGroup[2].toFixed(1)})`, ok: byGroup[0] > lazy.groupAccuracy && byGroup[0] < byGroup[2] },
+  // сбалансированная — редкие болезни: у навыка 1 разница с разумным видна сильнее
+  hiredBalancedGap: { value: hiredReport[4].balanced - hiredReport[0].balanced, need: '≥ 8 п. п. между навыком 1 и 5', ok: hiredReport[4].balanced - hiredReport[0].balanced >= 8 },
 };
 
 if (asJson) {
-  console.log(JSON.stringify({ contentVersion: db.contentVersion, contentHash: db.hash, patients: N, seasons, threshold, totalMs: total, report, thresholds }, null, 2));
+  console.log(JSON.stringify({ contentVersion: db.contentVersion, contentHash: db.hash, patients: N, seasons, threshold, totalMs: total, report, hired: hiredReport, thresholds }, null, 2));
 } else {
   console.log(`База ${db.contentVersion} (${db.hash}), отделение ${department}, пациентов ${N}, сезоны: ${seasons.join(', ')}, порог разумного врача ${threshold}`);
   console.log(`Время: ${(total / 1000).toFixed(2)} с на всех трёх врачей (${(total / N).toFixed(2)} мс на пациента)\n`);
@@ -152,6 +214,10 @@ if (asJson) {
   }
   console.log('\nЧастые путаницы разумного врача:');
   for (const [k, v] of rational.topConfusions) console.log(`  ${k}: ${v}`);
+  console.log(`\nНанятый врач по навыку (economy.yaml, staff.doctor; первые ${HN} пациентов; ${(hiredMs / 1000).toFixed(1)} с):`);
+  for (const h of hiredReport) {
+    console.log(`  навык ${h.skill}  точность ${h.accuracy.toFixed(1).padStart(5)} %  до группы ${h.groupAccuracy.toFixed(1).padStart(5)} %  сбалансированная ${h.balanced.toFixed(1).padStart(5)} %   ${h.money.toFixed(0).padStart(5)} ₽   ${h.minutes.toFixed(0).padStart(4)} мин   обследований ${h.exams.toFixed(1)}   антибиотик без показаний ${h.needlessAntibiotic.toFixed(1)} %   реакция ${h.reactions.toFixed(1)} %`);
+  }
   console.log('\nПороги (05-content.md §6):');
   for (const [k, t] of Object.entries(thresholds)) console.log(`  ${t.ok ? 'да ' : 'НЕТ'} ${k}: ${t.value.toFixed(2)} (нужно ${t.need})`);
 }

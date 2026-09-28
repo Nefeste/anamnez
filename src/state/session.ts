@@ -14,7 +14,7 @@ import { evaluatePlan } from '@/engine/med/plan';
 import type { Grade } from '@/engine/med/score';
 import { complaintText } from '@/engine/med/text';
 import { build, type BuildCommand, type BuildError, type HospitalState, type Plan, planOf } from '@/engine/hospital/build';
-import { type Block, examWhere, openBlocks, type Problem, problemsOf, workingRooms } from '@/engine/hospital/requirements';
+import { type Block, doctorRoom, examWhere, openBlocks, type Problem, problemsOf, standInOf, workingRooms } from '@/engine/hospital/requirements';
 import { type ClinicLayout, cropPlan, layoutOf } from '@/engine/hospital/clinic';
 import { memberAt, type StaffMember, staffingOf } from '@/engine/hospital/staff';
 import { missionProgress } from '@/engine/campaign/campaign';
@@ -105,6 +105,10 @@ export interface SummaryView {
   returnsPlanned: number;
   returnsToday: number;
   cases: CaseRow[];
+  /** нанятые врачи за день (spec 2026-09-hired-doctors): кто и его приёмы одной строкой */
+  colleagues: { id: string; title: string; line: string }[];
+  /** принято нанятыми врачами; прежние строки итогов — ваши приёмы */
+  theirs: number;
   /** исходы отпущенных домой, ставшие известными в этот день */
   news: { id: string; text: string }[];
   /** песочница: касса и репутация за день */
@@ -387,7 +391,7 @@ async function sandboxHospital(): Promise<{ hospital: HospitalState; staff: Staf
 /** Чего не хватает, чтобы открыть смену в этой больнице; всё есть — пусто. */
 function blocksOf(h: { hospital: HospitalState; staff: StaffMember[] }) {
   const plan = planOf(db, h.hospital);
-  const staffed = staffingOf(h.staff);
+  const staffed = staffingOf(db, plan, h.staff);
   return openBlocks(db, plan, workingRooms(db, plan, staffed), staffed);
 }
 
@@ -482,7 +486,8 @@ function dayStart(s: ShiftState) {
 }
 
 function allDone(s: ShiftState) {
-  return s.t >= dayStart(s) + SHIFT_END && s.queue.length === 0 && !s.current && !Object.values(s.patients).some(p => p.status === 'away' || p.status === 'coming');
+  return s.t >= dayStart(s) + SHIFT_END && s.queue.length === 0 && !s.current
+    && !Object.values(s.patients).some(p => p.status === 'away' || p.status === 'coming' || (p.by !== undefined && (p.status === 'inRoom' || p.status === 'waiting')));
 }
 
 /**
@@ -746,6 +751,8 @@ export interface PersonView {
   /** где работает; нет — в резерве */
   room?: string;
   roomName?: string;
+  /** назначен, но не работает: нет места в ординаторской (spec 2026-09-hired-doctors) */
+  problem?: string;
 }
 
 /** Место в помещении, где нужен человек: занято ли и кем. */
@@ -766,12 +773,24 @@ export interface StaffView {
   salaries: number;
 }
 
-function personOf(s: ShiftState, m: StaffMember): PersonView {
-  const room = m.room ? s.hospital?.rooms.find(r => r.id === m.room) : undefined;
+/** Названия помещений больницы: одинаковых несколько — с номером, «Кабинет врача № 2». */
+function roomNames(rooms: readonly { id: string; type: Id }[]): Record<string, string> {
+  const count: Record<string, number> = {};
+  const seen: Record<string, number> = {};
+  for (const r of rooms) count[r.type] = (count[r.type] ?? 0) + 1;
+  return Object.fromEntries(rooms.map(r => {
+    seen[r.type] = (seen[r.type] ?? 0) + 1;
+    const name = db.rooms[r.type]?.name.ru ?? r.type;
+    return [r.id, count[r.type] > 1 ? T.sandbox.roomN(name, seen[r.type]) : name];
+  }));
+}
+
+function personOf(m: StaffMember, names: Record<string, string>, problem?: string): PersonView {
   return {
     id: m.id, name: personName(m.sex, m.seed), role: m.role, roleName: db.roles[m.role]?.name.ru ?? m.role, skill: m.skill,
     ...(m.trait ? { trait: T.sandbox.traits[m.trait] } : {}), salary: m.salary,
-    ...(room ? { room: room.id, roomName: db.rooms[room.type].name.ru } : {}),
+    ...(m.room && names[m.room] ? { room: m.room, roomName: names[m.room] } : {}),
+    ...(problem ? { problem } : {}),
   };
 }
 
@@ -779,15 +798,22 @@ function buildStaffView(): StaffView | undefined {
   const s = session?.s;
   if (!s?.hospital || !s.staff) return undefined;
   const staff = s.staff;
-  const posts: PostView[] = s.hospital.rooms.flatMap(r => db.rooms[r.type].staff.filter(role => db.roles[role]?.hire).map(role => ({
-    room: r.id, roomName: db.rooms[r.type].name.ru, role, roleName: db.roles[role].name.ru,
-    ...(() => {
-      const m = staff.find(x => x.room === r.id && x.role === role);
-      return m ? { who: m.id } : {};
-    })(),
-  })));
+  const ctx = hospitalCtx(db, s);
+  const mine = doctorRoom(ctx.plan);
+  const names = roomNames(s.hospital.rooms);
+  // место врача в другом кабинете — для нанятого врача (терапевта); в вашем кабинете врач — вы
+  const posts: PostView[] = s.hospital.rooms.flatMap(r => db.rooms[r.type].staff.flatMap(role => {
+    const post = db.roles[role]?.hire ? role : r.id !== mine ? standInOf(db, role) : undefined;
+    if (!post) return [];
+    const m = staff.find(x => x.room === r.id && x.role === post);
+    return [{ room: r.id, roomName: names[r.id], role: post, roleName: db.roles[post].name.ru, ...(m ? { who: m.id } : {}) }];
+  }));
+  const problem = (m: StaffMember) => {
+    const needs = db.roles[m.role]?.needs;
+    return needs && m.room && ctx.staffed.unplaced?.(m.room) ? T.sandbox.problem.noPlace(db.rooms[needs]?.gen.ru ?? needs) : undefined;
+  };
   return {
-    version, staff: staff.map(m => personOf(s, m)), candidates: (s.candidates ?? []).map(m => personOf(s, m)), posts,
+    version, staff: staff.map(m => personOf(m, names, problem(m))), candidates: (s.candidates ?? []).map(m => personOf(m, names)), posts,
     salaries: staff.reduce((n, m) => n + m.salary, 0),
   };
 }
@@ -810,7 +836,7 @@ function sandboxLayout(s: ShiftState): ClinicLayout {
   const ctx = hospitalCtx(db, s);
   let l = layouts.get(ctx);
   if (!l) {
-    l = layoutOf(cropPlan(ctx.plan), ctx.staff.flatMap(m => (m.room ? [{ room: m.room, role: m.role }] : [])));
+    l = layoutOf(cropPlan(ctx.plan), ctx.staff.flatMap(m => (m.room ? [{ room: m.room, role: m.role, stands: db.roles[m.role]?.stands }] : [])));
     layouts.set(ctx, l);
   }
   return l;
@@ -856,7 +882,7 @@ function buildBuildView(): BuildView | undefined {
   const s = session?.s;
   if (!s?.hospital || !s.economy) return undefined;
   const plan = planOf(db, s.hospital);
-  const staffed = staffingOf(s.staff ?? []);
+  const staffed = staffingOf(db, plan, s.staff ?? []);
   const problems: Record<string, Problem[]> = {};
   for (const r of plan.rooms) problems[r.id] = problemsOf(db, plan, r, staffed);
   const working = workingRooms(db, plan, staffed);
@@ -1138,7 +1164,15 @@ function summaryOf(s: ShiftState): SummaryView | undefined {
   const h = s.history[s.history.length - 1];
   if (!h) return undefined;
   const all = Object.values(s.patients);
-  const cases = all.filter(p => p.closed && closedDay(p) === h.day).sort((a, b) => a.closed!.at - b.closed!.at);
+  const cases = all.filter(p => p.closed && !p.closed.by && closedDay(p) === h.day).sort((a, b) => a.closed!.at - b.closed!.at);
+  // нанятые врачи (spec 2026-09-hired-doctors): строка на каждого — его приёмы за день
+  const colleagues = Object.entries(h.colleagues ?? {}).sort(([a], [b]) => (a < b ? -1 : 1)).map(([id, c]) => {
+    const m = s.staff?.find(x => x.id === id);
+    return {
+      id, title: m ? T.shift.summary.colleague(personName(m.sex, m.seed), db.roles[m.role]?.name.ru.toLowerCase() ?? '') : T.shift.summary.colleagueGone,
+      line: T.shift.summary.colleagueLine(c.seen, c.correct, c.partly, c.wrong, c.grades),
+    };
+  });
   const news = all
     .filter(p => p.closed && p.closed.plan.setting === 'home' && closedDay(p) + p.closed.outcome.day === h.day)
     .sort((a, b) => a.closed!.at - b.closed!.at)
@@ -1149,6 +1183,8 @@ function summaryOf(s: ShiftState): SummaryView | undefined {
     confidence: cases.length > 0 ? Math.round((cases.reduce((a, p) => a + p.closed!.confidence, 0) / cases.length) * 10) : undefined,
     rationalMoney: cases.reduce((a, p) => a + p.closed!.rationalMoney, 0),
     cases: cases.map(p => ({ id: p.id, name: nameOf(p), verdict: p.closed!.verdict, overall: p.closed!.grades.overall, diagnosis: db.conditions[p.closed!.diagnosis].name.ru })),
+    colleagues,
+    theirs: colleagues.length > 0 ? Object.values(h.colleagues ?? {}).reduce((n, c) => n + c.seen, 0) : 0,
     news,
     ...(h.economy ? { cash: cashView(db, h.economy) } : {}),
     ...(h.campaign && s.campaign ? {
@@ -1172,7 +1208,9 @@ function buildShiftView(): ShiftView {
   if (!sess) return { ...EMPTY, version, status, mode };
   const s = sess.s;
   const inRoom = current(s);
-  const away = Object.values(s.patients).filter(p => p.status === 'away').sort((a, b) => (a.id < b.id ? -1 : 1));
+  // ваши — на обследованиях; пациенты нанятых врачей — их забота (spec 2026-09-hired-doctors)
+  const away = Object.values(s.patients).filter(p => p.status === 'away' && !p.by).sort((a, b) => (a.id < b.id ? -1 : 1));
+  const theirs = Object.values(s.patients).filter(p => p.by !== undefined && (p.status === 'inRoom' || p.status === 'waiting' || p.status === 'away')).length;
   const layout = s.hospital ? sandboxLayout(s) : undefined;
   const people = placements(db, layout ?? CLINIC, s);
   return {
@@ -1193,7 +1231,7 @@ function buildShiftView(): ShiftView {
     queue: s.queue.map(id => row(s, s.patients[id])),
     away: away.map(p => ({ id: p.id, name: nameOf(p), ready: hhmm(minuteOfDay(Math.max(...p.pending.map(x => x.readyAt)))) })),
     log: sess.log.map(l => ({ key: l.key, kind: l.kind, text: l.text, at: hhmm(minuteOfDay(l.t)) })),
-    counts: { seen: s.summary.seen, left: s.summary.left, waiting: s.queue.length, unseen: s.queue.length + away.length + (inRoom ? 1 : 0) },
+    counts: { seen: s.summary.seen, left: s.summary.left, waiting: s.queue.length, unseen: s.queue.length + away.length + (inRoom ? 1 : 0) + theirs },
     summary: s.dayOpen ? undefined : summaryOf(s),
     restored: sess.restored,
     people,
@@ -1226,7 +1264,12 @@ function roomsOf(s: ShiftState): Record<string, RoomView> {
   const out: Record<string, RoomView> = {};
   for (const r of ctx.plan.rooms) {
     const now: string[] = [];
-    if (r.type === 'room.office') {
+    if (r.type === 'room.office' && r.id !== doctorRoom(ctx.plan)) {
+      // кабинет нанятого врача: кого он принимает
+      const m = ctx.staff.find(x => x.room === r.id && db.roles[x.role]?.stands);
+      const p = m ? all.find(q => q.status === 'inRoom' && q.by === m.id) : undefined;
+      now.push(p ? t.roomInOffice(nameOf(p)) : t.roomFree);
+    } else if (r.type === 'room.office') {
       const p = current(s);
       now.push(p ? t.roomInOffice(nameOf(p)) : t.roomFree, t.roomQueue(s.queue.length));
     } else if (r.type === 'room.waiting') {
@@ -1253,6 +1296,17 @@ function whoOf(s: ShiftState, people: readonly Placement[]): Record<string, WhoV
   const out: Record<string, WhoView> = {};
   for (const x of people) {
     const d = x.doing;
+    if (d.kind === 'staff' && d.role === 'therapist') {
+      // нанятый врач: кто он и кого принимает (spec 2026-09-hired-doctors)
+      const room = x.id.slice('staff.therapist.'.length);
+      const m = s.staff?.find(y => y.room === room && db.roles[y.role]?.stands);
+      const p = m ? Object.values(s.patients).find(q => q.status === 'inRoom' && q.by === m.id) : undefined;
+      out[x.id] = {
+        title: m ? t.therapist(personName(m.sex, m.seed), m.skill) : t.staff.therapist,
+        doing: p ? t.therapistWith(nameOf(p)) : t.duty.therapist, callable: false,
+      };
+      continue;
+    }
     if (d.kind === 'staff') {
       out[x.id] = { title: t.staff[d.role], doing: t.duty[d.role], callable: false };
       continue;
@@ -1279,8 +1333,11 @@ function doingText(s: ShiftState, p: ShiftPatient, d: Doing): string {
       return t.triage;
     case 'waiting':
       return t.waiting(Math.max(0, Math.floor((s.t - p.arriveT) / 60)));
-    case 'office':
-      return t.office;
+    case 'office': {
+      // у нанятого врача — «у терапевта Ивановой»
+      const m = d.by ? s.staff?.find(x => x.id === d.by) : undefined;
+      return m ? t.colleague(personName(m.sex, m.seed)) : t.office;
+    }
     case 'exam':
       return t.exam[d.room];
     case 'examQueue':
@@ -1321,10 +1378,10 @@ function decisionFor(meta: Pick<ShiftState['meta'], 'seed' | 'department'>, p: S
 
 const arrivedOf = (p: ShiftPatient): Arrival[] => p.results.map(r => ({ exam: r.exam, step: r.step, at: minuteOfDay(r.at), obs: r.obs }));
 
-/** Закрытые приёмы смены — для профиля (profile.ts, recordCases). */
+/** Ваши закрытые приёмы смены — для профиля (profile.ts, recordCases); приёмы нанятых врачей не в счёт. */
 function closedCases(s: ShiftState) {
   return Object.values(s.patients)
-    .filter(p => p.closed)
+    .filter(p => p.closed && !p.closed.by)
     .map(p => ({ seed: s.meta.seed, department: s.meta.department, day: closedDay(p), patient: p }));
 }
 

@@ -5,12 +5,15 @@
 //   «всё подряд» — все доступные обследования;
 //   ленивый — без обследований, по жалобам;
 //   и разумный в той же амбулатории без лаборатории и рентгена (снесены, их люди уволены), и —
-//   для сведения — в самой простой: регистратура, ожидание, кабинет врача, санузел.
+//   для сведения — в самой простой: регистратура, ожидание, кабинет врача, санузел;
+//   разумный и нанятый терапевт навыка 3 или 1 во втором кабинете, с ординаторской
+//   (spec 2026-09-hired-doctors, критерий 2).
 // Флаги: --days 30, --runs 8 (зёрна), --budget modest|normal|generous, --season winter, --json.
 import type { Id } from '../../src/content/types';
 import { Rng } from '../../src/engine/core/rng';
 import { confirmed, expensesOf, incomeOf, type Ledger, PAYERS, type Payer } from '../../src/engine/economy/economy';
 import { sizeOf } from '../../src/engine/hospital/build';
+import { salaryOf } from '../../src/engine/hospital/staff';
 import { examWhere } from '../../src/engine/hospital/requirements';
 import { expectedGain, knownFacts, posterior } from '../../src/engine/med/infer';
 import { choosePlan, examCost, runDoctor, type Strategy } from '../../src/engine/med/policy';
@@ -40,7 +43,11 @@ const delayed = (id: Id) => {
   return e.kind === 'imaging' || e.kind === 'functional' || (e.time.turnaround ?? 0) + (e.time.report ?? 0) > 0;
 };
 
-interface Scenario { key: string; title: string; strategy: Strategy; without?: Id[]; /** назначает всё платное сразу, до расспроса */ prefetch?: boolean }
+interface Scenario {
+  key: string; title: string; strategy: Strategy; without?: Id[]; /** назначает всё платное сразу, до расспроса */ prefetch?: boolean;
+  /** нанятый терапевт этого навыка во втором кабинете (с ординаторской) */
+  therapist?: number;
+}
 const SCENARIOS: Scenario[] = [
   { key: 'rational', title: 'Разумный', strategy: 'rational' },
   { key: 'shotgun', title: '«Всё подряд»', strategy: 'shotgun' },
@@ -50,10 +57,13 @@ const SCENARIOS: Scenario[] = [
   { key: 'bare', title: 'Разумный без лаборатории и рентгена', strategy: 'rational', without: ['room.lab', 'room.xray'] },
   // для сведения: без всех кабинетов обследований — только регистратура, ожидание, кабинет врача, санузел
   { key: 'minimal', title: 'Разумный в самой простой амбулатории', strategy: 'rational', without: ['room.lab', 'room.xray', 'room.triage', 'room.procedure', 'room.ecg'] },
+  // нанятые врачи: второй кабинет и ординаторская справа от амбулатории, коридор продлён к ним
+  { key: 'therapist3', title: 'Разумный и терапевт навыка 3 во втором кабинете', strategy: 'rational', therapist: 3 },
+  { key: 'therapist1', title: 'Разумный и терапевт навыка 1 во втором кабинете', strategy: 'rational', therapist: 1 },
 ];
 
 interface Run {
-  profit: number; minCash: number; reputation: number; value: number;
+  profit: number; minCash: number; reputation: number; value: number; byColleague: number;
   arrived: number; seen: number; left: number; unseen: number; correct: number; wrong: number;
   income: Record<Payer, number>; expenses: Ledger['expenses']; payers: Record<Payer, number>;
   defensibility: Record<Grade, number>; unconfirmed: number; oms: number; cut: number; unindicated: number;
@@ -79,6 +89,19 @@ function start(seed: number, sc: Scenario): ShiftState {
     for (const r of s.hospital!.rooms.filter(x => sc.without!.includes(x.type))) apply(db, s, { kind: 'build', cmd: { kind: 'demolish', room: r.id } });
     for (const m of (s.staff ?? []).filter(x => !x.room)) apply(db, s, { kind: 'fire', id: m.id });
     apply(db, s, { kind: 'buildEnd' });
+  }
+  if (sc.therapist) {
+    // коридор — вправо от амбулатории; сверху ординаторская, снизу второй кабинет дверью к коридору
+    const cells: [number, number][] = [];
+    for (let x = 29; x <= 38; x++) for (let y = 7; y <= 9; y++) cells.push([x, y]);
+    apply(db, s, { kind: 'build', cmd: { kind: 'corridor', cells } });
+    apply(db, s, { kind: 'build', cmd: { kind: 'room', type: 'room.staff', size: 'S', x: 30, y: 0, rot: 0 } });
+    apply(db, s, { kind: 'build', cmd: { kind: 'room', type: 'room.office', size: 'M', x: 30, y: 10, rot: 2 } });
+    apply(db, s, { kind: 'buildEnd' });
+    const office = s.hospital!.rooms[s.hospital!.rooms.length - 1];
+    if (office.type !== 'room.office') throw new Error('второй кабинет не построен');
+    const role = 'role.therapist';
+    s.staff = [...(s.staff ?? []), { id: 'h1', role, sex: 'f', seed: 1, skill: sc.therapist, salary: salaryOf(db, role, sc.therapist), room: office.id, days: 0 }];
   }
   return s;
 }
@@ -141,7 +164,8 @@ function playDay(s: ShiftState, strategy: Strategy, prefetch = false) {
   const started = new Set<string>();
   const step = (cmd: Command) => apply(db, s, cmd);
   for (let guard = 0; guard < 5000; guard++) {
-    const end = s.t % DAY >= SHIFT_END && s.queue.length === 0 && !s.current && !Object.values(s.patients).some(p => p.status === 'away' || p.status === 'coming');
+    const end = s.t % DAY >= SHIFT_END && s.queue.length === 0 && !s.current
+      && !Object.values(s.patients).some(p => p.status === 'away' || p.status === 'coming' || (p.by !== undefined && (p.status === 'inRoom' || p.status === 'waiting')));
     if (end) break;
     if (!s.current && s.queue.length > 0) step({ kind: 'call', id: s.queue[0] });
     const p = current(s);
@@ -185,7 +209,7 @@ function playDay(s: ShiftState, strategy: Strategy, prefetch = false) {
 function run(seed: number, sc: Scenario): Run {
   const s = start(seed, sc);
   const out: Run = {
-    profit: 0, minCash: s.economy!.cash, reputation: 0, value: valueOf(s),
+    profit: 0, minCash: s.economy!.cash, reputation: 0, value: valueOf(s), byColleague: 0,
     arrived: 0, seen: 0, left: 0, unseen: 0, correct: 0, wrong: 0,
     income: { oms: 0, dms: 0, self: 0 }, expenses: { salaries: 0, equipment: 0, rooms: 0, consumables: 0, interest: 0 }, payers: { oms: 0, dms: 0, self: 0 },
     defensibility: { A: 0, B: 0, C: 0, D: 0 }, unconfirmed: 0, oms: 0, cut: 0, unindicated: 0, repPath: [],
@@ -202,12 +226,14 @@ function run(seed: number, sc: Scenario): Run {
     for (const k of Object.keys(out.expenses) as (keyof Ledger['expenses'])[]) out.expenses[k] += e.ledger.expenses[k];
     out.cut += e.ledger.audit.cut;
     out.unindicated += e.ledger.audit.unindicated;
+    const col = Object.values(h.colleagues ?? {});
     out.arrived += h.arrived;
-    out.seen += h.seen;
+    out.seen += col.reduce((n, c) => n + c.seen, h.seen);
     out.left += h.left;
     out.unseen += h.unseen;
-    out.correct += h.correct;
-    out.wrong += h.wrong;
+    out.correct += col.reduce((n, c) => n + c.correct, h.correct);
+    out.wrong += col.reduce((n, c) => n + c.wrong, h.wrong);
+    out.byColleague += col.reduce((n, c) => n + c.seen, 0);
     out.repPath.push(e.reputation.to);
     for (const p of Object.values(s.patients)) {
       if (!p.closed || Math.floor(p.closed.at / DAY) + 1 !== s.day) continue;
@@ -244,6 +270,7 @@ const summary = Object.fromEntries(SCENARIOS.map(sc => {
     reputationMin: Math.min(...rs.map(r => r.reputation)), reputationMax: Math.max(...rs.map(r => r.reputation)),
   }];
 }));
+const seenShare = (key: string) => results[key].reduce((a, r) => a + r.seen, 0) / Math.max(1, results[key].reduce((a, r) => a + r.arrived, 0));
 const criteria = {
   rationalNeverNegative: summary.rational.minCash >= 0,
   rationalProfitShare: Math.round((100 * summary.rational.profit) / value),
@@ -251,6 +278,10 @@ const criteria = {
   shotgunEarnsLess: summary.shotgun.profit < summary.rational.profit,
   lazyReputationBelow40: summary.lazy.reputation < 40,
   bareEarnsLess: summary.bare.profit < summary.rational.profit,
+  // нанятые врачи (spec 2026-09-hired-doctors, критерий 2)
+  therapistPays: summary.therapist3.profit > summary.rational.profit,
+  therapistSeesMore: seenShare('therapist3') > seenShare('rational'),
+  weakTherapistWorse: summary.therapist1.profit < summary.therapist3.profit && summary.therapist1.reputation < summary.therapist3.reputation,
 };
 
 if (asJson) {
@@ -271,7 +302,7 @@ for (const sc of SCENARIOS) {
   const oms = sum('oms');
   const x = summary[sc.key];
   console.log(`\n${sc.title}${sc.without ? ` (цена ${rub(rs[0].value)})` : ''}`);
-  console.log(`  в день: пришли ${(sum('arrived') / n).toFixed(1)}, приняты ${pct(sum('seen'), sum('arrived'))}, ушли ${pct(sum('left'), sum('arrived'))}, не приняты ${pct(sum('unseen'), sum('arrived'))}; верно ${pct(sum('correct'), sum('seen'))}, ошибок ${pct(sum('wrong'), sum('seen'))}`);
+  console.log(`  в день: пришли ${(sum('arrived') / n).toFixed(1)}, приняты ${pct(sum('seen'), sum('arrived'))}${sc.therapist ? ` (из них терапевтом ${pct(sum('byColleague'), sum('seen'))})` : ''}, ушли ${pct(sum('left'), sum('arrived'))}, не приняты ${pct(sum('unseen'), sum('arrived'))}; верно ${pct(sum('correct'), sum('seen'))}, ошибок ${pct(sum('wrong'), sum('seen'))}`);
   console.log(`  плательщики: ОМС ${pct(payers('oms'), sum('seen'))}, ДМС ${pct(payers('dms'), sum('seen'))}, платно ${pct(payers('self'), sum('seen'))}; ОМС: обоснованность A/B/C/D ${(['A', 'B', 'C', 'D'] as const).map(g => pct(grades(g), oms)).join(' / ')}, не подтверждено ${pct(sum('unconfirmed'), oms)}`);
   console.log(`  доход в день: ОМС ${rub(inc('oms'))}, ДМС ${rub(inc('dms'))}, платно ${rub(inc('self'))}; экспертиза сняла ${rub(sum('cut') / n)}, обследований без показаний ${(sum('unindicated') / n).toFixed(1)}`);
   console.log(`  расход в день: зарплаты ${rub(exp('salaries'))}, аппараты ${rub(exp('equipment'))}, помещения ${rub(exp('rooms'))}, расходники ${rub(exp('consumables'))}, проценты ${rub(exp('interest'))}`);
@@ -288,3 +319,7 @@ console.log(`  ${yes(criteria.rationalProfitInRange)} прибыль разум�
 console.log(`  ${yes(criteria.shotgunEarnsLess)} «всё подряд» зарабатывает меньше разумного`);
 console.log(`  ${yes(criteria.lazyReputationBelow40)} у ленивого репутация ниже 40: ${summary.lazy.reputation}`);
 console.log(`  ${yes(criteria.bareEarnsLess)} без лаборатории и рентгена — меньше, чем с ними`);
+console.log('Критерии (spec 2026-09-hired-doctors, приёмка 2):');
+console.log(`  ${yes(criteria.therapistPays)} с терапевтом навыка 3 прибыль больше, чем без него: ${rub(summary.therapist3.profit)} против ${rub(summary.rational.profit)}`);
+console.log(`  ${yes(criteria.therapistSeesMore)} с ним принимают больше: ${(100 * seenShare('therapist3')).toFixed(1)} % против ${(100 * seenShare('rational')).toFixed(1)} %`);
+console.log(`  ${yes(criteria.weakTherapistWorse)} с терапевтом навыка 1 прибыль и репутация ниже, чем с навыком 3: ${rub(summary.therapist1.profit)}, ${summary.therapist1.reputation} против ${rub(summary.therapist3.profit)}, ${summary.therapist3.reputation}`);

@@ -68,6 +68,13 @@ export const shift = {
   summary: {
     title: (d: number) => `Итоги дня ${d}`,
     seen: (seen: number, arrived: number) => `Принято: ${seen} из ${arrived}`,
+    // с нанятыми врачами: прежние строки — о ваших приёмах
+    seenAll: (mine: number, theirs: number, arrived: number) => `Принято: ${mine + theirs} из ${arrived} — вами ${mine}, врачами ${theirs}`,
+    colleagues: 'Врачи',
+    colleague: (name: string, role: string) => `${name}, ${role}`,
+    colleagueGone: 'Врач, который больше не работает',
+    colleagueLine: (seen: number, correct: number, partly: number, wrong: number, g: Record<string, number>) =>
+      `Принято: ${seen} · верно: ${correct} · почти: ${partly} · неверно: ${wrong} · оценки A — ${g.A} · B — ${g.B} · C — ${g.C} · D — ${g.D}`,
     left: (n: number) => `Ушли, не дождавшись: ${n}`,
     unseen: (n: number) => `Не успели принять: ${n}`,
     verdicts: (correct: number, partly: number, wrong: number) => `Диагноз верен: ${correct} · почти: ${partly} · неверно: ${wrong}`,
@@ -92,6 +99,9 @@ export const shift = {
       reception: 'Регистратура',
       triage: 'Медсестра',
       office: 'Ваш кабинет',
+      // кабинет нанятого врача и ординаторская (spec 2026-09-hired-doctors)
+      colleagueOffice: 'Кабинет терапевта',
+      staff: 'Ординаторская',
       procedure: 'Процедурная',
       lab: 'Лаборатория',
       waiting: 'Ожидание',
@@ -108,16 +118,21 @@ export const shift = {
       registrar: 'Регистратор',
       nurse: 'Медсестра доврачебного кабинета',
       doctor: 'Врач — это вы',
+      therapist: 'Терапевт',
       procedureNurse: 'Процедурная медсестра',
       labTech: 'Лаборант',
       ecgNurse: 'Медсестра кабинета ЭКГ',
       radiographer: 'Рентгенолаборант',
       radiologist: 'Рентгенолог',
     } as Record<string, string>,
+    // нанятый врач (spec 2026-09-hired-doctors): кто он и кого принимает
+    therapist: (name: string, skill: number) => `${name}, терапевт · навык ${skill}`,
+    therapistWith: (patient: string) => `Принимает: ${patient}`,
     duty: {
       registrar: 'Записывает пришедших и заводит на них карту',
       nurse: 'Каждому пришедшему меряет давление, пульс, температуру и сатурацию и решает, кого принять первым',
       doctor: 'Принимаете пациентов: расспрос, осмотр, обследования, диагноз и лечение',
+      therapist: 'Сейчас без пациента — позовёт следующего из очереди',
       procedureNurse: 'Берёт кровь на анализы',
       labTech: 'Делает анализы крови и мочи',
       ecgNurse: 'Снимает ЭКГ',
@@ -130,6 +145,7 @@ export const shift = {
       // между числом и единицей — неразрывный пробел (голос студии)
       waiting: (min: number) => `Ждёт приёма ${min}\u00a0мин`,
       office: 'У вас в кабинете',
+      colleague: (doctor: string) => `На приёме у терапевта: ${doctor}`,
       exam: { xray: 'На рентгене', ecg: 'На ЭКГ', lab: 'Сдаёт анализы' } as Record<string, string>,
       examQueue: { xray: 'Ждёт очереди на рентген', ecg: 'Ждёт очереди на ЭКГ', lab: 'Ждёт очереди на анализы' } as Record<string, string>,
       results: (hh: string) => `Ждёт результатов — будут к ${hh}`,

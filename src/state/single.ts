@@ -42,7 +42,8 @@ export interface SingleResult {
 
 /** Итог смены по закрытым приёмам; никого не приняли — итога нет. */
 export function singleResult(s: ShiftState): SingleResult | undefined {
-  const cases = Object.values(s.patients).filter(p => p.closed);
+  // оценка «Смены» — по вашим приёмам: приёмы нанятых врачей не в счёт
+  const cases = Object.values(s.patients).filter(p => p.closed && !p.closed.by);
   if (cases.length === 0) return undefined;
   const mean = (k: 'defensibility' | 'thrift' | 'safety') => cases.reduce((a, p) => a + POINTS[p.closed!.grades[k]], 0) / cases.length;
   const correct = Math.round((100 * cases.reduce((a, p) => a + (p.closed!.verdict === 'correct' ? 1 : p.closed!.verdict === 'partly' ? 0.5 : 0), 0)) / cases.length);

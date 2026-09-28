@@ -369,7 +369,7 @@ function Summary({ v }: { v: ShiftView }) {
       {s.single && <SingleCard r={s.single} />}
       <Card>
         <H>{t.title(s.day)}</H>
-        <P testID="summary-seen">{t.seen(s.seen, s.arrived)}</P>
+        <P testID="summary-seen">{s.theirs > 0 ? t.seenAll(s.seen, s.theirs, s.arrived) : t.seen(s.seen, s.arrived)}</P>
         {s.left > 0 && <P>{t.left(s.left)}</P>}
         {s.unseen > 0 && <P>{t.unseen(s.unseen)}</P>}
         {s.seen > 0 && <P>{t.verdicts(s.correct, s.partly, s.wrong)}</P>}
@@ -392,6 +392,18 @@ function Summary({ v }: { v: ShiftView }) {
       {own && <OwnHospital next />}
 
       {s.seen > 0 && <Grades s={s} />}
+
+      {s.colleagues.length > 0 && (
+        <Card testID="summary-colleagues">
+          <Text style={styles.label}>{t.colleagues}</Text>
+          {s.colleagues.map(c => (
+            <View key={c.id} style={styles.colleague}>
+              <P>{c.title}</P>
+              <P muted>{c.line}</P>
+            </View>
+          ))}
+        </Card>
+      )}
 
       <Card>
         <Text style={styles.label}>{t.cases}</Text>
@@ -515,6 +527,7 @@ function Grades({ s }: { s: SummaryView }) {
 const styles = StyleSheet.create({
   label: { fontSize: 13, fontWeight: '700', color: colors.muted, textTransform: 'uppercase', marginTop: space.s },
   room: { backgroundColor: colors.accentSoft },
+  colleague: { gap: 2 },
   item: { borderLeftWidth: 5, borderRadius: radius, backgroundColor: colors.bg, paddingVertical: space.s, paddingHorizontal: space.m, gap: 2 },
   itemDisabled: { opacity: 0.6 },
   pressed: { opacity: 0.8 },

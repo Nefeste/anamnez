@@ -167,7 +167,7 @@ export function ClinicMap({ layout, people, width, active, label, selected, awai
             key={r.id}
             numberOfLines={1}
             style={[styles.room, { left: (r.x + 1) * cell + 1, top: (r.y + 1) * cell, maxWidth: (r.w - 1.2) * cell, fontSize: label8(cell) }]}>
-            {T.shift.map.rooms[r.type]}
+            {r.type === 'office' && layout.mine && r.id !== layout.mine ? T.shift.map.rooms.colleagueOffice : T.shift.map.rooms[r.type]}
           </Text>
         ))}
       </View>

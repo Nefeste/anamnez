@@ -74,6 +74,8 @@ export const sandbox = {
     noPath: 'нет прохода от входа',
     noEquipment: 'нет аппарата',
     noStaff: (gen: string) => `нет ${gen}`,
+    // «нет места в ординаторской»: у этого слова родительный и предложный совпадают
+    noPlace: (gen: string) => `нет места в ${gen}`,
   },
   door: 'Дверь',
   doorPrev: '◀ Дверь',
@@ -100,6 +102,8 @@ export const sandbox = {
   candidatesHint: 'Список новый каждый вечер.',
   noCandidates: 'Сегодня кандидатов нет.',
   noStaff: 'Пока никого.',
+  // одинаковых помещений несколько — с номером: «Кабинет врача № 2»
+  roomN: (name: string, n: number) => `${name} №\u00a0${n}`,
   salaries: (rub: string) => `Зарплаты за смену: ${rub}`,
   person: (role: string, skill: number, trait?: string) => `${role} · навык ${skill}${trait ? ` · ${trait}` : ''}`,
   perShift: (rub: string) => `${rub} за смену`,

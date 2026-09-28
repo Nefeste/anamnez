@@ -12,7 +12,9 @@ import { T } from '@/i18n';
 
 export function problemText(db: ContentDb, p: Problem): string {
   const t = T.sandbox.problem;
-  return p.kind === 'noStaff' ? t.noStaff(db.roles[p.role]?.gen.ru ?? p.role) : t[p.kind];
+  if (p.kind === 'noStaff') return t.noStaff(db.roles[p.role]?.gen.ru ?? p.role);
+  if (p.kind === 'noPlace') return t.noPlace(db.rooms[p.room]?.gen.ru ?? p.room);
+  return t[p.kind];
 }
 
 /** «Работает» или «Не работает: нет двери в коридор, нет аппарата». */

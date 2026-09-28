@@ -26,7 +26,7 @@ const advanceUntil = (s: ShiftState, ok: () => boolean, max = 600) => {
 };
 const levelNow = (s: ShiftState) => {
   const plan = planOf(db, s.hospital!);
-  const staffed = staffingOf(s.staff ?? []);
+  const staffed = staffingOf(db, plan, s.staff ?? []);
   return levelOf(db, plan, workingRooms(db, plan, staffed));
 };
 

@@ -25,6 +25,7 @@ export const NO_ECONOMY: ContentDb['economy'] = {
   staff: {
     candidates: [0, 0], skills: [1, 1, 1, 1, 1], speed: [100, 100, 100, 100, 100], reading: [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]], growthDays: 1, noTrait: 1,
     traits: { careful: { weight: 0 }, fast: { weight: 0 }, novice: { weight: 0 }, experienced: { weight: 0 } },
+    doctor: { threshold: [90, 90, 90, 90, 90], minGain: [20, 20, 20, 20, 20], forget: [0, 0, 0, 0, 0] },
   },
   tariffs: { oms: { minor: 0, moderate: 0, serious: 0, critical: 0 }, omsQuality: { A: 0, B: 0, C: 0, D: 0 }, omsUnconfirmed: 0, omsExam: 0, dms: { visit: 0, price: 0 }, self: { visit: 0, price: 0 } },
   level: { base: 100, rooms: {} },
@@ -335,6 +336,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
         objects: z.objects.map(([kind, x, y]) => ({ kind, x, y })), slots: z.slots, staff: z.staff,
         ...(z.patient ? { patient: z.patient } : {}),
         seats: r.seats ? z.objects.filter(([kind]) => kind === 'chair').length : 0,
+        places: z.places,
       })),
       equipment: sortedIds(Object.values(equipment).filter(e => e.room === r.id).map(e => e.id)),
       exams: examIds.filter(id => exams[id].room === r.id),
@@ -355,7 +357,9 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   for (const r of Object.values(roles).sort((a, b) => (a.id < b.id ? -1 : 1))) {
     const out: StaffRole = {
       id: r.id, name: r.name, gen: r.gen, hire: r.hire, salary: r.salary,
-      rooms: Object.keys(rooms).sort().filter(id => rooms[id].staff.includes(r.id)), texts: r.texts,
+      ...(r.stands ? { stands: r.stands } : {}), ...(r.needs ? { needs: r.needs } : {}),
+      // встающий на чужое место работает там же, где та должность
+      rooms: Object.keys(rooms).sort().filter(id => rooms[id].staff.includes(r.stands ?? r.id)), texts: r.texts,
     };
     db.roles[r.id] = out;
   }
@@ -558,7 +562,11 @@ function checkHospital(c: {
   }
   for (const r of Object.values(roles)) {
     if (r.salary[0] > r.salary[1]) errors.push(`${r.id}: зарплата при навыке 1 больше, чем при навыке 5`);
-    if (!Object.values(rooms).some(x => x.staff.includes(r.id))) errors.push(`${r.id}: ни одно помещение в нём не нуждается`);
+    if (r.stands && !roles[r.stands]) errors.push(`${r.id}: встаёт на место ${r.stands} — такой должности нет`);
+    if (r.stands && roles[r.stands]?.hire !== false) errors.push(`${r.id}: встать можно только на место врача — должности, которую не нанимают`);
+    if (r.needs && !rooms[r.needs]) errors.push(`${r.id}: нужна ${r.needs} — такого помещения нет`);
+    else if (r.needs && !rooms[r.needs].sizes.every(z => z.places > 0)) errors.push(`${r.id}: нужна ${r.needs}, а мест для врачей в ней нет`);
+    if (!Object.values(rooms).some(x => x.staff.includes(r.stands ?? r.id))) errors.push(`${r.id}: ни одно помещение в нём не нуждается`);
   }
   // подтверждающее обследование должно быть достижимо: помещение и аппарат есть в каталоге
   for (const cond of Object.values(c.conditions)) {
