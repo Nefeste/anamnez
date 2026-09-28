@@ -113,6 +113,7 @@ describe('«Смена» в игре', () => {
     const byVenue = async () => Object.fromEntries((await singleVenues()).map(v => [v.venue, v]));
     let v = await byVenue();
     expect([v['preset.clinic'].ok, v['preset.village'].ok, v[SANDBOX_VENUE].ok]).toEqual([true, false, false]);
+    expect(v['preset.clinic'].hint).toBe('как в практике: лаборатория, рентген и ЭКГ');
     expect(v['preset.village'].hint).toBe('откроется с главой 1 «Участок» в кампании');
     expect(v[SANDBOX_VENUE].hint).toBe('песочницы пока нет');
     startCampaign({ career: 1, difficulty: 'student', seed: 3, season: 'winter' });

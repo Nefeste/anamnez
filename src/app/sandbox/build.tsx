@@ -256,8 +256,13 @@ function Demolish({ b, id, onDone }: { b: BuildView; id: string; onDone: () => v
   );
 }
 
-/** Кнопка панели стройки: в ряд по нескольку, не меньше 48 dp. */
+/**
+ * Кнопка панели стройки: в ряд по нескольку, не меньше 48 dp. Одно слово — в одну строку, при
+ * нехватке места мельче: крупным текстом на узком экране «Помещение» переносилось посреди
+ * слова. Несколько слов — до двух строк.
+ */
 function Small({ title, onPress, disabled, strong, testID }: { title: string; onPress: () => void; disabled?: boolean; strong?: boolean; testID?: string }) {
+  const word = !/\s/.test(title);
   return (
     <Pressable
       testID={testID}
@@ -265,7 +270,7 @@ function Small({ title, onPress, disabled, strong, testID }: { title: string; on
       disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [styles.small, strong && styles.strong, disabled && styles.disabled, pressed && styles.pressed]}>
-      <Text numberOfLines={2} style={[styles.smallText, strong && styles.strongText]}>{title}</Text>
+      <Text numberOfLines={word ? 1 : 2} adjustsFontSizeToFit={word} minimumFontScale={0.7} style={[styles.smallText, strong && styles.strongText]}>{title}</Text>
     </Pressable>
   );
 }

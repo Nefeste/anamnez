@@ -412,7 +412,7 @@ export async function singleVenues(): Promise<VenueView[]> {
   const opened = Math.max(0, ...games.map(g => (g.mode === 'campaign' && g.chapter ? (db.chapters[g.chapter]?.order ?? 0) : 0)));
   const best = profile().best;
   const bestHint = (venue: Id, fallback: string) => (best[venue] ? T.single.bestShort(best[venue].overall, points(best[venue].points)) : fallback);
-  const out: VenueView[] = [{ venue: 'preset.clinic', name: venueName('preset.clinic'), ok: true, hint: bestHint('preset.clinic', T.single.menuHint) }];
+  const out: VenueView[] = [{ venue: 'preset.clinic', name: venueName('preset.clinic'), ok: true, hint: bestHint('preset.clinic', T.single.clinicHint) }];
   for (const ch of Object.values(db.chapters)) {
     if (ch.preset === 'preset.clinic' || out.some(v => v.venue === ch.preset)) continue;
     const ok = ch.order <= opened;

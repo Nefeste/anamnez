@@ -1,6 +1,7 @@
 // Приём пациента прототипа П4 (spec 2026-09-spikes): модуль грузится, часы идут делами,
 // результаты приходят в свой срок, правда видна только в разборе после диагноза.
 import { describe, expect, test } from 'bun:test';
+import { outcomeText } from '../../src/state/caseView';
 import { act, chooseDiagnosis, chooseSetting, conditionChoices, conditionTerm, diagnosisGroups, examInfo, examsByAction, examTerm, findingInfo, finish, nextPatient, toggleTreatment, treatmentTerm, visitView, waitForResults } from '../../src/state/visit';
 
 describe('приём', () => {
@@ -185,5 +186,15 @@ describe('приём', () => {
     expect(warn['tx.amoxicillin']).toBe('Противопоказано: аллергия на пенициллины');
     expect(warn['tx.amoxicillin_clavulanate']).toBe(warn['tx.amoxicillin']);
     expect(warn['tx.macrolide']).toBeUndefined();
+  });
+});
+
+describe('что было дальше — словами', () => {
+  test('в день приёма — «в тот же день», на следующий — «на следующий день», дальше — число', () => {
+    expect(outcomeText({ kind: 'recovered', day: 0, cured: true }, 'home', true)).toBe('В тот же день выздоровела');
+    expect(outcomeText({ kind: 'recovered', day: 3, cured: true }, 'home', false)).toBe('Через 3\u00a0дня выздоровел');
+    expect(outcomeText({ kind: 'worse', day: 0, returns: { day: 0, reason: 'worse' }, cured: false }, 'home', false)).toBe('В тот же день стало хуже — вернётся на приём');
+    expect(outcomeText({ kind: 'worse', day: 1, returns: { day: 1, reason: 'worse' }, cured: false }, 'home', false)).toBe('На следующий день стало хуже — вернётся на приём');
+    expect(outcomeText({ kind: 'worse', day: 4, returns: { day: 4, reason: 'worse' }, cured: false }, 'home', true)).toBe('На 4-й день стало хуже — вернётся на приём');
   });
 });

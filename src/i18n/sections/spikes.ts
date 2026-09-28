@@ -98,10 +98,12 @@ export const spikes = {
       harmful: 'вредно',
     } as Record<string, string>,
     outcome: {
-      recovered: (day: number, female: boolean) => `Через ${day}\u00a0${pluralRu(day, 'день', 'дня', 'дней')} ${female ? 'выздоровела' : 'выздоровел'}`,
+      // день 0 — в день приёма (боль прошла от обезболивающего): «через 0 дней» так не говорят
+      recovered: (day: number, female: boolean) =>
+        `${day === 0 ? 'В тот же день' : `Через ${day}\u00a0${pluralRu(day, 'день', 'дня', 'дней')}`} ${female ? 'выздоровела' : 'выздоровел'}`,
       improved: (female: boolean) => `Через неделю ${female ? 'ей' : 'ему'} лучше, но болезнь ещё не прошла`,
       unchanged: 'Через неделю без изменений — придёт снова',
-      worse: (day: number) => `На ${day}-й день стало хуже — вернётся на приём`,
+      worse: (day: number) => `${day === 0 ? 'В тот же день' : day === 1 ? 'На следующий день' : `На ${day}-й день`} стало хуже — вернётся на приём`,
       reaction: (tx: string, by: string) => `На следующий день — реакция на ${tx.toLowerCase()} (${by.toLowerCase()}): вернётся на приём`,
       ward: (female: boolean) => (female ? 'Направлена в стационар' : 'Направлен в стационар'),
       ambulance: 'Увезла скорая',
