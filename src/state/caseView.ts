@@ -123,6 +123,10 @@ export interface VisitView {
   achievements?: string[];
   /** «Случай дня», повтор: чем засчитана первая попытка */
   firstTry?: string;
+  /** приём ведёт нанятый врач — карта только для чтения, внизу «Забрать себе» (spec 2026-09-hired-doctors, часть 19) */
+  colleague?: { id: string; doctor: string; away?: boolean };
+  /** закрытый приём нанятого врача — строка «Приём вёл…»; есть — на экране итога и «лечение врача» */
+  byDoctor?: string;
   decision?: Decision;
 }
 
@@ -160,6 +164,8 @@ export interface CaseInput {
   payerNote?: string;
   payment?: string[];
   achievements?: string[];
+  colleague?: { id: string; doctor: string; away?: boolean };
+  byDoctor?: string;
 }
 
 export function hhmm(min: number): string {
@@ -321,6 +327,8 @@ export function makeCaseView(c: CaseInput): VisitView {
     ...(c.payerNote ? { payerNote: c.payerNote } : {}),
     ...(c.payment ? { payment: c.payment } : {}),
     ...(c.achievements && c.achievements.length > 0 ? { achievements: c.achievements } : {}),
+    ...(c.colleague ? { colleague: c.colleague } : {}),
+    ...(c.byDoctor ? { byDoctor: c.byDoctor } : {}),
     decision: c.decision,
   };
 }

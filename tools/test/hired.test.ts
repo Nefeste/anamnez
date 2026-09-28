@@ -1,7 +1,7 @@
 // Нанятые врачи (spec 2026-09-hired-doctors, часть 18): свой логарифм движка, терапевт на месте
 // врача в другом кабинете и место в ординаторской, кого берёт врач, его приёмы в итогах дня,
 // повтор дня, шаги разумного врача по одному — те же, что подряд.
-import { describe, expect, test } from 'bun:test';
+import { beforeEach, describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
 import { log2 } from '../../src/engine/core/math';
 import { Rng } from '../../src/engine/core/rng';
@@ -15,7 +15,13 @@ import { type DoctorPhase, nextStep, runDoctor } from '../../src/engine/med/poli
 import type { Observation } from '../../src/engine/med/types';
 import { apply, candidatesOf, hospitalCtx, newCampaign, newSandbox } from '../../src/engine/shift/engine';
 import type { ShiftState } from '../../src/engine/shift/types';
+import { T } from '../../src/i18n';
 import { placements } from '../../src/state/clinicMap';
+import { memoryStore } from '../../src/state/saves';
+import {
+  assign, buildAction, buildView, callPatient, chooseDiagnosis, closeDay, endBuild, finishCase, fire, forgetShift, hire, leaveCase, nextDay, openCase,
+  openColleagueCase, setSpeed, setStore, shiftCaseView, shiftState, shiftView, staffView, startSandbox, takeOver, tick,
+} from '../../src/state/session';
 import { singleResult } from '../../src/state/single';
 
 const THERAPIST = 'role.therapist';
@@ -174,3 +180,183 @@ describe('терапевт в своей больнице', () => {
     expect(sandboxRoles.has(THERAPIST)).toBe(true);
   });
 });
+
+describe('забрать себе (часть 19)', () => {
+  // `mine` — сначала позвать к себе первого из очереди: вы заняты
+  const withBusyColleague = (seed = 7, want: 'inRoom' | 'away' = 'inRoom', mine = false) => {
+    const { s, office } = withSecondOffice(seed);
+    hireTherapist(s, office);
+    apply(db, s, { kind: 'nextDay' });
+    const start = structuredClone(s);
+    if (mine) {
+      for (let i = 0; i < 400 && s.queue.length === 0; i++) apply(db, s, { kind: 'advance', seconds: 60 });
+      apply(db, s, { kind: 'call', id: s.queue[0] });
+    }
+    for (let i = 0; i < 400 && !Object.values(s.patients).some(p => p.by === 'h1' && p.status === want && p.results.length > 1); i++) apply(db, s, { kind: 'advance', seconds: 60 });
+    const p = Object.values(s.patients).find(q => q.by === 'h1' && q.status === want && q.results.length > 1)!;
+    return { s, p, start };
+  };
+
+  test('вы свободны — пациент со всем, что пришло, у вас в кабинете; закрыли — приём ваш, «забран у врача»', () => {
+    const { s, p, start } = withBusyColleague();
+    const results = JSON.stringify(p.results);
+    // шаг врача и его время записаны вперёд: начатый вопрос врач доделывает, ожидание у него — не в счёт
+    const step = s.events.find(e => e.event.kind === 'colleague' && e.event.id === p.id)!;
+    const busy = Math.max(s.t, ...p.results.map(r => r.at));
+    const spent = p.spent.seconds - Math.max(0, step.t - busy);
+    apply(db, s, { kind: 'takeOver', id: p.id });
+    expect(s.t).toBe(busy + 60);
+    expect(p.results.every(r => r.at <= s.t)).toBe(true);
+    expect(s.current).toBe(p.id);
+    expect([p.by, p.from, p.status]).toEqual([undefined, 'h1', 'inRoom']);
+    expect(JSON.stringify(p.results.slice(0, JSON.parse(results).length))).toBe(results);
+    expect(s.summary.colleagues?.h1.taken).toBe(1);
+    expect(p.spent.seconds).toBe(spent + 60);
+    expect(s.events.some(e => e.event.kind === 'colleague' && e.event.id === p.id)).toBe(false);
+    // прежний шаг врача не закрывает приём за вас
+    for (let i = 0; i < 30; i++) apply(db, s, { kind: 'advance', seconds: 60 });
+    expect(p.closed).toBeUndefined();
+    apply(db, s, { kind: 'diagnose', id: 'cond.arvi' });
+    apply(db, s, { kind: 'finish' });
+    expect([p.closed?.by, p.closed?.from]).toEqual([undefined, 'h1']);
+    expect(s.summary.seen).toBe(1);
+    // день с «Забрать себе» по журналу повторяется точно
+    playIdle(s);
+    for (const cmd of s.journal) apply(db, start, cmd);
+    expect(JSON.stringify({ patients: start.patients, summary: start.summary })).toBe(JSON.stringify({ patients: s.patients, summary: s.summary }));
+  });
+
+  test('вы заняты — он в вашей очереди по времени прихода; ушедший на обследования вернётся к вам', () => {
+    const busy = withBusyColleague(9, 'inRoom', true);
+    const mine = busy.s.current!;
+    expect(mine).toBeDefined();
+    apply(db, busy.s, { kind: 'takeOver', id: busy.p.id });
+    expect([busy.p.status, busy.p.by, busy.s.current]).toEqual(['waiting', undefined, mine]);
+    // как вернувшийся с результатами: впереди тех, кто пришёл позже, если они не срочнее
+    for (let i = 0; i < 40; i++) apply(db, busy.s, { kind: 'advance', seconds: 60 });
+    const green = (id: string) => busy.s.patients[id].triaged === false || busy.s.patients[id].triage === 'green';
+    const later = busy.s.queue.filter(id => busy.s.patients[id].arriveT > busy.p.arriveT && green(id));
+    expect(green(busy.p.id) && later.length > 0).toBe(true);
+    for (const id of later) expect(busy.s.queue.indexOf(busy.p.id)).toBeLessThan(busy.s.queue.indexOf(id));
+    const away = withBusyColleague(11, 'away');
+    apply(db, away.s, { kind: 'takeOver', id: away.p.id });
+    expect(away.p.status).toBe('away');
+    for (let i = 0; i < 180 && away.p.status === 'away'; i++) apply(db, away.s, { kind: 'advance', seconds: 60 });
+    expect(away.p.status === 'waiting' && away.s.queue.includes(away.p.id)).toBe(true);
+    expect(away.p.by).toBeUndefined();
+  });
+
+  test('забрать нельзя своего, закрытого или когда день закрыт', () => {
+    const { s, p } = withBusyColleague(7, 'inRoom', true);
+    const before = JSON.stringify(s.patients);
+    expect(s.current).toBeDefined();
+    apply(db, s, { kind: 'takeOver', id: s.current! });
+    expect(JSON.stringify(s.patients)).toBe(before);
+    apply(db, s, { kind: 'closeDay' });
+    apply(db, s, { kind: 'takeOver', id: p.id });
+    expect(p.from).toBeUndefined();
+  });
+});
+
+describe('«У врачей» и разбор приёма врача (часть 19, экраны)', () => {
+  beforeEach(() => {
+    setStore(memoryStore());
+    forgetShift();
+  });
+
+  /** Песочница сессии с терапевтом во втором кабинете, день 1 открыт. */
+  const openWithTherapist = () => {
+    startSandbox({ start: 'clinic', budget: 'normal', difficulty: 'doctor', seed: 43, season: 'winter' });
+    const cells: [number, number][] = [];
+    for (let x = 29; x <= 38; x++) for (let y = 7; y <= 9; y++) cells.push([x, y]);
+    expect(buildAction({ kind: 'corridor', cells })).toBeNull();
+    expect(buildAction({ kind: 'room', type: 'room.staff', size: 'S', x: 30, y: 0, rot: 0 })).toBeNull();
+    expect(buildAction({ kind: 'room', type: 'room.office', size: 'M', x: 30, y: 10, rot: 2 })).toBeNull();
+    endBuild();
+    const office = buildView()!.plan.rooms[buildView()!.plan.rooms.length - 1].id;
+    const therapist = staffView()!.candidates.find(c => c.role === THERAPIST)!;
+    hire(therapist.id);
+    assign(therapist.id, office);
+    nextDay();
+    expect(shiftView().dayOpen).toBe(true);
+  };
+  // минута на карте; автопауза («красный», результаты) — снять
+  const minute = () => {
+    if (shiftView().paused) setSpeed(1);
+    tick(1000);
+  };
+  const withResults = (id: string) => shiftState()!.patients[id].status === 'inRoom' && shiftState()!.patients[id].results.length > 1;
+  const busyWithResults = () => shiftView().colleagues.find(c => withResults(c.id));
+
+  test('раздел «У врачей», карта только для чтения, «Забрать себе»; в итогах — его приёмы к разбору', () => {
+    openWithTherapist();
+    for (let i = 0; i < 400 && !busyWithResults(); i++) minute();
+    const row = busyWithResults()!;
+    const t = T.shift.colleagueCase;
+    expect(row.hint).toMatch(/^терапевт .+ · на приёме с \d\d:\d\d$/);
+    expect(shiftView().who[row.id]?.colleague).toBe(true);
+    // открыть: видно, что врач узнал, а действий и решения нет; что он выясняет сейчас — «будет в…»
+    openColleagueCase(row.id);
+    const v = shiftCaseView()!;
+    const now = shiftState()!.t;
+    const asking = shiftState()!.patients[row.id].results.filter(r => r.at > now).length;
+    expect(v.results.length).toBe(shiftState()!.patients[row.id].results.filter(r => r.at <= now).reduce((n, r) => n + r.obs.length, 0));
+    expect(v.pending.length).toBe(asking + shiftState()!.patients[row.id].pending.length);
+    expect(v.colleague?.id).toBe(row.id);
+    expect(v.colleague?.doctor).toMatch(/^терапевт /);
+    expect(v.done.length).toBeGreaterThan(1);
+    expect(v.groups.length).toBeGreaterThan(0);
+    expect(v.decision).toBeUndefined();
+    leaveCase();
+    expect(shiftCaseView()).toBeUndefined();
+    // забрать: вы свободны — он у вас в кабинете и больше не «у врачей»
+    expect(takeOver(row.id)).toBe(true);
+    expect(shiftView().inRoom?.id).toBe(row.id);
+    expect(shiftCaseView()!.colleague).toBeUndefined();
+    expect(shiftView().colleagues.some(c => c.id === row.id)).toBe(false);
+    expect(shiftView().log.some(l => l.kind === 'taken')).toBe(false);
+    chooseDiagnosis('cond.arvi');
+    finishCase();
+    expect(shiftCaseView()!.byDoctor).toBeUndefined();
+    // врач тем временем принимает дальше
+    for (let i = 0; i < 180 && !Object.values(shiftState()!.patients).some(p => p.closed?.by); i++) minute();
+    closeDay();
+    const sum = shiftView().summary!;
+    expect(sum.cases.map(c => c.id)).toContain(row.id);
+    expect(sum.colleagues).toHaveLength(1);
+    const col = sum.colleagues[0];
+    expect(col.line).toEndWith(' · вы забрали: 1');
+    expect(col.cases.length).toBeGreaterThan(0);
+    expect(col.cases.some(c => c.id === row.id)).toBe(false);
+    // разбор приёма врача — как ваш, с его именем; глагол — по полу врача
+    const m = shiftState()!.staff!.find(x => x.role === THERAPIST)!;
+    openCase(col.cases[0].id);
+    const r = shiftCaseView()!;
+    expect(r.byDoctor).toBe(`Приём ${m.sex === 'f' ? 'вела' : 'вёл'} ${v.colleague!.doctor}`);
+    expect(r.decision).toBeDefined();
+    expect(t.note(v.colleague!.doctor)).toStartWith(`Приём ведёт ${v.colleague!.doctor}.`);
+    // врача уволили между сменами — его приём остаётся к разбору, без имени
+    fire(m.id);
+    expect(shiftState()!.staff!.some(x => x.id === m.id)).toBe(false);
+    openCase(col.cases[0].id);
+    expect(shiftCaseView()!.byDoctor).toBe(T.spikes.patient.byGone);
+    expect(shiftView().summary!.colleagues[0].title).toBe(T.shift.summary.colleagueGone);
+  });
+
+  test('вы с пациентом — забранный ждёт в вашей очереди, в журнале смены — строка', () => {
+    openWithTherapist();
+    for (let i = 0; i < 400 && !(busyWithResults() && shiftView().queue.length > 0); i++) minute();
+    const row = busyWithResults()!;
+    expect(callPatient(shiftView().queue[0].id)).toBe(true);
+    const mine = shiftView().inRoom!.id;
+    expect(takeOver(row.id)).toBe(false);
+    expect(shiftView().inRoom?.id).toBe(mine);
+    expect(shiftView().queue.map(q => q.id)).toContain(row.id);
+    const name = shiftView().queue.find(q => q.id === row.id)!.name;
+    expect(shiftView().log[0]).toMatchObject({ kind: 'taken', text: T.shift.colleagueCase.taken(name, false) });
+    // второе касание — уже ваш: ни второй строки, ни перемен
+    expect(takeOver(row.id)).toBe(false);
+    expect(shiftView().log.filter(l => l.kind === 'taken')).toHaveLength(1);
+  });
+});
+

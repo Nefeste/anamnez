@@ -73,8 +73,8 @@ export const shift = {
     colleagues: 'Врачи',
     colleague: (name: string, role: string) => `${name}, ${role}`,
     colleagueGone: 'Врач, который больше не работает',
-    colleagueLine: (seen: number, correct: number, partly: number, wrong: number, g: Record<string, number>) =>
-      `Принято: ${seen} · верно: ${correct} · почти: ${partly} · неверно: ${wrong} · оценки A — ${g.A} · B — ${g.B} · C — ${g.C} · D — ${g.D}`,
+    colleagueLine: (seen: number, correct: number, partly: number, wrong: number, g: Record<string, number>, taken: number) =>
+      `Принято: ${seen} · верно: ${correct} · почти: ${partly} · неверно: ${wrong} · оценки A — ${g.A} · B — ${g.B} · C — ${g.C} · D — ${g.D}${taken > 0 ? ` · вы забрали: ${taken}` : ''}`,
     left: (n: number) => `Ушли, не дождавшись: ${n}`,
     unseen: (n: number) => `Не успели принять: ${n}`,
     verdicts: (correct: number, partly: number, wrong: number) => `Диагноз верен: ${correct} · почти: ${partly} · неверно: ${wrong}`,
@@ -154,4 +154,23 @@ export const shift = {
     },
   },
   entering: (name: string) => `${name} идёт к вам`,
+  // пациенты нанятых врачей (spec 2026-09-hired-doctors, часть 19)
+  colleagueCase: {
+    doctor: (role: string, name: string) => `${role} ${name}`,
+    someone: 'врач, который больше не работает',
+    list: 'У врачей',
+    row: (doctor: string, doing: string) => `${doctor} · ${doing}`,
+    inRoom: (since: string) => `на приёме с ${since}`,
+    results: (at: string) => `ждёт результатов к ${at}`,
+    back: 'ждёт врача с результатами',
+    note: (doctor: string) => `Приём ведёт ${doctor}. Видно всё, что врач уже узнал; забрать — пациент перейдёт к вам со всем этим.`,
+    take: 'Забрать себе',
+    takeHint: (where: 'free' | 'busy' | 'away') =>
+      where === 'free' ? 'Сразу к вам в кабинет'
+        : where === 'busy' ? 'В вашу очередь, по времени прихода: вы сейчас с пациентом'
+          : 'Сейчас на обследованиях — с результатами вернётся к вам',
+    open: 'Открыть приём',
+    // в журнале смены, когда он не сразу у вас в кабинете
+    taken: (name: string, away: boolean) => (away ? `${name} — теперь к вам: вернётся с результатами в вашу очередь` : `${name} — теперь к вам: в вашей очереди`),
+  },
 };

@@ -101,6 +101,8 @@ export interface ShiftPatient {
   closed?: ClosedCase;
   /** ведёт нанятый врач — номер человека из штата (spec 2026-09-hired-doctors); нет — вы */
   by?: string;
+  /** вы забрали его у нанятого врача (номер человека) и продолжили приём (часть 19) */
+  from?: string;
   /** где он в приёме: ищет диагноз или спрашивает о противопоказаниях перед лечением */
   phase?: DoctorPhase;
 }
@@ -120,6 +122,8 @@ export interface ClosedCase {
   rationalMoney: number;
   /** принял нанятый врач — номер человека из штата; нет — вы */
   by?: string;
+  /** вы продолжили приём, забрав его у нанятого врача (номер человека) */
+  from?: string;
 }
 
 export type ShiftEvent =
@@ -156,7 +160,9 @@ export type Command =
   /** песочница, между сменами: нанять кандидата, уволить, назначить в помещение (нет — в резерв) */
   | { kind: 'hire'; id: string }
   | { kind: 'fire'; id: string }
-  | { kind: 'assign'; id: string; room?: string };
+  | { kind: 'assign'; id: string; room?: string }
+  /** забрать себе пациента нанятого врача (spec 2026-09-hired-doctors, часть 19) */
+  | { kind: 'takeOver'; id: string };
 
 /** Что случилось — для интерфейса: звук, автопауза, сводка «за это время». */
 export type Notice =
@@ -197,6 +203,8 @@ export interface ColleagueDay {
   partly: number;
   wrong: number;
   grades: Record<Grade, number>;
+  /** сколько его пациентов вы забрали себе (часть 19) */
+  taken?: number;
 }
 
 export interface PlannedReturn {

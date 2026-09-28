@@ -299,6 +299,8 @@ export function apply(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
     case 'assign':
       hiring(db, s, cmd);
       return [];
+    case 'takeOver':
+      return takeOver(db, s, cmd.id);
   }
 }
 
@@ -644,6 +646,7 @@ function closePatient(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase
   p.pending = [];
   const closed = closeCase(db, s, p);
   if (p.by) closed.by = p.by;
+  if (p.from) closed.from = p.from;
   p.closed = closed;
   p.status = 'done';
   // песочница: ОМС и ДМС платят после экспертизы, платный пациент — за всё сделанное
@@ -901,6 +904,47 @@ function staffDesks(db: ContentDb, s: ShiftState) {
     schedule(s, s.t + MIN, { kind: 'colleague', id });
     busy.add(m.id);
   }
+}
+
+/**
+ * Забрать себе пациента нанятого врача (часть 19): со всем, что уже пришло, — сразу в ваш
+ * кабинет, если вы свободны (врач доделывает начатый вопрос или осмотр), иначе в вашу очередь
+ * по времени прихода; ушедший на обследования вернётся к вам. Назначенное врачом, что ещё
+ * идёт, придёт вам. Врач свободен и зовёт следующего.
+ */
+function takeOver(db: ContentDb, s: ShiftState, id: string): Notice[] {
+  const p = s.patients[id];
+  if (!s.dayOpen || !p?.by || p.closed || !(p.status === 'inRoom' || p.status === 'waiting' || p.status === 'away')) return [];
+  const by = p.by;
+  delete p.by;
+  delete p.phase;
+  p.from = by;
+  // начатый вопрос или осмотр врач доделывает: результат уже записан, со временем конца. Время
+  // шага записано вперёд, до следующего шага; ожидание результатов у врача — не в счёт приёма
+  const busy = Math.max(s.t, ...p.results.map(r => r.at));
+  const step = s.events.find(e => e.event.kind === 'colleague' && e.event.id === id);
+  if (step) {
+    p.spent.seconds -= Math.max(0, step.t - busy);
+    s.events = s.events.filter(e => e !== step);
+  }
+  const col = s.summary.colleagues?.[by] ?? { seen: 0, correct: 0, partly: 0, wrong: 0, grades: { A: 0, B: 0, C: 0, D: 0 } };
+  col.taken = (col.taken ?? 0) + 1;
+  (s.summary.colleagues ??= {})[by] = col;
+  let notices: Notice[] = [];
+  if (p.status !== 'away') {
+    if (!s.current) {
+      p.status = 'inRoom';
+      p.wait++;
+      s.current = p.id;
+      // дослушать ответ у врача и дойти до вас
+      notices = [...advanceBy(db, s, busy - s.t), ...spend(db, s, p, MIN)];
+    } else {
+      // впереди — по времени прихода, как вернувшийся с обследований
+      enqueue(s, p, p.arriveT);
+    }
+  }
+  staffDesks(db, s);
+  return notices;
 }
 
 /** Обследования, которые в этой больнице можно сделать, — из них выбирает нанятый врач. */

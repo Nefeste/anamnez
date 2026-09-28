@@ -121,6 +121,12 @@ export const spikes = {
     } as Record<string, string>,
     notesLabel: 'Замечания',
     yourPlan: 'Ваше лечение',
+    // приём вёл нанятый врач (spec 2026-09-hired-doctors, часть 19); уволен — пол уже не знаем
+    byDoctor: (doctor: string, female: boolean) => `Приём ${female ? 'вела' : 'вёл'} ${doctor}`,
+    byGone: 'Приём нанятого врача, который больше у вас не работает',
+    doctorConfidence: (n: number) => `Уверенность идеального врача в диагнозе врача: ${n} из 10`,
+    doctorPlan: 'Лечение врача',
+    doctorTimeline: 'Как менялась уверенность (правда · диагноз врача, из 10)',
     noTreatment: 'ничего не назначено',
     rationalLabel: 'Как прошёл бы этот случай разумный врач',
     rationalLine: (exams: string, min: number, rub: string, dx: string) => `${exams} — ${min}\u00a0мин, ${rub}; диагноз: ${dx}`,
