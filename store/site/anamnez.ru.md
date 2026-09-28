@@ -71,7 +71,7 @@
 
 ### Ссылки
 
-- Политика конфиденциальности — `/anamnez/privacy` (текст — [`../privacy.ru.md`](../privacy.ru.md),
+- Политика конфиденциальности — единая политика студии `/privacy.html`, раздел «Анамнез» (текст — [`../privacy.ru.md`](../privacy.ru.md),
   английский — [`../privacy.en.md`](../privacy.en.md))
 - Почта — support@gornitsa.games
 
