@@ -46,6 +46,7 @@ export default function RootLayout() {
           <Stack.Screen name="settings" options={{ title: T.settings.title }} />
           <Stack.Screen name="about" options={{ title: T.about.title }} />
           <Stack.Screen name="report" options={{ title: T.report.title }} />
+          <Stack.Screen name="transfer" options={{ title: T.transfer.title }} />
           <Stack.Screen name="sources" options={{ title: T.about.sourcesTitle }} />
           <Stack.Screen name="encyclopedia/index" options={{ title: T.encyclopedia.title }} />
           <Stack.Screen name="encyclopedia/[section]" options={{ title: T.encyclopedia.title }} />

@@ -36,3 +36,29 @@ export async function corrupt(name: string): Promise<void> {
   const f = file(name);
   if (f.exists) f.write('{ broken');
 }
+
+// --- перенос файлом (transfer.ts): системное окно выбора, без сети и без новых модулей -------
+
+/**
+ * Записать файл в папку, которую игрок выберет в системном окне, — имя, под которым он лёг
+ * (файл с таким именем уже есть — система добавит номер); отказался — null. Отказ приходит
+ * исключением PickerCancelledException («…cancelled by the user»).
+ */
+export async function writePickedFile(name: string, text: string): Promise<string | null> {
+  let folder: Directory;
+  try {
+    folder = await Directory.pickDirectoryAsync();
+  } catch (e) {
+    if (/cancel/i.test(String(e))) return null;
+    throw e;
+  }
+  const file = folder.createFile(name, 'application/json');
+  file.write(text);
+  return file.name || name;
+}
+
+/** Прочитать файл, который игрок выберет в системном окне; отказался — null. */
+export async function readPickedFile(): Promise<string | null> {
+  const r = await File.pickFileAsync();
+  return r.canceled ? null : r.result.text();
+}

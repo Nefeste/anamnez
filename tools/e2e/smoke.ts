@@ -790,6 +790,37 @@ try {
   check((await text(p2, 'shift-clock')) === '08:00', 'следующий день — с 08:00');
   await day.close();
 
+  // перенос на другой телефон: «Сохранить в файл» — файл со всем прогрессом; на «другом
+  // телефоне» (чистое хранилище) «Открыть файл» — что в файле, «Заменить» — и в меню сразу
+  // свой врач: оговорка и имя пришли из файла (FR-SYS-7)
+  await page.goto(base);
+  await page.getByTestId('menu-settings').click();
+  await page.getByTestId('settings-transfer').click();
+  const [download] = await Promise.all([page.waitForEvent('download'), page.getByTestId('transfer-save').click()]);
+  const transferFile = join(OUT, 'transfer.json');
+  await download.saveAs(transferFile);
+  await page.getByTestId('transfer-note').waitFor({ timeout: 5000 });
+  check(/^Сохранено: anamnez-\d{4}-\d{2}-\d{2}\.json\.$/.test(await text(page, 'transfer-note')) && download.suggestedFilename().startsWith('anamnez-'),
+    `перенос: ${await text(page, 'transfer-note')}`);
+  const phone2 = await browser.newContext({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2 });
+  const p4 = await phone2.newPage();
+  p4.on('pageerror', e => errors.push(String(e)));
+  await p4.goto(`${base}/transfer`);
+  const [chooser] = await Promise.all([p4.waitForEvent('filechooser'), p4.getByTestId('transfer-open').click()]);
+  await chooser.setFiles(transferFile);
+  await p4.getByTestId('transfer-sheet').waitFor({ timeout: 5000 });
+  check((await text(p4, 'transfer-line-0')).startsWith('Врач: Анна Петрова · приёмов: '), `перенос: в файле — ${(await text(p4, 'transfer-sheet')).replace(/\n/g, ' · ')}`);
+  await p4.waitForTimeout(700); // лист выезжает снизу
+  await p4.screenshot({ path: join(OUT, '20-transfer.png') });
+  await p4.getByTestId('transfer-replace').click();
+  await p4.getByTestId('transfer-note').waitFor({ timeout: 5000 });
+  check((await text(p4, 'transfer-note')) === 'Готово: прогресс из файла на месте.', `перенос: ${await text(p4, 'transfer-note')}`);
+  await p4.goto(base);
+  await p4.getByTestId('menu-profile').waitFor({ timeout: 10_000 });
+  check((await text(p4, 'menu-profile')).includes('Анна Петрова') && (await p4.getByTestId('menu-continue').count()) === 1,
+    'перенос: на другом телефоне — сразу меню, свой врач и «Продолжить»');
+  await phone2.close();
+
   // маленький экран 360 × 640: длинный лист — выбор помещения — прокручивается, а не уходит
   // верхом за край; «Отмена» — на экране, последний тип выбирается прокруткой листа
   const small = await browser.newContext({ viewport: { width: 360, height: 640 }, deviceScaleFactor: 2 });
