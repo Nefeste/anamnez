@@ -211,3 +211,18 @@ describe('кампания', () => {
     expect(order.some(e => e.includes('порядок 5 уже у другой подсказки'))).toBe(true);
   });
 });
+
+describe('достижения', () => {
+  test('помещение, глава и отделение — существующие; порядок не повторяется; вид — известный', () => {
+    const room = broken(d => edit(d, 'achievements/lab.yaml', 'room: room.lab', 'room: room.laboratory'));
+    expect(room.some(e => e.includes('ach.lab: помещение room.laboratory не найдено'))).toBe(true);
+    const chapter = broken(d => edit(d, 'achievements/district.yaml', 'chapter: chapter.district', 'chapter: chapter.city'));
+    expect(chapter.some(e => e.includes('ach.district: глава chapter.city не найдена'))).toBe(true);
+    const dept = broken(d => edit(d, 'achievements/therapy.yaml', 'department: dept.therapy', 'department: dept.surgery'));
+    expect(dept.some(e => e.includes('ach.therapy: в отделении dept.surgery нет болезней'))).toBe(true);
+    const order = broken(d => edit(d, 'achievements/month.yaml', 'order: 5', 'order: 4'));
+    expect(order.some(e => e.includes('порядок 4 уже у другого достижения'))).toBe(true);
+    const kind = broken(d => edit(d, 'achievements/month.yaml', 'kind: days', 'kind: streakDays'));
+    expect(kind.some(e => e.startsWith('achievements/month.yaml:'))).toBe(true);
+  });
+});

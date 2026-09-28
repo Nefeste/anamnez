@@ -358,6 +358,12 @@ function Summary({ v }: { v: ShiftView }) {
         {!own && <P muted>{t.moneyNote}</P>}
       </Card>
 
+      {s.achievements.length > 0 && (
+        <Card testID="summary-achievements">
+          {s.achievements.map(a => <P key={a}>{T.profile.achievementLine(a)}</P>)}
+        </Card>
+      )}
+
       {s.chapterDay && <CampaignDay d={s.chapterDay} />}
 
       {s.cash && <Cash c={s.cash} />}

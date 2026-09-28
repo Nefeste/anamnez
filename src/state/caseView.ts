@@ -119,6 +119,8 @@ export interface VisitView {
   payerNote?: string;
   /** песочница: оплата закрытого приёма — на экране итога */
   payment?: string[];
+  /** достижения, полученные этим приёмом, — названия */
+  achievements?: string[];
   decision?: Decision;
 }
 
@@ -155,6 +157,7 @@ export interface CaseInput {
   unavailable?: Record<Id, string>;
   payerNote?: string;
   payment?: string[];
+  achievements?: string[];
 }
 
 export function hhmm(min: number): string {
@@ -315,6 +318,7 @@ export function makeCaseView(c: CaseInput): VisitView {
     ...(c.returnNote ? { returnNote: c.returnNote } : {}),
     ...(c.payerNote ? { payerNote: c.payerNote } : {}),
     ...(c.payment ? { payment: c.payment } : {}),
+    ...(c.achievements && c.achievements.length > 0 ? { achievements: c.achievements } : {}),
     decision: c.decision,
   };
 }

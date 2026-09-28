@@ -386,6 +386,8 @@ try {
   await page.getByTestId('visit-finish').click();
   await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
   check((await text(page, 'visit-outcome')).includes('итогах следующих дней'), 'смена: исход «домой» — в итогах следующих дней');
+  const gotNow = (await text(page, 'visit-achievements')).split('\n');
+  check(gotNow.includes('Достижение: «Первый пациент»'), `смена: первый приём — на итоге ${gotNow.join(' · ')}`);
   await page.screenshot({ path: join(OUT, '08-shift-outcome.png') });
   await page.getByTestId('shift-to-queue').click();
   await page.getByTestId('shift-counts').waitFor({ timeout: 10_000 });
@@ -408,6 +410,13 @@ try {
   await visible(page, 'enc-practice').waitFor({ timeout: 10_000 });
   const practice = await visibleText(page, 'enc-practice');
   check(practice.startsWith('Встречалось в вашей практике: 1'), `энциклопедия: «${practice}»`);
+  // достижения: у полученного — дата, у остальных — что нужно сделать
+  await page.goto(`${base}/profile`);
+  await page.getByTestId('profile-achievements').click();
+  await page.getByTestId('achievements-count').waitFor({ timeout: 5000 });
+  check((await text(page, 'achievement-ach.first_patient')).includes('Получено ') && (await text(page, 'achievement-ach.run_5')).includes('Поставить пять верных'),
+    `профиль: достижения — ${await text(page, 'achievements-count')}, «Первый пациент» получено`);
+  await page.screenshot({ path: join(OUT, '09-achievements.png'), fullPage: true });
   await page.goto(base);
   await page.getByTestId('menu-quick').click();
   await page.getByTestId('menu-shift').waitFor({ timeout: 10_000 });

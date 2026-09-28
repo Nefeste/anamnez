@@ -1,0 +1,7 @@
+id: ach.seen_20
+order: 14
+category: knowledge
+name: { ru: "Двадцать болезней" }
+need: { ru: "Встретить в практике двадцать разных болезней." }
+kind: seenConditions
+count: 20

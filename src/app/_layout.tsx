@@ -68,6 +68,7 @@ export default function RootLayout() {
           <Stack.Screen name="quick" options={{ title: T.campaign.quick }} />
           <Stack.Screen name="profile/index" options={{ title: T.profile.title }} />
           <Stack.Screen name="profile/doctor" options={{ title: T.profile.editTitle }} />
+          <Stack.Screen name="profile/achievements" options={{ title: T.profile.achievements }} />
           <Stack.Screen name="profile/case/[key]" options={{ title: T.spikes.decision.outcomeTitle }} />
         </Stack>
       </SafeAreaProvider>

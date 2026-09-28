@@ -1,0 +1,7 @@
+id: ach.run_10
+order: 7
+category: diagnosis
+name: { ru: "Десять верных подряд" }
+need: { ru: "Поставить десять верных диагнозов подряд." }
+kind: correctRun
+count: 10

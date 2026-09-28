@@ -1,0 +1,7 @@
+id: ach.no_left
+order: 16
+category: hospital
+name: { ru: "Приняли всех" }
+need: { ru: "Закрыть день, когда приняты все, кто пришёл: никто не ушёл и не остался без приёма." }
+kind: noLeftDay
+count: 1

@@ -26,7 +26,7 @@ import {
 import { T } from '@/i18n';
 import { type Arrival, type Decision, decisionOf, hhmm, makeCaseView, outcomeText, patientName, type VisitView } from './caseView';
 import { CLINIC, type Doing, type Placement, placements } from './clinicMap';
-import { archivedCase, recordCases } from './profile';
+import { achievementsBy, archivedCase, caseKey, type DayRecord, recordCases, recordDay } from './profile';
 import { type CashView, cashView, examBlockText, levelText, paymentText, personName, statusText } from './sandboxView';
 import { loadSlot, type RawStore, saveSlot } from './saves';
 import { settings } from './settings';
@@ -108,6 +108,8 @@ export interface SummaryView {
   cash?: CashView;
   /** кампания: какие задания выполнены за день (тексты) и сколько пришло писем */
   chapterDay?: { done: string[]; letters: number };
+  /** достижения, полученные этим днём, — названия */
+  achievements: string[];
 }
 
 export interface ShiftView {
@@ -536,6 +538,7 @@ export function closeDay() {
   const sess = session;
   if (!sess || !sess.s.dayOpen) return;
   run(sess, { kind: 'closeDay' });
+  recordDay(dayRecord(sess.s));
   sess.focus = undefined;
   sess.meanwhile = [];
   sess.urgent = false;
@@ -559,6 +562,24 @@ export function nextDay() {
   save();
   changed();
 }
+
+/** Ключ закрытого дня: партия и день — день засчитывается достижениям один раз. */
+const dayKey = (s: ShiftState, day: number) => `${s.meta.mode}:${s.meta.seed}:${day}`;
+
+/** Закрытый день — для достижений: кого приняли, всех ли, что работало в своей больнице, выполнена ли глава. */
+function dayRecord(s: ShiftState): DayRecord {
+  const h = s.history[s.history.length - 1];
+  const ctx = s.hospital ? hospitalCtx(db, s) : undefined;
+  return {
+    key: dayKey(s, h.day),
+    seen: h.seen,
+    noLeft: h.seen > 0 && h.left === 0 && h.unseen === 0,
+    rooms: ctx ? [...new Set(ctx.plan.rooms.filter(r => ctx.working.has(r.id)).map(r => r.type))] : [],
+    chapters: s.campaign?.complete !== undefined ? [s.campaign.chapter] : [],
+  };
+}
+
+const achievementNames = (key: string) => achievementsBy(key).map(id => db.achievements[id].name.ru);
 
 // --- стройка: песочница, между сменами (ADR 0016) ------------------------------------------
 
@@ -1027,6 +1048,7 @@ function summaryOf(s: ShiftState): SummaryView | undefined {
         letters: h.campaign.letters.length,
       },
     } : {}),
+    achievements: achievementNames(dayKey(s, h.day)),
   };
 }
 
@@ -1253,6 +1275,7 @@ function buildCaseView(): VisitView | undefined {
     ...(s.hospital ? { unavailable: unavailableOf(s) } : {}),
     ...(p.payer ? { payerNote: T.sandbox.payerNote[p.payer] } : {}),
     ...(p.paid && p.closed ? { payment: paymentText(db, p.payer ?? 'oms', p.paid, p.closed) } : {}),
+    ...(p.closed ? { achievements: achievementNames(caseKey(s.meta.seed, p.id)) } : {}),
   });
 }
 

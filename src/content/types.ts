@@ -434,6 +434,20 @@ export interface Tip {
   see: Id[];
 }
 
+/** Группа достижения в профиле. */
+export type AchievementCategory = 'practice' | 'diagnosis' | 'care' | 'knowledge' | 'hospital' | 'campaign';
+
+/** Вид «сколько раз»: приёмов, рабочих дней, верных подряд, на A, бережливых, с вопросом об аллергии, дней без ушедших, разных болезней. */
+export type CountedKind = 'cases' | 'days' | 'correctRun' | 'gradeA' | 'thriftCase' | 'allergyAsked' | 'noLeftDay' | 'seenConditions';
+
+/** Достижение (spec 2026-09-campaign, часть 13): вид и числа — движку, название и что нужно — игроку. */
+export type Achievement = { id: Id; order: number; category: AchievementCategory; name: Text; need: Text } & (
+  | { kind: CountedKind; count: number }
+  | { kind: 'department'; department: Id }
+  | { kind: 'roomWorks'; room: Id }
+  | { kind: 'chapter'; chapter: Id }
+);
+
 export interface ContentDb {
   contentVersion: number;
   hash: string;
@@ -450,6 +464,7 @@ export interface ContentDb {
   characters: Record<Id, Character>;
   chapters: Record<Id, Chapter>;
   tips: Record<Id, Tip>;
+  achievements: Record<Id, Achievement>;
   /** производное: какие обследования проверяют признак */
   revealedBy: Record<Id, Id[]>;
 }

@@ -1,11 +1,14 @@
 // Профиль врача (spec 2026-09-first-shift, «Профиль-минимум»; 07-data-model.md §3): имя и пол,
-// статистика приёмов, архив последних 50 с разбором и «встречалось в практике». Живёт только
+// статистика приёмов, архив последних 50 с разбором и «встречалось в практике», достижения
+// (spec 2026-09-campaign, часть 13) — полученные с датой и счётчики, из которых они. Живёт только
 // на телефоне (устав студии, 07-privacy.md): никуда не отправляется. Слот `profile` — тем же
 // сырым хранилищем, что смена и настройки (ADR 0010). Случай попадает в профиль один раз:
 // ключ — зерно смены и номер пациента, поэтому повтор после сбоя и перечитанное сохранение
-// ничего не удваивают.
+// ничего не удваивают; закрытый день — так же, по ключу дня.
 import { useSyncExternalStore } from 'react';
+import { db } from '@/content';
 import type { Id } from '@/content/types';
+import { type CareerFacts, caseFacts, newAchievements } from '@/engine/career/achievements';
 import type { Grade } from '@/engine/med/score';
 import type { ShiftPatient } from '@/engine/shift/types';
 import { loadSlot, type RawStore, saveSlot } from './saves';
@@ -14,6 +17,10 @@ export const PROFILE_SLOT = 'profile';
 export const PROFILE_SCHEMA_VERSION = 1;
 /** Сколько последних приёмов хранит архив. */
 export const ARCHIVE_SIZE = 50;
+/** Сколько ключей закрытых дней помнить: день не засчитывается достижениям дважды. */
+export const DAY_KEYS = 60;
+/** «Принесла» прежняя практика: достижение за приёмы до 0.0.26 — строки на итоге у него нет. */
+export const EARLIER = 'earlier';
 
 export interface Doctor {
   first: string;
@@ -42,6 +49,30 @@ export interface CaseRecord {
   patient: ShiftPatient;
 }
 
+/** Достижения: полученные и счётчики, из которых они складываются (engine/career/achievements.ts). */
+export interface CareerProgress {
+  /** получено: достижение → когда (ISO) и чем — ключ приёма или дня */
+  got: Record<Id, { at: string; by: string }>;
+  /** рабочие дни; верных подряд сейчас; приёмы на A, бережливые, с вопросом об аллергии; дни, когда приняли всех */
+  days: number;
+  run: number;
+  gradeA: number;
+  thrift: number;
+  allergy: number;
+  noLeftDays: number;
+  /** ключи закрытых дней, новые первыми, не больше DAY_KEYS */
+  closedDays: string[];
+}
+
+/** Закрытый день — для достижений: ключ, кого приняли, приняли ли всех, что работает в своей больнице, выполнена ли глава. */
+export interface DayRecord {
+  key: string;
+  seen: number;
+  noLeft: boolean;
+  rooms: Id[];
+  chapters: Id[];
+}
+
 export interface Profile {
   doctor?: Doctor;
   stats: ProfileStats;
@@ -49,6 +80,7 @@ export interface Profile {
   seen: Record<Id, number>;
   /** новые первыми */
   archive: CaseRecord[];
+  achievements: CareerProgress;
 }
 
 export interface ProfileView extends Profile {
@@ -57,15 +89,17 @@ export interface ProfileView extends Profile {
 
 const GRADES: Grade[] = ['A', 'B', 'C', 'D'];
 const emptyStats = (): ProfileStats => ({ cases: 0, correct: 0, partly: 0, wrong: 0, grades: { A: 0, B: 0, C: 0, D: 0 }, money: 0 });
-const empty = (): Profile => ({ stats: emptyStats(), seen: {}, archive: [] });
+const emptyProgress = (): CareerProgress => ({ got: {}, days: 0, run: 0, gradeA: 0, thrift: 0, allergy: 0, noLeftDays: 0, closedDays: [] });
+const empty = (): Profile => ({ stats: emptyStats(), seen: {}, archive: [], achievements: emptyProgress() });
 
 let store: RawStore | null = null;
 let current: Profile = empty();
 let status: ProfileView['status'] = 'idle';
 let loading: Promise<void> | null = null;
 let saving: Promise<unknown> = Promise.resolve();
-/** приёмы, пришедшие до того, как профиль прочитан с диска: запишутся после чтения */
+/** приёмы и дни, пришедшие до того, как профиль прочитан с диска: запишутся после чтения */
 let waiting: Omit<CaseRecord, 'key'>[] = [];
+let waitingDays: DayRecord[] = [];
 let view: ProfileView = { ...current, status };
 const listeners = new Set<() => void>();
 
@@ -111,6 +145,12 @@ export function sanitizeProfile(data: unknown): Profile {
     money: count(st.money),
   };
   if (isObject(d.seen)) for (const [id, n] of Object.entries(d.seen)) if (count(n) > 0) out.seen[id] = count(n);
+  const a = isObject(d.achievements) ? d.achievements : {};
+  if (isObject(a.got)) {
+    for (const [id, g] of Object.entries(a.got)) if (isObject(g) && typeof g.at === 'string' && typeof g.by === 'string') out.achievements.got[id] = { at: g.at, by: g.by };
+  }
+  for (const k of ['days', 'run', 'gradeA', 'thrift', 'allergy', 'noLeftDays'] as const) out.achievements[k] = count(a[k]);
+  if (Array.isArray(a.closedDays)) out.achievements.closedDays = a.closedDays.filter((k): k is string => typeof k === 'string').slice(0, DAY_KEYS);
   if (Array.isArray(d.archive)) {
     out.archive = d.archive
       .filter((r): r is CaseRecord => isObject(r) && typeof r.key === 'string' && typeof r.seed === 'number' && typeof r.department === 'string'
@@ -134,15 +174,22 @@ export function loadProfile(): Promise<void> {
   changed();
   loading = loadSlot<Profile>(st, PROFILE_SLOT)
     .then(r => {
-      if (r) current = sanitizeProfile(r.envelope.data);
+      if (!r) return;
+      current = sanitizeProfile(r.envelope.data);
+      // приёмы из версий до достижений: полученное по ним — сразу, а не строкой у следующего приёма
+      if (earn(current.achievements, factsOf(current.stats, current.seen, current.achievements), EARLIER).length > 0) void persist();
     })
     .catch(() => undefined)
     .finally(() => {
       status = 'ready';
       loading = null;
       const early = waiting;
+      const days = waitingDays;
       waiting = [];
-      if (recordCases(early) === 0) changed();
+      waitingDays = [];
+      const added = recordCases(early);
+      for (const d of days) recordDay(d);
+      if (added === 0 && days.length === 0) changed();
     });
   return loading;
 }
@@ -182,20 +229,70 @@ export function recordCases(cases: readonly Omit<CaseRecord, 'key'>[]): number {
   if (fresh.length === 0) return 0;
   const stats: ProfileStats = { ...current.stats, grades: { ...current.stats.grades } };
   const seen = { ...current.seen };
+  const ach = { ...current.achievements, got: { ...current.achievements.got } };
   const added: CaseRecord[] = [];
   for (const c of fresh) {
     const closed = c.patient.closed!;
+    const key = caseKey(c.seed, c.patient.id);
     stats.cases++;
     stats[closed.verdict]++;
     if (GRADES.includes(closed.grades.overall)) stats.grades[closed.grades.overall]++;
     stats.money += c.patient.spent.money;
     for (const cond of c.patient.patient.truth.conditions) seen[cond.id] = (seen[cond.id] ?? 0) + 1;
-    added.unshift({ ...c, key: caseKey(c.seed, c.patient.id), patient: copy(c.patient) });
+    const f = caseFacts(db, c.patient);
+    ach.run = f.correct ? ach.run + 1 : 0;
+    if (f.gradeA) ach.gradeA++;
+    if (f.thrift) ach.thrift++;
+    if (f.allergy) ach.allergy++;
+    earn(ach, factsOf(stats, seen, ach), key);
+    added.unshift({ ...c, key, patient: copy(c.patient) });
   }
-  current = { ...current, stats, seen, archive: [...added, ...current.archive].slice(0, ARCHIVE_SIZE) };
+  current = { ...current, stats, seen, achievements: ach, archive: [...added, ...current.archive].slice(0, ARCHIVE_SIZE) };
   changed();
   void persist();
   return added.length;
+}
+
+/** Что есть сейчас — для проверки достижений; помещения и главы — только у закрытого дня. */
+function factsOf(stats: ProfileStats, seen: Record<Id, number>, a: CareerProgress, day?: DayRecord): CareerFacts {
+  return {
+    cases: stats.cases, days: a.days, run: a.run, gradeA: a.gradeA, thrift: a.thrift, allergy: a.allergy, noLeftDays: a.noLeftDays, seen,
+    rooms: day?.rooms ?? [], chapters: day?.chapters ?? [],
+  };
+}
+
+/** Новые достижения — в `a.got` с датой и тем, что их принесло; отдаёт их. */
+function earn(a: CareerProgress, f: CareerFacts, by: string): Id[] {
+  const fresh = newAchievements(db, f, a.got);
+  const at = new Date().toISOString();
+  for (const id of fresh) a.got[id] = { at, by };
+  return fresh;
+}
+
+/**
+ * Закрытый день — в счёт достижений, один раз по ключу: рабочий ли он, приняты ли все,
+ * какие помещения своей больницы работали, выполнена ли глава. Отдаёт новые достижения.
+ */
+export function recordDay(d: DayRecord): Id[] {
+  if (status !== 'ready') {
+    waitingDays.push(d);
+    return [];
+  }
+  if (current.achievements.closedDays.includes(d.key)) return [];
+  const ach = { ...current.achievements, got: { ...current.achievements.got }, closedDays: [d.key, ...current.achievements.closedDays].slice(0, DAY_KEYS) };
+  if (d.seen > 0) ach.days++;
+  if (d.noLeft) ach.noLeftDays++;
+  const fresh = earn(ach, factsOf(current.stats, current.seen, ach, d), d.key);
+  current = { ...current, achievements: ach };
+  changed();
+  void persist();
+  return fresh;
+}
+
+/** Достижения, которые принёс приём или день (по ключу), — в порядке записи. */
+export function achievementsBy(key: string): Id[] {
+  const got = current.achievements.got;
+  return Object.keys(db.achievements).filter(id => got[id]?.by === key);
 }
 
 /** Профиль сейчас — для смены и энциклопедии; экранам — useProfile. */
@@ -218,6 +315,7 @@ export function forgetProfile() {
   status = 'idle';
   loading = null;
   waiting = [];
+  waitingDays = [];
   changed();
 }
 

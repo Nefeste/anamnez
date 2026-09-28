@@ -451,6 +451,30 @@ export const tipSchema = z.strictObject({
   see: z.array(z.string()).default([]),
 });
 
+// --- достижения (spec 2026-09-campaign, часть 13) --------------------------------------------
+
+const achievementBase = {
+  id: z.string().regex(/^ach\.[a-z0-9_]+$/),
+  /** порядок в списке профиля */
+  order: count,
+  category: z.enum(['practice', 'diagnosis', 'care', 'knowledge', 'hospital', 'campaign']),
+  name: text,
+  /** что нужно сделать — у неполученного, без счётчиков «осталось» */
+  need: text,
+};
+
+/** «Сколько раз»: приёмов, дней, верных подряд и т. п. */
+const counted = <K extends string>(kind: K) => z.strictObject({ ...achievementBase, kind: z.literal(kind), count });
+
+/** Достижение: вид и числа — движку (src/engine/career/achievements.ts), тексты — игроку. */
+export const achievementSchema = z.discriminatedUnion('kind', [
+  counted('cases'), counted('days'), counted('correctRun'), counted('gradeA'), counted('thriftCase'), counted('allergyAsked'), counted('noLeftDay'),
+  counted('seenConditions'),
+  z.strictObject({ ...achievementBase, kind: z.literal('department'), department: z.string().regex(/^dept\.[a-z0-9_]+$/) }),
+  z.strictObject({ ...achievementBase, kind: z.literal('roomWorks'), room: roomId }),
+  z.strictObject({ ...achievementBase, kind: z.literal('chapter'), chapter: z.string().regex(/^chapter\.[a-z0-9_]+$/) }),
+]);
+
 export const versionSchema = z.strictObject({ contentVersion: z.number().int().min(1) });
 
 export type ConditionSrc = z.infer<typeof conditionSchema>;
@@ -466,5 +490,6 @@ export type EconomySrc = z.infer<typeof economySchema>;
 export type CharacterSrc = z.infer<typeof characterSchema>;
 export type ChapterSrc = z.infer<typeof chapterSchema>;
 export type TipSrc = z.infer<typeof tipSchema>;
+export type AchievementSrc = z.infer<typeof achievementSchema>;
 export type LinkSrc = z.infer<typeof link>;
 export type ProbabilitySrc = z.infer<typeof probability>;

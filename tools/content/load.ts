@@ -8,12 +8,13 @@ import type { z } from 'zod';
 import type { AttrSpec, Cell, Condition, ContentDb, Equipment, Exam, Finding, Link, Preset, Risk, RoomType, StaffRole, Treatment } from '../../src/content/types';
 import { planOf, presetHospital } from '../../src/engine/hospital/build';
 import { problemsOf } from '../../src/engine/hospital/requirements';
+import { ALLERGY_EXAM } from '../../src/engine/career/achievements';
 import { fingerprint } from '../../src/engine/core/hash';
 import { findBrand } from './brands';
 import {
   BANDS, type ChapterSrc, chapterSchema, type CharacterSrc, characterSchema, type ConditionSrc, conditionSchema, type EconomySrc, economySchema, type EquipmentSrc, equipmentSchema, type ExamSrc, examSchema, type FindingSrc, findingSchema,
   type LinkSrc, PREVALENCE, type PresetSrc, presetSchema, type ProbabilitySrc, type RiskSrc, type RoleSrc, riskSchema, roleSchema, type RoomSrc, roomSchema,
-  type TipSrc, tipSchema, type TreatmentSrc, treatmentSchema, versionSchema,
+  type TipSrc, tipSchema, type TreatmentSrc, treatmentSchema, versionSchema, type AchievementSrc, achievementSchema,
 } from './schema';
 
 export const CONTENT_DIR = join(import.meta.dir, '../../content');
@@ -81,6 +82,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   const characters: Record<string, CharacterSrc> = {};
   const chapters: Record<string, ChapterSrc> = {};
   const tips: Record<string, TipSrc> = {};
+  const achievements: Record<string, AchievementSrc> = {};
   let economy: EconomySrc | undefined;
   let contentVersion = 0;
 
@@ -153,8 +155,11 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     } else if (top === 'campaign' && rel.split('/')[1] === 'tips') {
       const t = check(tipSchema);
       if (t) { expectId(t.id, 'tip'); put(tips, t); }
+    } else if (top === 'achievements') {
+      const a = check(achievementSchema);
+      if (a) { expectId(a.id, 'ach'); put(achievements, a); }
     } else {
-      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/economy.yaml, campaign/characters, campaign/chapters, campaign/tips)`);
+      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/economy.yaml, campaign/characters, campaign/chapters, campaign/tips, achievements)`);
     }
   }
   if (!contentVersion) errors.push('version.yaml: нет contentVersion');
@@ -248,6 +253,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     characters: Object.fromEntries(Object.values(characters).sort((a, b) => (a.id < b.id ? -1 : 1)).map(c => [c.id, c])),
     chapters: Object.fromEntries(Object.values(chapters).sort((a, b) => a.order - b.order).map(c => [c.id, c])),
     tips: Object.fromEntries(Object.values(tips).sort((a, b) => a.order - b.order).map(t => [t.id, t])),
+    achievements: Object.fromEntries(Object.values(achievements).sort((a, b) => a.order - b.order).map(a => [a.id, a])),
     economy: economy
       ? { ...economy, sandbox: { ...economy.sandbox, corridor: rects(economy.sandbox.corridor) } }
       : NO_ECONOMY,
@@ -364,6 +370,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   if (errors.length === 0) {
     checkPresets(db, errors);
     checkCampaign(db, errors);
+    checkAchievements(db, errors);
     // готовая амбулатория помещается на участок песочницы, вход песочницы — в краю
     const sb = db.economy.sandbox;
     for (const p of Object.values(db.presets)) {
@@ -422,6 +429,20 @@ function checkCampaign(db: ContentDb, errors: string[]) {
     if (!db.characters[t.from]) at(`персонаж ${t.from} не найден`);
     if (typeof t.when === 'object' && !db.conditions[t.when.condition]?.presenting) at(`болезнь ${t.when.condition} не найдена или с ней не приходят`);
     for (const id of t.see) if (!(db.conditions[id] || db.findings[id] || db.exams[id] || db.treatments[id] || db.risks[id] || db.rooms[id] || db.equipment[id] || db.roles[id])) at(`статья ${id} не найдена`);
+  }
+}
+
+/** Достижения (spec 2026-09-campaign, часть 13): отделение, помещение и глава — существующие; порядок не повторяется. */
+function checkAchievements(db: ContentDb, errors: string[]) {
+  const orders = new Set<number>();
+  for (const a of Object.values(db.achievements)) {
+    const at = (what: string) => errors.push(`${a.id}: ${what}`);
+    if (orders.has(a.order)) at(`порядок ${a.order} уже у другого достижения`);
+    orders.add(a.order);
+    if (a.kind === 'department' && !Object.values(db.conditions).some(c => c.presenting && c.department === a.department)) at(`в отделении ${a.department} нет болезней`);
+    if (a.kind === 'roomWorks' && !db.rooms[a.room]) at(`помещение ${a.room} не найдено`);
+    if (a.kind === 'chapter' && !db.chapters[a.chapter]) at(`глава ${a.chapter} не найдена`);
+    if (a.kind === 'allergyAsked' && !db.exams[ALLERGY_EXAM]) at(`вопроса об аллергии ${ALLERGY_EXAM} в базе нет`);
   }
 }
 

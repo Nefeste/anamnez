@@ -1,0 +1,7 @@
+id: ach.district
+order: 20
+category: campaign
+name: { ru: "Участок" }
+need: { ru: "Выполнить основные задания главы 1 «Участок»." }
+kind: chapter
+chapter: chapter.district
