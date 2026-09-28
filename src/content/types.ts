@@ -419,6 +419,21 @@ export interface Chapter {
   letters: Letter[];
 }
 
+/** Когда подсказка наставника к месту: открылась карта, после первых вопросов, у пациента с болезнью, «Решение», разбор. */
+export type TipWhen = 'caseOpen' | 'afterAsk' | 'decision' | 'review' | { condition: Id };
+
+/** Подсказка наставника в первую смену главы (spec 2026-09-campaign). */
+export interface Tip {
+  id: Id;
+  order: number;
+  from: Id;
+  name: Text;
+  when: TipWhen;
+  text: Text;
+  /** о чём подсказка — статьи энциклопедии */
+  see: Id[];
+}
+
 export interface ContentDb {
   contentVersion: number;
   hash: string;
@@ -434,6 +449,7 @@ export interface ContentDb {
   economy: Economy;
   characters: Record<Id, Character>;
   chapters: Record<Id, Chapter>;
+  tips: Record<Id, Tip>;
   /** производное: какие обследования проверяют признак */
   revealedBy: Record<Id, Id[]>;
 }

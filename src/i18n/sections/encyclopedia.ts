@@ -16,6 +16,7 @@ export const encyclopedia = {
     treatments: 'Лечение',
     risks: 'Факторы риска',
     hospital: 'Больница',
+    tips: 'Подсказки',
   },
   chronic: 'Хронические болезни',
   findingGroup: { sym: 'Жалобы', hx: 'Анамнез', sign: 'Осмотр', vital: 'Показатели', lab: 'Анализы', img: 'Снимки', ecg: 'ЭКГ' },
@@ -142,6 +143,20 @@ export const encyclopedia = {
   salary: 'Зарплата',
   salaryLine: (from: string, to: string) => `От ${from} до ${to} за смену — по навыку.`,
   perShift: (from: string, to: string) => `${from}–${to} за смену`,
+
+  // подсказки наставника (spec 2026-09-campaign)
+  tipKind: 'Подсказка наставника',
+  tipText: 'Совет',
+  tipWhenTitle: 'Когда подсказывает',
+  tipWhen: {
+    caseOpen: 'Открылась карта пациента.',
+    afterAsk: 'Врач задал первые вопросы и ещё не осматривал.',
+    condition: (name: string) => `У пациента с болезнью «${name}» — после первого вопроса или осмотра.`,
+    decision: 'Первый раз на экране «Решение».',
+    review: 'Первый разбор приёма.',
+  },
+  tipNote: 'Подсказки приходят в первую смену главы 1, каждая — один раз за карьеру; в первой можно выбрать «Без подсказок».',
+  tipSee: 'О чём подсказка',
 
   // переходы
   more: 'Подробнее в энциклопедии',

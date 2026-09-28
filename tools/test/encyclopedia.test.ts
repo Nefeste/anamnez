@@ -6,7 +6,7 @@ import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
 import { article, bandOf, SECTIONS, search, sectionOf, sectionsOf, sectionView, similar } from '../../src/state/encyclopedia';
 
-const ids = () => [db.conditions, db.findings, db.exams, db.treatments, db.risks, db.rooms, db.equipment, db.roles].flatMap(t => Object.keys(t));
+const ids = () => [db.conditions, db.findings, db.exams, db.treatments, db.risks, db.rooms, db.equipment, db.roles, db.tips].flatMap(t => Object.keys(t));
 
 describe('энциклопедия', () => {
   test('статья есть у каждой записи базы; все ссылки ведут в существующие статьи', () => {
@@ -96,6 +96,17 @@ describe('энциклопедия', () => {
     expect(article(db, 'role.doctor')!.blocks.map(b => b.key)).toEqual(['what', 'worksIn']);
     expect(article(db, 'role.nurse')!.subtitle).toBe('Должность · 1\u00a0300\u00a0₽–2\u00a0100\u00a0₽ за смену');
     expect(search(db, 'анализатор').map(r => r.id)).toContain('eq.urine_analyzer');
+  });
+
+  test('подсказки наставника: по порядку, в каком подсказывает; совет, когда и о чём', () => {
+    expect(sectionView(db, 'tips').groups.flatMap(g => g.items.map(i => i.id))).toEqual(['tip.start', 'tip.examine', 'tip.strep', 'tip.decision', 'tip.urine', 'tip.review']);
+    const strep = article(db, 'tip.strep')!;
+    expect([strep.section, strep.subtitle]).toEqual(['tips', 'Подсказка наставника · Анна Сергеевна']);
+    expect(strep.blocks.map(b => b.key)).toEqual(['text', 'when', 'see']);
+    expect(strep.blocks.find(b => b.key === 'when')!.text![0]).toContain('«Острый стрептококковый тонзиллофарингит»');
+    expect(strep.blocks.find(b => b.key === 'see')!.refs!.map(r => r.id)).toEqual(['exam.strep_rapid', 'cond.strep_pharyngitis']);
+    expect(article(db, 'tip.review')!.blocks.map(b => b.key)).toEqual(['text', 'when']);
+    expect(search(db, 'расспрос').map(r => r.id)).toContain('tip.start');
   });
 
   test('поиск: по названию и коду МКБ, «е» вместо «ё», регистр не важен', () => {

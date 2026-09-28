@@ -4,14 +4,14 @@
 // параметром, как у движка: тесты подставляют ту же собранную базу.
 import {
   type Condition, type ContentDb, type Equipment, type Exam, type Finding, type Id, type Link, type P, type Risk, type RoomType, type StaffRole, SYSTEMS, type Tactics,
-  type Treatment,
+  type Tip, type Treatment,
 } from '@/content/types';
 import { T } from '@/i18n';
 import { TX_GROUP_ORDER, txGroupOfClass } from './caseView';
 import { sourceLine } from './sources';
 
-export type Section = 'conditions' | 'findings' | 'exams' | 'treatments' | 'risks' | 'hospital';
-export const SECTIONS: Section[] = ['conditions', 'findings', 'exams', 'treatments', 'risks', 'hospital'];
+export type Section = 'conditions' | 'findings' | 'exams' | 'treatments' | 'risks' | 'hospital' | 'tips';
+export const SECTIONS: Section[] = ['conditions', 'findings', 'exams', 'treatments', 'risks', 'hospital', 'tips'];
 
 /** Ссылка на статью; `note` — пометка рядом: частота, «в 2 раза чаще», точность. */
 export interface Ref {
@@ -77,11 +77,12 @@ export function sectionOf(db: ContentDb, id: Id): Section | undefined {
   if (db.treatments[id]) return 'treatments';
   if (db.risks[id]) return 'risks';
   if (db.rooms[id] || db.equipment[id] || db.roles[id]) return 'hospital';
+  if (db.tips[id]) return 'tips';
   return undefined;
 }
 
 function nameOf(db: ContentDb, id: Id): string {
-  return (db.conditions[id] ?? db.findings[id] ?? db.exams[id] ?? db.treatments[id] ?? db.risks[id] ?? db.rooms[id] ?? db.equipment[id] ?? db.roles[id])?.name.ru ?? id;
+  return (db.conditions[id] ?? db.findings[id] ?? db.exams[id] ?? db.treatments[id] ?? db.risks[id] ?? db.rooms[id] ?? db.equipment[id] ?? db.roles[id] ?? db.tips[id])?.name.ru ?? id;
 }
 
 const ref = (db: ContentDb, id: Id, note?: string): Ref => (note ? { id, title: nameOf(db, id), note } : { id, title: nameOf(db, id) });
@@ -372,6 +373,21 @@ function roleArticle(db: ContentDb, r: StaffRole): Article {
   return { id: r.id, section: 'hospital', title: r.name.ru, subtitle, blocks };
 }
 
+// --- подсказки наставника (spec 2026-09-campaign) ------------------------------------------
+
+function tipArticle(db: ContentDb, x: Tip): Article {
+  const e = T.encyclopedia;
+  const w = x.when;
+  const when = typeof w === 'object' ? e.tipWhen.condition(nameOf(db, w.condition)) : e.tipWhen[w];
+  const blocks: Block[] = [
+    { key: 'text', title: e.tipText, text: [x.text.ru] },
+    { key: 'when', title: e.tipWhenTitle, text: [when], note: e.tipNote },
+  ];
+  if (x.see.length > 0) blocks.push({ key: 'see', title: e.tipSee, refs: x.see.map(id => ref(db, id)) });
+  const who = db.characters[x.from];
+  return { id: x.id, section: 'tips', title: x.name.ru, subtitle: who ? `${e.tipKind} · ${who.short.ru}` : e.tipKind, blocks };
+}
+
 /** Статья по идентификатору; нет такой записи — undefined. */
 export function article(db: ContentDb, id: Id): Article | undefined {
   if (db.conditions[id]) return conditionArticle(db, db.conditions[id]);
@@ -382,6 +398,7 @@ export function article(db: ContentDb, id: Id): Article | undefined {
   if (db.rooms[id]) return roomArticle(db, db.rooms[id]);
   if (db.equipment[id]) return equipmentArticle(db, db.equipment[id]);
   if (db.roles[id]) return roleArticle(db, db.roles[id]);
+  if (db.tips[id]) return tipArticle(db, db.tips[id]);
   return undefined;
 }
 
@@ -397,6 +414,7 @@ const EXAM_GROUPS: { key: 'ask' | 'examine' | 'lab' | 'imaging'; kinds: Exam['ki
 
 function table(db: ContentDb, section: Section): { id: Id; name: { ru: string } }[] {
   if (section === 'hospital') return [...Object.values(db.rooms), ...Object.values(db.equipment), ...Object.values(db.roles)];
+  if (section === 'tips') return Object.values(db.tips);
   const t = { conditions: db.conditions, findings: db.findings, exams: db.exams, treatments: db.treatments, risks: db.risks }[section];
   return Object.values(t);
 }
@@ -426,6 +444,9 @@ export function sectionView(db: ContentDb, section: Section): SectionView {
       { key: 'equipment', title: e.hospitalGroup.equipment, items: refs(Object.values(db.equipment)) },
       { key: 'roles', title: e.hospitalGroup.roles, items: refs(Object.values(db.roles)) },
     ];
+  } else if (section === 'tips') {
+    // в том порядке, в каком наставник подсказывает
+    groups = [{ key: 'tips', title: e.tipKind, items: Object.values(db.tips).map(x => ({ id: x.id, title: x.name.ru })) }];
   } else {
     groups = [{ key: 'risks', title: e.sections.risks, items: refs(Object.values(db.risks)) }];
   }

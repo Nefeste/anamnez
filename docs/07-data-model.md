@@ -305,6 +305,8 @@ interface GameState {
     done: Record<string, number>;        // выполненные задания главы → день
     letters: { id: string; day: number; read?: boolean }[];
     complete?: number;                   // день, когда выполнены все основные
+    tips?: { shown: Id[]; off?: boolean }; // 0.0.25: подсказки наставника — показанные в карьере,
+                                         // «Без подсказок»; отметка вида, движок её не читает
   };                                     // meta.career — слот карьеры (1–3)
   journal: Command[];                    // команды за текущий день (отчёт об ошибке, тесты)
 }

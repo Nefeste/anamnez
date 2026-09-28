@@ -194,6 +194,11 @@ try {
   check((await visible(page, 'enc-item-room.lab').count()) > 0 && (await visible(page, 'enc-item-role.lab_tech').count()) > 0,
     'энциклопедия: раздел «Больница» — помещения, аппараты, должности');
   await page.goto(`${base}/encyclopedia`);
+  await page.getByTestId('enc-section-tips').click();
+  await visible(page, 'enc-item-tip.strep').click();
+  await visible(page, 'enc-link-exam.strep_rapid').waitFor({ timeout: 5000 });
+  check((await visibleText(page, 'enc-article-title')) === 'Горло и антибиотик', 'энциклопедия: раздел «Подсказки» — совет наставника со ссылкой на экспресс-тест');
+  await page.goto(`${base}/encyclopedia`);
   await page.getByTestId('enc-search').fill('подъем сегмента');
   await page.getByTestId('enc-item-ecg.st_elevation').waitFor({ timeout: 5000 });
   check(await page.getByTestId('enc-item-ecg.st_elevation').isVisible(), 'энциклопедия: поиск — «подъем» находит «подъём»');
@@ -645,6 +650,39 @@ try {
   await page.getByTestId('shift-skip').click();
   await page.getByTestId('shift-call').waitFor({ timeout: 5000 });
   check(await page.getByTestId('clinic-map').isVisible(), 'кампания: смена в амбулатории посёлка');
+  // первая смена главы — с наставником: подсказки по одной, в первой — «Без подсказок»
+  const gotIt = async () => {
+    await page.getByTestId('tip-sheet-close').click();
+    await page.getByTestId('tip-sheet').waitFor({ state: 'detached', timeout: 5000 });
+  };
+  await page.getByTestId('shift-call').click();
+  await page.getByTestId('tip-text').waitFor({ timeout: 15_000 });
+  check((await text(page, 'tip-text')).startsWith('Начните с жалоб') && await page.getByTestId('tip-off').isVisible(),
+    'кампания: карта открылась — подсказка наставника «Сначала — расспрос», в первой — «Без подсказок»');
+  await page.waitForTimeout(700);
+  await page.screenshot({ path: join(OUT, '16-campaign-tip.png') });
+  await gotIt();
+  await page.getByTestId('exam-exam.ask_onset').click();
+  // у пациентки с циститом или пациента с ангиной после первого вопроса — своя подсказка
+  await page.waitForTimeout(700);
+  if (await page.getByTestId('tip-sheet').count()) await gotIt();
+  await page.getByTestId('exam-exam.ask_general').click();
+  await page.getByTestId('tip-text').waitFor({ timeout: 5000 });
+  check((await text(page, 'tip-text')).startsWith('Расспросили — осмотрите') && (await page.getByTestId('tip-off').count()) === 0,
+    'кампания: два вопроса без осмотра — «Теперь — осмотр»');
+  await gotIt();
+  await page.getByTestId('visit-decide').click();
+  await page.getByTestId('tip-text').waitFor({ timeout: 5000 });
+  check((await text(page, 'tip-text')).startsWith('Решение — в два шага'), 'кампания: первое «Решение» — подсказка');
+  await gotIt();
+  await page.locator('[data-testid^="hint-"]').first().click();
+  await page.getByTestId('decision-to-plan').click();
+  await page.getByTestId('setting-home').click();
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('tip-text').waitFor({ timeout: 10_000 });
+  check((await text(page, 'tip-text')).startsWith('Сравните свой путь'), 'кампания: первый разбор — подсказка');
+  await gotIt();
+  check(await page.getByTestId('visit-truth').isVisible(), 'кампания: подсказка закрыта — итог приёма на месте');
   await page.goto(base);
   await page.getByTestId('menu-continue').waitFor({ timeout: 10_000 });
   check((await text(page, 'menu-continue')).includes('Карьера 1: Глава 1. Участок'), `меню: «Продолжить» — ${(await text(page, 'menu-continue')).replace(/\n/g, ' · ')}`);

@@ -13,7 +13,7 @@ import { findBrand } from './brands';
 import {
   BANDS, type ChapterSrc, chapterSchema, type CharacterSrc, characterSchema, type ConditionSrc, conditionSchema, type EconomySrc, economySchema, type EquipmentSrc, equipmentSchema, type ExamSrc, examSchema, type FindingSrc, findingSchema,
   type LinkSrc, PREVALENCE, type PresetSrc, presetSchema, type ProbabilitySrc, type RiskSrc, type RoleSrc, riskSchema, roleSchema, type RoomSrc, roomSchema,
-  type TreatmentSrc, treatmentSchema, versionSchema,
+  type TipSrc, tipSchema, type TreatmentSrc, treatmentSchema, versionSchema,
 } from './schema';
 
 export const CONTENT_DIR = join(import.meta.dir, '../../content');
@@ -80,6 +80,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   const presets: Record<string, PresetSrc> = {};
   const characters: Record<string, CharacterSrc> = {};
   const chapters: Record<string, ChapterSrc> = {};
+  const tips: Record<string, TipSrc> = {};
   let economy: EconomySrc | undefined;
   let contentVersion = 0;
 
@@ -149,8 +150,11 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     } else if (top === 'campaign' && rel.split('/')[1] === 'chapters') {
       const c = check(chapterSchema);
       if (c) { expectId(c.id, 'chapter'); put(chapters, c); }
+    } else if (top === 'campaign' && rel.split('/')[1] === 'tips') {
+      const t = check(tipSchema);
+      if (t) { expectId(t.id, 'tip'); put(tips, t); }
     } else {
-      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/economy.yaml, campaign/characters, campaign/chapters)`);
+      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/economy.yaml, campaign/characters, campaign/chapters, campaign/tips)`);
     }
   }
   if (!contentVersion) errors.push('version.yaml: нет contentVersion');
@@ -243,6 +247,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     contentVersion, hash: '', conditions: {}, findings: {}, exams: {}, risks: {}, treatments: {}, rooms: {}, equipment: {}, roles: {}, presets: {},
     characters: Object.fromEntries(Object.values(characters).sort((a, b) => (a.id < b.id ? -1 : 1)).map(c => [c.id, c])),
     chapters: Object.fromEntries(Object.values(chapters).sort((a, b) => a.order - b.order).map(c => [c.id, c])),
+    tips: Object.fromEntries(Object.values(tips).sort((a, b) => a.order - b.order).map(t => [t.id, t])),
     economy: economy
       ? { ...economy, sandbox: { ...economy.sandbox, corridor: rects(economy.sandbox.corridor) } }
       : NO_ECONOMY,
@@ -375,7 +380,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
 
 /**
  * Кампания (spec 2026-09-campaign): главы ссылаются на готовую больницу, помещения, болезни
- * своего отделения и персонажей; письма «при задании» — на задание этой главы.
+ * своего отделения и персонажей; письма «при задании» — на задание этой главы; подсказки — на
+ * персонажа, болезнь и статьи энциклопедии.
  */
 function checkCampaign(db: ContentDb, errors: string[]) {
   const orders = new Set<number>();
@@ -406,6 +412,16 @@ function checkCampaign(db: ContentDb, errors: string[]) {
       if (!db.characters[l.from]) at(`письмо ${l.id}: персонаж ${l.from} не найден`);
       if (typeof l.when === 'object' && 'mission' in l.when && !missions.has(l.when.mission)) at(`письмо ${l.id}: задания ${l.when.mission} в главе нет`);
     }
+  }
+  // подсказки наставника: от персонажа, о болезни приёма, со ссылками на статьи энциклопедии
+  const tipOrders = new Set<number>();
+  for (const t of Object.values(db.tips)) {
+    const at = (what: string) => errors.push(`${t.id}: ${what}`);
+    if (tipOrders.has(t.order)) at(`порядок ${t.order} уже у другой подсказки`);
+    tipOrders.add(t.order);
+    if (!db.characters[t.from]) at(`персонаж ${t.from} не найден`);
+    if (typeof t.when === 'object' && !db.conditions[t.when.condition]?.presenting) at(`болезнь ${t.when.condition} не найдена или с ней не приходят`);
+    for (const id of t.see) if (!(db.conditions[id] || db.findings[id] || db.exams[id] || db.treatments[id] || db.risks[id] || db.rooms[id] || db.equipment[id] || db.roles[id])) at(`статья ${id} не найдена`);
   }
 }
 

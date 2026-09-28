@@ -30,6 +30,7 @@ import { archivedCase, recordCases } from './profile';
 import { type CashView, cashView, examBlockText, levelText, paymentText, personName, statusText } from './sandboxView';
 import { loadSlot, type RawStore, saveSlot } from './saves';
 import { settings } from './settings';
+import { momentKey, momentOf, type TipMoment, type TipScreen, tipFor } from './tips';
 
 /** Слоты сохранения: практика и песочница — у каждой своё, у кампании — три карьеры. */
 export const SLOT = 'shift';
@@ -174,6 +175,8 @@ let status: ShiftView['status'] = 'idle';
 let loading: Promise<void> | null = null;
 let saving: Promise<unknown> = Promise.resolve();
 let version = 0;
+/** Подсказки наставника: момент, в который закрыли последнюю, — в тот же момент следующей нет. */
+let tipHold: string | undefined;
 const listeners = new Set<() => void>();
 
 function changed() {
@@ -306,6 +309,7 @@ export function saved(): Promise<unknown> {
 }
 
 function fresh(s: ShiftState, restored: boolean): Session {
+  tipHold = undefined;
   return { s, speed: 1, paused: false, log: [], logSeq: 0, meanwhile: [], urgent: false, savedT: s.t, restored };
 }
 
@@ -861,6 +865,76 @@ export function readLetter(id: string) {
   const l = session?.s.campaign?.letters.find(x => x.id === id);
   if (!l || l.read) return;
   l.read = true;
+  save();
+  changed();
+}
+
+// --- подсказки наставника (spec 2026-09-campaign) -------------------------------------------
+
+/** Подсказка на экране: заголовок, текст, кто подсказывает; первая в карьере — с «Без подсказок». */
+export interface TipView {
+  id: string;
+  title: string;
+  text: string;
+  from: string;
+  portrait: { seed: number; sex: 'm' | 'f'; age: number };
+  first: boolean;
+}
+
+/** Приём сейчас — только в первую смену главы с обучением (до «Открыть смену» следующего дня). */
+function tipMoment(screen: TipScreen): TipMoment | undefined {
+  const s = session?.s;
+  const c = s?.campaign;
+  const ch = c ? db.chapters[c.chapter] : undefined;
+  if (!s || !c || !ch || ch.tutorial.length === 0 || s.day !== c.since + 1) return undefined;
+  const id = screen === 'review' ? (session?.focus ?? s.current) : s.current;
+  const p = id ? s.patients[id] : undefined;
+  return p ? momentOf(db, screen, p) : undefined;
+}
+
+function buildTipView(screen: TipScreen): TipView | undefined {
+  const c = session?.s.campaign;
+  const m = tipMoment(screen);
+  if (!c || !m) return undefined;
+  const st = c.tips ?? { shown: [] };
+  const tip = tipFor(db, st, m, tipHold);
+  const who = tip ? db.characters[tip.from] : undefined;
+  if (!tip || !who) return undefined;
+  return {
+    id: tip.id, title: tip.name.ru, text: tip.text.ru, from: who.short.ru, portrait: { seed: who.portrait, sex: who.sex, age: who.age },
+    first: st.shown.length === 0,
+  };
+}
+
+const tipCache: Partial<Record<TipScreen, { version: number; view: TipView | undefined }>> = {};
+
+export function tipView(screen: TipScreen): TipView | undefined {
+  if (tipCache[screen]?.version !== version) tipCache[screen] = { version, view: buildTipView(screen) };
+  return tipCache[screen]?.view;
+}
+
+export function useTip(screen: TipScreen): TipView | undefined {
+  const get = () => tipView(screen);
+  return useSyncExternalStore(subscribe, get, get);
+}
+
+/** «Понятно»: подсказка показана в этой карьере; следующая — не раньше следующего действия врача. */
+export function seenTip(id: string, screen: TipScreen) {
+  const c = session?.s.campaign;
+  if (!c) return;
+  const st = (c.tips ??= { shown: [] });
+  if (!st.shown.includes(id)) st.shown.push(id);
+  const m = tipMoment(screen);
+  tipHold = m ? momentKey(m) : undefined;
+  save();
+  changed();
+}
+
+/** «Без подсказок» — в этой карьере их больше нет. */
+export function tipsOff() {
+  const c = session?.s.campaign;
+  if (!c) return;
+  (c.tips ??= { shown: [] }).off = true;
   save();
   changed();
 }

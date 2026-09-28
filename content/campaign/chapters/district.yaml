@@ -9,6 +9,8 @@ budget: 300000
 department: dept.therapy
 # что можно строить в главе: всё, кроме рентгена — он в главе 2
 build: [room.reception, room.waiting, room.office, room.triage, room.procedure, room.lab, room.ecg, room.toilet]
+# первая смена — с наставником: первые трое пришедших — с этими болезнями, подсказки по одной
+tutorial: [cond.arvi, cond.strep_pharyngitis, cond.cystitis]
 missions:
   - id: seen
     main: true

@@ -16,7 +16,7 @@ import { applicantsOf, grow, memberAt, presetStaff, readingOf, type StaffMember,
 import { RNG_VERSION, Rng } from '../core/rng';
 import { observe } from '../med/course';
 import { complaintObservations, type ExamSkill, NORMAL_SKILL, runExam } from '../med/exams';
-import { generatePatient } from '../med/generate';
+import { generatePatient, typicalPatient } from '../med/generate';
 import { knownFacts, posterior } from '../med/infer';
 import { evaluatePlan } from '../med/plan';
 import { examCost, indicated } from '../med/policy';
@@ -355,11 +355,20 @@ function planDay(db: ContentDb, s: ShiftState) {
     plan.push({ t: base + SHIFT_START + r.fork(`return:${ret.of}`).range(0, 120) * MIN, kind: 'return', key: `return:${ret.of}`, ret });
   }
   plan.sort((a, b) => a.t - b.t || (a.key < b.key ? -1 : 1));
+  // кампания: в первый день главы первые пришедшие — с болезнями, заданными главой (обучение
+  // с наставником); человек — тот же, что пришёл бы, если болезнь у него обычна
+  const tutorial = s.campaign && d === s.campaign.since + 1 ? (chapterOf(db, s.campaign)?.tutorial ?? []) : [];
+  let taught = 0;
   plan.forEach((a, i) => {
     const id = `${d}-${String(i + 1).padStart(2, '0')}`;
+    const gen = { department: s.meta.department, season: s.meta.season };
+    const primary = a.ret ? undefined : tutorial[taught];
+    if (primary) taught++;
     const patient = a.ret
       ? returningPatient(db, s, a.ret)
-      : generatePatient(db, fnv1a(`${s.meta.seed}:${d}:${a.key}`), { department: s.meta.department, season: s.meta.season });
+      : primary
+        ? typicalPatient(db, k => fnv1a(`${s.meta.seed}:${d}:${a.key}${k ? `:${k}` : ''}`), { ...gen, primary })
+        : generatePatient(db, fnv1a(`${s.meta.seed}:${d}:${a.key}`), gen);
     s.patients[id] = {
       id, patient, arriveT: a.t, kind: a.kind, triage: 'green', status: 'coming', queuedT: 0, wait: 0, patience: 0,
       results: [], pending: [], done: [], step: 0, spent: { seconds: 0, money: 0 }, draft: { treatments: [], setting: 'home' },

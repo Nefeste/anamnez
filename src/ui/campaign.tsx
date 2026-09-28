@@ -1,10 +1,12 @@
 // Глава кампании (spec 2026-09-campaign): название и место, письма наставника и главврача,
 // задания с ходом. Между сменами — над своей больницей; касание письма — лист с портретом.
+// В первую смену главы — подсказки наставника листом поверх приёма.
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { T } from '@/i18n';
 import { Portrait } from '@/render/Portrait';
-import { type CampaignView, type MissionView, readLetter } from '@/state/session';
+import { type CampaignView, type MissionView, readLetter, seenTip, tipsOff, useTip } from '@/state/session';
+import type { TipScreen } from '@/state/tips';
 import { Button, Card, H, P, Sheet } from './components';
 import { Text } from './text';
 import { colors, space } from './theme';
@@ -58,6 +60,32 @@ export function ChapterCard({ c }: { c: CampaignView }) {
         )}
       </Sheet>
     </>
+  );
+}
+
+/**
+ * Подсказка наставника поверх экрана приёма: по одной, «Понятно» внизу, под пальцем. В первой
+ * за карьеру — ещё «Без подсказок».
+ */
+export function MentorTip({ screen }: { screen: TipScreen }) {
+  const t = T.campaign;
+  const tip = useTip(screen);
+  return (
+    <Sheet visible={!!tip} onClose={() => tip && seenTip(tip.id, screen)} closeTitle={t.tipGotIt} testID="tip-sheet">
+      {tip && (
+        <>
+          <View style={styles.head}>
+            <Portrait seed={tip.portrait.seed} sex={tip.portrait.sex} age={tip.portrait.age} size={48} />
+            <View style={styles.headText}>
+              <H>{tip.title}</H>
+              <P muted>{t.tipFrom(tip.from)}</P>
+            </View>
+          </View>
+          <P testID="tip-text">{tip.text}</P>
+          {tip.first && <Button testID="tip-off" kind="plain" title={t.tipsOff} hint={t.tipsOffHint} onPress={tipsOff} />}
+        </>
+      )}
+    </Sheet>
   );
 }
 

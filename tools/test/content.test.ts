@@ -193,3 +193,21 @@ describe('готовые больницы', () => {
     expect(bench.some(e => e.includes('preset.clinic: bench (9, 11) — не в коридоре'))).toBe(true);
   });
 });
+
+describe('кампания', () => {
+  test('заданные пациенты главы — болезни приёма её отделения', () => {
+    const chronic = broken(d => edit(d, 'campaign/chapters/district.yaml', 'tutorial: [cond.arvi,', 'tutorial: [cond.copd,'));
+    expect(chronic.some(e => e.includes('chapter.district: болезнь обучения cond.copd — не из приёма отделения dept.therapy'))).toBe(true);
+  });
+
+  test('подсказка: от персонажа игры, о болезни, с которой приходят, со ссылками на статьи; порядок не повторяется', () => {
+    const who = broken(d => edit(d, 'campaign/tips/start.yaml', 'from: char.mentor', 'from: char.nurse'));
+    expect(who.some(e => e.includes('tip.start: персонаж char.nurse не найден'))).toBe(true);
+    const cond = broken(d => edit(d, 'campaign/tips/strep.yaml', 'condition: cond.strep_pharyngitis', 'condition: cond.copd'));
+    expect(cond.some(e => e.includes('tip.strep: болезнь cond.copd не найдена или с ней не приходят'))).toBe(true);
+    const see = broken(d => edit(d, 'campaign/tips/urine.yaml', 'see: [exam.urine_dipstick,', 'see: [exam.urine_strip,'));
+    expect(see.some(e => e.includes('tip.urine: статья exam.urine_strip не найдена'))).toBe(true);
+    const order = broken(d => edit(d, 'campaign/tips/review.yaml', 'order: 6', 'order: 5'));
+    expect(order.some(e => e.includes('порядок 5 уже у другой подсказки'))).toBe(true);
+  });
+});

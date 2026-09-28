@@ -432,6 +432,25 @@ export const chapterSchema = z.strictObject({
   letters: z.array(letterSchema).default([]),
 });
 
+/**
+ * Подсказка наставника в первую смену главы: когда показать — открылась карта пациента, после
+ * первых вопросов, у пациента с болезнью, на «Решении», на разборе.
+ */
+export const tipSchema = z.strictObject({
+  id: z.string().regex(/^tip\.[a-z0-9_]+$/),
+  /** порядок: какая первой, если подходят две */
+  order: count,
+  from: z.string().regex(/^char\.[a-z0-9_]+$/),
+  name: text,
+  when: z.union([
+    z.literal('caseOpen'), z.literal('afterAsk'), z.literal('decision'), z.literal('review'),
+    z.strictObject({ condition: z.string().regex(/^cond\.[a-z0-9_]+$/) }),
+  ]),
+  text,
+  /** о чём подсказка — статьи энциклопедии */
+  see: z.array(z.string()).default([]),
+});
+
 export const versionSchema = z.strictObject({ contentVersion: z.number().int().min(1) });
 
 export type ConditionSrc = z.infer<typeof conditionSchema>;
@@ -446,5 +465,6 @@ export type PresetSrc = z.infer<typeof presetSchema>;
 export type EconomySrc = z.infer<typeof economySchema>;
 export type CharacterSrc = z.infer<typeof characterSchema>;
 export type ChapterSrc = z.infer<typeof chapterSchema>;
+export type TipSrc = z.infer<typeof tipSchema>;
 export type LinkSrc = z.infer<typeof link>;
 export type ProbabilitySrc = z.infer<typeof probability>;

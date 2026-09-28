@@ -89,6 +89,24 @@ export function generatePatient(db: ContentDb, seed: number, ctx: GenContext): P
   return { seed, sex, age, season: ctx.season, department: ctx.department, truth: { conditions, risks, findings, values }, complaints };
 }
 
+/**
+ * Пациент с заданной болезнью, у которого она обычна: бывает основной в его возрасте и с его
+ * болезнями, а по полу не редкость — цистит у женщины (заданные первые пациенты главы, spec
+ * 2026-09-campaign). Зёрна — по порядку из ряда `seeds`: первое, где так; не нашлось — первое.
+ */
+export function typicalPatient(db: ContentDb, seeds: (k: number) => number, ctx: GenContext & { primary: Id }, tries = 16): Patient {
+  const c = db.conditions[ctx.primary];
+  let first: Patient | undefined;
+  for (let k = 0; k < tries; k++) {
+    const p = generatePatient(db, seeds(k), ctx);
+    first ??= p;
+    const chronic = p.truth.conditions.filter(x => x.role === 'comorbid').map(x => x.id);
+    const fits = presentingWeight(c, { sex: p.sex, age: p.age, season: p.season, risks: p.truth.risks, chronic }) > 0;
+    if (fits && (!c.sex || 2 * c.sex[p.sex] >= Math.max(c.sex.m, c.sex.f))) return p;
+  }
+  return first!;
+}
+
 /** Вероятность хронической болезни с учётом факторов риска, доли 1/10 000, не выше 95 %. */
 export function chronicChance(c: Condition, risks: readonly Id[]): number {
   if (!c.chronic) return 0;
