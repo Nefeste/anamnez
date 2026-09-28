@@ -2,6 +2,8 @@ id: exam.glucose_lab
 name: { ru: "Глюкоза крови натощак" }
 kind: lab
 room: room.lab
+equipment: [eq.biochem_analyzer]
+collect: room.procedure
 time: { procedure: 5, turnaround: 40 }
 cost: 150
 discomfort: 1

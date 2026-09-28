@@ -1,0 +1,67 @@
+id: room.waiting
+name: { ru: "Зона ожидания" }
+gen: { ru: "зоны ожидания" }
+seats: true
+sizes:
+  - id: S
+    w: 6
+    h: 7
+    cost: 12000
+    upkeep: 100
+    door: { x: 2, width: 2 }
+    objects:
+      - [chair, 1, 2]
+      - [chair, 2, 2]
+      - [chair, 3, 2]
+      - [plant, 4, 3]
+      - [chair, 1, 4]
+      - [chair, 2, 4]
+      - [chair, 3, 4]
+  - id: M
+    w: 9
+    h: 7
+    cost: 18000
+    upkeep: 150
+    door: { x: 3, width: 3 }
+    objects:
+      - [chair, 2, 2]
+      - [chair, 3, 2]
+      - [chair, 4, 2]
+      - [chair, 5, 2]
+      - [chair, 6, 2]
+      - [plant, 1, 3]
+      - [plant, 7, 3]
+      - [chair, 2, 4]
+      - [chair, 3, 4]
+      - [chair, 4, 4]
+      - [chair, 5, 4]
+      - [chair, 6, 4]
+  - id: L
+    w: 13
+    h: 7
+    cost: 26000
+    upkeep: 225
+    door: { x: 5, width: 4 }
+    objects:
+      - [chair, 2, 2]
+      - [chair, 3, 2]
+      - [chair, 4, 2]
+      - [chair, 5, 2]
+      - [chair, 6, 2]
+      - [chair, 7, 2]
+      - [chair, 8, 2]
+      - [chair, 9, 2]
+      - [chair, 10, 2]
+      - [plant, 1, 3]
+      - [plant, 11, 3]
+      - [chair, 2, 4]
+      - [chair, 3, 4]
+      - [chair, 4, 4]
+      - [chair, 5, 4]
+      - [chair, 6, 4]
+      - [chair, 7, 4]
+      - [chair, 8, 4]
+      - [chair, 9, 4]
+      - [chair, 10, 4]
+texts:
+  hint: { ru: "Стулья для тех, кто ждёт приёма или результатов. Кому не хватило стула, стоит — и ждать готов вдвое меньше." }

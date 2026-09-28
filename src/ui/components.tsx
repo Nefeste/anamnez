@@ -20,8 +20,8 @@ export function Screen({ children, scroll = true, resetKey, footer, header }: { 
   );
 }
 
-export function Card({ children, style }: { children: ReactNode; style?: ViewStyle }) {
-  return <View style={[styles.card, style]}>{children}</View>;
+export function Card({ children, style, testID }: { children: ReactNode; style?: ViewStyle; testID?: string }) {
+  return <View testID={testID} style={[styles.card, style]}>{children}</View>;
 }
 
 export function H({ children }: { children: ReactNode }) {
@@ -69,6 +69,9 @@ type SheetProps = { visible: boolean; onClose: () => void; closeTitle: string; c
  * Карточка поверх экрана: закрывается кнопкой, касанием фона и «назад» Android.
  * Modal — отдельное окно, и системные отступы главного экрана на него не действуют:
  * без своего SafeAreaProvider кнопка уходила под панель навигации Android (отзыв на 0.0.2).
+ * Не помещается — содержимое прокручивается, а кнопка остаётся внизу: на экране 360 × 640
+ * верх длинного листа (выбор помещения — девять типов) уходил за край, и выбрать первые
+ * типы было нельзя.
  */
 export function Sheet({ visible, onClose, closeTitle, children, testID }: SheetProps) {
   return (
@@ -80,22 +83,31 @@ export function Sheet({ visible, onClose, closeTitle, children, testID }: SheetP
   );
 }
 
+// Фон — отдельный слой под листом, а не его родитель: касание листа фон не закрывает, и
+// прокрутке листа ничто не мешает.
 function SheetBody({ onClose, closeTitle, children, testID }: SheetProps) {
   const insets = useSafeAreaInsets();
   return (
-    <Pressable style={styles.backdrop} onPress={onClose}>
-      <Pressable testID={testID} style={[styles.sheet, { paddingBottom: space.xl + insets.bottom }]} onPress={() => undefined}>
-        {children}
+    <View style={[styles.backdrop, { paddingTop: space.xl + insets.top }]}>
+      <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessible={false} />
+      <View testID={testID} style={[styles.sheet, { paddingBottom: space.xl + insets.bottom }]}>
+        <ScrollView style={styles.sheetScroll} contentContainerStyle={styles.sheetContent} keyboardShouldPersistTaps="handled">
+          {children}
+        </ScrollView>
         <Button testID={testID ? `${testID}-close` : undefined} title={closeTitle} onPress={onClose} />
-      </Pressable>
-    </Pressable>
+      </View>
+    </View>
   );
 }
 
 /**
  * Вкладки одной полосой. Подпись всегда в одну строку: на узком экране или с крупным
  * системным шрифтом она уменьшается, а не обрезается многоточием (отзыв на 0.0.5).
+ * Вкладка — 40 dp с полем полосы вокруг; касание добирает до 48 (NFR-ACC-1) полем сверху и
+ * снизу, а не сбоку — иначе соседние вкладки делили бы щель между собой.
  */
+const TAB_SLOP = { top: space.xs, bottom: space.xs };
+
 export function Tabs<K extends string>({ items, value, onChange, testPrefix = 'tab' }: { items: { key: K; title: string }[]; value: K; onChange: (k: K) => void; testPrefix?: string }) {
   return (
     <View style={styles.tabs} accessibilityRole="tablist">
@@ -107,6 +119,7 @@ export function Tabs<K extends string>({ items, value, onChange, testPrefix = 't
             testID={`${testPrefix}-${key}`}
             accessibilityRole="tab"
             aria-selected={on}
+            hitSlop={TAB_SLOP}
             onPress={() => onChange(key)}
             style={({ pressed }) => [styles.tab, on && styles.tabOn, pressed && styles.btnPressed]}>
             <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={[styles.tabText, on && styles.tabTextOn]}>{title}</Text>
@@ -133,7 +146,8 @@ export function Toggle({ title, hint, value, onChange, testID }: { title: string
         <Text style={styles.p}>{title}</Text>
         {hint ? <Text style={[styles.toggleHint, styles.muted]}>{hint}</Text> : null}
       </View>
-      <View style={styles.inert}>
+      {/* переключатель только показывает состояние: для чтения с экрана строка — один элемент */}
+      <View style={styles.inert} aria-hidden importantForAccessibility="no-hide-descendants">
         <Switch value={value} trackColor={{ false: colors.line, true: colors.accent }} thumbColor={colors.card} />
       </View>
     </Pressable>
@@ -175,7 +189,9 @@ const styles = StyleSheet.create({
   info: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.card, alignItems: 'center', justifyContent: 'center' },
   infoText: { fontSize: 17, fontWeight: '700', color: colors.accent },
   backdrop: { flex: 1, backgroundColor: 'rgba(12,24,26,0.45)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: space.xl, gap: space.m, maxWidth: 640, width: '100%', alignSelf: 'center' },
+  sheet: { backgroundColor: colors.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: space.xl, gap: space.m, maxWidth: 640, width: '100%', alignSelf: 'center', flexShrink: 1 },
+  sheetScroll: { flexGrow: 0, flexShrink: 1 },
+  sheetContent: { gap: space.m },
   tabs: { flexDirection: 'row', backgroundColor: colors.card, borderRadius: radius, borderWidth: 1, borderColor: colors.line, padding: space.xs, gap: space.xs },
   tab: { flex: 1, minHeight: touch - 2 * space.xs, borderRadius: radius - space.xs, alignItems: 'center', justifyContent: 'center', paddingHorizontal: space.xs },
   tabOn: { backgroundColor: colors.accent },

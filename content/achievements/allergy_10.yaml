@@ -1,0 +1,7 @@
+id: ach.allergy_10
+order: 12
+category: care
+name: { ru: "Сначала спросить" }
+need: { ru: "Десять раз спросить об аллергии, прежде чем назначить лекарство." }
+kind: allergyAsked
+count: 10

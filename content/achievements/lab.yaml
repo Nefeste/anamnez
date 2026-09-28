@@ -1,0 +1,7 @@
+id: ach.lab
+order: 18
+category: hospital
+name: { ru: "Своя лаборатория" }
+need: { ru: "Открыть лабораторию в своей больнице: помещение, анализатор и лаборант." }
+kind: roomWorks
+room: room.lab

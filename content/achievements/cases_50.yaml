@@ -1,0 +1,7 @@
+id: ach.cases_50
+order: 3
+category: practice
+name: { ru: "Полсотни приёмов" }
+need: { ru: "Закрыть пятьдесят приёмов." }
+kind: cases
+count: 50

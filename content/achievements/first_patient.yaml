@@ -1,0 +1,8 @@
+# Достижение (spec 2026-09-campaign, часть 13): вид и число — движку, название и что нужно — игроку.
+id: ach.first_patient
+order: 1
+category: practice
+name: { ru: "Первый пациент" }
+need: { ru: "Закрыть первый приём." }
+kind: cases
+count: 1

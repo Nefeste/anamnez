@@ -6,10 +6,15 @@ import { P_ONE, Rng } from '../core/rng';
 import { sampleRange } from './generate';
 import type { Observation, Patient } from './types';
 
-/** Поправки точности: множители к чувствительности и специфичности (1 — как в базе). */
+/**
+ * Поправки точности: множители к чувствительности и специфичности (1 — как в базе) и
+ * добавки в процентных пунктах — аппарат и навык рентгенолога (spec 2026-09-own-hospital).
+ */
 export interface ExamSkill {
   sens: number;
   spec: number;
+  sensPp?: number;
+  specPp?: number;
 }
 
 export const NORMAL_SKILL: ExamSkill = { sens: 1, spec: 1 };
@@ -18,9 +23,11 @@ export const NORMAL_SKILL: ExamSkill = { sens: 1, spec: 1 };
 const clampP = (p: number) => Math.max(5000, Math.min(9950, Math.round(p)));
 
 export function effectiveCheck(sens: number, spec: number, skill: ExamSkill): { sens: number; spec: number } {
+  const sp = skill.sensPp ?? 0;
+  const cp = skill.specPp ?? 0;
   return {
-    sens: skill.sens === 1 ? sens : clampP(sens * skill.sens),
-    spec: skill.spec === 1 ? spec : clampP(spec * skill.spec),
+    sens: skill.sens === 1 && sp === 0 ? sens : clampP(sens * skill.sens + sp * 100),
+    spec: skill.spec === 1 && cp === 0 ? spec : clampP(spec * skill.spec + cp * 100),
   };
 }
 

@@ -3,8 +3,8 @@
 // где он на каждом кадре, считает ворклет на UI-потоке, как в прототипе П2
 // (06-architecture.md §6). Касание выделяет человека — кто это, пишет экран смены; приглашённый
 // идёт в кабинет, и карта сообщает, когда он вошёл.
-import { Atlas, Canvas, Circle, Group, Picture, Skia, useRectBuffer, useRSXformBuffer } from '@shopify/react-native-skia';
-import { useEffect, useMemo, useState } from 'react';
+import { Atlas, Canvas, Circle, Group, Picture, Rect, Skia, useRectBuffer, useRSXformBuffer } from '@shopify/react-native-skia';
+import { useEffect, useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useDerivedValue, useFrameCallback, useSharedValue } from 'react-native-reanimated';
@@ -42,7 +42,7 @@ function pointAt(m: number[], pts: number[], i: number, clock: number): [number,
   return [pts[a] + (pts[a + 2] - pts[a]) * f, pts[a + 1] + (pts[a + 3] - pts[a + 1]) * f];
 }
 
-export function ClinicMap({ layout, people, width, active, label, selected, awaiting, onSelect, onArrive }: {
+export function ClinicMap({ layout, people, width, active, label, selected, awaiting, onSelect, onArrive, room, onRoom }: {
   layout: ClinicLayout;
   people: Placement[];
   width: number;
@@ -55,12 +55,17 @@ export function ClinicMap({ layout, people, width, active, label, selected, awai
   awaiting?: string;
   onSelect: (id: string | undefined) => void;
   onArrive: (id: string) => void;
+  /** выбранное касанием помещение — обведено (своя больница) */
+  room?: string;
+  /** коснулись помещения мимо людей; нет — касание помещений не нужно (практика) */
+  onRoom?: (id: string | undefined) => void;
 }) {
   const atlas = useMemo(() => buildAtlas(), []);
   const floor = useMemo(() => recordFloor(layout), [layout]);
   const objectSprites = useMemo(() => layout.objects.map(o => atlas.objectRect(o.kind)), [layout, atlas]);
   const objectXforms = useMemo(() => layout.objects.map(o => Skia.RSXform(CELL_PX / SPRITE, 0, o.x * CELL_PX, o.y * CELL_PX)), [layout]);
-  const [walkers] = useState(() => new Walkers(layout, CAPACITY));
+  // свой план песочницы меняется между сменами — с ним и ходоки: новые расставят всех по местам
+  const walkers = useMemo(() => new Walkers(layout, CAPACITY), [layout]);
   const scale = width / (layout.grid.w * CELL_PX);
   const height = layout.grid.h * CELL_PX * scale;
   const cell = CELL_PX * scale;
@@ -123,10 +128,17 @@ export function ClinicMap({ layout, people, width, active, label, selected, awai
     return p ? (p[1] + 0.5) * CELL_PX : HIDDEN;
   });
 
-  // касание: ближайший к точке — не дальше клетки; мимо всех — снять выделение
+  // касание: ближайший к точке — не дальше клетки; мимо всех — помещение под пальцем (своя
+  // больница) или снять выделение
   const onTap = (x: number, y: number) => {
-    onSelect(walkers.hit(x / cell, y / cell, clock.get()));
+    const who = walkers.hit(x / cell, y / cell, clock.get());
+    onSelect(who);
+    if (!onRoom) return;
+    const cx = Math.floor(x / cell);
+    const cy = Math.floor(y / cell);
+    onRoom(who === undefined ? layout.rooms.find(r => cx >= r.x && cx < r.x + r.w && cy >= r.y && cy < r.y + r.h)?.id : undefined);
   };
+  const chosenRoom = room === undefined ? undefined : layout.rooms.find(r => r.id === room);
   const tap = Gesture.Tap().onEnd(e => {
     'worklet';
     scheduleOnRN(onTap, e.x, e.y);
@@ -138,6 +150,10 @@ export function ClinicMap({ layout, people, width, active, label, selected, awai
         <Canvas style={{ width, height }}>
           <Group transform={[{ scale }]}>
             <Picture picture={floor} />
+            {chosenRoom && (
+              <Rect x={chosenRoom.x * CELL_PX} y={chosenRoom.y * CELL_PX} width={chosenRoom.w * CELL_PX} height={chosenRoom.h * CELL_PX}
+                style="stroke" strokeWidth={CELL_PX * 0.2} color={colors.accent} />
+            )}
             <Atlas image={atlas.image} sprites={objectSprites} transforms={objectXforms} />
             <Circle cx={ringX} cy={ringY} r={CELL_PX * 0.78} color={colors.accentSoft} />
             <Circle cx={ringX} cy={ringY} r={CELL_PX * 0.78} style="stroke" strokeWidth={CELL_PX * 0.12} color={colors.accent} />

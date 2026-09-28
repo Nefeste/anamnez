@@ -1,0 +1,12 @@
+id: eq.xray_digital
+name: { ru: "Цифровой рентгеновский аппарат" }
+gen: { ru: "цифрового рентгеновского аппарата" }
+room: room.xray
+sprite: xray
+upgradeOf: eq.xray_analog
+price: 350000
+upkeep: 250
+breakdown: 1
+speed: 1
+texts:
+  hint: { ru: "Снимок сразу на экране: быстрее плёночного и контрастнее, мелкие очаги видны лучше. Дороже и в покупке, и в обслуживании." }

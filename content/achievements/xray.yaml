@@ -1,0 +1,7 @@
+id: ach.xray
+order: 19
+category: hospital
+name: { ru: "Свой рентген" }
+need: { ru: "Открыть рентген-кабинет в своей больнице: помещение, аппарат и рентгенолог." }
+kind: roomWorks
+room: room.xray

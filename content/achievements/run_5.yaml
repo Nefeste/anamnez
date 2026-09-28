@@ -1,0 +1,7 @@
+id: ach.run_5
+order: 6
+category: diagnosis
+name: { ru: "Пять верных подряд" }
+need: { ru: "Поставить пять верных диагнозов подряд." }
+kind: correctRun
+count: 5

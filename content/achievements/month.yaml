@@ -1,0 +1,7 @@
+id: ach.month
+order: 5
+category: practice
+name: { ru: "Месяц практики" }
+need: { ru: "Закрыть тридцать рабочих дней." }
+kind: days
+count: 30

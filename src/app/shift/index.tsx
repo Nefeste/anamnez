@@ -3,22 +3,28 @@
 // кто на обследованиях, что происходит; после закрытия дня — его итоги. Часы идут, только
 // пока этот экран на виду и в кабинете никого (ADR 0005). Приглашённый идёт в кабинет, и
 // его карта открывается, когда он вошёл.
-import { router, useFocusEffect } from 'expo-router';
+import { router, Stack, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Text } from '@/ui/text';
 import { buzz, play } from '@/audio/sounds';
+import { db } from '@/content';
 import type { Difficulty, Triage } from '@/engine/shift/types';
 import { T } from '@/i18n';
+import { BuildMap } from '@/render/map/BuildMap';
 import { ClinicMap } from '@/render/map/ClinicMap';
 import { CLINIC } from '@/state/clinicMap';
+import { blockText, type CashView } from '@/state/sandboxView';
 import {
   callPatient, closeDay, loadShift, nextDay, openCase, pauseClock, type QueueRow, type ShiftView, SPEEDS, type Speed, type SummaryView,
-  saveNow, setSpeed, skipIdle, startShift, TICK_MS, tick, useShift, type WhoView,
+  type RoomView, saveNow, setSpeed, skipIdle, startSandbox, startShift, TICK_MS, tick, useBuild, useCampaign, useShift, type WhoView,
 } from '@/state/session';
 import { CaseRow } from '@/ui/case/CaseRow';
+import { gradeColor } from '@/ui/case/OutcomeScreen';
 import { Button, Card, Chip, Chips, H, P, Screen, Sheet, Tabs } from '@/ui/components';
 import { DifficultyChoice } from '@/ui/difficulty';
+import { ChapterCard } from '@/ui/campaign';
+import { NewSandbox } from '@/ui/sandbox';
 import { colors, radius, space, touch } from '@/ui/theme';
 
 export default function ShiftScreen() {
@@ -36,8 +42,92 @@ export default function ShiftScreen() {
       </Screen>
     );
   }
-  if (v.status === 'none') return <NewPractice />;
-  return v.dayOpen ? <Queue v={v} /> : <Summary v={v} />;
+  if (v.status === 'none') {
+    if (v.mode === 'sandbox') return <NewSandbox onStart={opts => startSandbox(opts)} />;
+    if (v.mode === 'campaign') return <NoCareer />;
+    return v.mode === 'single' ? <NoSingle /> : <NewPractice />;
+  }
+  // своя больница между сменами — песочница и глава кампании: стройка, персонал, «Открыть
+  // смену» (spec 2026-09-own-hospital, 2026-09-campaign)
+  const own = v.mode === 'sandbox' || v.mode === 'campaign';
+  if (own && !v.dayOpen && v.day === 0) return <Evening v={v} />;
+  return (
+    <>
+      {own && <OwnTitle mode={v.mode} />}
+      {v.mode === 'single' && <Stack.Screen options={{ title: T.single.title }} />}
+      {v.dayOpen ? <Queue v={v} /> : <Summary v={v} />}
+    </>
+  );
+}
+
+/** «Смены» нет — к выбору больницы. */
+function NoSingle() {
+  return (
+    <Screen footer={<Button testID="to-single" title={T.single.title} onPress={() => router.replace('/single')} />}>
+      <Card>
+        <P>{T.single.noSave}</P>
+      </Card>
+    </Screen>
+  );
+}
+
+/** Заголовок своей больницы: в песочнице — «Своя больница», в кампании — глава. */
+function OwnTitle({ mode }: { mode: ShiftView['mode'] }) {
+  const c = useCampaign();
+  return <Stack.Screen options={{ title: mode === 'campaign' ? (c?.title ?? T.campaign.title) : T.sandbox.title }} />;
+}
+
+/** Кампания без сохранения в этом слоте — к списку карьер. */
+function NoCareer() {
+  return (
+    <Screen footer={<Button testID="to-campaign" title={T.campaign.title} onPress={() => router.replace('/campaign')} />}>
+      <Card>
+        <P>{T.campaign.careersHint}</P>
+      </Card>
+    </Screen>
+  );
+}
+
+/** Своя больница между сменами: план, касса, «Стройка»; смена в ней — следующая часть этапа. */
+function Evening({ v }: { v: ShiftView }) {
+  const t = T.sandbox;
+  const b = useBuild();
+  const c = useCampaign();
+  const { width } = useWindowDimensions();
+  if (!b) return null;
+  const w = Math.min(width, 640) - 32;
+  const h = Math.round((w * b.plan.grid.h) / b.plan.grid.w);
+  const labels = b.plan.rooms.map(r => ({ id: r.id, name: db.rooms[r.type].name.ru, x: r.x, y: r.y, w: r.w, down: b.problems[r.id].length > 0 }));
+  return (
+    <Screen footer={<Button testID="sandbox-build" title={t.build} hint={t.buildHint} onPress={() => router.push('/sandbox/build')} />}>
+      <Stack.Screen options={{ title: v.mode === 'campaign' ? (c?.title ?? T.campaign.title) : t.title }} />
+      {v.mode === 'campaign' && c && <ChapterCard c={c} />}
+      <Card>
+        <H>{v.day === 0 ? t.beforeOpening : t.day(v.day)}</H>
+        <P testID="sandbox-summary">{`${t.cash(T.common.rub(v.cash ?? 0))} · ${t.rooms(b.plan.rooms.length)}`}</P>
+        <P muted testID="sandbox-reputation">{t.reputation(b.reputation)}</P>
+        <P muted testID="sandbox-level">{b.level}</P>
+      </Card>
+      <BuildMap testID="sandbox-plan" plan={b.plan} width={w} height={h} tool="look" labels={labels} label={t.mapLabel} still onGhostMove={() => undefined} onStroke={() => undefined} onTapCell={() => undefined} />
+      <OwnHospital />
+    </Screen>
+  );
+}
+
+/** Между сменами в песочнице: персонал, чего не хватает, «Открыть смену». */
+function OwnHospital({ next }: { next?: boolean }) {
+  const t = T.sandbox;
+  const b = useBuild();
+  if (!b) return null;
+  const ready = b.open.length === 0;
+  return (
+    <Card>
+      {next && <Button testID="sandbox-build-evening" kind="plain" title={t.build} hint={t.buildHint} onPress={() => router.push('/sandbox/build')} />}
+      <Button testID="sandbox-staff" kind="plain" title={t.staffTitle} hint={t.staffHint} onPress={() => router.push('/sandbox/staff')} />
+      {!next && <Button testID="sandbox-open" disabled={!ready} title={t.openShift} hint={ready ? t.openHint : undefined} onPress={nextDay} />}
+      {!ready && <P muted testID="sandbox-open-needs">{`${t.needToOpen} ${b.open.map(x => blockText(db, x)).join(', ')}`}</P>}
+    </Card>
+  );
 }
 
 /** Практики нет: что это и какая сложность (03-game-design.md §14); по умолчанию — «Студент». */
@@ -70,8 +160,9 @@ function Queue({ v }: { v: ShiftView }) {
   const t = T.shift;
   const { width } = useWindowDimensions();
   const [focused, setFocused] = useState(true);
-  // кого коснулись на карте; кого пригласили — он идёт в кабинет
+  // кого или какое помещение коснулись на карте; кого пригласили — он идёт в кабинет
   const [selected, setSelected] = useState<string>();
+  const [room, setRoom] = useState<string>();
   const [entering, setEntering] = useState<string>();
 
   // часы — только пока экран на виду: поверх него карта пациента или разбор
@@ -139,7 +230,7 @@ function Queue({ v }: { v: ShiftView }) {
   const map = (
     <>
       <ClinicMap
-        layout={CLINIC}
+        layout={v.layout ?? CLINIC}
         people={v.people}
         width={Math.min(width, 640)}
         active={focused}
@@ -148,8 +239,11 @@ function Queue({ v }: { v: ShiftView }) {
         awaiting={entering}
         onSelect={setSelected}
         onArrive={enter}
+        room={v.rooms && room ? room : undefined}
+        onRoom={v.rooms ? setRoom : undefined}
       />
       {who && selected !== undefined ? <WhoStrip who={who} onCall={who.callable ? () => call(selected) : undefined} /> : null}
+      {!who && room && v.rooms?.[room] ? <RoomStrip room={v.rooms[room]} /> : null}
     </>
   );
 
@@ -228,6 +322,17 @@ function WhoStrip({ who, onCall }: { who: WhoView; onCall?: () => void }) {
   );
 }
 
+/** Какого помещения коснулись на карте своей больницы: что это, работает ли, кто в нём и что там сейчас. */
+function RoomStrip({ room }: { room: RoomView }) {
+  return (
+    <View testID="map-room" style={styles.who}>
+      <Text style={styles.itemName} numberOfLines={1}>{room.title}</Text>
+      <Text testID="map-room-status" style={styles.itemMeta}>{room.status}</Text>
+      {room.lines.map((l, i) => <Text key={i} style={styles.itemText} numberOfLines={1}>{l}</Text>)}
+    </View>
+  );
+}
+
 function QueueItem({ r, disabled, onPress }: { r: QueueRow; disabled: boolean; onPress: () => void }) {
   return (
     <Pressable
@@ -251,12 +356,17 @@ function Summary({ v }: { v: ShiftView }) {
   const [confirm, setConfirm] = useState(false);
   const s = v.summary;
   if (!s) return null;
+  const own = v.mode === 'sandbox' || v.mode === 'campaign';
   const open = (id: string) => {
     openCase(id);
     router.push('/shift/outcome');
   };
+  const footer = v.mode === 'single'
+    ? <Button testID="single-again" title={T.single.again} onPress={() => router.replace('/single')} />
+    : <Button testID="shift-next-day" title={t.nextDay} onPress={nextDay} />;
   return (
-    <Screen footer={<Button testID="shift-next-day" title={t.nextDay} onPress={nextDay} />}>
+    <Screen footer={footer}>
+      {s.single && <SingleCard r={s.single} />}
       <Card>
         <H>{t.title(s.day)}</H>
         <P testID="summary-seen">{t.seen(s.seen, s.arrived)}</P>
@@ -266,8 +376,20 @@ function Summary({ v }: { v: ShiftView }) {
         {s.confidence !== undefined && <P>{t.confidence(s.confidence)}</P>}
         {s.seen > 0 && <P>{t.money(T.common.rub(s.money), T.common.rub(s.rationalMoney))}</P>}
         <P>{t.returns(s.returnsPlanned, s.returnsToday)}</P>
-        <P muted>{t.moneyNote}</P>
+        {!own && <P muted>{t.moneyNote}</P>}
       </Card>
+
+      {s.achievements.length > 0 && (
+        <Card testID="summary-achievements">
+          {s.achievements.map(a => <P key={a}>{T.profile.achievementLine(a)}</P>)}
+        </Card>
+      )}
+
+      {s.chapterDay && <CampaignDay d={s.chapterDay} />}
+
+      {s.cash && <Cash c={s.cash} />}
+
+      {own && <OwnHospital next />}
 
       {s.seen > 0 && <Grades s={s} />}
 
@@ -285,7 +407,7 @@ function Summary({ v }: { v: ShiftView }) {
         </Card>
       )}
 
-      <Button kind="plain" testID="shift-restart" title={t.restart} onPress={() => setConfirm(true)} />
+      {v.mode === 'shift' && <Button kind="plain" testID="shift-restart" title={t.restart} onPress={() => setConfirm(true)} />}
       <Sheet visible={confirm} onClose={() => setConfirm(false)} closeTitle={t.cancel} testID="restart-sheet">
         <P>{t.restartConfirm}</P>
         <Button testID="restart-yes" title={t.restartYes} onPress={() => {
@@ -294,6 +416,88 @@ function Summary({ v }: { v: ShiftView }) {
         }} />
       </Sheet>
     </Screen>
+  );
+}
+
+/** «Смена»: оценки по категориям, общая, кого приняли и сколько минут на приём, лучший здесь. */
+function SingleCard({ r }: { r: NonNullable<SummaryView['single']> }) {
+  const t = T.single;
+  return (
+    <Card testID="single-result">
+      <H>{t.resultTitle(r.venue)}</H>
+      {r.grades.length > 0 && (
+        <View style={styles.grades}>
+          {r.grades.map(g => (
+            <View key={g.key} style={styles.gradeCell}>
+              <Text testID={`single-${g.key}`} style={[styles.gradeLetter, gradeColor(g.grade)]}>{g.grade}</Text>
+              <Text style={styles.gradeName}>{g.label}</Text>
+            </View>
+          ))}
+          {r.overall && (
+            <View style={[styles.gradeCell, styles.gradeTotal]}>
+              <Text testID="single-overall" style={[styles.gradeLetter, gradeColor(r.overall)]}>{r.overall}</Text>
+              <Text style={styles.gradeName}>{t.overall}</Text>
+            </View>
+          )}
+        </View>
+      )}
+      {r.lines.map(l => <P key={l}>{l}</P>)}
+      {r.best && <P muted testID="single-best">{r.best}</P>}
+    </Card>
+  );
+}
+
+/** Кампания в итогах дня: что выполнено сегодня, сколько пришло писем, и вся глава. */
+function CampaignDay({ d }: { d: NonNullable<SummaryView['chapterDay']> }) {
+  const c = useCampaign();
+  return (
+    <>
+      {(d.done.length > 0 || d.letters > 0) && (
+        <Card testID="summary-campaign">
+          {d.done.map(x => <P key={x}>{T.campaign.todayDone(x)}</P>)}
+          {d.letters > 0 && <P muted>{T.campaign.todayLetters(d.letters)}</P>}
+        </Card>
+      )}
+      {c && <ChapterCard c={c} />}
+    </>
+  );
+}
+
+/** Песочница: касса за день и репутация — из чего сложились (spec 2026-09-own-hospital, часть 9). */
+function Cash({ c }: { c: CashView }) {
+  const t = T.sandbox;
+  return (
+    <>
+      <Card testID="summary-cash">
+        <H>{t.cashTitle}</H>
+        <Text style={styles.label}>{t.income}</Text>
+        {c.income.map(x => <Line key={x.key} testID={`cash-${x.key}`} title={x.title} sum={x.sum} />)}
+        {c.audit && <P muted testID="cash-audit">{c.audit.why ? `${c.audit.sum}: ${c.audit.why}` : c.audit.sum}</P>}
+        <P muted testID="cash-level">{c.level}</P>
+        <Text style={styles.label}>{t.expensesTitle}</Text>
+        {c.expenses.map(x => <Line key={x.key} title={x.title} sum={x.sum} />)}
+        <P testID="cash-net">{c.net}</P>
+        <P testID="cash-now">{c.cash}</P>
+        {c.debt && <P testID="cash-debt">{c.debt}</P>}
+      </Card>
+      <Card testID="summary-reputation">
+        <H>{t.repTitle}</H>
+        <P testID="rep-line">{c.reputation.line}</P>
+        {c.reputation.score && <P>{c.reputation.score}</P>}
+        {c.reputation.reasons.map(r => <Line key={r.key} title={r.text} sum={r.delta} />)}
+        <P muted>{c.reputation.hint}</P>
+      </Card>
+    </>
+  );
+}
+
+/** Строка кассы: название слева, сумма справа. */
+function Line({ title, sum, testID }: { title: string; sum: string; testID?: string }) {
+  return (
+    <View testID={testID} style={styles.line}>
+      <Text style={styles.lineTitle}>{title}</Text>
+      <Text style={styles.lineSum}>{sum}</Text>
+    </View>
   );
 }
 
@@ -326,5 +530,13 @@ const styles = StyleSheet.create({
   invite: { minHeight: touch, justifyContent: 'center', paddingHorizontal: space.l, borderRadius: radius, backgroundColor: colors.accent },
   inviteText: { fontSize: 15, fontWeight: '700', color: '#fff' },
   log: { fontSize: 14, lineHeight: 20, color: colors.ink },
+  line: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: space.m },
+  grades: { flexDirection: 'row', flexWrap: 'wrap', gap: space.s },
+  gradeCell: { width: '30%', minWidth: 90, alignItems: 'center', paddingVertical: space.s, borderRadius: radius, backgroundColor: colors.bg },
+  gradeTotal: { backgroundColor: colors.accentSoft },
+  gradeLetter: { fontSize: 24, fontWeight: '800' },
+  gradeName: { fontSize: 12, color: colors.muted, textAlign: 'center' },
+  lineTitle: { flexShrink: 1, fontSize: 15, lineHeight: 22, color: colors.ink },
+  lineSum: { fontSize: 15, lineHeight: 22, fontWeight: '600', color: colors.ink, fontVariant: ['tabular-nums'] },
   logRed: { color: colors.red, fontWeight: '600' },
 });

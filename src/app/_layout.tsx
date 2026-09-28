@@ -46,6 +46,7 @@ export default function RootLayout() {
           <Stack.Screen name="settings" options={{ title: T.settings.title }} />
           <Stack.Screen name="about" options={{ title: T.about.title }} />
           <Stack.Screen name="report" options={{ title: T.report.title }} />
+          <Stack.Screen name="transfer" options={{ title: T.transfer.title }} />
           <Stack.Screen name="sources" options={{ title: T.about.sourcesTitle }} />
           <Stack.Screen name="encyclopedia/index" options={{ title: T.encyclopedia.title }} />
           <Stack.Screen name="encyclopedia/[section]" options={{ title: T.encyclopedia.title }} />
@@ -61,8 +62,19 @@ export default function RootLayout() {
           <Stack.Screen name="shift/patient" options={{ title: T.spikes.patient.title }} />
           <Stack.Screen name="shift/decision" options={{ title: T.spikes.decision.title }} />
           <Stack.Screen name="shift/outcome" options={{ title: T.spikes.decision.outcomeTitle }} />
+          <Stack.Screen name="sandbox/build" options={{ title: T.sandbox.build, gestureEnabled: false }} />
+          <Stack.Screen name="sandbox/new" options={{ title: T.sandbox.title }} />
+          <Stack.Screen name="sandbox/staff" options={{ title: T.sandbox.staffTitle }} />
+          <Stack.Screen name="campaign/index" options={{ title: T.campaign.title }} />
+          <Stack.Screen name="quick" options={{ title: T.campaign.quick }} />
+          <Stack.Screen name="single" options={{ title: T.single.title }} />
+          <Stack.Screen name="daily/index" options={{ title: T.daily.title }} />
+          <Stack.Screen name="daily/patient" options={{ title: T.spikes.patient.title }} />
+          <Stack.Screen name="daily/decision" options={{ title: T.spikes.decision.title }} />
+          <Stack.Screen name="daily/outcome" options={{ title: T.spikes.decision.outcomeTitle }} />
           <Stack.Screen name="profile/index" options={{ title: T.profile.title }} />
           <Stack.Screen name="profile/doctor" options={{ title: T.profile.editTitle }} />
+          <Stack.Screen name="profile/achievements" options={{ title: T.profile.achievements }} />
           <Stack.Screen name="profile/case/[key]" options={{ title: T.spikes.decision.outcomeTitle }} />
         </Stack>
       </SafeAreaProvider>

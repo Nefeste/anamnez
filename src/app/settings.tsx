@@ -1,5 +1,5 @@
 // Настройки (03-game-design.md §12, spec 2026-09-first-shift): звук, вибрация, автопауза
-// смены, размер текста; «Сообщить об ошибке»; «Об игре»; прототипы первого этапа — ими на телефоне меряют отпечаток движка,
+// смены, размер текста; перенос на другой телефон; «Сообщить об ошибке»; «Об игре»; прототипы первого этапа — ими на телефоне меряют отпечаток движка,
 // кадры карты и запись сохранения.
 import { type Href, router } from 'expo-router';
 import { useEffect } from 'react';
@@ -63,6 +63,7 @@ export default function SettingsScreen() {
           items={t.textSizes.map((title, i) => ({ key: String(i) as Size, title }))}
         />
       </Card>
+      <Button testID="settings-transfer" kind="plain" title={T.transfer.title} hint={T.transfer.menuHint} onPress={() => router.push('/transfer')} />
       <Button testID="settings-report" kind="plain" title={t.report} hint={t.reportHint} onPress={() => router.push('/report')} />
       <Button testID="settings-about" kind="plain" title={t.about} hint={t.aboutHint} onPress={() => router.push('/about')} />
       <H>{t.checks}</H>

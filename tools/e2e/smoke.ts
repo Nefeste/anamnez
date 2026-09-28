@@ -4,7 +4,7 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import { chromium, type Page } from 'playwright';
 import { clinicLayout } from '../../src/engine/hospital/clinic';
-import { apply, newShift } from '../../src/engine/shift/engine';
+import { apply, newSandbox, newShift, newSingle } from '../../src/engine/shift/engine';
 import { SHIFT_SCHEMA_VERSION } from '../../src/engine/shift/types';
 import { buildDb } from '../content/load';
 
@@ -13,7 +13,9 @@ const DIST = join(ROOT, 'dist-web');
 const OUT = join(import.meta.dir, 'out');
 const golden = JSON.parse(readFileSync(join(ROOT, 'tools/test/fixtures/golden.json'), 'utf8'));
 /** План амбулатории — тот же, что рисует карта смены: куда касаться. */
-const CLINIC = clinicLayout();
+const CLINIC = clinicLayout(buildDb().db);
+/** Участок песочницы — в клетках: куда касаться на экране стройки. */
+const sandboxPlot = buildDb().db.economy.sandbox.plot;
 mkdirSync(OUT, { recursive: true });
 
 const TYPES: Record<string, string> = { '.html': 'text/html', '.js': 'text/javascript', '.wasm': 'application/wasm', '.json': 'application/json', '.png': 'image/png', '.wav': 'audio/wav', '.ttf': 'font/ttf' };
@@ -71,6 +73,49 @@ function endOfDaySave(): string {
   return JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s });
 }
 
+/** «Смена» в амбулатории посёлка в конце дня: все приняты — «Закрыть день». Записана «позже всех» — её берёт «Продолжить». */
+function singleEndOfDaySave(): string {
+  const { db } = buildDb();
+  const s = newSingle(db, { seed: 44, season: 'winter', difficulty: 'student', venue: 'preset.village' });
+  const see = () => {
+    apply(db, s, { kind: 'call', id: s.queue[0] });
+    apply(db, s, { kind: 'exam', exam: 'exam.ask_complaints' });
+    apply(db, s, { kind: 'diagnose', id: 'cond.arvi' });
+    apply(db, s, { kind: 'finish' });
+  };
+  apply(db, s, { kind: 'advance', seconds: 3600 });
+  for (let i = 0; i < 2 && s.queue.length > 0; i++) see();
+  apply(db, s, { kind: 'advance', seconds: 6 * 3600 });
+  while (s.queue.length > 0) see();
+  return JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: '9999-12-31T00:00:00.000Z', data: s });
+}
+
+/** Песочница с готовой амбулаторией в конце дня 1: все приняты — «Закрыть день». */
+function sandboxEndOfDaySave(): string {
+  const { db } = buildDb();
+  const s = newSandbox(db, { seed: 43, season: 'winter', difficulty: 'doctor', start: 'clinic', budget: db.economy.sandbox.budgets.normal });
+  apply(db, s, { kind: 'nextDay' });
+  const see = () => {
+    apply(db, s, { kind: 'call', id: s.queue[0] });
+    apply(db, s, { kind: 'exam', exam: 'exam.ask_complaints' });
+    apply(db, s, { kind: 'diagnose', id: 'cond.arvi' });
+    apply(db, s, { kind: 'toggleTreatment', id: 'tx.rest_fluids' });
+    apply(db, s, { kind: 'finish' });
+  };
+  apply(db, s, { kind: 'advance', seconds: 3600 });
+  for (let i = 0; i < 2 && s.queue.length > 0; i++) see();
+  apply(db, s, { kind: 'advance', seconds: 6 * 3600 });
+  while (s.queue.length > 0) see();
+  return JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s });
+}
+
+/** Песочница до открытия: готовая амбулатория, бюджет «обычный» — экран «Перед открытием». */
+function sandboxFreshSave(): string {
+  const { db } = buildDb();
+  const s = newSandbox(db, { seed: 5, season: 'winter', difficulty: 'student', start: 'clinic', budget: db.economy.sandbox.budgets.normal });
+  return JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s });
+}
+
 const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2 });
 const errors: string[] = [];
@@ -82,7 +127,7 @@ try {
   await page.goto(base);
   await page.getByTestId('accept-disclaimer').waitFor({ timeout: 30_000 });
   await page.screenshot({ path: join(OUT, '01-disclaimer.png') });
-  check((await page.getByTestId('menu-shift').count()) === 0, 'первый запуск: оговорка — до меню');
+  check((await page.getByTestId('menu-quick').count()) === 0, 'первый запуск: оговорка — до меню');
   await page.getByTestId('accept-disclaimer').click();
   // потом — имя и пол врача: имя уже подставлено, пол меняет подсказанное имя
   await page.getByTestId('doctor-first').waitFor({ timeout: 5000 });
@@ -99,9 +144,9 @@ try {
   await page.getByTestId('menu-settings').waitFor({ timeout: 5000 });
   check((await text(page, 'menu-profile')).includes('Анна Петрова'), `меню: профиль — «${(await text(page, 'menu-profile')).replace(/\n/g, ' · ')}»`);
   await page.screenshot({ path: join(OUT, '01-menu.png') });
-  check(await page.getByTestId('menu-campaign').isDisabled(), 'меню: практика, настройки; кампания — «скоро»');
+  check(!(await page.getByTestId('menu-campaign').isDisabled()) && await page.getByTestId('menu-quick').isVisible(), 'меню: кампания, быстрая игра, энциклопедия, профиль, настройки');
   await page.goto(base);
-  await page.getByTestId('menu-shift').waitFor({ timeout: 30_000 });
+  await page.getByTestId('menu-quick').waitFor({ timeout: 30_000 });
   check((await page.getByTestId('accept-disclaimer').count()) === 0, 'оговорка — только при первом запуске');
 
   // настройки сохраняются; «Об игре» — версия, оговорка, почта, источники базы
@@ -161,6 +206,22 @@ try {
   await visible(page, 'enc-block-confirms').waitFor({ timeout: 5000 });
   check((await visibleText(page, 'enc-article-title')) === 'Рентгенография органов грудной клетки' && (await visible(page, 'enc-link-cond.pneumonia_cap').count()) > 0,
     'энциклопедия: ссылка ведёт в статью обследования, а оттуда — обратно к болезни');
+  // больница: у обследования — где делают; у помещения — что здесь делают и что нужно
+  await visible(page, 'enc-link-room.xray').first().click();
+  await visible(page, 'enc-block-needs').waitFor({ timeout: 5000 });
+  check((await visibleText(page, 'enc-article-title')) === 'Рентген-кабинет' && (await visible(page, 'enc-link-role.radiologist').count()) > 0
+    && (await visible(page, 'enc-link-eq.xray_digital').count()) > 0, 'энциклопедия: из обследования — в помещение, где его делают: кто нужен и какие аппараты');
+  await page.screenshot({ path: join(OUT, '11-room.png'), fullPage: true });
+  await page.goto(`${base}/encyclopedia`);
+  await page.getByTestId('enc-section-hospital').click();
+  await visible(page, 'enc-item-eq.immuno_analyzer').waitFor({ timeout: 5000 });
+  check((await visible(page, 'enc-item-room.lab').count()) > 0 && (await visible(page, 'enc-item-role.lab_tech').count()) > 0,
+    'энциклопедия: раздел «Больница» — помещения, аппараты, должности');
+  await page.goto(`${base}/encyclopedia`);
+  await page.getByTestId('enc-section-tips').click();
+  await visible(page, 'enc-item-tip.strep').click();
+  await visible(page, 'enc-link-exam.strep_rapid').waitFor({ timeout: 5000 });
+  check((await visibleText(page, 'enc-article-title')) === 'Горло и антибиотик', 'энциклопедия: раздел «Подсказки» — совет наставника со ссылкой на экспресс-тест');
   await page.goto(`${base}/encyclopedia`);
   await page.getByTestId('enc-search').fill('подъем сегмента');
   await page.getByTestId('enc-item-ecg.st_elevation').waitFor({ timeout: 5000 });
@@ -284,6 +345,7 @@ try {
 
   // Этап 2: смена — часы на карте, приём, «отпустить ждать результатов», итог, продолжение
   await page.goto(base);
+  await page.getByTestId('menu-quick').click();
   await page.getByTestId('menu-shift').click();
   await page.getByTestId('shift-start').waitFor({ timeout: 15_000 });
   // сложность выбирают при начале практики; по умолчанию — «Студент» с подсказками
@@ -309,11 +371,12 @@ try {
   await page.getByTestId('map-who').waitFor({ timeout: 5_000 });
   const nurseWho = await text(page, 'map-who');
   check(nurseWho.includes('Медсестра доврачебного кабинета') && nurseWho.includes('давление'), `смена: касание на карте — «${nurseWho.replace(/\n/g, ' · ')}»`);
-  // первый пришедший доходит до стойки, до медсестры и садится в зале — тогда его и касаемся
+  // первые пришедшие доходят до стойки, до медсестры и садятся в зале — тогда их и касаемся;
+  // на какой стул сел первый, зависит от зерна смены: перебираем стулья по кругу
   let seatedWho = '';
-  for (let i = 0; i < 50 && !seatedWho.includes('Ждёт приёма'); i++) {
-    await tapCell(CLINIC.seats[0]);
-    await page.waitForTimeout(400);
+  for (let i = 0; i < 120 && !seatedWho.includes('Ждёт приёма'); i++) {
+    await tapCell(CLINIC.seats[i % CLINIC.seats.length]);
+    await page.waitForTimeout(200);
     seatedWho = (await page.getByTestId('map-who').count()) > 0 ? await text(page, 'map-who') : '';
   }
   check(seatedWho.includes('Ждёт приёма') && (await page.getByTestId('map-invite').isVisible()), `смена: коснулись ждущего в зале — «${seatedWho.replace(/\n/g, ' · ')}»`);
@@ -348,6 +411,8 @@ try {
   await page.getByTestId('visit-finish').click();
   await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
   check((await text(page, 'visit-outcome')).includes('итогах следующих дней'), 'смена: исход «домой» — в итогах следующих дней');
+  const gotNow = (await text(page, 'visit-achievements')).split('\n');
+  check(gotNow.includes('Достижение: «Первый пациент»'), `смена: первый приём — на итоге ${gotNow.join(' · ')}`);
   await page.screenshot({ path: join(OUT, '08-shift-outcome.png') });
   await page.getByTestId('shift-to-queue').click();
   await page.getByTestId('shift-counts').waitFor({ timeout: 10_000 });
@@ -370,18 +435,337 @@ try {
   await visible(page, 'enc-practice').waitFor({ timeout: 10_000 });
   const practice = await visibleText(page, 'enc-practice');
   check(practice.startsWith('Встречалось в вашей практике: 1'), `энциклопедия: «${practice}»`);
+  // достижения: у полученного — дата, у остальных — что нужно сделать
+  await page.goto(`${base}/profile`);
+  await page.getByTestId('profile-achievements').click();
+  await page.getByTestId('achievements-count').waitFor({ timeout: 5000 });
+  check((await text(page, 'achievement-ach.first_patient')).includes('Получено ') && (await text(page, 'achievement-ach.run_5')).includes('Поставить пять верных'),
+    `профиль: достижения — ${await text(page, 'achievements-count')}, «Первый пациент» получено`);
+  await page.screenshot({ path: join(OUT, '09-achievements.png'), fullPage: true });
   await page.goto(base);
+  await page.getByTestId('menu-quick').click();
   await page.getByTestId('menu-shift').waitFor({ timeout: 10_000 });
   // начать заново — только после вопроса: сохранение одно
   await page.getByTestId('menu-shift').click();
   await page.getByTestId('restart-sheet').waitFor({ timeout: 5000 });
   await page.getByTestId('restart-sheet-close').click();
   await page.getByTestId('restart-sheet').waitFor({ state: 'detached', timeout: 5000 });
-  check(await page.getByTestId('menu-continue').isVisible(), 'меню: «Отмена» — практика на месте');
+  check((await text(page, 'menu-shift')).includes('продолжить или начать заново'), 'быстрая игра: «Отмена» — практика на месте');
   await page.getByTestId('menu-shift').click();
   await page.getByTestId('restart-confirm').click();
   await page.getByTestId('shift-clock').waitFor({ timeout: 10_000 });
   check((await text(page, 'shift-clock')) === '08:00' && (await text(page, 'shift-counts')).startsWith('Принято: 0'), 'меню: «Начать заново» — день 1, 08:00');
+
+  // песочница: пустой участок → регистратура (призрак тянут пальцем) → коридор кистью → отмена
+  // и снова → карточка помещения → «Готово»; в меню «Продолжить» — песочница
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('sandbox-start').waitFor({ timeout: 10_000 });
+  await page.getByTestId('sandbox-budget-generous').click();
+  check((await text(page, 'sandbox-cash')) === 'Касса: 2\u00a0500\u00a0000\u00a0₽', `песочница: щедрый бюджет — ${await text(page, 'sandbox-cash')}`);
+  await page.getByTestId('sandbox-budget-normal').click();
+  await page.getByTestId('sandbox-start').click();
+  await page.getByTestId('sandbox-build').waitFor({ timeout: 10_000 });
+  check((await text(page, 'sandbox-open-needs')).includes('Регистратура, Зона ожидания, Кабинет врача'), `песочница: перед открытием — ${await text(page, 'sandbox-open-needs')}`);
+  await page.getByTestId('sandbox-build').click();
+  await page.getByTestId('build-map').waitFor({ timeout: 10_000 });
+  await page.waitForTimeout(500);
+  const [plotW, plotH] = sandboxPlot;
+  // где на экране клетка: масштаб — «весь участок на экране»; сдвиг — по подписи построенного
+  // помещения (панель снизу меняет высоту карты, а камера стоит), пока его нет — участок по центру
+  let anchor: { id: string; x: number; y: number } | undefined;
+  const cellPoint = async (x: number, y: number) => {
+    const box = (await page.getByTestId('build-map').boundingBox())!;
+    const z = Math.min(box.width / (plotW * 16), box.height / (plotH * 16));
+    const c = 16 * z;
+    const label = anchor ? await page.getByTestId('build-map').getByTestId(`label-${anchor.id}`).boundingBox() : null;
+    if (anchor && label) return { x: label.x + (x - anchor.x - 1 + 0.5) * c, y: label.y + (y - anchor.y - 1 + 0.5) * c };
+    return { x: box.x + (box.width - plotW * c) / 2 + (x + 0.5) * c, y: box.y + (box.height - plotH * c) / 2 + (y + 0.5) * c };
+  };
+  const drag = async (cells: [number, number][]) => {
+    const a = await cellPoint(...cells[0]);
+    await page.mouse.move(a.x, a.y);
+    await page.mouse.down();
+    for (const c of cells.slice(1)) {
+      const b = await cellPoint(...c);
+      await page.mouse.move(b.x, b.y, { steps: 14 });
+    }
+    // палец задерживается на месте: последнее движение успевает дойти до жеста раньше, чем его отпустили
+    await page.waitForTimeout(150);
+    await page.mouse.up();
+    await page.waitForTimeout(400);
+  };
+  const cash0 = await text(page, 'build-cash');
+  await page.getByTestId('build-tool-room').click();
+  await page.getByTestId('room-type-room.reception').click();
+  await page.getByTestId('build-place').waitFor({ timeout: 5000 });
+  // призрак — посреди участка (17, 10); тянем на пять клеток влево
+  await drag([[19, 13], [14, 13]]);
+  await page.screenshot({ path: join(OUT, '12-build-ghost.png') });
+  await page.getByTestId('build-place').click();
+  await page.getByTestId('build-tool-corridor').waitFor({ timeout: 5000 });
+  anchor = { id: 'r1', x: 12, y: 10 };
+  const cash1 = await text(page, 'build-cash');
+  check(cash1 !== cash0 && (await page.getByTestId('build-undo').innerText()).includes('(1)'), `стройка: регистратура построена — ${cash0} → ${cash1}`);
+  await page.getByTestId('build-tool-corridor').click();
+  const corridor: [number, number][] = [[4, 13], [4, 17], [34, 17]];
+  await drag(corridor);
+  const cash2 = await text(page, 'build-cash');
+  check(cash2 !== cash1 && (await page.getByTestId('build-undo').innerText()).includes('(2)'), `стройка: коридор кистью — ${cash1} → ${cash2}`);
+  await page.getByTestId('build-undo').click();
+  check((await text(page, 'build-cash')) === cash1, 'стройка: «Отменить» — коридора нет, деньги вернулись полностью');
+  await drag(corridor);
+  await page.getByTestId('build-tool-done').click();
+  await page.screenshot({ path: join(OUT, '12-build.png') });
+  const reception = await cellPoint(14, 12);
+  await page.mouse.click(reception.x, reception.y);
+  await page.getByTestId('room-status').waitFor({ timeout: 5000 });
+  check((await text(page, 'room-status')) === 'Не работает: нет регистратора', `стройка: карточка регистратуры — ${await text(page, 'room-status')}`);
+  await page.getByTestId('room-card-close').click();
+  await page.getByTestId('build-done').click();
+  await page.getByTestId('sandbox-open-needs').waitFor({ timeout: 5000 });
+  check((await text(page, 'sandbox-open-needs')).includes('Регистратура: нет регистратора, Зона ожидания, Кабинет врача'),
+    `песочница: регистратура есть, регистратора нет — ${await text(page, 'sandbox-open-needs')}`);
+  // персонал: кандидат-регистратор → нанять → назначить в регистратуру
+  await page.getByTestId('sandbox-staff').click();
+  await page.locator('[data-testid^="candidate-"]').first().waitFor({ timeout: 5000 });
+  const registrar = page.locator('[data-testid^="candidate-"]', { hasText: 'Регистратор' }).first();
+  await registrar.click();
+  await page.getByTestId('assign-r1').click();
+  const hiredText = await page.locator('[data-testid^="staff-s"]').first().innerText();
+  check(hiredText.includes('работает: регистратура'), `персонал: нанят и назначен — ${hiredText.replace(/\n/g, ' · ')}`);
+  await page.goBack();
+  await page.getByTestId('sandbox-open-needs').waitFor({ timeout: 5000 });
+  check(!(await text(page, 'sandbox-open-needs')).includes('Регистратура') && await page.getByTestId('sandbox-open').isDisabled(), 'песочница: регистратор на месте, но без зоны ожидания и кабинета смену не открыть');
+  // зона ожидания и кабинет врача вдоль коридора — смену можно открыть; принять пациента,
+  // дожить до конца дня и закрыть его — в итогах касса (spec 2026-09-own-hospital, приёмка 5)
+  await page.getByTestId('sandbox-build').click();
+  await page.getByTestId('build-map').waitFor({ timeout: 10_000 });
+  await page.waitForTimeout(500);
+  // где призрак — из подписи карты для чтения с экрана: «…: клетка 16, 10 — здесь нельзя»
+  const ghostAt = async () => {
+    const m = /клетка (\d+), (\d+)/.exec((await page.getByTestId('build-map').getAttribute('aria-label')) ?? '');
+    return m ? [Number(m[1]), Number(m[2])] as [number, number] : undefined;
+  };
+  // тянем призрак за клетку внутри него, пока он не встанет куда нужно (жест в вебе может
+  // отстать на клетку — тогда ещё раз с того места, где он оказался)
+  const placeRoom = async (type: string, size: string, target: [number, number]) => {
+    await page.getByTestId('build-tool-room').click();
+    await page.getByTestId(`room-type-${type}`).click();
+    const sized = page.getByTestId(`room-size-${size}`);
+    if ((await sized.count()) > 0) await sized.click();
+    await page.getByTestId('build-place').waitFor({ timeout: 5000 });
+    for (let i = 0; i < 4; i++) {
+      const at = await ghostAt();
+      if (!at || (at[0] === target[0] && at[1] === target[1])) break;
+      const grip: [number, number] = [at[0] + 2, at[1] + 2];
+      await drag([grip, [grip[0] + target[0] - at[0], grip[1] + target[1] - at[1]]]);
+    }
+    check(JSON.stringify(await ghostAt()) === JSON.stringify(target), `стройка: ${type} — призрак в клетке ${target.join(', ')}`);
+    await page.getByTestId('build-place').click();
+    await page.getByTestId('build-tool-corridor').waitFor({ timeout: 5000 });
+  };
+  // над коридором, правее регистратуры: зона ожидания M и кабинет врача
+  await placeRoom('room.waiting', 'M', [18, 10]);
+  await placeRoom('room.office', 'M', [27, 10]);
+  await page.getByTestId('build-done').click();
+  await page.getByTestId('sandbox-open').waitFor({ timeout: 5000 });
+  check(!(await page.getByTestId('sandbox-open').isDisabled()), 'песочница: регистратура, зона ожидания и кабинет у коридора, регистратор на месте — смену можно открыть');
+  await page.getByTestId('sandbox-open').click();
+  await page.getByTestId('shift-skip').click();
+  await page.getByTestId('shift-call').waitFor({ timeout: 5000 });
+  await page.getByTestId('shift-call').click();
+  await page.getByTestId('exam-exam.ask_complaints').waitFor({ timeout: 10_000 });
+  await page.getByTestId('exam-exam.ask_complaints').click();
+  await page.getByTestId('visit-decide').click();
+  await page.locator('[data-testid^="hint-"]').first().click();
+  await page.getByTestId('decision-to-plan').click();
+  await page.getByTestId('setting-home').click();
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-payment').waitFor({ timeout: 10_000 });
+  await page.getByTestId('shift-to-queue').click();
+  await page.getByTestId('tab-x4').click();
+  const closable = page.locator('[data-testid="shift-close-day-early"], [data-testid="shift-close-day"]');
+  check(await runClockUntil(page, async () => (await closable.count()) > 0, 180_000), 'песочница: смена дожита до конца дня');
+  await closable.first().click();
+  await page.getByTestId('summary-cash').waitFor({ timeout: 10_000 });
+  check((await text(page, 'summary-seen')).startsWith('Принято: 1 из'), `песочница с пустого участка, итоги дня: ${await text(page, 'summary-seen')}`);
+  check((await text(page, 'cash-now')).startsWith('В кассе: ') && (await page.getByTestId('cash-oms').count()) + (await page.getByTestId('cash-dms').count()) + (await page.getByTestId('cash-self').count()) === 1,
+    `песочница с пустого участка, касса: ${await text(page, 'cash-now')}`);
+  await page.goto(base);
+  await page.getByTestId('menu-continue').waitFor({ timeout: 10_000 });
+  check((await text(page, 'menu-continue')).includes('песочница: день 1'), `меню: «Продолжить» — последняя партия: ${(await text(page, 'menu-continue')).replace(/\n/g, ' · ')}`);
+
+  // песочница заново — с готовой амбулаторией: штат на местах; продали иммунохимический
+  // анализатор — ТТГ в карте пациента серым с причиной; «Открыть смену» — день 1 на своём плане
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-confirm').click();
+  await page.getByTestId('sandbox-from-clinic').click();
+  await page.getByTestId('sandbox-start').click();
+  await page.getByTestId('sandbox-build').waitFor({ timeout: 10_000 });
+  await page.getByTestId('sandbox-build').click();
+  await page.getByTestId('build-map').waitFor({ timeout: 10_000 });
+  await page.waitForTimeout(500);
+  anchor = undefined; // другая песочница: участок снова по центру
+  const lab = await cellPoint(25, 3);
+  await page.mouse.click(lab.x, lab.y);
+  await page.getByTestId('room-sell-3').click();
+  await page.getByTestId('room-card-close').click();
+  await page.getByTestId('build-done').click();
+  await page.getByTestId('sandbox-open').waitFor({ timeout: 5000 });
+  await page.getByTestId('sandbox-open').click();
+  await page.getByTestId('shift-skip').click();
+  await page.getByTestId('shift-call').waitFor({ timeout: 5000 });
+  check(await page.getByTestId('clinic-map').isVisible(), 'песочница: смена открыта — карта своей больницы');
+  // касание помещения мимо людей — что это, работает ли, кто в нём (план тот же, что в практике)
+  const ownMap = page.getByTestId('clinic-map');
+  const ownCell = ((await ownMap.boundingBox())?.width ?? 0) / CLINIC.grid.w;
+  const labRoom = CLINIC.rooms.find(r => r.type === 'lab')!;
+  const tech = CLINIC.staff.find(x => x.role === 'labTech')!.cell;
+  const far: [number, number] = [tech[0] - labRoom.x < labRoom.w / 2 ? labRoom.x + labRoom.w - 2 : labRoom.x + 1, tech[1] - labRoom.y < labRoom.h / 2 ? labRoom.y + labRoom.h - 2 : labRoom.y + 1];
+  await ownMap.click({ position: { x: (far[0] + 0.5) * ownCell, y: (far[1] + 0.5) * ownCell } });
+  await page.getByTestId('map-room').waitFor({ timeout: 5_000 });
+  const labText = await text(page, 'map-room');
+  check(labText.startsWith('Лаборатория') && labText.includes('Работает') && labText.includes('Лаборант: '), `песочница: касание помещения — «${labText.replace(/\n/g, ' · ')}»`);
+  await page.screenshot({ path: join(OUT, '13-sandbox-room.png') });
+  await page.getByTestId('shift-call').click();
+  await page.getByTestId('exam-exam.ask_complaints').waitFor({ timeout: 10_000 });
+  await page.getByTestId('tab-order').click();
+  const tsh = page.getByTestId('exam-exam.tsh');
+  await tsh.waitFor({ timeout: 5000 });
+  check(await tsh.isDisabled() && (await tsh.innerText()).includes('нет иммунохимического анализатора'), `песочница: ТТГ — «${(await tsh.innerText()).replace(/\n/g, ' · ')}»`);
+  check(!(await page.getByTestId('exam-exam.cbc').isDisabled()), 'песочница: общий анализ крови — можно');
+  await page.screenshot({ path: join(OUT, '13-sandbox-card.png') });
+  check(/^(ОМС|ДМС|Платно): /.test(await visibleText(page, 'visit-payer')), `песочница: кто платит — ${await visibleText(page, 'visit-payer')}`);
+
+  // конец дня в песочнице из сохранения: итоги — касса по плательщикам и статьям, репутация;
+  // у приёма — оплата после экспертизы
+  // сначала — в меню: живой партии в памяти нет, её сохранение уже на диске; потом подменить его
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', sandboxEndOfDaySave()]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId('shift-close-day').waitFor({ timeout: 15_000 });
+  await page.getByTestId('shift-close-day').click();
+  await page.getByTestId('summary-cash').waitFor({ timeout: 10_000 });
+  check((await text(page, 'cash-now')).startsWith('В кассе: '), `песочница, итоги дня: ${await text(page, 'cash-now')}`);
+  check(/^Итог дня: [+−]?\d/.test(await text(page, 'cash-net')), `песочница, итоги дня: ${await text(page, 'cash-net')}`);
+  check(/^Репутация: \d+ → \d+$/.test(await text(page, 'rep-line')), `песочница, итоги дня: ${await text(page, 'rep-line')}`);
+  await page.waitForTimeout(1500); // лист меню «Продолжить» ещё уезжает вниз (веб)
+  await page.screenshot({ path: join(OUT, '14-sandbox-summary.png'), fullPage: true });
+  await page.locator('[data-testid^="case-"]').first().click();
+  await page.getByTestId('visit-payment').waitFor({ timeout: 10_000 });
+  check(/^оплата\n(омс|дмс|платно): \d/i.test(await text(page, 'visit-payment')), `песочница, итог приёма: ${(await text(page, 'visit-payment')).replace(/\n/g, ' · ')}`);
+
+  // кампания: карьера 1 → глава 1 — письма и задания; письмо наставника; смена открывается;
+  // «Продолжить» в меню — карьера (spec 2026-09-campaign)
+  await page.goto(base);
+  await page.getByTestId('menu-campaign').click();
+  await page.getByTestId('career-1').waitFor({ timeout: 10_000 });
+  await page.getByTestId('career-1').click();
+  await page.getByTestId('career-begin').click();
+  await page.getByTestId('chapter').waitFor({ timeout: 10_000 });
+  check((await text(page, 'chapter')).startsWith('Глава 1. Участок') && (await page.locator('[data-testid^="mission-"]').count()) === 5,
+    `кампания: глава 1 — ${(await text(page, 'chapter-day'))}, заданий ${await page.locator('[data-testid^="mission-"]').count()}`);
+  await page.getByTestId('letter-hello').click();
+  await page.getByTestId('letter-text').waitFor({ timeout: 5000 });
+  check((await text(page, 'letter-text')).startsWith('Здравствуйте, коллега'), 'кампания: письмо наставника');
+  await page.screenshot({ path: join(OUT, '15-campaign-letter.png') });
+  await page.getByTestId('letter-sheet-close').click();
+  await page.getByTestId('letter-sheet').waitFor({ state: 'detached', timeout: 5000 });
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(OUT, '15-campaign-chapter.png'), fullPage: true });
+  await page.getByTestId('sandbox-open').click();
+  await page.getByTestId('shift-skip').click();
+  await page.getByTestId('shift-call').waitFor({ timeout: 5000 });
+  check(await page.getByTestId('clinic-map').isVisible(), 'кампания: смена в амбулатории посёлка');
+  // первая смена главы — с наставником: подсказки по одной, в первой — «Без подсказок»
+  const gotIt = async () => {
+    await page.getByTestId('tip-sheet-close').click();
+    await page.getByTestId('tip-sheet').waitFor({ state: 'detached', timeout: 5000 });
+  };
+  await page.getByTestId('shift-call').click();
+  await page.getByTestId('tip-text').waitFor({ timeout: 15_000 });
+  check((await text(page, 'tip-text')).startsWith('Начните с жалоб') && await page.getByTestId('tip-off').isVisible(),
+    'кампания: карта открылась — подсказка наставника «Сначала — расспрос», в первой — «Без подсказок»');
+  await page.waitForTimeout(700);
+  await page.screenshot({ path: join(OUT, '16-campaign-tip.png') });
+  await gotIt();
+  await page.getByTestId('exam-exam.ask_onset').click();
+  // у пациентки с циститом или пациента с ангиной после первого вопроса — своя подсказка
+  await page.waitForTimeout(700);
+  if (await page.getByTestId('tip-sheet').count()) await gotIt();
+  await page.getByTestId('exam-exam.ask_general').click();
+  await page.getByTestId('tip-text').waitFor({ timeout: 5000 });
+  check((await text(page, 'tip-text')).startsWith('Расспросили — осмотрите') && (await page.getByTestId('tip-off').count()) === 0,
+    'кампания: два вопроса без осмотра — «Теперь — осмотр»');
+  await gotIt();
+  await page.getByTestId('visit-decide').click();
+  await page.getByTestId('tip-text').waitFor({ timeout: 5000 });
+  check((await text(page, 'tip-text')).startsWith('Решение — в два шага'), 'кампания: первое «Решение» — подсказка');
+  await gotIt();
+  await page.locator('[data-testid^="hint-"]').first().click();
+  await page.getByTestId('decision-to-plan').click();
+  await page.getByTestId('setting-home').click();
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('tip-text').waitFor({ timeout: 10_000 });
+  check((await text(page, 'tip-text')).startsWith('Сравните свой путь'), 'кампания: первый разбор — подсказка');
+  await gotIt();
+  check(await page.getByTestId('visit-truth').isVisible(), 'кампания: подсказка закрыта — итог приёма на месте');
+  await page.goto(base);
+  await page.getByTestId('menu-continue').waitFor({ timeout: 10_000 });
+  check((await text(page, 'menu-continue')).includes('Карьера 1: Глава 1. Участок'), `меню: «Продолжить» — ${(await text(page, 'menu-continue')).replace(/\n/g, ' · ')}`);
+
+  // «Случай дня»: последние 30 дней, приём, разбор, отметка в списке (spec 2026-09-campaign, часть 14)
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-daily').click();
+  await page.getByTestId('daily-base').waitFor({ timeout: 10_000 });
+  const days = page.locator('[data-testid^="daily-20"]');
+  const today = days.first();
+  check((await days.count()) === 30 && (await today.innerText()).startsWith('Сегодня'), `случай дня: последние ${await days.count()} дней, сегодня первым`);
+  await today.click();
+  await page.getByTestId('exam-exam.ask_complaints').waitFor({ timeout: 10_000 });
+  await page.getByTestId('exam-exam.ask_complaints').click();
+  await page.getByTestId('visit-decide').click();
+  await page.locator('[data-testid^="hint-"]').first().click();
+  await page.getByTestId('decision-to-plan').click();
+  await page.getByTestId('setting-home').click();
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
+  check((await text(page, 'visit-truth')).startsWith('На самом деле:'), `случай дня: разбор — ${await text(page, 'visit-truth')}`);
+  await page.getByTestId('daily-to-list').click();
+  await page.getByTestId('daily-base').waitFor({ timeout: 10_000 });
+  check((await today.innerText()).includes('Сыгран: '), `случай дня: в списке — ${(await today.innerText()).replace(/\n/g, ' · ')}`);
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(OUT, '17-daily.png') });
+
+  // «Смена»: больница главы открыта (карьера есть), своя — есть песочница; смена в посёлке из
+  // сохранения в конце дня — «Продолжить», закрыть день, итог по категориям, лучший результат
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-single').click();
+  await page.getByTestId('venue-preset.clinic').waitFor({ timeout: 10_000 });
+  check(!(await page.getByTestId('venue-preset.village').isDisabled()) && (await page.locator('[data-testid^="venue-"]').count()) === 3,
+    `смена: больницы — практика, посёлок, своя (${(await text(page, 'venue-sandbox')).replace(/\n/g, ' · ')})`);
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/single.json', singleEndOfDaySave()]);
+  await page.goto(base);
+  await page.getByTestId('menu-continue').waitFor({ timeout: 10_000 });
+  check((await text(page, 'menu-continue')).includes('смена: Амбулатория в посёлке'), `меню: «Продолжить» — ${(await text(page, 'menu-continue')).replace(/\n/g, ' · ')}`);
+  await page.getByTestId('menu-continue').click();
+  await page.getByTestId('shift-close-day').waitFor({ timeout: 15_000 });
+  await page.getByTestId('shift-close-day').click();
+  await page.getByTestId('single-result').waitFor({ timeout: 10_000 });
+  check((await page.getByTestId('single-accuracy').count()) === 1 && (await page.getByTestId('single-speed').count()) === 1 && /^[ABCD]$/.test(await text(page, 'single-overall'))
+    && (await text(page, 'single-best')) === 'Лучший результат в этой больнице.', `смена: итог — ${(await text(page, 'single-result')).replace(/\n/g, ' · ')}`);
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(OUT, '18-single.png'), fullPage: true });
+  check(await page.getByTestId('single-again').isVisible() && (await page.getByTestId('shift-next-day').count()) === 0, 'смена: в итогах — «Новая смена», следующего дня нет');
 
   // конец дня из сохранения: закрыть день, итоги, разбор случая из итогов, следующий день
   const day = await browser.newContext({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2 });
@@ -405,6 +789,61 @@ try {
   await p2.getByTestId('shift-clock').waitFor({ timeout: 10_000 });
   check((await text(p2, 'shift-clock')) === '08:00', 'следующий день — с 08:00');
   await day.close();
+
+  // перенос на другой телефон: «Сохранить в файл» — файл со всем прогрессом; на «другом
+  // телефоне» (чистое хранилище) «Открыть файл» — что в файле, «Заменить» — и в меню сразу
+  // свой врач: оговорка и имя пришли из файла (FR-SYS-7)
+  await page.goto(base);
+  await page.getByTestId('menu-settings').click();
+  await page.getByTestId('settings-transfer').click();
+  const [download] = await Promise.all([page.waitForEvent('download'), page.getByTestId('transfer-save').click()]);
+  const transferFile = join(OUT, 'transfer.json');
+  await download.saveAs(transferFile);
+  await page.getByTestId('transfer-note').waitFor({ timeout: 5000 });
+  check(/^Сохранено: anamnez-\d{4}-\d{2}-\d{2}\.json\.$/.test(await text(page, 'transfer-note')) && download.suggestedFilename().startsWith('anamnez-'),
+    `перенос: ${await text(page, 'transfer-note')}`);
+  const phone2 = await browser.newContext({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2 });
+  const p4 = await phone2.newPage();
+  p4.on('pageerror', e => errors.push(String(e)));
+  await p4.goto(`${base}/transfer`);
+  const [chooser] = await Promise.all([p4.waitForEvent('filechooser'), p4.getByTestId('transfer-open').click()]);
+  await chooser.setFiles(transferFile);
+  await p4.getByTestId('transfer-sheet').waitFor({ timeout: 5000 });
+  check((await text(p4, 'transfer-line-0')).startsWith('Врач: Анна Петрова · приёмов: '), `перенос: в файле — ${(await text(p4, 'transfer-sheet')).replace(/\n/g, ' · ')}`);
+  await p4.waitForTimeout(700); // лист выезжает снизу
+  await p4.screenshot({ path: join(OUT, '20-transfer.png') });
+  await p4.getByTestId('transfer-replace').click();
+  await p4.getByTestId('transfer-note').waitFor({ timeout: 5000 });
+  check((await text(p4, 'transfer-note')) === 'Готово: прогресс из файла на месте.', `перенос: ${await text(p4, 'transfer-note')}`);
+  await p4.goto(base);
+  await p4.getByTestId('menu-profile').waitFor({ timeout: 10_000 });
+  check((await text(p4, 'menu-profile')).includes('Анна Петрова') && (await p4.getByTestId('menu-continue').count()) === 1,
+    'перенос: на другом телефоне — сразу меню, свой врач и «Продолжить»');
+  await phone2.close();
+
+  // маленький экран 360 × 640: длинный лист — выбор помещения — прокручивается, а не уходит
+  // верхом за край; «Отмена» — на экране, последний тип выбирается прокруткой листа
+  const small = await browser.newContext({ viewport: { width: 360, height: 640 }, deviceScaleFactor: 2 });
+  await small.addInitScript(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', sandboxFreshSave()]);
+  const p3 = await small.newPage();
+  p3.on('pageerror', e => errors.push(String(e)));
+  await p3.goto(`${base}/quick`);
+  await p3.getByTestId('menu-sandbox').click();
+  await p3.getByTestId('restart-continue').click();
+  await p3.getByTestId('sandbox-build').click();
+  await p3.getByTestId('build-map').waitFor({ timeout: 10_000 });
+  await p3.getByTestId('build-tool-room').click();
+  await p3.getByTestId('room-type-room.ecg').waitFor({ timeout: 5000 });
+  await p3.waitForTimeout(700); // лист выезжает снизу
+  const firstType = (await p3.getByTestId('room-type-room.ecg').boundingBox())!;
+  const cancel = (await p3.getByTestId('room-picker-close').boundingBox())!;
+  check(firstType.y >= 0 && cancel.y + cancel.height <= 640,
+    `маленький экран: выбор помещения — первый тип (верх ${Math.round(firstType.y)}) и «Отмена» (низ ${Math.round(cancel.y + cancel.height)} из 640) на экране`);
+  await p3.screenshot({ path: join(OUT, '19-small-picker.png') });
+  await p3.getByTestId('room-type-room.xray').click();
+  await p3.getByTestId('build-place').waitFor({ timeout: 5000 });
+  check(await p3.getByTestId('build-place').isVisible(), 'маленький экран: последний тип в листе выбирается прокруткой — призрак рентген-кабинета');
+  await small.close();
 
   const real = errors.filter(e => !/favicon/.test(e));
   check(real.length === 0, `нет ошибок в консоли${real.length ? `: ${real.slice(0, 3).join(' | ')}` : ''}`);

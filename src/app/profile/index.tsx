@@ -1,12 +1,13 @@
-// Профиль (spec 2026-09-first-shift, «Профиль-минимум»): имя врача, итоги практики и архив
-// последних 50 приёмов — каждый открывается тем же разбором, что в итогах дня.
+// Профиль (spec 2026-09-first-shift, «Профиль-минимум»): имя врача, итоги практики, достижения
+// (spec 2026-09-campaign, часть 13) и архив последних 50 приёмов — каждый открывается тем же
+// разбором, что в итогах дня.
 import { router } from 'expo-router';
 import { useEffect } from 'react';
 import { StyleSheet } from 'react-native';
 import { Text } from '@/ui/text';
 import { T } from '@/i18n';
 import { loadProfile, useProfile } from '@/state/profile';
-import { archiveRows, doctorName, practiceLines } from '@/state/profileView';
+import { achievementCount, archiveRows, doctorName, practiceLines } from '@/state/profileView';
 import { CaseRow } from '@/ui/case/CaseRow';
 import { Button, Card, P, Screen } from '@/ui/components';
 import { colors, space } from '@/ui/theme';
@@ -19,6 +20,7 @@ export default function ProfileScreen() {
   const t = T.profile;
   const lines = practiceLines(p);
   const rows = archiveRows(p.archive);
+  const got = achievementCount(p);
   return (
     <Screen>
       <Card>
@@ -28,6 +30,11 @@ export default function ProfileScreen() {
       <Card>
         <Text style={styles.label}>{t.practice}</Text>
         {lines.length === 0 ? <P muted>{t.noCases}</P> : lines.map((l, i) => <P key={i} testID={`profile-line-${i}`}>{l}</P>)}
+      </Card>
+      <Card>
+        <Text style={styles.label}>{t.achievements}</Text>
+        <Button kind="plain" testID="profile-achievements" title={t.achievementsOpen} hint={t.achievementsCount(got.got, got.total)}
+          onPress={() => router.push('/profile/achievements')} />
       </Card>
       <Card>
         <Text style={styles.label}>{t.archive}</Text>

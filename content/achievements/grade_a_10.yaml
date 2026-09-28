@@ -1,0 +1,7 @@
+id: ach.grade_a_10
+order: 9
+category: diagnosis
+name: { ru: "Десять приёмов на A" }
+need: { ru: "Закрыть десять приёмов с итоговой оценкой A." }
+kind: gradeA
+count: 10

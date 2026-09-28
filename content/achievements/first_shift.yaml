@@ -1,0 +1,7 @@
+id: ach.first_shift
+order: 2
+category: practice
+name: { ru: "Первая смена" }
+need: { ru: "Закрыть день, в который принят хотя бы один пациент." }
+kind: days
+count: 1

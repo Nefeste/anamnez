@@ -1,31 +1,38 @@
-// Главное меню (spec 2026-09-first-shift, «Что увидит игрок»): продолжить, быстрая игра —
-// практика в амбулатории, энциклопедия, профиль, настройки; кампания — «скоро».
-// При первом запуске вместо меню — медицинская оговорка (11-publishing.md §3): закрыл — она
-// больше не показывается, полный текст остаётся в «Об игре». Потом — имя и пол врача.
-import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+// Главное меню (03-game-design.md §10; spec 2026-09-campaign): продолжить последнюю партию,
+// кампания, быстрая игра (практика и песочница), энциклопедия, профиль, настройки. При первом
+// запуске вместо меню — медицинская оговорка (11-publishing.md §3), потом — имя и пол врача.
+import { router, useFocusEffect } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
+import { db } from '@/content';
 import { T } from '@/i18n';
 import { VERSION } from '@/info';
 import { loadProfile, setDoctor, useProfile } from '@/state/profile';
 import { doctorName } from '@/state/profileView';
-import type { Difficulty } from '@/engine/shift/types';
-import { loadShift, startShift, useShift } from '@/state/session';
+import { type GameSummary, loadShift, savedGames } from '@/state/session';
 import { loadSettings, updateSettings, useSettings } from '@/state/settings';
-import { Button, Card, H, P, Screen, Sheet } from '@/ui/components';
-import { DifficultyChoice } from '@/ui/difficulty';
+import { Button, Card, H, P, Screen } from '@/ui/components';
 import { DoctorForm } from '@/ui/profile';
 
 export default function Menu() {
   const settings = useSettings();
   const profile = useProfile();
-  const shift = useShift();
-  const [restart, setRestart] = useState(false);
-  const [difficulty, setDifficulty] = useState<Difficulty>('student');
+  const [games, setGames] = useState<GameSummary[]>([]);
   useEffect(() => {
     loadSettings();
     loadProfile();
-    loadShift();
   }, []);
+  // сохранения — с диска, каждый раз, когда меню снова на виду
+  useFocusEffect(
+    useCallback(() => {
+      let live = true;
+      savedGames().then(g => {
+        if (live) setGames(g);
+      });
+      return () => {
+        live = false;
+      };
+    }, []),
+  );
 
   // настройки и профиль читаются доли секунды: не мелькать меню перед оговоркой
   if (settings.status !== 'ready' || profile.status !== 'ready') return <Screen>{null}</Screen>;
@@ -33,40 +40,33 @@ export default function Menu() {
   if (!profile.doctor) return <DoctorForm submitTitle={T.profile.start} onSubmit={setDoctor} />;
 
   const t = T.menu;
-  const saved = shift.status === 'ready';
-  const again = () => {
-    setRestart(false);
-    startShift(undefined, undefined, difficulty);
+  const last = games[0];
+  const open = async (g: GameSummary) => {
+    await loadShift(g.mode, g.career);
     router.push('/shift');
-  };
-  // заново — с той же сложностью, что сейчас, пока игрок не выберет другую
-  const askRestart = () => {
-    setDifficulty(shift.difficulty);
-    setRestart(true);
   };
   return (
     <Screen>
       <P muted>{t.subtitle(VERSION)}</P>
-      {saved && <Button testID="menu-continue" title={t.continue} hint={t.continueHint(shift.day, shift.clock, T.shift.difficulty[shift.difficulty])} onPress={() => router.push('/shift')} />}
-      <Button
-        testID="menu-shift"
-        kind={saved ? 'plain' : 'primary'}
-        title={t.practice}
-        hint={saved ? t.practiceAgainHint : t.practiceHint}
-        onPress={() => (saved ? askRestart() : router.push('/shift'))}
-      />
+      {last && <Button testID="menu-continue" title={t.continue} hint={continueHint(last)} onPress={() => open(last)} />}
+      <Button testID="menu-campaign" kind={last ? 'plain' : 'primary'} title={t.campaign} hint={T.campaign.menuHint} onPress={() => router.push('/campaign')} />
+      <Button testID="menu-quick" kind="plain" title={T.campaign.quick} hint={T.campaign.quickHint} onPress={() => router.push('/quick')} />
       <Button testID="menu-encyclopedia" kind="plain" title={t.encyclopedia} hint={t.encyclopediaHint} onPress={() => router.push('/encyclopedia')} />
-      <Button testID="menu-campaign" kind="plain" disabled title={t.campaign} hint={t.soon} onPress={() => undefined} />
       <Button testID="menu-profile" kind="plain" title={t.profile} hint={T.profile.menuHint(doctorName(profile.doctor), profile.stats.cases)} onPress={() => router.push('/profile')} />
       <Button testID="menu-settings" kind="plain" title={t.settings} onPress={() => router.push('/settings')} />
-      <Sheet visible={restart} onClose={() => setRestart(false)} closeTitle={t.cancel} testID="restart-sheet">
-        <H>{t.restartTitle}</H>
-        <P>{t.restartText(shift.day)}</P>
-        <DifficultyChoice value={difficulty} onChange={setDifficulty} />
-        <Button testID="restart-confirm" kind="plain" title={t.restart} onPress={again} />
-      </Sheet>
     </Screen>
   );
+}
+
+/** Что продолжим: практика — день и время; песочница — день и касса; карьера — глава и день. */
+export function continueHint(g: GameSummary): string {
+  if (g.mode === 'sandbox') return T.sandbox.continueHint(g.day, T.common.rub(g.cash ?? 0));
+  if (g.mode === 'single') return T.single.continueHint(g.venue ?? '', g.clock);
+  if (g.mode === 'campaign') {
+    const ch = g.chapter ? db.chapters[g.chapter] : undefined;
+    return `${T.campaign.career(g.career ?? 1)}: ${ch ? T.campaign.chapter(ch.order, ch.name.ru) : ''} · ${T.campaign.day(g.day)}`;
+  }
+  return T.menu.continueHint(g.day, g.clock, T.shift.difficulty[g.difficulty]);
 }
 
 function Disclaimer() {

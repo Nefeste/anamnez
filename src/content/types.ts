@@ -181,7 +181,12 @@ export interface Exam {
   id: Id;
   name: Text;
   kind: 'ask' | 'physical' | 'bedside' | 'lab' | 'rapid' | 'functional' | 'imaging';
+  /** где делают; нет — в кабинете врача */
   room?: Id;
+  /** каким аппаратом: подходит любой из списка */
+  equipment?: Id[];
+  /** где берут материал (анализы — в процедурном) */
+  collect?: Id;
   /** минуты: сама процедура, описание, ожидание результата */
   time: { procedure: number; report?: number; turnaround?: number };
   cost: number;
@@ -209,6 +214,240 @@ export interface Risk {
 
 export type Season = 'winter' | 'spring' | 'summer' | 'autumn';
 
+// --- каталог больницы (spec 2026-09-own-hospital) ------------------------------------------
+
+export type Cell = [number, number];
+export type ObjectKind = 'bed' | 'chair' | 'desk' | 'couch' | 'cabinet' | 'machine' | 'plant' | 'sink' | 'bench' | 'xray' | 'table';
+export type RoomSizeId = 'S' | 'M' | 'L';
+
+/**
+ * Размер помещения: клетки вместе со стенами, координаты — от левого верхнего угла стен в
+ * исходном повороте; дверная сторона — нижняя. Первый ряд внутри — под подпись на карте,
+ * последний — проход вдоль двери.
+ */
+export interface RoomSize {
+  id: RoomSizeId;
+  w: number;
+  h: number;
+  cost: number;
+  upkeep: number;
+  /** дверь по умолчанию: первая клетка проёма на нижней стене и ширина проёма */
+  door: { x: number; width: number };
+  objects: { kind: ObjectKind; x: number; y: number }[];
+  /** места под аппараты */
+  slots: Cell[];
+  /** где стоит человек каждой должности */
+  staff: Record<Id, Cell>;
+  /** куда встаёт или садится пациент */
+  patient?: Cell;
+  /** стулья зоны ожидания — места в очереди */
+  seats: number;
+}
+
+export interface RoomType {
+  id: Id;
+  name: Text;
+  /** родительный падеж: «нет лаборатории» */
+  gen: Text;
+  /** кто нужен, чтобы работало: по человеку на должность */
+  staff: Id[];
+  needsEquipment: boolean;
+  seats: boolean;
+  sizes: RoomSize[];
+  /** производное: какие аппараты ставят сюда и какие обследования здесь делают или берут материал */
+  equipment: Id[];
+  exams: Id[];
+  collects: Id[];
+  texts: { hint: Text };
+}
+
+export interface Equipment {
+  id: Id;
+  name: Text;
+  gen: Text;
+  room: Id;
+  sprite: 'machine' | 'xray';
+  upgradeOf?: Id;
+  price: number;
+  upkeep: number;
+  /** шанс поломки за день работы, в долях 1/10 000; поломок в 0.2.0 нет */
+  breakdown: P;
+  /** множитель времени обследования */
+  speed: number;
+  /** поправка к чувствительности и специфичности, процентные пункты */
+  quality: { sens: number; spec: number };
+  /** производное: какие обследования им делают */
+  exams: Id[];
+  texts: { hint: Text };
+}
+
+export interface StaffRole {
+  id: Id;
+  name: Text;
+  gen: Text;
+  /** врача не нанимают: это игрок */
+  hire: boolean;
+  /** зарплата за смену при навыке 1 и при навыке 5, ₽ */
+  salary: [number, number];
+  /** производное: где работает */
+  rooms: Id[];
+  texts: { hint: Text };
+}
+
+/** Поворот помещения по часовой: дверная сторона снизу (0), слева (1), сверху (2), справа (3). */
+export type Rot = 0 | 1 | 2 | 3;
+
+/** Готовая больница (content/hospital/presets): участок, коридор, помещения, штат. */
+export interface Preset {
+  id: Id;
+  name: Text;
+  plot: [number, number];
+  /** вход — дверь в краю участка */
+  entrance: Cell;
+  corridor: Cell[];
+  rooms: { type: Id; size: RoomSizeId; x: number; y: number; rot: Rot; door?: number; equipment: Id[] }[];
+  /** предметы коридора: скамьи */
+  decor: { kind: ObjectKind; x: number; y: number }[];
+  /** кто где работает: должность и номер помещения в списке */
+  staff: { role: Id; room: number }[];
+}
+
+/** Баланс своей больницы (content/hospital/economy.yaml); числа — игровые. */
+export interface Economy {
+  /** клетка коридора: постройка и содержание в день, ₽ */
+  corridor: { cost: number; upkeep: number };
+  /** сколько процентов цены возвращают снос и продажа аппарата */
+  refund: number;
+  /** персонал (spec 2026-09-own-hospital, часть 8): числа — баланс игры */
+  staff: {
+    /** кандидатов на должность в день: от, до */
+    candidates: [number, number];
+    /** веса навыка 1–5 */
+    skills: [number, number, number, number, number];
+    /** время обследования по навыку 1–5, % */
+    speed: [number, number, number, number, number];
+    /** рентгенолог по навыку 1–5: поправка чувствительности и специфичности снимка, п. п. */
+    reading: [number, number][];
+    /** отработанных дней на ступень навыка */
+    growthDays: number;
+    /** вес «без черты» */
+    noTrait: number;
+    traits: Record<'careful' | 'fast' | 'novice' | 'experienced', {
+      weight: number; salary?: number; speed?: number; reading?: [number, number]; skills?: [number, number]; growth?: number;
+    }>;
+  };
+  /**
+   * ОМС — за обращение по тяжести диагноза; экспертиза страховой: доля по обоснованности и
+   * доля, если диагноз не подтверждён. ДМС и платно — обращение и прайс, % цены обследования.
+   */
+  tariffs: {
+    oms: Record<'minor' | 'moderate' | 'serious' | 'critical', number>;
+    omsQuality: Record<'A' | 'B' | 'C' | 'D', number>;
+    omsUnconfirmed: number;
+    /** показанные обследования, % цены в базе */
+    omsExam: number;
+    dms: { visit: number; price: number };
+    self: { visit: number; price: number };
+  };
+  /** уровень амбулатории для ОМС: доля тарифа за обращение, % — базовая и прибавки за работающие помещения */
+  level: { base: number; rooms: Record<Id, number> };
+  /** доля ДМС и платных, % — при репутации 0, 50, 100 */
+  payers: { dms: [number, number, number]; self: [number, number, number] };
+  /** расходники обследования, % цены — по виду */
+  consumables: Record<Exam['kind'], number>;
+  /** процент на долг в день, сотые доли процента */
+  interest: number;
+  /** репутация 0–100: начало, на сколько % вечером сдвигается к оценке дня, поправки оценки */
+  reputation: {
+    start: number; pull: number;
+    waitShort: number; waitShortMin: number; waitLong: number; waitLongMin: number; noToilet: number;
+  };
+  /** поток пациентов от репутации: ± % при 0 и 100 */
+  flow: number;
+  /** песочница: участок, вход и отрезок коридора, бюджеты; с готовой амбулаторией — доля бюджета, % */
+  sandbox: {
+    plot: [number, number];
+    entrance: Cell;
+    corridor: Cell[];
+    budgets: Record<'modest' | 'normal' | 'generous', number>;
+    clinicShare: number;
+  };
+}
+
+/** Персонаж кампании — наставник, главврач (spec 2026-09-campaign). */
+export interface Character {
+  id: Id;
+  name: Text;
+  short: Text;
+  sex: 'm' | 'f';
+  age: number;
+  portrait: number;
+  role: Text;
+}
+
+/** Условие дня для заданий «N дней». */
+export type DayKind = 'noNeedlessAntibiotic' | 'noLeft' | 'cashPositive';
+
+export type Mission = { id: string; main: boolean; text: Text } & (
+  | { kind: 'seen'; count: number; accuracy: number }
+  | { kind: 'roomWorks'; room: Id }
+  | { kind: 'streak'; days: number; day: DayKind }
+  | { kind: 'days'; days: number; day: DayKind }
+);
+
+export type LetterWhen = 'start' | 'end' | { afterDay: number } | { mission: string };
+
+export interface Letter {
+  id: string;
+  from: Id;
+  when: LetterWhen;
+  text: Text;
+}
+
+/** Глава кампании: больница, бюджет, что можно строить, задания и письма. */
+export interface Chapter {
+  id: Id;
+  order: number;
+  name: Text;
+  place: Text;
+  preset: Id;
+  budget: number;
+  department: Id;
+  build: Id[];
+  tutorial: Id[];
+  missions: Mission[];
+  letters: Letter[];
+}
+
+/** Когда подсказка наставника к месту: открылась карта, после первых вопросов, у пациента с болезнью, «Решение», разбор. */
+export type TipWhen = 'caseOpen' | 'afterAsk' | 'decision' | 'review' | { condition: Id };
+
+/** Подсказка наставника в первую смену главы (spec 2026-09-campaign). */
+export interface Tip {
+  id: Id;
+  order: number;
+  from: Id;
+  name: Text;
+  when: TipWhen;
+  text: Text;
+  /** о чём подсказка — статьи энциклопедии */
+  see: Id[];
+}
+
+/** Группа достижения в профиле. */
+export type AchievementCategory = 'practice' | 'diagnosis' | 'care' | 'knowledge' | 'hospital' | 'campaign' | 'daily';
+
+/** Вид «сколько раз»: приёмов, рабочих дней, верных подряд, на A, бережливых, с вопросом об аллергии, дней без ушедших, разных болезней, случаев дня. */
+export type CountedKind = 'cases' | 'days' | 'correctRun' | 'gradeA' | 'thriftCase' | 'allergyAsked' | 'noLeftDay' | 'seenConditions' | 'dailyCases';
+
+/** Достижение (spec 2026-09-campaign, часть 13): вид и числа — движку, название и что нужно — игроку. */
+export type Achievement = { id: Id; order: number; category: AchievementCategory; name: Text; need: Text } & (
+  | { kind: CountedKind; count: number }
+  | { kind: 'department'; department: Id }
+  | { kind: 'roomWorks'; room: Id }
+  | { kind: 'chapter'; chapter: Id }
+);
+
 export interface ContentDb {
   contentVersion: number;
   hash: string;
@@ -217,6 +456,15 @@ export interface ContentDb {
   exams: Record<Id, Exam>;
   risks: Record<Id, Risk>;
   treatments: Record<Id, Treatment>;
+  rooms: Record<Id, RoomType>;
+  equipment: Record<Id, Equipment>;
+  roles: Record<Id, StaffRole>;
+  presets: Record<Id, Preset>;
+  economy: Economy;
+  characters: Record<Id, Character>;
+  chapters: Record<Id, Chapter>;
+  tips: Record<Id, Tip>;
+  achievements: Record<Id, Achievement>;
   /** производное: какие обследования проверяют признак */
   revealedBy: Record<Id, Id[]>;
 }

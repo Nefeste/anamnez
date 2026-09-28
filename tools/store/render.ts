@@ -10,7 +10,7 @@ import { type Browser, chromium, type Page } from 'playwright';
 import { buildDb } from '../content/load';
 import { BRAND, iconSvg, markSvg } from './art';
 import { CAPTIONS } from './captions';
-import { acsCase, envelope, pneumoniaCase, queueState, summaryState } from './states';
+import { acsCase, envelope, pneumoniaCase, queueState, sandboxState, summaryState } from './states';
 
 const ROOT = join(import.meta.dir, '../..');
 const DIST = join(ROOT, 'dist-web');
@@ -125,17 +125,49 @@ async function framed(browser: Browser, raw: Buffer, caption: string, file: stri
     <div style="position:absolute;left:50%;top:400px;transform:translateX(-50%)">${phone(raw, 820)}</div>`, file);
 }
 
-async function openShift(browser: Browser, base: string, save: string): Promise<Page> {
+/** Партия из сохранения в слоте `slot` — на экране `path` (оговорка и имя врача — только у меню). */
+async function openShift(browser: Browser, base: string, save: string, slot = 'shift', path = '/shift'): Promise<Page> {
   const ctx = await browser.newContext({ viewport: { width: 360, height: 640 }, deviceScaleFactor: 3 });
-  await ctx.addInitScript(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/shift.json', save]);
+  await ctx.addInitScript(([key, value]) => localStorage.setItem(key, value), [`anamnez:saves/${slot}.json`, save]);
   const p = await ctx.newPage();
-  await p.goto(`${base}/shift`);
+  await p.goto(`${base}${path}`);
   await p.addStyleTag({ content: fontCss() });
   await p.evaluate(() => document.fonts.ready);
   return p;
 }
 
 const snap = async (p: Page) => Buffer.from(await p.screenshot({ type: 'png' }));
+
+/**
+ * Дотянуть призрак помещения до клетки `target` — как пальцем. Участок весь на экране и по
+ * центру карты; где призрак — из подписи карты для чтения с экрана («клетка 16, 10»). Жест в
+ * вебе может отстать на клетку — тогда ещё раз с того места, где призрак оказался.
+ */
+async function ghostTo(p: Page, [plotW, plotH]: readonly [number, number], target: [number, number]) {
+  const map = p.getByTestId('build-map');
+  const point = async (x: number, y: number) => {
+    const box = (await map.boundingBox())!;
+    const c = 16 * Math.min(box.width / (plotW * 16), box.height / (plotH * 16));
+    return { x: box.x + (box.width - plotW * c) / 2 + (x + 0.5) * c, y: box.y + (box.height - plotH * c) / 2 + (y + 0.5) * c };
+  };
+  const at = async () => {
+    const m = /клетка (\d+), (\d+)/.exec((await map.getAttribute('aria-label')) ?? '');
+    return m ? [Number(m[1]), Number(m[2])] : undefined;
+  };
+  for (let i = 0; i < 4; i++) {
+    const now = await at();
+    if (!now || (now[0] === target[0] && now[1] === target[1])) return;
+    const a = await point(now[0] + 2, now[1] + 2);
+    const b = await point(target[0] + 2, target[1] + 2);
+    await p.mouse.move(a.x, a.y);
+    await p.mouse.down();
+    await p.mouse.move(b.x, b.y, { steps: 14 });
+    await p.waitForTimeout(150);
+    await p.mouse.up();
+    await p.waitForTimeout(400);
+  }
+  throw new Error(`08-build: призрак не встал в клетку ${target.join(', ')} — он в ${(await at())?.join(', ')}`);
+}
 
 /** Все прокрутки — наверх: нажатие кнопки прокручивает к ней список. */
 const toTop = (p: Page) => p.evaluate(() => {
@@ -197,6 +229,23 @@ async function shots(browser: Browser): Promise<Record<string, Buffer>> {
     await p.getByTestId('summary-seen').waitFor({ timeout: 20_000 });
     await p.waitForTimeout(300);
     raw['07-summary.png'] = await snap(p);
+    await p.context().close();
+
+    // 8. своя больница: готовая амбулатория на участке песочницы — экран стройки, как его
+    // открывает игрок: «Быстрая игра» → «Песочница» → «Продолжить» → «Стройка»; призрак
+    // второго кабинета врача — на свободном месте справа внизу
+    p = await openShift(browser, base, envelope(sandboxState(db)), 'sandbox', '/quick');
+    await p.getByTestId('menu-sandbox').click();
+    await p.getByTestId('restart-continue').click();
+    await p.getByTestId('sandbox-build').click();
+    await p.getByTestId('build-map').waitFor({ timeout: 20_000 });
+    await p.waitForTimeout(700);
+    await p.getByTestId('build-tool-room').click();
+    await p.getByTestId('room-type-room.office').click();
+    await p.getByTestId('build-place').waitFor({ timeout: 5000 });
+    await ghostTo(p, db.economy.sandbox.plot, [31, 19]);
+    await p.waitForTimeout(500);
+    raw['08-build.png'] = await snap(p);
     await p.context().close();
   } finally {
     server.stop(true);

@@ -2,8 +2,10 @@ This is an Expo/React Native mobile game (Android first). Prioritize mobile-firs
 smoothness on modern Android phones (no freezes; budget phones are not a target), and a pure,
 deterministic game engine.
 
-**Current stage: stage 2 — the first shift** (`docs/specs/2026-09-first-shift.md`). The stage 1
-spikes (`docs/specs/2026-09-spikes.md`) are done and stay in the menu as prototypes.
+**Current stage: stage 3 — own hospital** (`docs/specs/2026-09-own-hospital.md`): building,
+equipment, hiring and money between shifts (ADR 0016). Stage 2 — the first shift
+(`docs/specs/2026-09-first-shift.md`) — waits for the owner's live test; the stage 1 spikes
+(`docs/specs/2026-09-spikes.md`) are done and stay in the menu as prototypes.
 
 ## Studio charter — read first
 
@@ -91,6 +93,7 @@ npm run typecheck           # app and tools (tools/tsconfig.json)
 npm test                    # Bun tests in tools/test (builds the database first)
 npm run doctor              # "virtual doctor" over the database; thresholds in docs/05-content.md §6
 npm run shift-sim           # shift pacing: does a good doctor keep up with the queue
+npm run economy-sim         # own-hospital balance: 30 days, criteria in docs/specs/2026-09-own-hospital.md (~5 min)
 npm run export:web && npm run e2e   # web build + Playwright scenario, screenshots in tools/e2e/out
 npm run store               # after export:web: store icon, screenshots and graphics into store/ (store/README.md)
 ```

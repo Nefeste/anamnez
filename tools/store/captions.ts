@@ -8,4 +8,5 @@ export const CAPTIONS = [
   { file: '05-plan.png', caption: 'Лечение и место:\nдома, стационар, скорая' },
   { file: '06-outcome.png', caption: 'Честный разбор:\nчто было на самом деле' },
   { file: '07-summary.png', caption: 'Итоги дня — и что стало\nс прошлыми пациентами' },
+  { file: '08-build.png', caption: 'Своя больница: стройте,\nнанимайте, ведите кассу' },
 ] as const;

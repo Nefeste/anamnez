@@ -1,0 +1,7 @@
+id: ach.thrift_1
+order: 10
+category: care
+name: { ru: "Ничего лишнего" }
+need: { ru: "Поставить верный диагноз, а на обследования потратить не больше, чем разумный врач." }
+kind: thriftCase
+count: 1

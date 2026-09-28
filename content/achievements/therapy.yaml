@@ -1,0 +1,7 @@
+id: ach.therapy
+order: 15
+category: knowledge
+name: { ru: "Вся терапия" }
+need: { ru: "Встретить в практике все болезни, с которыми приходят к терапевту." }
+kind: department
+department: dept.therapy

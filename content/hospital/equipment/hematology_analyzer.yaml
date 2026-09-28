@@ -1,0 +1,11 @@
+id: eq.hematology_analyzer
+name: { ru: "Гематологический анализатор" }
+gen: { ru: "гематологического анализатора" }
+room: room.lab
+sprite: machine
+price: 70000
+upkeep: 70
+breakdown: 1
+speed: 1
+texts:
+  hint: { ru: "Считает клетки крови — эритроциты, лейкоциты с формулой, тромбоциты — и меряет гемоглобин: это общий анализ крови." }

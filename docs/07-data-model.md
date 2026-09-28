@@ -152,7 +152,9 @@ type TemplateSet = { ru: string[]; en?: string[] };   // варианты, ша�
 interface Exam {
   id: Id; name: Text;
   kind: 'ask' | 'physical' | 'bedside' | 'lab' | 'rapid' | 'functional' | 'imaging' | 'endoscopy' | 'score';
-  room?: Id; equipment?: Id[]; staff?: Id[];     // что нужно, чтобы сделать
+  room?: Id;                                     // где делают; нет — в кабинете врача
+  equipment?: Id[];                              // каким аппаратом: подходит любой из списка
+  collect?: Id;                                  // где берут материал: анализы — в процедурном
   time: { procedure: Minutes; report?: Minutes; turnaround?: Minutes };
   cost: number; consumables?: number;
   discomfort: 0 | 1 | 2 | 3; radiation?: 'none' | 'low' | 'medium' | 'high';
@@ -213,20 +215,47 @@ interface Treatment {
   // (жаропонижающее снимает температуру), sideEffects: { add: Id; p: P; if?: Id }[]
 }
 
+// Каталог больницы — content/hospital/ (spec 2026-09-own-hospital). gen — родительный
+// падеж для причин «не работает: нет лаборанта». Цены и зарплаты — баланс игры.
 interface RoomType {
-  id: Id; name: Text; department?: Id;
-  sizes: { id: 'S' | 'M' | 'L'; w: number; h: number; layout: ObjectPlacement[] }[];
-  requires: { equipment?: Id[]; staff?: Id[]; minArea: number };
-  capacity?: number;                     // койки, места ожидания
-  cost: number; upkeep: number;
+  id: Id; name: Text; gen: Text;
+  staff: Id[];                           // кто нужен: по человеку на должность
+  needsEquipment: boolean;               // без аппарата не работает (лаборатория, ЭКГ, рентген)
+  seats: boolean;                        // стулья — места в очереди (зона ожидания)
+  sizes: RoomSize[];
+  texts: { hint: Text };
+  // производное при сборке: какие аппараты сюда ставят, какие обследования здесь делают
+  // и для каких здесь берут материал
+  equipment: Id[]; exams: Id[]; collects: Id[];
+}
+// Клетки со стенами, от левого верхнего угла стен; дверная сторона в исходном повороте —
+// нижняя. Первый ряд внутри — под подпись на карте, последний — проход у двери: там пусто.
+interface RoomSize {
+  id: 'S' | 'M' | 'L'; w: number; h: number;
+  cost: number; upkeep: number;          // постройка и содержание в день, ₽
+  door: { x: number; width: number };    // дверь по умолчанию на нижней стене
+  objects: { kind: ObjectKind; x: number; y: number }[];
+  slots: Cell[];                         // места под аппараты
+  staff: Record<Id, Cell>;               // где стоит человек каждой должности
+  patient?: Cell;                        // куда встаёт или садится пациент
+  seats: number;                         // производное: стулья зоны ожидания
 }
 interface Equipment {
-  id: Id; name: Text; rooms: Id[]; tier?: number; upgradeOf?: Id;
-  price: number; upkeep: number; reliability: P;       // шанс поломки за день работы
-  speed: number; quality: number;                      // множители времени и точности
-  footprint: [number, number];
+  id: Id; name: Text; gen: Text; room: Id; sprite: 'machine' | 'xray'; upgradeOf?: Id;
+  price: number; upkeep: number;
+  breakdown: P;                          // шанс поломки за день работы; поломок в 0.2.0 нет
+  speed: number;                         // множитель времени обследования
+  quality: { sens: number; spec: number };   // поправка к точности, процентные пункты
+  exams: Id[];                           // производное: что им делают
+  texts: { hint: Text };
 }
-interface StaffRole { id: Id; name: Text; salary: [number, number]; rooms: Id[]; performs: Id[] }
+interface StaffRole {
+  id: Id; name: Text; gen: Text;
+  hire: boolean;                         // врача не нанимают: это игрок
+  salary: [number, number];              // за смену при навыке 1 и 5
+  rooms: Id[];                           // производное: где работает
+  texts: { hint: Text };
+}
 ```
 
 ## 2. Состояние партии
@@ -238,7 +267,7 @@ interface StaffRole { id: Id; name: Text; salary: [number, number]; rooms: Id[];
 interface GameState {
   meta: {
     schemaVersion: number; contentVersion: number; rngVersion: number;
-    mode: 'campaign' | 'shift' | 'daily' | 'sandbox';
+    mode: 'campaign' | 'shift' | 'daily' | 'sandbox';   // сейчас: 'shift' — практика, 'sandbox' — песочница (слот `sandbox`)
     difficulty: 'student' | 'resident' | 'doctor' | 'professor';
     soft: boolean;                       // «мягкий режим»
     seed: number; chapter?: Id;
@@ -246,17 +275,39 @@ interface GameState {
   clock: { t: number; day: number; speed: 0 | 1 | 2 | 4 };   // t — игровые секунды
   rng: Record<string, [number, number, number, number]>;      // состояние ветвей
   events: ScheduledEvent[];              // очередь событий (куча)
-  hospital: {
-    w: number; h: number; cells: string;  // клетки сетки, RLE-строка
-    rooms: RoomInstance[]; equipment: EquipmentInstance[];
-    staff: StaffMember[]; candidates: StaffMember[];
+  hospital: {                            // src/engine/hospital/build.ts (0.0.19)
+    w: number; h: number; entrance: Cell;
+    corridor: number[];                  // клетки коридора: y·w + x по возрастанию
+    rooms: RoomInstance[];               // тип, размер, угол, поворот, дверь, аппарат на каждом месте
+    decor: Placed[];                     // скамьи в коридоре
+    next: number;                        // номер следующего помещения (r1, r2…)
+    // сетка не хранится: план выводится из помещений (planOf)
+    staff: StaffMember[]; candidates: StaffMember[];   // часть 8
   };
   people: Agent[];                       // кто где идёт: маршрут и время выхода
   patients: Record<string, Patient>;     // активные и недавние
   queue: string[];                       // порядок очереди
   orders: Order[];                       // назначенные обследования и лечение
-  economy: { cash: number; reputation: number; ledger: LedgerEntry[] };  // ledger — за текущий день
-  career?: { chapter: Id; missions: Record<Id, MissionState> };
+  economy: { cash: number; reputation: number; ledger: Ledger };  // касса дня; 0.0.20–0.0.21 — только cash
+  // 0.0.22 (src/engine/economy/economy.ts): Ledger — доходы и число приёмов по плательщикам,
+  // расходы по статьям (зарплаты, аппараты, помещения, расходники, проценты), экспертиза
+  // (не оплачено, диагнозов обоснованных ниже A, без подтверждения, обследований без
+  // показаний); у пациента — payer, calledT (первый вызов — ожидание для репутации),
+  // indicated (какие обследования были показаны при назначении), paid (оплата приёма);
+  // в итогах дня — касса дня, остаток, репутация (было, стало, оценка, причины) и уровень ОМС
+  undo?: { hospital; cash }[];           // «Отменить» на экране стройки, последние 20; «Готово» — пусто
+  // 0.0.21: штат и кандидаты (src/engine/hospital/staff.ts) — должность, пол и зерно имени,
+  // навык 1–5, черта, зарплата за смену, помещение (нет — резерв), отработанные смены;
+  // у ожидающего результата — помещение и время процедуры; у пациента без доврачебного
+  // кабинета — triaged: false
+  campaign?: {                           // 0.0.24, src/engine/campaign/campaign.ts
+    chapter: Id; since: number;          // глава и последний день прежней
+    done: Record<string, number>;        // выполненные задания главы → день
+    letters: { id: string; day: number; read?: boolean }[];
+    complete?: number;                   // день, когда выполнены все основные
+    tips?: { shown: Id[]; off?: boolean }; // 0.0.25: подсказки наставника — показанные в карьере,
+                                         // «Без подсказок»; отметка вида, движок её не читает
+  };                                     // meta.career — слот карьеры (1–3)
   journal: Command[];                    // команды за текущий день (отчёт об ошибке, тесты)
 }
 
@@ -299,7 +350,9 @@ interface Patient {
 Первая смена хранит подмножество этого состояния — `ShiftState` в
 `src/engine/shift/types.ts` (`schemaVersion` 1):
 
-- `meta` — версии схемы, базы и генератора, `mode: 'shift'`, зерно, сезон, отделение,
+- `meta` — версии схемы, базы и генератора, `mode` (`shift` — практика, `sandbox`,
+  `campaign`, с 0.0.28 `single` — «Смена» со своим слотом `single` и `venue`: запись
+  готовой больницы `preset.*` или `sandbox` — копия своей), зерно, сезон, отделение,
   сложность (`difficulty`: `student` или `doctor`, с 0.0.16; нет поля — «Врач», как играли
   до того: схема не менялась);
   **состояния ветвей генератора нет**: вся случайность — из именованных ветвей зерна
@@ -350,9 +403,25 @@ interface Profile {
 `seen: Record<Id, number>` — сколько раз болезнь встречалась (настоящая, включая
 сопутствующие, а не поставленная), и `archive` — последние 50 приёмов, новые первыми:
 `{ key, seed, department, day, patient }`, где `patient` — пациент смены целиком (правда,
-результаты, назначения, итог). Разбор строится из записи по нынешней базе. Опыт, навыки,
-достижения и «Случай дня» придут со своими этапами. Файл читается поле за полем, как
-настройки; запись архива без итога отбрасывается.
+результаты, назначения, итог). Разбор строится из записи по нынешней базе. Опыт, навыки и
+«Случай дня» придут со своими этапами. Файл читается поле за полем, как настройки; запись
+архива без итога отбрасывается.
+
+Достижения (0.0.26) — `achievements: { got, days, run, gradeA, thrift, allergy, noLeftDays,
+closedDays }`: полученные — `got[id] = { at, by }`, дата по часам телефона (ISO) и ключ
+того, что принесло, — приёма (`seed:номер`) или дня (`режим:зерно:день`); по нему строка
+«Достижение: …» стоит на итоге именно этого приёма или дня. Счётчики — рабочие дни, верных
+подряд сейчас, приёмы на A, бережливые, с вопросом об аллергии перед лекарством, дни, когда
+приняли всех; `closedDays` — ключи последних 60 закрытых дней, чтобы день не засчитался
+дважды. Число приёмов и встреченные болезни — из `stats` и `seen`.
+
+«Смена» (0.0.28) — `best: Record<больница, { overall, points, seen, arrived, seed, at }>`:
+лучший результат в больнице — по общей оценке, затем по баллу, затем кого приняли больше.
+
+«Случай дня» (0.0.27) — `daily: Record<'ГГГГ-ММ-ДД', { verdict, grade, base, at }>`: первая
+попытка дня — вердикт, итоговая оценка, версия базы, когда сыгран; хранятся последние 60
+дней, в списке — 30. Счёт сыгранных — `achievements.daily`. В архив приёмов и в итоги
+практики случай дня не идёт: у него свой список, разбор — сразу после приёма.
 
 Настройки: громкости четырёх каналов, вибрация, скорость по умолчанию, автопауза по
 событиям, уровень подсказок по умолчанию, размер текста, «мягкий режим», язык,
@@ -384,12 +453,21 @@ interface Profile {
 
 **Перенос на другой телефон.** В отличие от «Вотчины», где автобэкап выключен ради
 ключа устройства, здесь прятать нечего, а сервера, который хранил бы прогресс, нет.
-Поэтому автобэкап Android **включён** для `saves/` и `profile.json` (правила бэкапа в
-`app.json`; лимит системы — 25 МБ, у нас на порядок меньше) — при смене телефона с
-тем же аккаунтом Google прогресс вернётся сам. Для телефонов без сервисов Google —
-«Настройки → Перенос → Сохранить в файл / Открыть файл»: профиль и слоты одним
-архивом через «Поделиться». Миграции (`06-architecture.md` §8) поднимают сохранение
-любой прошлой версии.
+Поэтому автобэкап Android **включён**: у Expo `android.allowBackup` по умолчанию `true`, а
+правил бэкапа нет — система кладёт в копию все файлы приложения, в том числе каталог
+документов с `saves/` (лимит системы — 25 МБ, у нас на порядок меньше). При смене телефона
+с тем же аккаунтом Google прогресс вернётся сам.
+
+Для телефонов без сервисов Google — файл (с 0.0.29, `src/state/transfer.ts`): «Настройки →
+Перенос на другой телефон → Сохранить в файл / Открыть файл». Профиль, настройки и все
+слоты партий — одним JSON `{ app: "anamnez", format: 1, version, savedAt, slots: { слот:
+конверт } }`, имя — `anamnez-ГГГГ-ММ-ДД.json`. Пишет и читает его системное окно выбора из
+`expo-file-system` (`Directory.pickDirectoryAsync` и `File.pickFileAsync`) — новых модулей и
+сети не нужно; в веб-сборке — скачивание и выбор файла. Открытый файл заменяет те слоты,
+что в нём есть, остальные остаются как были; прежние уходят в копию, как при обычной
+записи. Чужой, испорченный, пустой файл и файл из более новой версии (формат новее или
+партия ссылается на то, чего в базе нет) не открываются — с причиной. Миграции
+(`06-architecture.md` §8) поднимают сохранение любой прошлой версии.
 
 Ориентир размера сохранения — 200–500 КБ (карта 56 × 40 в RLE, до 60 активных
 пациентов, журнал дня); профиль с архивом — до 2 МБ.

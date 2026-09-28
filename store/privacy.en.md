@@ -24,10 +24,15 @@ If Android backup is turned on, the system may keep a copy of the game's data in
 Google account, as it does for other apps. That is done by Android, not by the game, and
 the developer has no access to that copy.
 
+You can also move your progress to another phone with a file (Settings → Move to another
+phone): the game writes it where you choose — a folder on the phone or a cloud drive. The
+file holds the doctor's name you entered and your game progress; where it goes from there is
+up to you.
+
 ## If you contact us yourself
 
-If you choose to write to the developer — by email, or via "Share" in the game once an
-error report is added — we only see what you send and use it only to reply and fix bugs.
+If you choose to write to the developer — by email, or via "Report a problem" in the game —
+we only see what you send and use it only to reply and fix bugs.
 We do not pass such messages to third parties.
 
 ## Permissions

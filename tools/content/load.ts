@@ -5,12 +5,36 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, join, relative } from 'node:path';
 import { parse } from 'yaml';
 import type { z } from 'zod';
-import type { AttrSpec, Condition, ContentDb, Exam, Finding, Link, Risk, Treatment } from '../../src/content/types';
+import type { AttrSpec, Cell, Condition, ContentDb, Equipment, Exam, Finding, Link, Preset, Risk, RoomType, StaffRole, Treatment } from '../../src/content/types';
+import { planOf, presetHospital } from '../../src/engine/hospital/build';
+import { problemsOf } from '../../src/engine/hospital/requirements';
+import { ALLERGY_EXAM } from '../../src/engine/career/achievements';
 import { fingerprint } from '../../src/engine/core/hash';
 import { findBrand } from './brands';
-import { BANDS, type ConditionSrc, conditionSchema, type ExamSrc, examSchema, type FindingSrc, findingSchema, type LinkSrc, PREVALENCE, type ProbabilitySrc, type RiskSrc, riskSchema, type TreatmentSrc, treatmentSchema, versionSchema } from './schema';
+import {
+  BANDS, type ChapterSrc, chapterSchema, type CharacterSrc, characterSchema, type ConditionSrc, conditionSchema, type EconomySrc, economySchema, type EquipmentSrc, equipmentSchema, type ExamSrc, examSchema, type FindingSrc, findingSchema,
+  type LinkSrc, PREVALENCE, type PresetSrc, presetSchema, type ProbabilitySrc, type RiskSrc, type RoleSrc, riskSchema, roleSchema, type RoomSrc, roomSchema,
+  type TipSrc, tipSchema, type TreatmentSrc, treatmentSchema, versionSchema, type AchievementSrc, achievementSchema,
+} from './schema';
 
 export const CONTENT_DIR = join(import.meta.dir, '../../content');
+
+/** Баланс, пока economy.yaml не прочитан (ошибка сборки всё равно будет). */
+export const NO_ECONOMY: ContentDb['economy'] = {
+  corridor: { cost: 0, upkeep: 0 }, refund: 0,
+  staff: {
+    candidates: [0, 0], skills: [1, 1, 1, 1, 1], speed: [100, 100, 100, 100, 100], reading: [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]], growthDays: 1, noTrait: 1,
+    traits: { careful: { weight: 0 }, fast: { weight: 0 }, novice: { weight: 0 }, experienced: { weight: 0 } },
+  },
+  tariffs: { oms: { minor: 0, moderate: 0, serious: 0, critical: 0 }, omsQuality: { A: 0, B: 0, C: 0, D: 0 }, omsUnconfirmed: 0, omsExam: 0, dms: { visit: 0, price: 0 }, self: { visit: 0, price: 0 } },
+  level: { base: 100, rooms: {} },
+  payers: { dms: [0, 0, 0], self: [0, 0, 0] },
+  consumables: { ask: 0, physical: 0, bedside: 0, lab: 0, rapid: 0, functional: 0, imaging: 0 },
+  interest: 0,
+  reputation: { start: 50, pull: 1, waitShort: 0, waitShortMin: 0, waitLong: 0, waitLongMin: 0, noToilet: 0 },
+  flow: 0,
+  sandbox: { plot: [8, 8], entrance: [0, 1], corridor: [], budgets: { modest: 0, normal: 0, generous: 0 }, clinicShare: 0 },
+};
 
 export interface BuildResult {
   db: ContentDb;
@@ -51,6 +75,15 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   const exams: Record<string, ExamSrc> = {};
   const risks: Record<string, RiskSrc> = {};
   const treatments: Record<string, TreatmentSrc> = {};
+  const rooms: Record<string, RoomSrc> = {};
+  const equipment: Record<string, EquipmentSrc> = {};
+  const roles: Record<string, RoleSrc> = {};
+  const presets: Record<string, PresetSrc> = {};
+  const characters: Record<string, CharacterSrc> = {};
+  const chapters: Record<string, ChapterSrc> = {};
+  const tips: Record<string, TipSrc> = {};
+  const achievements: Record<string, AchievementSrc> = {};
+  let economy: EconomySrc | undefined;
   let contentVersion = 0;
 
   for (const file of files) {
@@ -99,11 +132,38 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     } else if (top === 'treatments') {
       const t = check(treatmentSchema);
       if (t) { expectId(t.id, 'tx'); put(treatments, t); }
+    } else if (top === 'hospital' && rel.split('/')[1] === 'rooms') {
+      const r = check(roomSchema);
+      if (r) { expectId(r.id, 'room'); put(rooms, r); }
+    } else if (top === 'hospital' && rel.split('/')[1] === 'equipment') {
+      const e = check(equipmentSchema);
+      if (e) { expectId(e.id, 'eq'); put(equipment, e); }
+    } else if (top === 'hospital' && rel.split('/')[1] === 'roles') {
+      const r = check(roleSchema);
+      if (r) { expectId(r.id, 'role'); put(roles, r); }
+    } else if (top === 'hospital' && rel.split('/')[1] === 'presets') {
+      const p = check(presetSchema);
+      if (p) { expectId(p.id, 'preset'); put(presets, p); }
+    } else if (rel === 'hospital/economy.yaml') {
+      economy = check(economySchema);
+    } else if (top === 'campaign' && rel.split('/')[1] === 'characters') {
+      const c = check(characterSchema);
+      if (c) { expectId(c.id, 'char'); put(characters, c); }
+    } else if (top === 'campaign' && rel.split('/')[1] === 'chapters') {
+      const c = check(chapterSchema);
+      if (c) { expectId(c.id, 'chapter'); put(chapters, c); }
+    } else if (top === 'campaign' && rel.split('/')[1] === 'tips') {
+      const t = check(tipSchema);
+      if (t) { expectId(t.id, 'tip'); put(tips, t); }
+    } else if (top === 'achievements') {
+      const a = check(achievementSchema);
+      if (a) { expectId(a.id, 'ach'); put(achievements, a); }
     } else {
-      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, treatments)`);
+      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/economy.yaml, campaign/characters, campaign/chapters, campaign/tips, achievements)`);
     }
   }
   if (!contentVersion) errors.push('version.yaml: нет contentVersion');
+  if (!economy) errors.push('hospital/economy.yaml: нет баланса больницы');
 
   // --- ссылки ---
   const hasF = (id: string) => id in findings;
@@ -183,9 +243,22 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (!revealedBy[f]) errors.push(`${f}: ни одно обследование его не открывает`);
     else revealedBy[f].sort();
   }
+  checkHospital({ rooms, equipment, roles, exams, conditions }, errors);
 
   // --- сборка ---
-  const db: ContentDb = { contentVersion, hash: '', conditions: {}, findings: {}, exams: {}, risks: {}, treatments: {}, revealedBy };
+  const rects = (list: [number, number, number, number][]): Cell[] =>
+    list.flatMap(([x0, y0, x1, y1]) => Array.from({ length: (y1 - y0 + 1) * (x1 - x0 + 1) }, (_, i) => [x0 + (i % (x1 - x0 + 1)), y0 + Math.floor(i / (x1 - x0 + 1))] as Cell));
+  const db: ContentDb = {
+    contentVersion, hash: '', conditions: {}, findings: {}, exams: {}, risks: {}, treatments: {}, rooms: {}, equipment: {}, roles: {}, presets: {},
+    characters: Object.fromEntries(Object.values(characters).sort((a, b) => (a.id < b.id ? -1 : 1)).map(c => [c.id, c])),
+    chapters: Object.fromEntries(Object.values(chapters).sort((a, b) => a.order - b.order).map(c => [c.id, c])),
+    tips: Object.fromEntries(Object.values(tips).sort((a, b) => a.order - b.order).map(t => [t.id, t])),
+    achievements: Object.fromEntries(Object.values(achievements).sort((a, b) => a.order - b.order).map(a => [a.id, a])),
+    economy: economy
+      ? { ...economy, sandbox: { ...economy.sandbox, corridor: rects(economy.sandbox.corridor) } }
+      : NO_ECONOMY,
+    revealedBy,
+  };
   for (const c of Object.values(conditions).sort((a, b) => (a.id < b.id ? -1 : 1))) {
     const e = c.epidemiology;
     const out: Condition = {
@@ -229,6 +302,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       texts: e.texts, sources: e.sources, review: e.review,
     };
     if (e.room) out.room = e.room;
+    if (e.equipment) out.equipment = e.equipment;
+    if (e.collect) out.collect = e.collect;
     if (e.radiation) out.radiation = e.radiation;
     if (e.routine) out.routine = true;
     db.exams[e.id] = out;
@@ -250,6 +325,247 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (t.route) out.route = t.route;
     db.treatments[t.id] = out;
   }
+  const sortedIds = (xs: string[]) => [...xs].sort();
+  const examIds = Object.keys(exams).sort();
+  for (const r of Object.values(rooms).sort((a, b) => (a.id < b.id ? -1 : 1))) {
+    const out: RoomType = {
+      id: r.id, name: r.name, gen: r.gen, staff: r.staff, needsEquipment: r.needsEquipment, seats: r.seats,
+      sizes: r.sizes.map(z => ({
+        id: z.id, w: z.w, h: z.h, cost: z.cost, upkeep: z.upkeep, door: { x: z.door.x, width: z.door.width },
+        objects: z.objects.map(([kind, x, y]) => ({ kind, x, y })), slots: z.slots, staff: z.staff,
+        ...(z.patient ? { patient: z.patient } : {}),
+        seats: r.seats ? z.objects.filter(([kind]) => kind === 'chair').length : 0,
+      })),
+      equipment: sortedIds(Object.values(equipment).filter(e => e.room === r.id).map(e => e.id)),
+      exams: examIds.filter(id => exams[id].room === r.id),
+      collects: examIds.filter(id => exams[id].collect === r.id),
+      texts: r.texts,
+    };
+    db.rooms[r.id] = out;
+  }
+  for (const e of Object.values(equipment).sort((a, b) => (a.id < b.id ? -1 : 1))) {
+    const out: Equipment = {
+      id: e.id, name: e.name, gen: e.gen, room: e.room, sprite: e.sprite, price: e.price, upkeep: e.upkeep,
+      breakdown: Math.round(e.breakdown * 100), speed: e.speed, quality: e.quality,
+      exams: examIds.filter(id => exams[id].equipment?.includes(e.id)), texts: e.texts,
+    };
+    if (e.upgradeOf) out.upgradeOf = e.upgradeOf;
+    db.equipment[e.id] = out;
+  }
+  for (const r of Object.values(roles).sort((a, b) => (a.id < b.id ? -1 : 1))) {
+    const out: StaffRole = {
+      id: r.id, name: r.name, gen: r.gen, hire: r.hire, salary: r.salary,
+      rooms: Object.keys(rooms).sort().filter(id => rooms[id].staff.includes(r.id)), texts: r.texts,
+    };
+    db.roles[r.id] = out;
+  }
+  for (const p of Object.values(presets).sort((a, b) => (a.id < b.id ? -1 : 1))) {
+    const out: Preset = {
+      id: p.id, name: p.name, plot: p.plot, entrance: p.entrance, corridor: rects(p.corridor),
+      rooms: p.rooms.map(r => ({ type: r.type, size: r.size, x: r.x, y: r.y, rot: r.rot, ...(r.door !== undefined ? { door: r.door } : {}), equipment: r.equipment })),
+      decor: p.decor.map(([kind, x, y]) => ({ kind, x, y })), staff: p.staff,
+    };
+    db.presets[p.id] = out;
+  }
+  if (errors.length === 0) {
+    checkPresets(db, errors);
+    checkCampaign(db, errors);
+    checkAchievements(db, errors);
+    // готовая амбулатория помещается на участок песочницы, вход песочницы — в краю
+    const sb = db.economy.sandbox;
+    for (const p of Object.values(db.presets)) {
+      if (p.plot[0] > sb.plot[0] || p.plot[1] > sb.plot[1]) errors.push(`${p.id}: участок ${p.plot.join(' × ')} больше участка песочницы`);
+      else errors.push(...presetHospital(db, p, sb.plot).failed.map(f => `${p.id}: на участке песочницы помещение ${f.room} — ${f.error.kind}`));
+    }
+    for (const r of Object.keys(db.economy.level.rooms)) if (!db.rooms[r]) errors.push(`hospital/economy.yaml: уровень ОМС — помещение ${r} не найдено`);
+    const [ex, ey] = sb.entrance;
+    if (!(ex === 0 || ey === 0 || ex === sb.plot[0] - 1 || ey === sb.plot[1] - 1)) errors.push(`hospital/economy.yaml: вход песочницы (${ex}, ${ey}) — не в краю участка`);
+  }
   db.hash = fingerprint({ ...db, hash: '' });
   return { db, errors, warnings, files: files.length };
+}
+
+/**
+ * Кампания (spec 2026-09-campaign): главы ссылаются на готовую больницу, помещения, болезни
+ * своего отделения и персонажей; письма «при задании» — на задание этой главы; подсказки — на
+ * персонажа, болезнь и статьи энциклопедии.
+ */
+function checkCampaign(db: ContentDb, errors: string[]) {
+  const orders = new Set<number>();
+  for (const c of Object.values(db.chapters)) {
+    const at = (what: string) => errors.push(`${c.id}: ${what}`);
+    if (orders.has(c.order)) at(`порядок ${c.order} уже у другой главы`);
+    orders.add(c.order);
+    if (!db.presets[c.preset]) at(`готовая больница ${c.preset} не найдена`);
+    for (const r of c.build) if (!db.rooms[r]) at(`помещение ${r} не найдено`);
+    if (!Object.values(db.conditions).some(x => x.presenting && x.department === c.department)) at(`в отделении ${c.department} нет болезней`);
+    for (const t of c.tutorial) {
+      const cond = db.conditions[t];
+      if (!cond) at(`болезнь обучения ${t} не найдена`);
+      else if (!cond.presenting || cond.department !== c.department) at(`болезнь обучения ${t} — не из приёма отделения ${c.department}`);
+    }
+    const missions = new Set<string>();
+    for (const m of c.missions) {
+      if (missions.has(m.id)) at(`задание ${m.id} повторяется`);
+      missions.add(m.id);
+      if (m.kind === 'roomWorks' && !db.rooms[m.room]) at(`задание ${m.id}: помещение ${m.room} не найдено`);
+      if (m.kind === 'roomWorks' && !c.build.includes(m.room) && !db.presets[c.preset]?.rooms.some(r => r.type === m.room)) at(`задание ${m.id}: ${m.room} нельзя построить в главе`);
+    }
+    if (!c.missions.some(m => m.main)) at('нет основных заданий');
+    const letters = new Set<string>();
+    for (const l of c.letters) {
+      if (letters.has(l.id)) at(`письмо ${l.id} повторяется`);
+      letters.add(l.id);
+      if (!db.characters[l.from]) at(`письмо ${l.id}: персонаж ${l.from} не найден`);
+      if (typeof l.when === 'object' && 'mission' in l.when && !missions.has(l.when.mission)) at(`письмо ${l.id}: задания ${l.when.mission} в главе нет`);
+    }
+  }
+  // подсказки наставника: от персонажа, о болезни приёма, со ссылками на статьи энциклопедии
+  const tipOrders = new Set<number>();
+  for (const t of Object.values(db.tips)) {
+    const at = (what: string) => errors.push(`${t.id}: ${what}`);
+    if (tipOrders.has(t.order)) at(`порядок ${t.order} уже у другой подсказки`);
+    tipOrders.add(t.order);
+    if (!db.characters[t.from]) at(`персонаж ${t.from} не найден`);
+    if (typeof t.when === 'object' && !db.conditions[t.when.condition]?.presenting) at(`болезнь ${t.when.condition} не найдена или с ней не приходят`);
+    for (const id of t.see) if (!(db.conditions[id] || db.findings[id] || db.exams[id] || db.treatments[id] || db.risks[id] || db.rooms[id] || db.equipment[id] || db.roles[id])) at(`статья ${id} не найдена`);
+  }
+}
+
+/** Достижения (spec 2026-09-campaign, часть 13): отделение, помещение и глава — существующие; порядок не повторяется. */
+function checkAchievements(db: ContentDb, errors: string[]) {
+  const orders = new Set<number>();
+  for (const a of Object.values(db.achievements)) {
+    const at = (what: string) => errors.push(`${a.id}: ${what}`);
+    if (orders.has(a.order)) at(`порядок ${a.order} уже у другого достижения`);
+    orders.add(a.order);
+    if (a.kind === 'department' && !Object.values(db.conditions).some(c => c.presenting && c.department === a.department)) at(`в отделении ${a.department} нет болезней`);
+    if (a.kind === 'roomWorks' && !db.rooms[a.room]) at(`помещение ${a.room} не найдено`);
+    if (a.kind === 'chapter' && !db.chapters[a.chapter]) at(`глава ${a.chapter} не найдена`);
+    if (a.kind === 'allergyAsked' && !db.exams[ALLERGY_EXAM]) at(`вопроса об аллергии ${ALLERGY_EXAM} в базе нет`);
+  }
+}
+
+/**
+ * Готовые больницы строятся движком стройки теми же командами, что у игрока (spec
+ * 2026-09-own-hospital): что движок не построит, в базу не попадёт. В готовой больнице
+ * работает каждое помещение: штат на местах, аппараты стоят, от входа можно дойти.
+ */
+function checkPresets(db: ContentDb, errors: string[]) {
+  for (const p of Object.values(db.presets)) {
+    for (const r of p.rooms) {
+      if (!db.rooms[r.type]) { errors.push(`${p.id}: помещение ${r.type} не найдено`); return; }
+      if (!db.rooms[r.type].sizes.some(z => z.id === r.size)) { errors.push(`${p.id}: у ${r.type} нет размера ${r.size}`); return; }
+    }
+    const seen = new Set<string>();
+    for (const s of p.staff) {
+      const room = p.rooms[s.room];
+      if (!room) errors.push(`${p.id}: ${s.role} — в помещении ${s.room}, а их ${p.rooms.length}`);
+      else if (!db.rooms[room.type].staff.includes(s.role)) errors.push(`${p.id}: ${s.role} не нужен в ${room.type}`);
+      if (seen.has(`${s.room}:${s.role}`)) errors.push(`${p.id}: в помещении ${s.room} два человека на ${s.role}`);
+      seen.add(`${s.room}:${s.role}`);
+    }
+    const [w, h] = p.plot;
+    const [ex, ey] = p.entrance;
+    if (!(ex === 0 || ey === 0 || ex === w - 1 || ey === h - 1)) errors.push(`${p.id}: вход (${ex}, ${ey}) — не в краю участка`);
+    for (const [x, y] of p.corridor) if (x < 1 || y < 1 || x > w - 2 || y > h - 2) errors.push(`${p.id}: коридор (${x}, ${y}) — у самого края участка`);
+    const corridor = new Set(p.corridor.map(([x, y]) => `${x},${y}`));
+    for (const d of p.decor) if (!corridor.has(`${d.x},${d.y}`)) errors.push(`${p.id}: ${d.kind} (${d.x}, ${d.y}) — не в коридоре`);
+    const built = presetHospital(db, p);
+    for (const f of built.failed) {
+      const what = f.cmd === 'room' ? 'не ставится' : f.cmd === 'door' ? 'дверь не туда' : `аппарат ${f.equipment} не ставится`;
+      errors.push(`${p.id}: помещение ${f.room} (${p.rooms[f.room].type}) — ${what}: ${f.error.kind}`);
+    }
+    if (built.failed.length > 0) continue;
+    const plan = planOf(db, built.hospital);
+    const staffed = (room: string, role: string) => p.staff.some(s => `r${s.room + 1}` === room && s.role === role);
+    for (const r of plan.rooms) {
+      for (const pr of problemsOf(db, plan, r, staffed)) errors.push(`${p.id}: ${r.type} (${r.id}) не работает: ${pr.kind}${pr.kind === 'noStaff' ? ` ${pr.role}` : ''}`);
+    }
+  }
+}
+
+/**
+ * Каталог больницы (spec 2026-09-own-hospital): ссылки между помещениями, аппаратами,
+ * должностями и обследованиями; шаблоны размеров — предметы и места внутри пола, ряд под
+ * подпись и проход у двери свободны, двери на нижней стене.
+ */
+function checkHospital(c: {
+  rooms: Record<string, RoomSrc>; equipment: Record<string, EquipmentSrc>; roles: Record<string, RoleSrc>;
+  exams: Record<string, ExamSrc>; conditions: Record<string, ConditionSrc>;
+}, errors: string[]) {
+  const { rooms, equipment, roles, exams } = c;
+  const exList = Object.values(exams);
+  for (const e of exList) {
+    if (e.room && !rooms[e.room]) errors.push(`${e.id}: помещение ${e.room} не найдено в каталоге больницы`);
+    if (e.collect && !rooms[e.collect]) errors.push(`${e.id}: помещение для материала ${e.collect} не найдено`);
+    if ((e.equipment || e.collect) && !e.room) errors.push(`${e.id}: аппарат или забор материала есть, а помещения нет`);
+    for (const id of e.equipment ?? []) {
+      if (!equipment[id]) errors.push(`${e.id}: аппарат ${id} не найден`);
+      else if (equipment[id].room !== e.room) errors.push(`${e.id}: аппарат ${id} стоит в ${equipment[id].room}, а обследование — в ${e.room}`);
+    }
+    if (e.room && rooms[e.room]?.needsEquipment && !e.equipment) errors.push(`${e.id}: в ${e.room} без аппарата не работают — укажите equipment`);
+  }
+  // пациент приходит туда, где берут материал, и туда, где обследование делают с ним самим
+  const visited = new Set(exList.flatMap(e => (e.collect ? [e.collect] : e.room ? [e.room] : [])));
+  for (const r of Object.values(rooms)) {
+    for (const role of r.staff) if (!roles[role]) errors.push(`${r.id}: должность ${role} не найдена`);
+    if (r.needsEquipment && !Object.values(equipment).some(e => e.room === r.id)) errors.push(`${r.id}: без аппарата не работает, а аппаратов для него в каталоге нет`);
+    const ids = new Set<string>();
+    for (const z of r.sizes) {
+      const at = `${r.id} ${z.id}`;
+      if (ids.has(z.id)) errors.push(`${at}: размер повторяется`);
+      ids.add(z.id);
+      const inner = (x: number, y: number) => x >= 1 && y >= 1 && x <= z.w - 2 && y <= z.h - 2;
+      const service = (y: number) => y === 1 || y === z.h - 2; // подпись и проход у двери
+      const taken = new Map<string, string>();
+      for (const [kind, x, y] of z.objects) {
+        if (!inner(x, y)) errors.push(`${at}: ${kind} (${x}, ${y}) — вне пола`);
+        else if (service(y)) errors.push(`${at}: ${kind} (${x}, ${y}) — в ряду под подпись или в проходе у двери`);
+        if (taken.has(`${x},${y}`)) errors.push(`${at}: в (${x}, ${y}) два предмета`);
+        taken.set(`${x},${y}`, kind);
+      }
+      for (const [x, y] of z.slots) {
+        if (!inner(x, y) || service(y)) errors.push(`${at}: место под аппарат (${x}, ${y}) — вне пола, в ряду под подпись или в проходе`);
+        if (taken.has(`${x},${y}`)) errors.push(`${at}: место под аппарат (${x}, ${y}) занято предметом`);
+        taken.set(`${x},${y}`, 'slot');
+      }
+      if (r.needsEquipment && z.slots.length === 0) errors.push(`${at}: без аппарата не работает, а мест под аппараты нет`);
+      if (z.door.x + z.door.width - 1 > z.w - 2) errors.push(`${at}: дверь выходит за стену`);
+      // человек садится на стул или кушетку; пациент — ещё и к аппарату
+      const spot = (who: string, [x, y]: [number, number], allowed: string[]) => {
+        if (!inner(x, y) || y === 1) errors.push(`${at}: место ${who} (${x}, ${y}) — вне пола или в ряду под подпись`);
+        const k = taken.get(`${x},${y}`);
+        if (k && !allowed.includes(k)) errors.push(`${at}: место ${who} (${x}, ${y}) занято: ${k}`);
+      };
+      for (const role of r.staff) {
+        if (!z.staff[role]) errors.push(`${at}: не сказано, где стоит ${role}`);
+      }
+      for (const [role, cell] of Object.entries(z.staff)) {
+        if (!r.staff.includes(role)) errors.push(`${at}: место для ${role}, а такой должности в помещении нет`);
+        spot(role, cell, ['chair']);
+      }
+      if (z.patient) spot('пациента', z.patient, ['chair', 'couch', 'slot']);
+      else if (visited.has(r.id)) errors.push(`${at}: сюда приходят пациенты, а места для пациента нет`);
+      if (r.seats && !z.objects.some(([kind]) => kind === 'chair')) errors.push(`${at}: зона ожидания без стульев`);
+    }
+  }
+  for (const e of Object.values(equipment)) {
+    if (!rooms[e.room]) errors.push(`${e.id}: помещение ${e.room} не найдено`);
+    else if (rooms[e.room].sizes.some(z => z.slots.length === 0)) errors.push(`${e.id}: в ${e.room} не у всех размеров есть место под аппарат`);
+    if (e.upgradeOf && equipment[e.upgradeOf]?.room !== e.room) errors.push(`${e.id}: улучшает ${e.upgradeOf} — такого аппарата в том же помещении нет`);
+    if (!exList.some(x => x.equipment?.includes(e.id))) errors.push(`${e.id}: ни одно обследование им не делают`);
+  }
+  for (const r of Object.values(roles)) {
+    if (r.salary[0] > r.salary[1]) errors.push(`${r.id}: зарплата при навыке 1 больше, чем при навыке 5`);
+    if (!Object.values(rooms).some(x => x.staff.includes(r.id))) errors.push(`${r.id}: ни одно помещение в нём не нуждается`);
+  }
+  // подтверждающее обследование должно быть достижимо: помещение и аппарат есть в каталоге
+  for (const cond of Object.values(c.conditions)) {
+    if (cond.confirm === 'clinical') continue;
+    for (const id of cond.confirm) {
+      const e = exams[id];
+      if (e?.room && !rooms[e.room]) errors.push(`${cond.id}: подтверждающее ${id} недостижимо — нет помещения ${e.room}`);
+    }
+  }
 }

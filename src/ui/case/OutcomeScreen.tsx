@@ -34,7 +34,21 @@ export function OutcomeScreen({ view, next, back }: { view: VisitView | undefine
         <P muted>{t.confidence(x.outOf10)}</P>
         <Text style={styles.label}>{t.outcomeLabel}</Text>
         <P testID="visit-outcome">{x.outcome}</P>
+        {view.firstTry && <P muted testID="visit-first-try">{view.firstTry}</P>}
       </Card>
+
+      {view.achievements && (
+        <Card testID="visit-achievements">
+          {view.achievements.map(a => <P key={a}>{T.profile.achievementLine(a)}</P>)}
+        </Card>
+      )}
+
+      {view.payment && (
+        <Card testID="visit-payment">
+          <Text style={styles.label}>{T.sandbox.payment}</Text>
+          {view.payment.map((line, i) => <P key={i} muted={i > 0}>{line}</P>)}
+        </Card>
+      )}
 
       <Card>
         <Text style={styles.label}>{t.gradesLabel}</Text>

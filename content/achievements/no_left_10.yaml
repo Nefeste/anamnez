@@ -1,0 +1,7 @@
+id: ach.no_left_10
+order: 17
+category: hospital
+name: { ru: "Здесь не ждут зря" }
+need: { ru: "Десять дней, когда приняты все, кто пришёл." }
+kind: noLeftDay
+count: 10

@@ -1,0 +1,30 @@
+# Амбулатория в посёлке — больница главы 1 «Участок» (spec 2026-09-campaign): та же, что в
+# практике, но без лаборатории и рентгена — их места пустые, лабораторию строит врач (задание
+# главы). Сверху — регистратура, доврачебный, кабинет врача, процедурный; посередине —
+# коридор со входом слева и скамьями; снизу — зона ожидания, ЭКГ, санузел.
+id: preset.village
+name: { ru: "Амбулатория в посёлке" }
+plot: [30, 17]
+entrance: [0, 8]
+corridor:
+  - [1, 7, 28, 9]
+rooms:
+  - { type: room.reception, size: S, x: 0, y: 0, rot: 0, door: 3 }
+  - { type: room.triage, size: S, x: 5, y: 0, rot: 0, door: 3 }
+  - { type: room.office, size: M, x: 10, y: 0, rot: 0, door: 3 }
+  - { type: room.procedure, size: S, x: 17, y: 0, rot: 0, door: 2 }
+  - { type: room.waiting, size: L, x: 0, y: 10, rot: 2, door: 5 }
+  - { type: room.ecg, size: S, x: 12, y: 10, rot: 2, door: 3, equipment: [eq.ecg] }
+  - { type: room.toilet, size: S, x: 24, y: 10, rot: 2, door: 3 }
+decor:
+  - [bench, 9, 9]
+  - [bench, 10, 9]
+  - [bench, 11, 9]
+  - [bench, 12, 9]
+  - [bench, 16, 9]
+  - [bench, 17, 9]
+staff:
+  - { role: role.registrar, room: 0 }
+  - { role: role.nurse, room: 1 }
+  - { role: role.nurse, room: 3 }
+  - { role: role.nurse, room: 5 }

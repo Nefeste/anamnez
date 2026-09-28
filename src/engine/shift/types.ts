@@ -6,6 +6,10 @@
 import type { Id, Season, Setting } from '../../content/types';
 import type { Scheduled } from '../core/events';
 import type { Outcome } from '../med/course';
+import type { BuildCommand, Built, HospitalState } from '../hospital/build';
+import type { CampaignProgress } from '../campaign/campaign';
+import type { CaseIncome, Ledger, Payer, RepChange } from '../economy/economy';
+import type { StaffMember } from '../hospital/staff';
 import type { Grade, ScoreNote } from '../med/score';
 import type { Observation, Patient } from '../med/types';
 
@@ -34,6 +38,11 @@ export type Difficulty = 'student' | 'doctor';
 
 export type PatientStatus = 'coming' | 'waiting' | 'inRoom' | 'away' | 'done' | 'left' | 'unseen';
 
+/** Практика в готовой амбулатории или песочница — своя больница (spec 2026-09-own-hospital). */
+/** Практика, песочница, кампания (spec 2026-09-campaign) — у каждой свои сохранения. */
+/** Практика, песочница, кампания и «Смена» — один день в выбранной больнице (spec 2026-09-campaign, часть 14). */
+export type Mode = 'shift' | 'sandbox' | 'campaign' | 'single';
+
 export type VisitKind = 'appointment' | 'walkIn' | 'return';
 export type ReturnReason = 'worse' | 'reaction' | 'unchanged';
 
@@ -49,6 +58,10 @@ export interface PendingResult {
   exam: Id;
   readyAt: number;
   obs: Observation[];
+  /** где делают (помещение больницы) и когда сама процедура — для карты; нет — в кабинете врача */
+  room?: string;
+  start?: number;
+  end?: number;
 }
 
 export interface ShiftPatient {
@@ -60,6 +73,12 @@ export interface ShiftPatient {
   returnOf?: string;
   returnReason?: ReturnReason;
   triage: Triage;
+  /** false — доврачебного кабинета нет: срочность никто не определил, очередь — по приходу */
+  triaged?: boolean;
+  /** песочница: кто платит — ОМС, ДМС или сам (spec 2026-09-own-hospital, часть 9) */
+  payer?: Payer;
+  /** когда впервые вызвали в кабинет — ожидание для репутации */
+  calledT?: number;
   status: PatientStatus;
   /** с какого момента ждёт в очереди — для порядка */
   queuedT: number;
@@ -71,6 +90,10 @@ export interface ShiftPatient {
   pending: PendingResult[];
   /** обследования, уже сделанные или назначенные этому пациенту */
   done: Id[];
+  /** песочница: какие из них были показаны, когда их назначали, — их оплачивают ОМС и ДМС */
+  indicated?: Id[];
+  /** песочница: что заплатили за закрытый приём и что сняла экспертиза */
+  paid?: CaseIncome;
   step: number;
   spent: { seconds: number; money: number };
   draft: { diagnosis?: Id; treatments: Id[]; setting: Setting };
@@ -114,7 +137,15 @@ export type Command =
   /** время на карте: часы идут сами (ADR 0005) */
   | { kind: 'advance'; seconds: number }
   | { kind: 'closeDay' }
-  | { kind: 'nextDay' };
+  | { kind: 'nextDay' }
+  /** песочница, между сменами (ADR 0016): постройка, отмена последней, стройка закончена */
+  | { kind: 'build'; cmd: BuildCommand }
+  | { kind: 'undo' }
+  | { kind: 'buildEnd' }
+  /** песочница, между сменами: нанять кандидата, уволить, назначить в помещение (нет — в резерв) */
+  | { kind: 'hire'; id: string }
+  | { kind: 'fire'; id: string }
+  | { kind: 'assign'; id: string; room?: string };
 
 /** Что случилось — для интерфейса: звук, автопауза, сводка «за это время». */
 export type Notice =
@@ -138,6 +169,12 @@ export interface DaySummary {
   returnsPlanned: number;
   /** сколько повторных обращений пришло сегодня */
   returnsToday: number;
+  /** песочница: касса за день, остаток вечером, как изменилась репутация */
+  economy?: { ledger: Ledger; cash: number; reputation: RepChange; level: { level: number; rooms: Id[] } };
+  /** сколько раз назначен антибиотик, который не показан (задание главы 1) */
+  needlessAntibiotic?: number;
+  /** кампания: какие задания выполнены за день и какие письма пришли */
+  campaign?: { done: string[]; letters: string[] };
 }
 
 export interface PlannedReturn {
@@ -151,7 +188,13 @@ export interface ShiftState {
     schemaVersion: number;
     contentVersion: number;
     rngVersion: number;
-    mode: 'shift';
+    mode: Mode;
+    /** песочница: с чего начали — пустой участок или готовая амбулатория */
+    start?: 'empty' | 'clinic';
+    /** кампания: номер карьеры — её слот (1–3) */
+    career?: number;
+    /** «Смена»: в какой больнице — запись готовой больницы (preset.*) или своя из песочницы (sandbox) */
+    venue?: Id;
     seed: number;
     season: Season;
     department: Id;
@@ -170,11 +213,25 @@ export interface ShiftState {
   /** очередь событий по (t, seq); seq — сквозной номер постановки, для одинакового порядка */
   events: Scheduled<ShiftEvent>[];
   seq: number;
-  /** когда освободятся рентген-кабинет и кабинет ЭКГ (по одному аппарату) */
-  rooms: { xray: number; ecg: number };
+  /** когда освободится помещение с очередью к аппарату (рентген, ЭКГ): номер помещения → время */
+  rooms: Record<string, number>;
   returns: PlannedReturn[];
   summary: DaySummary;
   history: DaySummary[];
   /** команды текущего дня — для отчёта об ошибке и повтора (`06-architecture.md` §8) */
   journal: Command[];
+  /** своя больница — только в песочнице; практика идёт в готовой амбулатории каталога */
+  hospital?: HospitalState;
+  /** песочница: касса, ₽; репутация 0–100; касса текущего дня (нет — сохранение 0.0.20–0.0.21) */
+  economy?: { cash: number; reputation?: number; ledger?: Ledger };
+  /** «Отменить» на экране стройки: прежние больница и касса, последние UNDO_DEPTH */
+  undo?: Built[];
+  /** штат песочницы; в практике — штат готовой амбулатории */
+  staff?: StaffMember[];
+  /** кандидаты — новые каждый вечер */
+  candidates?: StaffMember[];
+  /** номер следующего человека */
+  nextStaff?: number;
+  /** кампания: глава, задания, письма (spec 2026-09-campaign) */
+  campaign?: CampaignProgress;
 }

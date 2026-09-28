@@ -1,0 +1,33 @@
+id: room.lab
+name: { ru: "Лаборатория" }
+gen: { ru: "лаборатории" }
+staff: [role.lab_tech]
+needsEquipment: true
+sizes:
+  - id: S
+    w: 6
+    h: 7
+    cost: 20000
+    upkeep: 175
+    door: { x: 3 }
+    slots: [[1, 2], [4, 2]]
+    objects:
+      - [table, 2, 4]
+      - [table, 3, 4]
+      - [sink, 4, 4]
+    staff: { role.lab_tech: [2, 3] }
+  - id: M
+    w: 8
+    h: 7
+    cost: 28000
+    upkeep: 225
+    door: { x: 3 }
+    slots: [[1, 2], [2, 2], [5, 2], [6, 2]]
+    objects:
+      - [table, 3, 4]
+      - [table, 4, 4]
+      - [sink, 1, 4]
+      - [cabinet, 6, 4]
+    staff: { role.lab_tech: [3, 3] }
+texts:
+  hint: { ru: "Лаборант делает анализы крови и мочи, каждый — на своём анализаторе: без биохимического нет СРБ и глюкозы, без иммунохимического — ТТГ." }

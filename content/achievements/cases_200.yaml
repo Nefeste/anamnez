@@ -1,0 +1,7 @@
+id: ach.cases_200
+order: 4
+category: practice
+name: { ru: "Двести приёмов" }
+need: { ru: "Закрыть двести приёмов." }
+kind: cases
+count: 200

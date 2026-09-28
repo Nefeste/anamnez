@@ -1,0 +1,11 @@
+id: eq.urine_analyzer
+name: { ru: "Анализатор мочи" }
+gen: { ru: "анализатора мочи" }
+room: room.lab
+sprite: machine
+price: 30000
+upkeep: 30
+breakdown: 1
+speed: 1
+texts:
+  hint: { ru: "Читает тест-полоски и считает осадок: белок, глюкоза, лейкоциты, эритроциты, нитриты — общий анализ мочи." }

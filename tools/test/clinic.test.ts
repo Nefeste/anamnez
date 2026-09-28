@@ -11,7 +11,7 @@ import { findPath } from '../../src/engine/sim/path';
 import { BRISK, DWELL, SPEED, STRIDE, Walkers } from '../../src/render/map/walkers';
 import { assignSeats, type Doing, LEAVING, nearest, type Placement, placements, REGISTRATION, TRIAGE, type Where } from '../../src/state/clinicMap';
 
-const layout = clinicLayout();
+const layout = clinicLayout(db);
 
 describe('амбулатория: план', () => {
   test('все помещения среза на месте', () => {

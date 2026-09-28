@@ -1,4 +1,5 @@
-// Профиль врача (spec 2026-09-first-shift, «Профиль-минимум»): имя и пол, практика, архив приёмов.
+// Профиль врача (spec 2026-09-first-shift, «Профиль-минимум»): имя и пол, практика, архив приёмов;
+// достижения (spec 2026-09-campaign, часть 13).
 import { pluralRu } from '../plural';
 
 // между числом и единицей — неразрывный пробел (голос студии)
@@ -36,4 +37,15 @@ export const profile = {
   practiceTimes: (n: number) => (n > 0 ? `Встречалось в вашей практике: ${times(n)}` : 'В вашей практике пока не встречалось'),
   practiceShort: (n: number) => `встречалось в практике: ${times(n)}`,
   practiceCount: (n: number, total: number) => `В вашей практике встречалось: ${n} из ${total}`,
+  // достижения: у полученных — дата, у остальных — что нужно сделать; без «осталось»
+  achievements: 'Достижения',
+  achievementsCount: (got: number, total: number) => `Получено: ${got} из ${total}`,
+  achievementsOpen: 'Все достижения',
+  achievementsHint: 'Отметки за хорошую медицину и хорошую больницу — в любом режиме и без сроков.',
+  achievementGroup: {
+    practice: 'Приём', diagnosis: 'Диагноз', care: 'Бережливость и безопасность', knowledge: 'Болезни', hospital: 'Больница', campaign: 'Кампания',
+    daily: 'Случай дня',
+  } as Record<string, string>,
+  gotOn: (date: string) => `Получено ${date}`,
+  achievementLine: (name: string) => `Достижение: «${name}»`,
 };
