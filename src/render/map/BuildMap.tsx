@@ -6,7 +6,7 @@
 import { Atlas, Canvas, Group, Path, Picture, Rect, Skia, usePathValue } from '@shopify/react-native-skia';
 import { useEffect, useMemo } from 'react';
 // подписи — часть рисунка плана и растут вместе с ним, поэтому без настройки размера текста (как в ClinicMap)
-import { StyleSheet, Text, View } from 'react-native';
+import { PixelRatio, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useDerivedValue, useSharedValue, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
@@ -14,7 +14,10 @@ import type { Cell } from '@/content/types';
 import type { Plan } from '@/engine/hospital/build';
 import { colors } from '@/ui/theme';
 import { CELL_PX, recordFloor, recordGridLines } from './floor';
-import { buildAtlas, SPRITE } from './sprites';
+import { doorOnTop, roomLabel } from './labels';
+import { angleOf, objectTurns } from './orient';
+import { atlasPx, buildAtlas } from './sprites';
+import { cellXform } from './xform';
 
 export type Tool = 'look' | 'room' | 'corridor' | 'erase';
 
@@ -36,6 +39,9 @@ export interface RoomLabel {
   x: number;
   y: number;
   w: number;
+  h: number;
+  /** клетки двери: дверь в верхней стене — подпись внизу */
+  door: Cell[];
   /** не работает — рядом с подписью красная метка */
   down: boolean;
 }
@@ -92,15 +98,17 @@ export function BuildMap({ plan, width, height, tool, ghost, selected, labels, l
   onStroke: (cells: Cell[]) => void;
   onTapCell: (x: number, y: number) => void;
 }) {
-  const atlas = useMemo(() => buildAtlas(), []);
-  const floor = useMemo(() => recordFloor(plan), [plan]);
-  const lines = useMemo(() => recordGridLines(plan.grid.w, plan.grid.h), [plan.grid.w, plan.grid.h]);
-  const objectSprites = useMemo(() => plan.objects.map(o => atlas.objectRect(o.kind)), [plan, atlas]);
-  const objectXforms = useMemo(() => plan.objects.map(o => Skia.RSXform(CELL_PX / SPRITE, 0, o.x * CELL_PX, o.y * CELL_PX)), [plan]);
-
   const plotW = plan.grid.w * CELL_PX;
   const plotH = plan.grid.h * CELL_PX;
   const fit = Math.min(width / plotW, height / plotH);
+  // атлас — под наибольшее приближение: предметы не мылятся и вблизи; людей на стройке нет
+  const px = atlasPx(CELL_PX * fit * MAX_ZOOM, PixelRatio.get());
+  const atlas = useMemo(() => buildAtlas(px, false), [px]);
+  const floor = useMemo(() => recordFloor(plan), [plan]);
+  const lines = useMemo(() => recordGridLines(plan.grid.w, plan.grid.h), [plan.grid.w, plan.grid.h]);
+  const turned = useMemo(() => objectTurns(plan.grid, plan.objects, plan.rooms.flatMap(r => Object.values(r.staff))), [plan]);
+  const objectSprites = useMemo(() => plan.objects.map(o => atlas.objectRect(o.kind)), [plan, atlas]);
+  const objectXforms = useMemo(() => plan.objects.map((o, i) => Skia.RSXform(...cellXform(angleOf(turned[i]), o.x, o.y, px))), [plan, turned, px]);
   const zoom = useSharedValue(fit);
   const tx = useSharedValue((width - plotW * fit) / 2);
   const ty = useSharedValue((height - plotH * fit) / 2);
@@ -266,7 +274,7 @@ export function BuildMap({ plan, width, height, tool, ghost, selected, labels, l
             <Picture picture={lines} />
             <Atlas image={atlas.image} sprites={objectSprites} transforms={objectXforms} />
             {chosen && (
-              <Rect x={chosen.x * CELL_PX} y={chosen.y * CELL_PX} width={chosen.w * CELL_PX} height={chosen.h * CELL_PX} style="stroke" strokeWidth={2.5} color={colors.accent} />
+              <Rect x={(chosen.x + 0.5) * CELL_PX} y={(chosen.y + 0.5) * CELL_PX} width={(chosen.w - 1) * CELL_PX} height={(chosen.h - 1) * CELL_PX} style="stroke" strokeWidth={2.5} color={colors.accent} />
             )}
             <Path path={painted} color={tool === 'erase' ? 'rgba(200, 69, 60, 0.45)' : 'rgba(26, 138, 134, 0.45)'} />
             {ghost && (
@@ -283,12 +291,16 @@ export function BuildMap({ plan, width, height, tool, ghost, selected, labels, l
         </Canvas>
       </GestureDetector>
       <Animated.View pointerEvents="none" style={[styles.overlay, { width: plotW, height: plotH }, overlay]}>
-        {labels.map(l => (
-          <View key={l.id} testID={`label-${l.id}`} style={[styles.label, { left: (l.x + 1) * CELL_PX, top: (l.y + 1) * CELL_PX, maxWidth: (l.w - 1.2) * CELL_PX }]}>
-            {l.down && <View style={styles.down} />}
-            <Text numberOfLines={1} style={[styles.name, l.down && { color: RED }]}>{l.name}</Text>
-          </View>
-        ))}
+        {labels.map(l => {
+          // подпись — в клетках плана, кегль — по ширине помещения; красная метка — на месте первой буквы
+          const at = roomLabel(l.down ? `··${l.name}` : l.name, l, CELL_PX, doorOnTop(l, l.door));
+          return (
+            <View key={l.id} testID={`label-${l.id}`} style={[styles.label, { left: at.left, top: at.top, maxWidth: at.width }]}>
+              {l.down && <View style={styles.down} />}
+              <Text numberOfLines={at.lines} allowFontScaling={false} style={[styles.name, { fontSize: at.fontSize, lineHeight: at.fontSize * 1.2 }, l.down && { color: RED }]}>{l.name}</Text>
+            </View>
+          );
+        })}
       </Animated.View>
     </View>
   );
@@ -299,5 +311,5 @@ const styles = StyleSheet.create({
   overlay: { position: 'absolute', left: 0, top: 0, transformOrigin: 'left top' },
   label: { position: 'absolute', flexDirection: 'row', alignItems: 'center' },
   down: { width: 5, height: 5, borderRadius: 3, backgroundColor: RED, marginRight: 2 },
-  name: { fontSize: 8.5, fontWeight: '600', color: colors.muted },
+  name: { flexShrink: 1, fontWeight: '600', color: colors.muted },
 });

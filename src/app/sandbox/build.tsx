@@ -49,7 +49,7 @@ function Builder({ b }: { b: BuildView }) {
 
   const ghost = spec ? ghostOf(db, b.hospital, spec) : undefined;
   const cost = spec ? sizeOf(db, spec.type, spec.size)!.cost : 0;
-  const labels = b.plan.rooms.map(r => ({ id: r.id, name: db.rooms[r.type].name.ru, x: r.x, y: r.y, w: r.w, down: b.problems[r.id].length > 0 }));
+  const labels = b.plan.rooms.map(r => ({ id: r.id, name: db.rooms[r.type].name.ru, x: r.x, y: r.y, w: r.w, h: r.h, door: r.door, down: b.problems[r.id].length > 0 }));
   const roomAt = (x: number, y: number) => b.plan.rooms.find(r => x > r.x && y > r.y && x < r.x + r.w - 1 && y < r.y + r.h - 1)
     ?? b.plan.rooms.find(r => x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h);
 

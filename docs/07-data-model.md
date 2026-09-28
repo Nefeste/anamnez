@@ -242,7 +242,7 @@ interface RoomSize {
   places: number;                        // мест для нанятых врачей — ординаторская (0.0.32)
 }
 interface Equipment {
-  id: Id; name: Text; gen: Text; room: Id; sprite: 'machine' | 'xray'; upgradeOf?: Id;
+  id: Id; name: Text; gen: Text; room: Id; sprite: 'ecg' | 'analyzer' | 'xray'; upgradeOf?: Id;
   price: number; upkeep: number;
   breakdown: P;                          // шанс поломки за день работы; поломок в 0.2.0 нет
   speed: number;                         // множитель времени обследования

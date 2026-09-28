@@ -2,7 +2,7 @@ id: eq.biochem_analyzer
 name: { ru: "Биохимический анализатор" }
 gen: { ru: "биохимического анализатора" }
 room: room.lab
-sprite: machine
+sprite: analyzer
 price: 150000
 upkeep: 120
 breakdown: 1

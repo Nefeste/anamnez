@@ -453,6 +453,9 @@ try {
   // на какой стул сел первый, зависит от зерна смены: перебираем стулья по кругу
   let seatedWho = '';
   for (let i = 0; i < 120 && !seatedWho.includes('Ждёт приёма'); i++) {
+    // пришёл срочный — смена на автопаузе (зерно смены — от времени запуска): дальше на ×4,
+    // иначе остальные так и стоят у стойки и медсестры
+    if ((await page.getByTestId('tab-x4').getAttribute('aria-selected')) !== 'true') await page.getByTestId('tab-x4').click();
     await tapCell(CLINIC.seats[i % CLINIC.seats.length]);
     await page.waitForTimeout(200);
     seatedWho = (await page.getByTestId('map-who').count()) > 0 ? await text(page, 'map-who') : '';

@@ -94,7 +94,7 @@ describe('стройка: деньги', () => {
     expect(build(db, { ...s, cash: 100 }, { kind: 'buy', room: 'r1', equipment: 'eq.immuno_analyzer' }))
       .toMatchObject({ ok: false, error: { kind: 'money', need: db.equipment['eq.immuno_analyzer'].price - 100 } });
     // купленный аппарат стоит на карте
-    expect(planOf(db, two.hospital).objects.filter(o => o.kind === 'machine')).toHaveLength(2);
+    expect(planOf(db, two.hospital).objects.filter(o => o.kind === 'analyzer')).toHaveLength(2);
   });
 
   test('снос возвращает половину цены помещения и аппаратов, продажа — половину цены аппарата, стёртый коридор — половину клетки', () => {

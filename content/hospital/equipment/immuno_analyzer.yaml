@@ -2,7 +2,7 @@ id: eq.immuno_analyzer
 name: { ru: "Иммунохимический анализатор" }
 gen: { ru: "иммунохимического анализатора" }
 room: room.lab
-sprite: machine
+sprite: analyzer
 price: 250000
 upkeep: 200
 breakdown: 1

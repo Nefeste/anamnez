@@ -2,7 +2,7 @@ id: eq.urine_analyzer
 name: { ru: "Анализатор мочи" }
 gen: { ru: "анализатора мочи" }
 room: room.lab
-sprite: machine
+sprite: analyzer
 price: 30000
 upkeep: 30
 breakdown: 1
