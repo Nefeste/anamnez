@@ -61,7 +61,7 @@ export interface AchievementRow {
   got?: string;
 }
 
-const CATEGORIES: AchievementCategory[] = ['practice', 'diagnosis', 'care', 'knowledge', 'hospital', 'campaign'];
+const CATEGORIES: AchievementCategory[] = ['practice', 'diagnosis', 'care', 'knowledge', 'hospital', 'campaign', 'daily'];
 
 /** День получения — числом, по часам телефона: 28.09.2026. */
 export function dateText(iso: string): string {

@@ -16,7 +16,7 @@ import {
 } from '../../src/state/session';
 
 const facts = (x: Partial<CareerFacts> = {}): CareerFacts => ({
-  cases: 0, days: 0, run: 0, gradeA: 0, thrift: 0, allergy: 0, noLeftDays: 0, seen: {}, rooms: [], chapters: [], ...x,
+  cases: 0, days: 0, run: 0, gradeA: 0, thrift: 0, allergy: 0, noLeftDays: 0, daily: 0, seen: {}, rooms: [], chapters: [], ...x,
 });
 const ach = (id: string) => db.achievements[id];
 
@@ -43,6 +43,8 @@ describe('достижения: условия', () => {
     expect(achieved(db, ach('ach.thrift_1'), facts({ thrift: 1 }))).toBe(true);
     expect(achieved(db, ach('ach.allergy_10'), facts({ allergy: 9 }))).toBe(false);
     expect(achieved(db, ach('ach.no_left'), facts({ noLeftDays: 1 }))).toBe(true);
+    expect(achieved(db, ach('ach.daily_7'), facts({ daily: 6 }))).toBe(false);
+    expect(achieved(db, ach('ach.daily_7'), facts({ daily: 7 }))).toBe(true);
     const ten = Object.fromEntries(Object.keys(db.conditions).slice(0, 10).map(id => [id, 1]));
     expect(achieved(db, ach('ach.seen_10'), facts({ seen: ten }))).toBe(true);
     expect(achieved(db, ach('ach.seen_10'), facts({ seen: { ...ten, [Object.keys(ten)[0]]: 0 } }))).toBe(false);
@@ -158,7 +160,7 @@ describe('достижения в профиле', () => {
     await loadProfile();
     recordDay({ key: 'shift:1:1', seen: 3, noLeft: false, rooms: [], chapters: [] });
     const groups = achievementGroups(profile());
-    expect(groups.map(g => g.key)).toEqual(['practice', 'diagnosis', 'care', 'knowledge', 'hospital', 'campaign']);
+    expect(groups.map(g => g.key)).toEqual(['practice', 'diagnosis', 'care', 'knowledge', 'hospital', 'campaign', 'daily']);
     expect(groups.flatMap(g => g.items).length).toBe(Object.keys(db.achievements).length);
     const [first, shift] = groups[0].items;
     expect([first.id, first.got, first.need]).toEqual(['ach.first_patient', undefined, ach('ach.first_patient').need.ru]);

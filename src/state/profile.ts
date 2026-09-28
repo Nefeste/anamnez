@@ -21,6 +21,10 @@ export const ARCHIVE_SIZE = 50;
 export const DAY_KEYS = 60;
 /** «Принесла» прежняя практика: достижение за приёмы до 0.0.26 — строки на итоге у него нет. */
 export const EARLIER = 'earlier';
+/** Сколько дней «Случая дня» хранить: в списке — последние 30. */
+export const DAILY_KEEP = 60;
+/** Ключ случая дня — что принесло достижение. */
+export const dailyKey = (day: string) => `daily:${day}`;
 
 export interface Doctor {
   first: string;
@@ -60,8 +64,18 @@ export interface CareerProgress {
   thrift: number;
   allergy: number;
   noLeftDays: number;
+  /** сыгранные случаи дня — первые попытки */
+  daily: number;
   /** ключи закрытых дней, новые первыми, не больше DAY_KEYS */
   closedDays: string[];
+}
+
+/** «Случай дня» — первая попытка: вердикт, итоговая оценка, версия базы, когда сыгран (ISO). */
+export interface DailyRecord {
+  verdict: 'correct' | 'partly' | 'wrong';
+  grade: Grade;
+  base: number;
+  at: string;
 }
 
 /** Закрытый день — для достижений: ключ, кого приняли, приняли ли всех, что работает в своей больнице, выполнена ли глава. */
@@ -81,6 +95,8 @@ export interface Profile {
   /** новые первыми */
   archive: CaseRecord[];
   achievements: CareerProgress;
+  /** «Случай дня»: день (ГГГГ-ММ-ДД) → первая попытка, последние DAILY_KEEP дней */
+  daily: Record<string, DailyRecord>;
 }
 
 export interface ProfileView extends Profile {
@@ -89,8 +105,10 @@ export interface ProfileView extends Profile {
 
 const GRADES: Grade[] = ['A', 'B', 'C', 'D'];
 const emptyStats = (): ProfileStats => ({ cases: 0, correct: 0, partly: 0, wrong: 0, grades: { A: 0, B: 0, C: 0, D: 0 }, money: 0 });
-const emptyProgress = (): CareerProgress => ({ got: {}, days: 0, run: 0, gradeA: 0, thrift: 0, allergy: 0, noLeftDays: 0, closedDays: [] });
-const empty = (): Profile => ({ stats: emptyStats(), seen: {}, archive: [], achievements: emptyProgress() });
+const emptyProgress = (): CareerProgress => ({ got: {}, days: 0, run: 0, gradeA: 0, thrift: 0, allergy: 0, noLeftDays: 0, daily: 0, closedDays: [] });
+const empty = (): Profile => ({ stats: emptyStats(), seen: {}, archive: [], achievements: emptyProgress(), daily: {} });
+const VERDICTS = ['correct', 'partly', 'wrong'] as const;
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 let store: RawStore | null = null;
 let current: Profile = empty();
@@ -100,6 +118,7 @@ let saving: Promise<unknown> = Promise.resolve();
 /** приёмы и дни, пришедшие до того, как профиль прочитан с диска: запишутся после чтения */
 let waiting: Omit<CaseRecord, 'key'>[] = [];
 let waitingDays: DayRecord[] = [];
+let waitingDaily: { day: string; r: Omit<DailyRecord, 'at'> }[] = [];
 let view: ProfileView = { ...current, status };
 const listeners = new Set<() => void>();
 
@@ -149,7 +168,14 @@ export function sanitizeProfile(data: unknown): Profile {
   if (isObject(a.got)) {
     for (const [id, g] of Object.entries(a.got)) if (isObject(g) && typeof g.at === 'string' && typeof g.by === 'string') out.achievements.got[id] = { at: g.at, by: g.by };
   }
-  for (const k of ['days', 'run', 'gradeA', 'thrift', 'allergy', 'noLeftDays'] as const) out.achievements[k] = count(a[k]);
+  for (const k of ['days', 'run', 'gradeA', 'thrift', 'allergy', 'noLeftDays', 'daily'] as const) out.achievements[k] = count(a[k]);
+  if (isObject(d.daily)) {
+    for (const [day, r] of Object.entries(d.daily)) {
+      if (DAY.test(day) && isObject(r) && VERDICTS.includes(r.verdict as never) && GRADES.includes(r.grade as Grade) && typeof r.at === 'string') {
+        out.daily[day] = { verdict: r.verdict as DailyRecord['verdict'], grade: r.grade as Grade, base: count(r.base), at: r.at };
+      }
+    }
+  }
   if (Array.isArray(a.closedDays)) out.achievements.closedDays = a.closedDays.filter((k): k is string => typeof k === 'string').slice(0, DAY_KEYS);
   if (Array.isArray(d.archive)) {
     out.archive = d.archive
@@ -185,11 +211,14 @@ export function loadProfile(): Promise<void> {
       loading = null;
       const early = waiting;
       const days = waitingDays;
+      const dailies = waitingDaily;
       waiting = [];
       waitingDays = [];
+      waitingDaily = [];
       const added = recordCases(early);
       for (const d of days) recordDay(d);
-      if (added === 0 && days.length === 0) changed();
+      for (const x of dailies) recordDaily(x.day, x.r);
+      if (added === 0 && days.length === 0 && dailies.length === 0) changed();
     });
   return loading;
 }
@@ -256,7 +285,7 @@ export function recordCases(cases: readonly Omit<CaseRecord, 'key'>[]): number {
 /** Что есть сейчас — для проверки достижений; помещения и главы — только у закрытого дня. */
 function factsOf(stats: ProfileStats, seen: Record<Id, number>, a: CareerProgress, day?: DayRecord): CareerFacts {
   return {
-    cases: stats.cases, days: a.days, run: a.run, gradeA: a.gradeA, thrift: a.thrift, allergy: a.allergy, noLeftDays: a.noLeftDays, seen,
+    cases: stats.cases, days: a.days, run: a.run, gradeA: a.gradeA, thrift: a.thrift, allergy: a.allergy, noLeftDays: a.noLeftDays, daily: a.daily, seen,
     rooms: day?.rooms ?? [], chapters: day?.chapters ?? [],
   };
 }
@@ -289,6 +318,27 @@ export function recordDay(d: DayRecord): Id[] {
   return fresh;
 }
 
+/**
+ * «Случай дня» сыгран: засчитывается первая попытка, повтор ничего не меняет. Хранятся
+ * последние DAILY_KEEP дней; счёт сыгранных — для «семи случаев дня». Отдаёт новые достижения.
+ */
+export function recordDaily(day: string, r: Omit<DailyRecord, 'at'>): Id[] {
+  if (status !== 'ready') {
+    waitingDaily.push({ day, r });
+    return [];
+  }
+  if (current.daily[day]) return [];
+  const kept = Object.keys(current.daily).sort().reverse().slice(0, DAILY_KEEP - 1);
+  const daily: Record<string, DailyRecord> = { [day]: { ...r, at: new Date().toISOString() } };
+  for (const k of kept) daily[k] = current.daily[k];
+  const ach = { ...current.achievements, got: { ...current.achievements.got }, daily: current.achievements.daily + 1 };
+  const fresh = earn(ach, factsOf(current.stats, current.seen, ach), dailyKey(day));
+  current = { ...current, daily, achievements: ach };
+  changed();
+  void persist();
+  return fresh;
+}
+
 /** Достижения, которые принёс приём или день (по ключу), — в порядке записи. */
 export function achievementsBy(key: string): Id[] {
   const got = current.achievements.got;
@@ -316,6 +366,7 @@ export function forgetProfile() {
   loading = null;
   waiting = [];
   waitingDays = [];
+  waitingDaily = [];
   changed();
 }
 

@@ -457,7 +457,7 @@ const achievementBase = {
   id: z.string().regex(/^ach\.[a-z0-9_]+$/),
   /** порядок в списке профиля */
   order: count,
-  category: z.enum(['practice', 'diagnosis', 'care', 'knowledge', 'hospital', 'campaign']),
+  category: z.enum(['practice', 'diagnosis', 'care', 'knowledge', 'hospital', 'campaign', 'daily']),
   name: text,
   /** что нужно сделать — у неполученного, без счётчиков «осталось» */
   need: text,
@@ -469,7 +469,7 @@ const counted = <K extends string>(kind: K) => z.strictObject({ ...achievementBa
 /** Достижение: вид и числа — движку (src/engine/career/achievements.ts), тексты — игроку. */
 export const achievementSchema = z.discriminatedUnion('kind', [
   counted('cases'), counted('days'), counted('correctRun'), counted('gradeA'), counted('thriftCase'), counted('allergyAsked'), counted('noLeftDay'),
-  counted('seenConditions'),
+  counted('seenConditions'), counted('dailyCases'),
   z.strictObject({ ...achievementBase, kind: z.literal('department'), department: z.string().regex(/^dept\.[a-z0-9_]+$/) }),
   z.strictObject({ ...achievementBase, kind: z.literal('roomWorks'), room: roomId }),
   z.strictObject({ ...achievementBase, kind: z.literal('chapter'), chapter: z.string().regex(/^chapter\.[a-z0-9_]+$/) }),

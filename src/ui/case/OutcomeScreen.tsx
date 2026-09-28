@@ -34,6 +34,7 @@ export function OutcomeScreen({ view, next, back }: { view: VisitView | undefine
         <P muted>{t.confidence(x.outOf10)}</P>
         <Text style={styles.label}>{t.outcomeLabel}</Text>
         <P testID="visit-outcome">{x.outcome}</P>
+        {view.firstTry && <P muted testID="visit-first-try">{view.firstTry}</P>}
       </Card>
 
       {view.achievements && (

@@ -696,6 +696,30 @@ try {
   await page.getByTestId('menu-continue').waitFor({ timeout: 10_000 });
   check((await text(page, 'menu-continue')).includes('Карьера 1: Глава 1. Участок'), `меню: «Продолжить» — ${(await text(page, 'menu-continue')).replace(/\n/g, ' · ')}`);
 
+  // «Случай дня»: последние 30 дней, приём, разбор, отметка в списке (spec 2026-09-campaign, часть 14)
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-daily').click();
+  await page.getByTestId('daily-base').waitFor({ timeout: 10_000 });
+  const days = page.locator('[data-testid^="daily-20"]');
+  const today = days.first();
+  check((await days.count()) === 30 && (await today.innerText()).startsWith('Сегодня'), `случай дня: последние ${await days.count()} дней, сегодня первым`);
+  await today.click();
+  await page.getByTestId('exam-exam.ask_complaints').waitFor({ timeout: 10_000 });
+  await page.getByTestId('exam-exam.ask_complaints').click();
+  await page.getByTestId('visit-decide').click();
+  await page.locator('[data-testid^="hint-"]').first().click();
+  await page.getByTestId('decision-to-plan').click();
+  await page.getByTestId('setting-home').click();
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
+  check((await text(page, 'visit-truth')).startsWith('На самом деле:'), `случай дня: разбор — ${await text(page, 'visit-truth')}`);
+  await page.getByTestId('daily-to-list').click();
+  await page.getByTestId('daily-base').waitFor({ timeout: 10_000 });
+  check((await today.innerText()).includes('Сыгран: '), `случай дня: в списке — ${(await today.innerText()).replace(/\n/g, ' · ')}`);
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(OUT, '17-daily.png') });
+
   // конец дня из сохранения: закрыть день, итоги, разбор случая из итогов, следующий день
   const day = await browser.newContext({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2 });
   await day.addInitScript(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/shift.json', endOfDaySave()]);

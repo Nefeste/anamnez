@@ -21,6 +21,8 @@ export interface CareerFacts {
   allergy: number;
   /** дней, когда приняты все, кто пришёл */
   noLeftDays: number;
+  /** сыгранных случаев дня (первые попытки) */
+  daily: number;
   /** болезнь → сколько раз встречалась в практике */
   seen: Readonly<Record<Id, number>>;
   /** какие помещения своей больницы работали в закрытый день */
@@ -38,6 +40,7 @@ const COUNTED: Record<Extract<Achievement, { count: number }>['kind'], (f: Caree
   allergyAsked: f => f.allergy,
   noLeftDay: f => f.noLeftDays,
   seenConditions: f => Object.values(f.seen).filter(n => n > 0).length,
+  dailyCases: f => f.daily,
 };
 
 /** Выполнено ли условие достижения. */

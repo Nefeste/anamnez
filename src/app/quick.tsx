@@ -1,10 +1,12 @@
-// Быстрая игра (03-game-design.md §10; spec 2026-09-campaign): практика в амбулатории и
-// песочница — своя больница. У каждой по сохранению: есть оно — лист «продолжить или начать
-// заново». Дальше здесь появятся «Смена» и «Случай дня».
+// Быстрая игра (03-game-design.md §10; spec 2026-09-campaign): практика в амбулатории,
+// «Случай дня» и песочница — своя больница. У практики и песочницы по сохранению: есть оно —
+// лист «продолжить или начать заново». Дальше здесь появится «Смена».
 import { router, Stack, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import type { Difficulty, Mode } from '@/engine/shift/types';
 import { T } from '@/i18n';
+import { dailyMenuHint } from '@/state/daily';
+import { useProfile } from '@/state/profile';
 import { type GameSummary, loadShift, savedGames, startShift } from '@/state/session';
 import { Button, H, P, Screen, Sheet } from '@/ui/components';
 import { DifficultyChoice } from '@/ui/difficulty';
@@ -15,6 +17,8 @@ export default function QuickGame() {
   const [games, setGames] = useState<GameSummary[]>([]);
   const [sheet, setSheet] = useState<Mode>();
   const [difficulty, setDifficulty] = useState<Difficulty>('student');
+  // подпись «Случая дня» — из профиля: сегодняшний сыгран — с оценкой
+  const p = useProfile();
   useFocusEffect(
     useCallback(() => {
       let live = true;
@@ -63,6 +67,7 @@ export default function QuickGame() {
         hint={practice ? t.practiceSavedHint(practice.day, practice.clock) : t.practiceHint}
         onPress={() => pick('shift', practice)}
       />
+      <Button testID="menu-daily" kind="plain" title={T.daily.title} hint={dailyMenuHint(p.daily)} onPress={() => router.push('/daily')} />
       <Button
         testID="menu-sandbox"
         kind="plain"

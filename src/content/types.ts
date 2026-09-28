@@ -435,10 +435,10 @@ export interface Tip {
 }
 
 /** Группа достижения в профиле. */
-export type AchievementCategory = 'practice' | 'diagnosis' | 'care' | 'knowledge' | 'hospital' | 'campaign';
+export type AchievementCategory = 'practice' | 'diagnosis' | 'care' | 'knowledge' | 'hospital' | 'campaign' | 'daily';
 
-/** Вид «сколько раз»: приёмов, рабочих дней, верных подряд, на A, бережливых, с вопросом об аллергии, дней без ушедших, разных болезней. */
-export type CountedKind = 'cases' | 'days' | 'correctRun' | 'gradeA' | 'thriftCase' | 'allergyAsked' | 'noLeftDay' | 'seenConditions';
+/** Вид «сколько раз»: приёмов, рабочих дней, верных подряд, на A, бережливых, с вопросом об аллергии, дней без ушедших, разных болезней, случаев дня. */
+export type CountedKind = 'cases' | 'days' | 'correctRun' | 'gradeA' | 'thriftCase' | 'allergyAsked' | 'noLeftDay' | 'seenConditions' | 'dailyCases';
 
 /** Достижение (spec 2026-09-campaign, часть 13): вид и числа — движку, название и что нужно — игроку. */
 export type Achievement = { id: Id; order: number; category: AchievementCategory; name: Text; need: Text } & (

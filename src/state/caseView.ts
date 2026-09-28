@@ -121,6 +121,8 @@ export interface VisitView {
   payment?: string[];
   /** достижения, полученные этим приёмом, — названия */
   achievements?: string[];
+  /** «Случай дня», повтор: чем засчитана первая попытка */
+  firstTry?: string;
   decision?: Decision;
 }
 

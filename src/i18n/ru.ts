@@ -1,6 +1,7 @@
 // Русский словарь — исходный: остальные языки объявляются с его типом (docs/06-architecture.md §9).
 import { about } from './sections/about';
 import { campaign } from './sections/campaign';
+import { daily } from './sections/daily';
 import { common } from './sections/common';
 import { encyclopedia } from './sections/encyclopedia';
 import { menu } from './sections/menu';
@@ -12,4 +13,4 @@ import { settings } from './sections/settings';
 import { shift } from './sections/shift';
 import { spikes } from './sections/spikes';
 
-export const ru = { common, menu, settings, about, encyclopedia, spikes, shift, names, profile, report, sandbox, campaign };
+export const ru = { common, menu, settings, about, encyclopedia, spikes, shift, names, profile, report, sandbox, campaign, daily };
