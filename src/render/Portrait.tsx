@@ -1,29 +1,10 @@
 // Портрет человека кодом из зерна (ADR 0013): лицо, возраст, волосы, очки, одежда.
 import { Canvas, Circle, Group, Oval, Path, Rect, RoundedRect, Skia } from '@shopify/react-native-skia';
 import { useMemo } from 'react';
-import { Rng } from '@/engine/core/rng';
-
-const SKIN = ['#F2D0B5', '#E8BE9A', '#D9A57E', '#C68B63', '#F5DCC8'];
-const HAIR = ['#2B2118', '#4A3222', '#7A5230', '#A67B4B', '#C9A86A', '#1A1A1A'];
-const CLOTHES = ['#5B7FA6', '#7A9E7E', '#A65B5B', '#8E7AA6', '#C29B48', '#5E6F72'];
+import { lookOf } from './look';
 
 export function Portrait({ seed, sex, age, size = 72 }: { seed: number; sex: 'm' | 'f'; age: number; size?: number }) {
-  const look = useMemo(() => {
-    const r = Rng.seeded(seed).fork('portrait');
-    const grey = age >= 60 ? 0.85 : age >= 48 ? 0.4 : 0;
-    const bald = sex === 'm' && age >= 45 && r.int(100) < 35;
-    return {
-      skin: r.pick(SKIN),
-      hair: grey > 0 && r.int(100) < grey * 100 ? '#C8C8C8' : r.pick(HAIR),
-      clothes: r.pick(CLOTHES),
-      bald,
-      long: sex === 'f' && r.int(100) < 70,
-      glasses: age >= 40 ? r.int(100) < 45 : r.int(100) < 15,
-      beard: sex === 'm' && r.int(100) < 20,
-      wrinkles: age >= 55,
-      bg: r.pick(['#E6EEF0', '#EEE9E2', '#E9EEE4', '#EDE6EE']),
-    };
-  }, [seed, sex, age]);
+  const look = useMemo(() => lookOf(seed, sex, age), [seed, sex, age]);
 
   const s = size;
   const smile = useMemo(() => {

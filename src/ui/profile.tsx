@@ -34,11 +34,11 @@ export function DoctorForm({ initial, submitTitle, onSubmit }: { initial?: Docto
         <Tabs<'m' | 'f'> testPrefix="doctor-sex" value={d.sex} onChange={onSex} items={[{ key: 'f', title: t.sex.f }, { key: 'm', title: t.sex.m }]} />
         <Text style={styles.label}>{t.portrait}</Text>
         <View style={styles.portraits} accessibilityRole="radiogroup">
-          {DOCTOR_PORTRAITS.map((seed, i) => {
+          {DOCTOR_PORTRAITS[d.sex].map((seed, i) => {
             const on = (d.portrait ?? 0) === i;
             return (
               <Pressable
-                key={seed}
+                key={i}
                 testID={`doctor-portrait-${i}`}
                 accessibilityRole="radio"
                 accessibilityLabel={t.portraitN(i + 1)}

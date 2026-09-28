@@ -5,10 +5,11 @@ import { beforeEach, describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
 import { apply, newShift } from '../../src/engine/shift/engine';
 import type { ShiftPatient, ShiftState } from '../../src/engine/shift/types';
+import { lookOf } from '../../src/render/look';
 import {
-  ARCHIVE_SIZE, caseKey, forgetProfile, loadProfile, PROFILE_SLOT, profile, profileSaved, recordCases, sanitizeProfile, setDoctor, setProfileStore,
+  ARCHIVE_SIZE, caseKey, forgetProfile, loadProfile, PORTRAITS, PROFILE_SLOT, profile, profileSaved, recordCases, sanitizeProfile, setDoctor, setProfileStore,
 } from '../../src/state/profile';
-import { practiceLines, rankLadder, rankName, rankOf } from '../../src/state/profileView';
+import { DOCTOR_AGE, DOCTOR_PORTRAITS, practiceLines, portraitSeed, rankLadder, rankName, rankOf } from '../../src/state/profileView';
 import { loadSlot, memoryStore, saveSlot } from '../../src/state/saves';
 import {
   archiveCaseView, callPatient, chooseDiagnosis, chooseSetting, examine, finishCase, forgetShift, loadShift, saved, setStore, shiftCaseView, shiftState,
@@ -154,6 +155,16 @@ describe('профиль: портрет, звание, статистика (sp
     expect([0, 24, 25, 99, 100, 299, 300, 5000].map(rankOf)).toEqual([0, 0, 1, 1, 2, 2, 3, 3]);
     expect([rankName(0), rankName(25), rankName(100), rankName(300)]).toEqual(['Интерн', 'Ординатор', 'Врач', 'Врач высшей категории']);
     expect(rankLadder()).toBe('Звание растёт с принятыми пациентами: интерн → ординатор (25) → врач (100) → врач высшей категории (300).');
+  });
+
+  test('портреты врача-женщины — все с длинными волосами разного цвета (0.0.31); у каждого пола — шесть', () => {
+    const women = DOCTOR_PORTRAITS.f.map(seed => lookOf(seed, 'f', DOCTOR_AGE));
+    expect(women.every(l => l.long)).toBe(true);
+    expect(new Set(women.map(l => l.hair)).size).toBe(PORTRAITS);
+    expect([DOCTOR_PORTRAITS.f.length, DOCTOR_PORTRAITS.m.length]).toEqual([PORTRAITS, PORTRAITS]);
+    // номер портрета — в наборе своего пола; без номера — первый
+    expect(portraitSeed({ first: 'А', last: 'Б', sex: 'f', portrait: 2 })).toBe(DOCTOR_PORTRAITS.f[2]);
+    expect(portraitSeed({ first: 'А', last: 'Б', sex: 'm' })).toBe(DOCTOR_PORTRAITS.m[0]);
   });
 
   test('минуты, антибиотик по показаниям и опасное — из закрытых приёмов; прежний профиль — с нулями', async () => {
