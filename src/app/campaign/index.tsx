@@ -7,7 +7,8 @@ import { db } from '@/content';
 import type { Difficulty } from '@/engine/shift/types';
 import { T } from '@/i18n';
 import { CAREERS, type GameSummary, loadShift, savedGames, startCampaign } from '@/state/session';
-import { Button, Card, H, P, Screen, Sheet } from '@/ui/components';
+import { updateSettings, useSettings } from '@/state/settings';
+import { Button, Card, H, P, Screen, Sheet, Toggle } from '@/ui/components';
 import { DifficultyChoice } from '@/ui/difficulty';
 
 type Pick = { career: number; saved?: GameSummary; confirm?: boolean; fresh?: boolean };
@@ -17,6 +18,7 @@ export default function CampaignScreen() {
   const [games, setGames] = useState<GameSummary[]>([]);
   const [pick, setPick] = useState<Pick>();
   const [difficulty, setDifficulty] = useState<Difficulty>('student');
+  const settings = useSettings();
   useFocusEffect(
     useCallback(() => {
       let live = true;
@@ -82,6 +84,8 @@ export default function CampaignScreen() {
             <H>{t.newTitle}</H>
             <P>{t.newText}</P>
             <DifficultyChoice value={difficulty} onChange={setDifficulty} />
+            {/* «мягкий режим» — при начале карьеры и в настройках (часть 28б): это одна настройка */}
+            <Toggle testID="career-soft" title={T.settings.softMode} hint={T.settings.softModeHint} value={settings.softMode} onChange={v => updateSettings({ softMode: v })} />
             <Button testID="career-begin" title={t.begin} onPress={() => begin(pick.career)} />
           </>
         )}

@@ -77,6 +77,15 @@ export const encyclopedia = {
   // операция и срок стационара (spec 2026-09-chapter-2, части 26 и 28)
   whereSurgery: (op: string, hours: number) => `Операция — ${op.toLowerCase()}: в первые ${hours}\u00a0ч после поступления.`,
   whereStay: (lo: number, hi: number) => `В стационаре обычно ${lo === hi ? lo : `${lo}–${hi}`}\u00a0${pluralRu(hi, 'день', 'дня', 'дней')}.`,
+  // осложнённая стадия (часть 28б): риск по часам без операции, срок после неё, исходы операции
+  whereStayComplicated: (name: string, lo: number, hi: number) => `После операции, если была ${name}, — ${lo === hi ? lo : `${lo}–${hi}`}\u00a0${pluralRu(hi, 'день', 'дня', 'дней')}.`,
+  complicationRisk: (name: string, hours: number, early: string, every: number, later: string) =>
+    `${name[0].toUpperCase()}${name.slice(1)} без операции: за первые ${hours}\u00a0ч — до ${early}\u00a0%, дальше — ${later}\u00a0% за каждые ${every}\u00a0ч.`,
+  opOutcomes: 'Исходы',
+  opComplications: (plain: string, complicated?: string, name?: string) =>
+    `Осложнения после операции — ${plain}\u00a0%${complicated && name ? `; если была ${name}, — ${complicated}\u00a0%` : ''}.`,
+  opDeaths: (plain: string, complicated?: string, name?: string) =>
+    `Умирают в стационаре — ${plain}\u00a0%${complicated && name ? `; если была ${name}, — ${complicated}\u00a0%` : ''}.`,
   surgeryRow: 'Операция',
   opTreats: 'Чем лечат и в какой срок',
   opWindow: (hours: number) => `в первые ${hours}\u00a0ч после поступления`,

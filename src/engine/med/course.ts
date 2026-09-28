@@ -13,7 +13,7 @@ import type { Patient } from './types';
 export const OBSERVE_DAYS = 7;
 
 /** `admitted` — лёг в свою палату (часть 26) или в операционную, затем в палату (часть 28): чем кончится, скажет выписка. */
-export type OutcomeKind = 'recovered' | 'improved' | 'unchanged' | 'worse' | 'reaction' | 'transferred' | 'admitted';
+export type OutcomeKind = 'recovered' | 'improved' | 'unchanged' | 'worse' | 'reaction' | 'transferred' | 'admitted' | 'died';
 
 export interface Outcome {
   kind: OutcomeKind;
@@ -25,6 +25,8 @@ export interface Outcome {
   cured: boolean;
   /** что вызвало реакцию: назначение и противопоказание к нему */
   reaction?: { tx: Id; by: Id };
+  /** переведён в тяжёлом состоянии — «мягкий режим» вместо смерти (spec 2026-09-chapter-2, часть 28б) */
+  severe?: true;
 }
 
 /** 1 − Π(1 − pᵢ) в долях 1/10 000, целыми. */

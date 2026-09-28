@@ -185,7 +185,9 @@ export type Command =
   /** скорая (часть 27): врач сортирует привезённого по листу передачи */
   | { kind: 'sort'; id: string; triage: Triage }
   /** обход (часть 28): лежащего — в операционную, операцией его диагноза */
-  | { kind: 'operate'; id: string };
+  | { kind: 'operate'; id: string }
+  /** «мягкий режим» из настроек (часть 28б): вместо смерти — перевод в тяжёлом состоянии */
+  | { kind: 'soft'; on: boolean };
 
 /** Что случилось — для интерфейса: звук, автопауза, сводка «за это время». */
 export type Notice =
@@ -232,6 +234,8 @@ export interface SurgeryDay {
   onTime: number;
   late: number;
   complications: number;
+  /** на момент разреза — осложнённая стадия, перфорация (часть 28б) */
+  complicated?: number;
 }
 
 export interface AmbulanceDay {
@@ -249,6 +253,8 @@ export interface WardDay {
   lying: number;
   stayDays: number;
   stayNorm: number;
+  /** умерли в стационаре (часть 28б); в «мягком режиме» их переводят — это `transferred` */
+  died?: number;
 }
 
 /** Приёмы нанятого врача за день (spec 2026-09-hired-doctors). */
@@ -285,6 +291,8 @@ export interface ShiftState {
     department: Id;
     /** сложность (03-game-design.md §14); нет — «Врач»: так играли до 0.0.16 */
     difficulty?: Difficulty;
+    /** «мягкий режим» (spec 2026-09-chapter-2, часть 28б): вместо смерти — перевод в тяжёлом состоянии */
+    soft?: boolean;
   };
   t: number;
   day: number;

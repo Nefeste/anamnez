@@ -103,6 +103,8 @@ export const shift = {
       moves: (admitted: number, discharged: number, transferred: number, lying: number) =>
         `Поступили: ${admitted}, выписаны: ${discharged}, переведены: ${transferred}. Лежат: ${lying}.`,
       early: (n: number) => `Выписаны рано: ${n} — вернутся хуже.`,
+      // часть 28б: без оценок — разбор в карте приёма
+      died: (n: number) => `Умерли в стационаре: ${n}.`,
       stay: (mean: number, norm: number) =>
         `В среднем в стационаре ${String(mean).replace('.', ',')}\u00a0сут. при обычных ${String(norm).replace('.', ',')}.`,
     },
@@ -111,6 +113,7 @@ export const shift = {
       title: 'Операционная',
       line: (done: number, onTime: number, late: number) => `Операций: ${done}, в срок: ${onTime}${late > 0 ? `, позже срока: ${late}` : ''}.`,
       complications: (n: number) => `Осложнений после операции: ${n} — стационар у них дольше.`,
+      complicated: (n: number) => `Оперировали в осложнённой стадии: ${n} — стационар у них дольше.`,
     },
     nextDay: 'Следующий день ▶',
     restart: 'Начать практику заново',
@@ -251,6 +254,7 @@ export const shift = {
     opWaiting: (op: string, n: number) => `Ждёт операции: ${op.toLowerCase()}${n > 1 ? ` · в очереди ${n}-й` : ''}`,
     opOn: (op: string, until: string) => `Идёт операция: ${op.toLowerCase()}, до ${until}`,
     opDone: (op: string) => `После операции: ${op.toLowerCase()}`,
+    opStage: (name: string) => `на операции — ${name}`,
     opComplication: 'после операции — осложнение, стационар дольше',
   },
   // скорая (spec 2026-09-chapter-2, часть 27): лист передачи и сортировка врачом

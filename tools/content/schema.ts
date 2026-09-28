@@ -120,6 +120,18 @@ export const conditionSchema = z.strictObject({
    * сколько часов от поступления её сделать, чтобы не было поздно, — по рекомендации
    */
   surgery: z.strictObject({ tx: txId, window: z.number().int().min(1).max(240) }).optional(),
+  /**
+   * осложнённая стадия (часть 28б): без действенного лечения наступает по часам от начала
+   * болезни — за первые `early.hours` часов с долей `early.p`, дальше — с долей `later.p` за
+   * каждые `later.every` часов (перфорация аппендикса); после операции в этой стадии — свой срок
+   * стационара, сутки
+   */
+  complication: z.strictObject({
+    name: text,
+    early: z.strictObject({ hours: z.number().int().min(1).max(240), p: probability }),
+    later: z.strictObject({ every: z.number().int().min(1).max(240), p: probability }),
+    stay: z.tuple([z.number().int().min(1), z.number().int().min(1)]).optional(),
+  }).optional(),
   findings: z.array(link).min(3),
   confirm: z.union([z.array(z.string()).min(1), z.literal('clinical')]),
   redFlags: z.array(z.string()).optional(),
@@ -217,6 +229,10 @@ export const treatmentSchema = z.strictObject({
     equipment: z.array(eqId).min(1),
     minutes: z.number().int().min(5).max(600),
     complications: probability,
+    /** умерли в стационаре после операции (часть 28б) */
+    death: probability.optional(),
+    /** в осложнённой стадии болезни на момент разреза: свои осложнения и смерть */
+    complicated: z.strictObject({ complications: probability, death: probability.optional() }).optional(),
   }).optional(),
   texts: z.strictObject({ hint }),
   sources: z.array(source).min(1),

@@ -11,16 +11,18 @@ import { wardIncome } from '../../src/engine/economy/economy';
 import { layoutOf } from '../../src/engine/hospital/clinic';
 import { salaryOf, type StaffMember } from '../../src/engine/hospital/staff';
 import { generatePatient } from '../../src/engine/med/generate';
-import { choiceFor, settingFit, txRole } from '../../src/engine/med/plan';
+import { choiceFor, primaryOf, settingFit, txRole } from '../../src/engine/med/plan';
+import type { Patient } from '../../src/engine/med/types';
 import { apply, freeBeds, hospitalCtx, inpatientsOf, newCampaign, newSandbox, orBlock, orQueueOf } from '../../src/engine/shift/engine';
-import { COMPLICATION_DAYS, complicationsOf, operationFor } from '../../src/engine/shift/surgery';
+import { COMPLICATION_DAYS, complicationAt, complicationsOf, deathsOf, onsetHours, operationFor } from '../../src/engine/shift/surgery';
 import { SHIFT_SCHEMA_VERSION, type ShiftPatient, type ShiftState } from '../../src/engine/shift/types';
 import { T } from '../../src/i18n';
-import { noteText } from '../../src/state/caseView';
+import { noteText, outcomeText } from '../../src/state/caseView';
 import { placements } from '../../src/state/clinicMap';
 import { article } from '../../src/state/encyclopedia';
 import { memoryStore, saveSlot } from '../../src/state/saves';
-import { forgetShift, loadShift, roundsView, SANDBOX_SLOT, setStore, shiftCaseView, shiftView } from '../../src/state/session';
+import { closeDay, forgetShift, loadShift, roundsView, SANDBOX_SLOT, setStore, shiftCaseView, shiftState, shiftView } from '../../src/state/session';
+import { forgetSettings, updateSettings } from '../../src/state/settings';
 
 const OP = 'tx.appendectomy';
 const TEAM = ['role.surgeon', 'role.anesthetist', 'role.or_nurse'];
@@ -70,6 +72,22 @@ function treat(s: ShiftState, primary: string, treatments: string[] = [], d: Con
   return p;
 }
 
+/** Первый в очереди — этот пациент (из генератора), вызван в кабинет с диагнозом аппендицита. */
+function treatWith(s: ShiftState, patient: Patient, d: ContentDb = db): ShiftPatient {
+  for (let i = 0; i < 60 && s.queue.length === 0; i++) apply(d, s, { kind: 'advance', seconds: 10 * 60 });
+  const p = s.patients[s.queue[0]];
+  p.patient = patient;
+  apply(d, s, { kind: 'call', id: p.id });
+  apply(d, s, { kind: 'exam', exam: 'exam.vitals' });
+  apply(d, s, { kind: 'diagnose', id: 'cond.appendicitis' });
+  return p;
+}
+
+/** Больные аппендицитом из генератора: зёрна подряд, без аллергий. */
+const appendicitis = (n: number, from = 1) =>
+  Array.from({ length: n }, (_, i) => generatePatient(db, from + i, { department: 'dept.therapy', season: 'winter', primary: 'cond.appendicitis', params: {} }))
+    .filter(p => !p.truth.risks.some(r => r.startsWith('risk.allergy_')));
+
 /** Аппендицит — в операционную. */
 function operated(s: ShiftState, d: ContentDb = db): ShiftPatient {
   const p = treat(s, 'cond.appendicitis', [], d);
@@ -88,10 +106,11 @@ const night = (s: ShiftState, d: ContentDb = db) => {
   apply(d, s, { kind: 'nextDay' });
 };
 
-/** База, где у аппендэктомии такая доля осложнений (1/10 000). */
+/** База, где у аппендэктомии такая доля осложнений (1/10 000) — и без перфорации, и с ней. */
 function withComplications(p: number): ContentDb {
   const d = structuredClone(db);
   d.treatments[OP].surgery!.complications = p;
+  d.treatments[OP].surgery!.complicated!.complications = p;
   return d;
 }
 
@@ -244,8 +263,9 @@ describe('операционная: операция по часам смены'
 describe('операционная: исход, касса, повтор', () => {
   test('доля осложнений — запись операции × поправка навыка хирурга', () => {
     const m = (skill: number): StaffMember => ({ id: 'x', role: 'role.surgeon', sex: 'm', seed: 1, skill, salary: 0, days: 0 });
-    expect(complicationsOf(db, OP)).toBe(870);
-    expect([1, 2, 3, 4, 5].map(k => complicationsOf(db, OP, m(k)))).toEqual(db.economy.staff.surgery.map(k => Math.round((870 * k) / 100)));
+    // Masoomi 2011, лапароскопически: 4,13 % без перфорации, 18,75 % с ней
+    expect([complicationsOf(db, OP), complicationsOf(db, OP, undefined, true)]).toEqual([413, 1875]);
+    expect([1, 2, 3, 4, 5].map(k => complicationsOf(db, OP, m(k)))).toEqual(db.economy.staff.surgery.map(k => Math.round((413 * k) / 100)));
     expect(complicationsOf(db, OP, m(1))).toBeGreaterThan(complicationsOf(db, OP, m(5)));
   });
 
@@ -412,5 +432,135 @@ describe('операционная: экраны', () => {
     expect(room.blocks.find(b => b.key === 'doneHere')!.refs!.map(r => r.id)).toEqual([OP]);
     expect(room.blocks.find(b => b.key === 'needs')!.rows!.map(r => r.label)).toEqual([T.encyclopedia.needPeople, T.encyclopedia.needMachines]);
     expect(article(db, 'eq.or_table')!.blocks.find(b => b.key === 'examsBy')!.refs!.map(r => r.id)).toEqual([OP]);
+    // перфорация (часть 28б): риск без операции — у болезни, исходы по стадии — у операции
+    expect(text).toContain(T.encyclopedia.complicationRisk('перфорация', 36, '2', 12, '5'));
+    expect(text).toContain(T.encyclopedia.whereStayComplicated('перфорация', 3, 5));
+    const outcomes = article(db, OP)!.blocks.find(b => b.key === 'outcomes')!.text!;
+    expect(outcomes).toEqual([T.encyclopedia.opComplications('4,13', '18,75', 'перфорация'), T.encyclopedia.opDeaths('0,03', '0,06', 'перфорация')]);
+  });
+});
+
+describe('осложнённая стадия: перфорация по часам (spec 2026-09-chapter-2, часть 28б)', () => {
+  const many = appendicitis(6000);
+  const at = many.map(p => complicationAt(db, p));
+  const share = (xs: number[], f: (h: number) => boolean) => xs.filter(f).length / xs.length;
+
+  test('без операции: за первые 36 ч — около 2 %, дальше — около 5 % за каждые 12 ч (Bickell 2006)', () => {
+    expect(share(at, h => h < 36)).toBeGreaterThan(0.013);
+    expect(share(at, h => h < 36)).toBeLessThan(0.027);
+    for (const [from, to] of [[36, 48], [48, 60], [60, 72]]) {
+      const left = at.filter(h => h >= from);
+      expect(share(left, h => h < to)).toBeGreaterThan(0.04);
+      expect(share(left, h => h < to)).toBeLessThan(0.06);
+    }
+    // час начала болезни — внутри суток обращения; у болезни без осложнённой стадии её нет
+    for (const p of many.slice(0, 100)) {
+      expect(onsetHours(p)).toBeGreaterThanOrEqual(primaryOf(p).day * 24);
+      expect(onsetHours(p)).toBeLessThan(primaryOf(p).day * 24 + 24);
+    }
+    const pneumonia = generatePatient(db, 5, { department: 'dept.therapy', season: 'winter', primary: 'cond.pneumonia_cap', params: {} });
+    expect(complicationAt(db, pneumonia)).toBe(Infinity);
+  });
+
+  test('чем дольше ждут операции, тем чаще перфорация: сразу, через сутки, через трое', () => {
+    const rate = (wait: number) => share(many.map((p, i) => onsetHours(p) + wait - at[i]), d => d >= 0);
+    const [now, day, three] = [rate(0), rate(24), rate(72)];
+    expect(now).toBeLessThan(0.05);
+    expect(day).toBeGreaterThan(now);
+    expect(three).toBeGreaterThan(day + 0.05);
+  });
+
+  test('на момент разреза — перфорация: строка разбора, стационар 3–5 суток; без неё — 1–4', () => {
+    const d = withComplications(0);
+    const late = appendicitis(3000).find(p => complicationAt(db, p) < onsetHours(p))!;
+    const early = appendicitis(200).find(p => complicationAt(db, p) > onsetHours(p) + 48)!;
+    const run = (patient: Patient) => {
+      const { s } = withOr(42, { d });
+      apply(d, s, { kind: 'nextDay' });
+      const p = treatWith(s, patient, d);
+      apply(d, s, { kind: 'setting', setting: 'surgery' });
+      apply(d, s, { kind: 'finish' });
+      apply(d, s, { kind: 'advance', seconds: p.stay!.op!.end! - s.t });
+      return { s, p };
+    };
+    const a = run(late);
+    expect(a.p.stay!.op).toMatchObject({ done: true, complicated: true });
+    const note = a.p.closed!.notes.find(n => n.code === 'op.complicated');
+    expect(note).toMatchObject({ code: 'op.complicated', tx: OP, of: 'cond.appendicitis', before: true });
+    expect(noteText(note!)).toStartWith('Осложнение — перфорация, уже при поступлении');
+    expect(a.p.stay!.readyAfter).toBeGreaterThanOrEqual(3);
+    expect(a.p.stay!.readyAfter).toBeLessThanOrEqual(5);
+    expect(a.s.summary.surgery!.complicated).toBe(1);
+    const b = run(early);
+    expect(b.p.stay!.op!.complicated).toBeUndefined();
+    expect(b.p.closed!.notes.some(n => n.code === 'op.complicated')).toBe(false);
+    expect(b.p.stay!.readyAfter).toBeLessThanOrEqual(4);
+    // доли по стадии — из записи операции
+    expect([deathsOf(db, OP), deathsOf(db, OP, true)]).toEqual([3, 6]);
+  });
+
+  test('умер после операции — ночью: исход, строка стационара, случай оплачен; в «мягком режиме» — перевод в тяжёлом состоянии', () => {
+    const d = structuredClone(db);
+    d.treatments[OP].surgery!.death = P_ONE;
+    d.treatments[OP].surgery!.complicated!.death = P_ONE;
+    const run = (soft: boolean) => {
+      const { s } = withOr(43, { d });
+      apply(d, s, { kind: 'nextDay' });
+      if (soft) apply(d, s, { kind: 'soft', on: true });
+      const p = operated(s, d);
+      apply(d, s, { kind: 'advance', seconds: p.stay!.op!.end! - s.t });
+      expect(p.stay!.dies).toBe(0);
+      apply(d, s, { kind: 'closeDay' });
+      return { s, p };
+    };
+    const died = run(false);
+    expect(died.p.status).toBe('done');
+    expect(died.p.closed!.outcome).toEqual({ kind: 'died', day: 0, cured: false });
+    expect(died.p.closed!.stay).toMatchObject({ days: 0, end: 'died' });
+    expect(died.s.summary.ward).toMatchObject({ died: 1, transferred: 0, lying: 0 });
+    expect(died.s.summary.economy!.ledger.ward).toEqual({
+      cases: 1, income: wardIncome(d, 'cond.appendicitis', died.p.closed!.grades.defensibility, 'full', true), interrupted: 0, unindicated: 0,
+    });
+    expect(outcomeText(died.p.closed!.outcome, 'surgery', died.p.patient.sex === 'f')).toBe(T.spikes.patient.outcome.died(0, died.p.patient.sex === 'f'));
+    const soft = run(true);
+    expect(soft.s.meta.soft).toBe(true);
+    expect(soft.p.closed!.outcome).toEqual({ kind: 'transferred', day: 0, cured: false, severe: true });
+    expect(soft.p.closed!.stay!.end).toBe('transferred');
+    expect(soft.s.summary.ward).toMatchObject({ transferred: 1, lying: 0 });
+    expect(soft.s.summary.ward!.died).toBeUndefined();
+    expect(outcomeText(soft.p.closed!.outcome, 'surgery', false)).toBe(T.spikes.patient.outcome.transferredSevere(false));
+    apply(d, soft.s, { kind: 'soft', on: false });
+    expect(soft.s.meta.soft).toBeUndefined();
+  });
+
+  test('«мягкий режим» из настроек — в состояние смены с первой командой; итоги дня — умерший спокойной строкой', async () => {
+    const d = structuredClone(db);
+    d.treatments[OP].surgery!.death = P_ONE;
+    d.treatments[OP].surgery!.complicated!.death = P_ONE;
+    const { s } = withOr(44, { d });
+    apply(d, s, { kind: 'nextDay' });
+    const p = operated(s, d);
+    apply(d, s, { kind: 'advance', seconds: p.stay!.op!.end! - s.t });
+    apply(d, s, { kind: 'closeDay' });
+    const store = memoryStore();
+    setStore(store);
+    forgetShift();
+    await saveSlot(store, SANDBOX_SLOT, s, SHIFT_SCHEMA_VERSION, 'x');
+    await loadShift('sandbox');
+    const v = shiftView().summary!;
+    expect(v.wardLines).toContain(T.shift.summary.ward.died(1));
+    expect(v.news.find(n => n.id === p.id)!.text).toContain(T.spikes.patient.outcome.died(0, p.patient.sex === 'f'));
+    forgetShift();
+
+    // настройка «мягкий режим» — в состоянии смены, как только сессия что-то делает
+    const t = withOr(45).s;
+    apply(db, t, { kind: 'nextDay' });
+    await saveSlot(store, SANDBOX_SLOT, t, SHIFT_SCHEMA_VERSION, 'x');
+    await loadShift('sandbox');
+    updateSettings({ softMode: true });
+    closeDay();
+    expect(shiftState()!.meta.soft).toBe(true);
+    forgetShift();
+    forgetSettings();
   });
 });

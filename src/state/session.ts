@@ -10,7 +10,7 @@ import { useSyncExternalStore } from 'react';
 import { db } from '@/content';
 import type { Id, Season, Setting } from '@/content/types';
 import { complaintObservations } from '@/engine/med/exams';
-import { evaluatePlan } from '@/engine/med/plan';
+import { evaluatePlan, primaryOf } from '@/engine/med/plan';
 import type { Grade } from '@/engine/med/score';
 import { complaintText, observationText } from '@/engine/med/text';
 import { build, type BuildCommand, type BuildError, type HospitalState, type Plan, planOf } from '@/engine/hospital/build';
@@ -501,6 +501,9 @@ export function forgetShift() {
 // --- часы -----------------------------------------------------------------------------
 
 function run(sess: Session, cmd: Command): Notice[] {
+  // «мягкий режим» из настроек (часть 28б) — в состояние смены раньше команды: ночью по нему решают
+  const soft = settings().softMode;
+  if ((sess.s.meta.soft ?? false) !== soft) apply(db, sess.s, { kind: 'soft', on: soft });
   const notices = apply(db, sess.s, cmd);
   record(sess, notices);
   if (sess.s.t - sess.savedT >= SAVE_EVERY) save();
@@ -714,6 +717,8 @@ export function closeDay() {
   const sess = session;
   if (!sess || !sess.s.dayOpen) return;
   run(sess, { kind: 'closeDay' });
+  // ночью умерший после операции (часть 28б) — в архиве профиля его приём с исходом
+  recordCases(closedCases(sess.s));
   recordDay(dayRecord(sess.s));
   // «Смена»: лучший результат в этой больнице — в профиль
   const r = sess.s.meta.mode === 'single' ? singleResult(sess.s) : undefined;
@@ -1248,10 +1253,15 @@ function summaryOf(s: ShiftState): SummaryView | undefined {
       cases: all.filter(p => p.closed?.by === id && closedDay(p) === h.day).sort((a, b) => a.closed!.at - b.closed!.at).map(caseRow),
     };
   });
+  // умер в стационаре или переведён в тяжёлом состоянии этой ночью (часть 28б) — той же спокойной строкой
+  const endedTonight = (p: ShiftPatient) => {
+    const c = p.closed?.stay;
+    return c !== undefined && p.stay !== undefined && (c.end === 'died' || p.closed!.outcome.severe === true) && p.stay.since + c.days === h.day;
+  };
   const news = all
-    .filter(p => p.closed && p.closed.plan.setting === 'home' && closedDay(p) + p.closed.outcome.day === h.day)
+    .filter(p => p.closed && ((p.closed.plan.setting === 'home' && closedDay(p) + p.closed.outcome.day === h.day) || endedTonight(p)))
     .sort((a, b) => a.closed!.at - b.closed!.at)
-    .map(p => ({ id: p.id, text: T.shift.news(nameOf(p), closedDay(p), outcomeText(p.closed!.outcome, 'home', female(p))) }));
+    .map(p => ({ id: p.id, text: T.shift.news(nameOf(p), closedDay(p), outcomeText(p.closed!.outcome, p.closed!.plan.setting, female(p))) }));
   return {
     ...h,
     grades: { ...h.grades },
@@ -1280,6 +1290,7 @@ function summaryOf(s: ShiftState): SummaryView | undefined {
 function surgeryLines(x: NonNullable<ShiftState['summary']['surgery']>): string[] {
   const t = T.shift.summary.surgery;
   const out = [t.line(x.done, x.onTime, x.late)];
+  if ((x.complicated ?? 0) > 0) out.push(t.complicated(x.complicated!));
   if (x.complications > 0) out.push(t.complications(x.complications));
   return out;
 }
@@ -1298,6 +1309,7 @@ function wardLines(w: NonNullable<ShiftState['summary']['ward']>): string[] {
   const t = T.shift.summary.ward;
   const out = [t.moves(w.admitted, w.discharged, w.transferred, w.lying)];
   if (w.early > 0) out.push(t.early(w.early));
+  if ((w.died ?? 0) > 0) out.push(t.died(w.died!));
   if (w.discharged > 0) out.push(t.stay(Math.round((w.stayDays / w.discharged) * 10) / 10, Math.round((w.stayNorm / w.discharged) * 10) / 10));
   return out;
 }
@@ -1553,8 +1565,9 @@ export function roundsView(): RoundCard[] {
     const dx = p.closed?.diagnosis;
     const op = stay.op;
     const opName = op ? (db.treatments[op.tx]?.name.ru ?? op.tx) : '';
+    const stage = op?.complicated ? db.conditions[primaryOf(p.patient).id]?.complication?.name.ru : undefined;
     const opLine = !op ? undefined
-      : op.done ? `${t.opDone(opName)}${op.complication ? ` · ${t.opComplication}` : ''}`
+      : op.done ? `${t.opDone(opName)}${stage ? ` · ${t.opStage(stage)}` : ''}${op.complication ? ` · ${t.opComplication}` : ''}`
         : op.start !== undefined ? t.opOn(opName, hhmm(minuteOfDay(op.end ?? op.start))) : t.opWaiting(opName, queue.indexOf(p.id) + 1);
     const dxOp = !op && dx && hasOr ? operationFor(db, dx) : undefined;
     const block = dxOp ? orBlock(db, s, dxOp) : null;

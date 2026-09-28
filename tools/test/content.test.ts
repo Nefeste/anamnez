@@ -165,8 +165,12 @@ describe('каталог больницы', () => {
     expect(db.rooms['room.or']).toMatchObject({ needsEquipment: true, staff: ['role.surgeon', 'role.anesthetist', 'role.or_nurse'] });
     expect(db.equipment['eq.or_table']).toMatchObject({ slot: 1, exams: [] });
     expect(db.equipment['eq.anesthesia']).toMatchObject({ slot: 0, exams: [] });
-    expect(db.treatments['tx.appendectomy'].surgery).toMatchObject({ room: 'room.or', equipment: ['eq.or_table', 'eq.anesthesia'], minutes: 45, complications: 870 });
+    expect(db.treatments['tx.appendectomy'].surgery).toMatchObject({
+      room: 'room.or', equipment: ['eq.or_table', 'eq.anesthesia'], minutes: 45, complications: 413, death: 3, complicated: { complications: 1875, death: 6 },
+    });
     expect(db.conditions['cond.appendicitis'].surgery).toEqual({ tx: 'tx.appendectomy', window: 24 });
+    // перфорация (часть 28б): Bickell 2006 — 2 % за первые 36 ч, дальше 5 % за 12 ч
+    expect(db.conditions['cond.appendicitis'].complication).toEqual({ name: { ru: 'перфорация' }, early: { hours: 36, p: 200 }, later: { every: 12, p: 500 }, stay: [3, 5] });
     expect(db.roles['role.doctor'].hire).toBe(false);
     expect(db.rooms['room.waiting'].sizes.map(z => z.seats)).toEqual([6, 10, 18]);
     // у каждого обследования в лаборатории, ЭКГ и рентгене — аппарат
@@ -196,6 +200,13 @@ describe('каталог больницы', () => {
     expect(alien.some(e => e.includes('tx.appendectomy: аппарат eq.ecg стоит в room.ecg, а операция — в room.or'))).toBe(true);
     const slot = broken(d => edit(d, 'hospital/equipment/or_table.yaml', 'slot: 1', 'slot: 2'));
     expect(slot.some(e => e.includes('eq.or_table: места 2 под аппарат нет у всех размеров room.or'))).toBe(true);
+    // осложнённая стадия (часть 28б): у операции нет долей для неё, доля за отрезок — 100 %, срок наоборот
+    const stage = broken(d => edit(d, 'treatments/appendectomy.yaml', '  complicated: { complications: { pct: 18.75 }, death: { pct: 0.06 } }\n', ''));
+    expect(stage.some(e => e.includes('cond.appendicitis: у болезни есть осложнённая стадия, а у операции tx.appendectomy нет долей для неё (complicated)'))).toBe(true);
+    const all = broken(d => edit(d, 'conditions/therapy/appendicitis.yaml', 'early: { hours: 36, p: { pct: 2 } }', 'early: { hours: 36, p: { pct: 100 } }'));
+    expect(all.some(e => e.includes('cond.appendicitis: доля осложнённой стадии за отрезок должна быть меньше 100 %'))).toBe(true);
+    const back = broken(d => edit(d, 'conditions/therapy/appendicitis.yaml', '  stay: [3, 5]\n', '  stay: [5, 3]\n'));
+    expect(back.some(e => e.includes('cond.appendicitis: срок стационара в осложнённой стадии — от большего к меньшему'))).toBe(true);
     // лечит не ту болезнь, что в записи болезни
     const cure = broken(d => edit(d, 'treatments/appendectomy.yaml', 'on: cond.appendicitis, kind: cure', 'on: cond.gastroenteritis, kind: cure'));
     expect(cure.some(e => e.includes('cond.appendicitis: операция tx.appendectomy не действует на причину'))).toBe(true);

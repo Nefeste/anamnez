@@ -131,6 +131,9 @@ export const spikes = {
       // операционная (spec 2026-09-chapter-2, часть 28)
       operated: 'В операционную, после операции — в палату: чем кончится, покажет обход',
       transferred: (female: boolean) => (female ? 'Переведена в другую больницу' : 'Переведён в другую больницу'),
+      // смерть в стационаре и «мягкий режим» вместо неё (часть 28б) — спокойно, без оценок
+      died: (day: number, female: boolean) => `${female ? 'Умерла' : 'Умер'} в стационаре на ${day + 1}-е\u00a0сутки`,
+      transferredSevere: (female: boolean) => `${female ? 'Переведена' : 'Переведён'} в областную больницу в тяжёлом состоянии`,
     },
     outcomeLabel: 'Что было дальше',
     gradesLabel: 'Оценка случая',
@@ -185,6 +188,9 @@ export const spikes = {
       opLate: (tx: string, hours: number, window: number) =>
         `${tx} — через ${String(hours).replace('.', ',')}\u00a0ч после поступления: позже срока в ${window}\u00a0ч`,
       opComplication: (tx: string) => `После операции (${tx.toLowerCase()}) — осложнение: инфекция раны или абсцесс, стационар дольше`,
+      // стадия болезни на момент разреза (часть 28б): перфорация — уже при поступлении или пока ждали
+      opComplicated: (name: string, hours: number, before: boolean) =>
+        before ? `Осложнение — ${name}, уже при поступлении: от начала болезни ${hours}\u00a0ч` : `Осложнение — ${name}, пока ждали операции: от начала болезни до разреза ${hours}\u00a0ч`,
     },
     done: 'Уже сделано',
     cost: (min: number, rub: number) => (rub > 0 ? `${min}\u00a0мин · ${rub}\u00a0₽` : `${min}\u00a0мин`),

@@ -38,17 +38,21 @@ export interface Stay extends WardCourse, Bed {
   replans: number;
   /** операция (spec 2026-09-chapter-2, часть 28): ждёт, идёт или сделана */
   op?: Operation;
+  /** умрёт в ночь этих суток — решено в конце операции (часть 28б); в «мягком режиме» — перевод */
+  dies?: number;
 }
 
 /** Что видно на обходе: лучше, без перемен, хуже, можно выписывать, реакция на лечение. */
 export type WardState = 'better' | 'same' | 'worse' | 'ready' | 'reaction';
 
-/** Итог стационара у закрытого случая: сколько суток, обычный срок, выписан ли рано. */
+/** Итог стационара у закрытого случая: сколько суток, обычный срок, выписан ли рано; умер — часть 28б. */
 export interface StayResult {
   days: number;
   norm: number;
-  end: 'discharged' | 'early' | 'transferred';
+  end: StayEnd;
 }
+
+export type StayEnd = 'discharged' | 'early' | 'transferred' | 'died';
 
 /** Сутки в стационаре: день поступления — ноль, следующее утро — первые сутки. */
 export const daysIn = (stay: Stay, day: number) => Math.max(0, day - stay.since);

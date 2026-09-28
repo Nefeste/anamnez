@@ -65,6 +65,9 @@ const BANDS = [
 export type Band = (typeof BANDS)[number][0];
 
 /** Ближайшая полоса: число из источника (6000) называется словом соседней полосы. */
+/** Доля 1/10 000 — процентами с десятичной запятой: 413 → «4,13», 3 → «0,03». */
+const pct = (p: P) => String(p / 100).replace('.', ',');
+
 export function bandOf(p: P): Band {
   let best: (typeof BANDS)[number] = BANDS[0];
   for (const b of BANDS) if (Math.abs(b[1] - p) < Math.abs(best[1] - p)) best = b;
@@ -181,9 +184,10 @@ function whereLines(db: ContentDb, c: Condition, t: Tactics): string[] {
   for (const [value, set] of Object.entries(s.param?.map ?? {})) if (set !== s.default) lines.push(e.whereIf(e.when[value] ?? value, e.setting[set]));
   if (s.redFlag && s.redFlag !== s.default) lines.push(e.whereRedFlag(e.setting[s.redFlag]));
   for (const r of s.risks ?? []) if (r.setting !== s.default) lines.push(e.whereRisk(nameOf(db, r.id), e.setting[r.setting]));
-  // операция и срок стационара (spec 2026-09-chapter-2, части 26 и 28)
+  // операция и срок стационара (spec 2026-09-chapter-2, части 26 и 28), после осложнённой стадии — свой (28б)
   if (c.surgery) lines.push(e.whereSurgery(nameOf(db, c.surgery.tx), c.surgery.window));
   if (c.stay) lines.push(e.whereStay(c.stay[0], c.stay[1]));
+  if (c.complication?.stay) lines.push(e.whereStayComplicated(c.complication.name.ru, c.complication.stay[0], c.complication.stay[1]));
   return lines;
 }
 
@@ -233,6 +237,8 @@ function conditionArticle(db: ContentDb, c: Condition): Article {
   const course: string[] = [];
   if (c.selfLimiting) course.push(e.selfLimiting);
   if (c.untreated && c.untreated.p > 0) course.push(e.untreated(e.band[bandOf(c.untreated.p)], c.untreated.days[0], c.untreated.days[1]));
+  const x = c.complication;
+  if (x) course.push(e.complicationRisk(x.name.ru, x.early.hours, pct(x.early.p), x.later.every, pct(x.later.p)));
   if (course.length > 0) blocks.push({ key: 'course', title: e.course, text: course });
 
   if (c.redFlags?.length) blocks.push({ key: 'redFlags', title: e.redFlags, text: [e.redFlagsNote], refs: c.redFlags.map(id => ref(db, id)) });
@@ -312,6 +318,12 @@ function treatmentArticle(db: ContentDb, x: Treatment): Article {
     if (treats.length > 0) blocks.push({ key: 'treats', title: e.opTreats, refs: treats });
     blocks.push({ key: 'where', title: e.whereDone, refs: [ref(db, op.room), ...op.equipment.map(id => ref(db, id))] });
     blocks.push({ key: 'team', title: e.opTeam, refs: op.team.map(id => ref(db, id)) });
+    // исходы по стадии болезни (часть 28б): осложнения и смерть в стационаре
+    const stage = conditions.find(c => c.surgery?.tx === x.id && c.complication)?.complication?.name.ru;
+    const k = op.complicated;
+    const out = [e.opComplications(pct(op.complications), k && pct(k.complications), stage)];
+    if (op.death !== undefined) out.push(e.opDeaths(pct(op.death), k?.death !== undefined ? pct(k.death) : undefined, stage));
+    blocks.push({ key: 'outcomes', title: e.opOutcomes, text: out });
   }
   blocks.push(sources(db, x));
 

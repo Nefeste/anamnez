@@ -396,8 +396,11 @@ export function outcomeText(outcome: Outcome, setting: Setting, female: boolean)
     case 'unchanged': return out.unchanged;
     case 'worse': return out.worse(outcome.day);
     case 'reaction': return outcome.reaction ? out.reaction(db.treatments[outcome.reaction.tx].name.ru, riskName(outcome.reaction.by)) : out.unchanged;
-    case 'transferred': return setting === 'ambulance' ? out.ambulance : setting === 'admit' || setting === 'surgery' ? out.transferred(female) : out.ward(female);
+    case 'transferred':
+      if (outcome.severe) return out.transferredSevere(female);
+      return setting === 'ambulance' ? out.ambulance : setting === 'admit' || setting === 'surgery' ? out.transferred(female) : out.ward(female);
     case 'admitted': return setting === 'surgery' ? out.operated : out.admitted;
+    case 'died': return out.died(outcome.day, female);
   }
 }
 
@@ -424,6 +427,7 @@ export function noteText(n: ScoreNote): string {
     case 'op.onTime': return t.opOnTime(tx(n.tx), n.hours, n.window);
     case 'op.late': return t.opLate(tx(n.tx), n.hours, n.window);
     case 'op.complication': return t.opComplication(tx(n.tx));
+    case 'op.complicated': return t.opComplicated(db.conditions[n.of]?.complication?.name.ru ?? n.of, n.hours, n.before);
   }
 }
 

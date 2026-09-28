@@ -238,6 +238,13 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       if (!op) errors.push(`${owner}: операция ${c.surgery.tx} не найдена`);
       else if (op.kind !== 'surgery') errors.push(`${owner}: ${c.surgery.tx} — не операция (kind: surgery)`);
       else if (!op.effects.some(e => e.on === owner && e.kind === 'cure')) errors.push(`${owner}: операция ${c.surgery.tx} не действует на причину`);
+      // осложнённая стадия (часть 28б): у операции — свои доли для неё
+      else if (c.complication && !op.surgery?.complicated) errors.push(`${owner}: у болезни есть осложнённая стадия, а у операции ${c.surgery.tx} нет долей для неё (complicated)`);
+    }
+    if (c.complication) {
+      const x = c.complication;
+      if (prob(x.early.p) >= 10000 || prob(x.later.p) >= 10000) errors.push(`${owner}: доля осложнённой стадии за отрезок должна быть меньше 100 %`);
+      if (x.stay && x.stay[0] > x.stay[1]) errors.push(`${owner}: срок стационара в осложнённой стадии — от большего к меньшему`);
     }
     if (!c.course.selfLimiting && c.presenting && !c.course.untreated) warnings.push(`${owner}: не проходит само, но не сказано, что будет без лечения`);
   }
@@ -332,6 +339,10 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (c.course.untreated) out.untreated = { p: prob(c.course.untreated.band), days: c.course.untreated.days };
     if (c.course.stay) out.stay = c.course.stay;
     if (c.surgery) out.surgery = c.surgery;
+    if (c.complication) {
+      const x = c.complication;
+      out.complication = { name: x.name, early: { hours: x.early.hours, p: prob(x.early.p) }, later: { every: x.later.every, p: prob(x.later.p) }, ...(x.stay ? { stay: x.stay } : {}) };
+    }
     if (c.treatment) out.treatment = c.treatment;
     if (c.pearls) out.pearls = c.pearls;
     db.conditions[c.id] = out;
@@ -375,7 +386,14 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     };
     if (t.class) out.class = t.class;
     if (t.route) out.route = t.route;
-    if (t.surgery) out.surgery = { ...t.surgery, complications: prob(t.surgery.complications) };
+    if (t.surgery) {
+      const x = t.surgery;
+      out.surgery = {
+        room: x.room, team: x.team, equipment: x.equipment, minutes: x.minutes, complications: prob(x.complications),
+        ...(x.death ? { death: prob(x.death) } : {}),
+        ...(x.complicated ? { complicated: { complications: prob(x.complicated.complications), ...(x.complicated.death ? { death: prob(x.complicated.death) } : {}) } } : {}),
+      };
+    }
     db.treatments[t.id] = out;
   }
   const sortedIds = (xs: string[]) => [...xs].sort();

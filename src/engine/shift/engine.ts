@@ -20,7 +20,7 @@ import { complaintObservations, type ExamSkill, examFits, NORMAL_SKILL, runExam 
 import { generatePatient, typicalPatient } from '../med/generate';
 import { knownFacts, posterior } from '../med/infer';
 import { scaleTriage } from '../med/news2';
-import { choiceFor, evaluatePlan, recommendedSetting, settingFit, type Venue } from '../med/plan';
+import { choiceFor, evaluatePlan, primaryOf, recommendedSetting, settingFit, type Venue } from '../med/plan';
 import { examCost, indicated, nextStep } from '../med/policy';
 import { buildReview, type ReviewData } from '../med/review';
 import { scoreCase } from '../med/score';
@@ -29,8 +29,8 @@ import {
   type ClosedCase, type ColleagueDay, type Command, DAY, type DaySummary, type Difficulty, type Notice, type PlannedReturn, SHIFT_END, SHIFT_SCHEMA_VERSION,
   SHIFT_START, type ShiftEvent, type ShiftPatient, type ShiftState, type Triage, type VisitKind, type WardDay, type AmbulanceDay, type SurgeryDay,
 } from './types';
-import { COMPLICATION_DAYS, complicationsOf, operationFor } from './surgery';
-import { type Bed, daysIn, stayNorm, wardCourse, wardState } from './ward';
+import { COMPLICATION_DAYS, complicationAt, complicationsOf, deathsOf, onsetHours, operationFor } from './surgery';
+import { type Bed, daysIn, type StayEnd, stayNorm, wardCourse, wardState } from './ward';
 
 const MIN = 60;
 const TRIAGE_RANK: Record<Triage, number> = { red: 0, yellow: 1, green: 2 };
@@ -326,6 +326,10 @@ export function apply(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
       return sortAmbulance(db, s, cmd.id, cmd.triage);
     case 'operate':
       return operate(db, s, cmd.id);
+    case 'soft':
+      if (cmd.on) s.meta.soft = true;
+      else delete s.meta.soft;
+      return [];
   }
 }
 
@@ -513,6 +517,7 @@ function closeDay(db: ContentDb, s: ShiftState) {
   s.events = [];
   s.dayOpen = false;
   nightOperations(db, s);
+  nightDeaths(db, s);
   const lying = inpatientsOf(s).length;
   if (lying > 0 || s.summary.ward) wardDay(s).lying = lying;
   if (s.economy && s.hospital) settle(db, s);
@@ -1023,14 +1028,30 @@ function finishOperation(db: ContentDb, s: ShiftState, p: ShiftPatient | undefin
   op.done = true;
   const surgeon = hospitalCtx(db, s).staff.find(m => m.id === op.surgeon);
   const day = surgeryDay(s);
+  const stay = p.stay!;
   day.done++;
-  if (branch(s, `surgery:${p.id}`).chance(complicationsOf(db, op.tx, surgeon))) {
+  // стадия болезни на момент разреза (часть 28б): перфорация, если ждали дольше, чем она ждёт
+  const truth = primaryOf(p.patient).id;
+  const onset = onsetHours(p.patient);
+  const hours = onset + (op.start - p.arriveT) / 3600;
+  const at = complicationAt(db, p.patient);
+  const complicated = hours >= at;
+  if (complicated) {
+    op.complicated = true;
+    day.complicated = (day.complicated ?? 0) + 1;
+    // после операции в осложнённой стадии — свой срок стационара, от суток операции
+    const norm = db.conditions[truth]?.complication?.stay;
+    if (norm && stay.readyAfter !== undefined) stay.readyAfter = daysIn(stay, s.day) + branch(s, `surgery:${p.id}:stay`).range(norm[0], norm[1]);
+    p.closed!.notes.push({ code: 'op.complicated', tx: op.tx, of: truth, hours: Math.round(hours), before: at <= onset });
+  }
+  if (branch(s, `surgery:${p.id}`).chance(complicationsOf(db, op.tx, surgeon, complicated))) {
     op.complication = true;
     day.complications++;
-    const stay = p.stay!;
     if (stay.readyAfter !== undefined) stay.readyAfter += branch(s, `surgery:${p.id}:days`).range(COMPLICATION_DAYS[0], COMPLICATION_DAYS[1]);
     p.closed!.notes.push({ code: 'op.complication', tx: op.tx });
   }
+  // умер после операции — решено сейчас, случится ночью (часть 28б): доля — по стадии
+  if (branch(s, `surgery:${p.id}:death`).chance(deathsOf(db, op.tx, complicated))) stay.dies = daysIn(stay, s.day);
   // срок — от решения положить: наблюдали, потом оперировали — считается от поступления
   const window = db.conditions[p.closed!.diagnosis]?.surgery?.window;
   if (window !== undefined) {
@@ -1107,9 +1128,8 @@ function leaveWard(db: ContentDb, s: ShiftState, id: string, how: 'discharge' | 
   if (stay.op && !stay.op.done && (stay.op.start !== undefined || how === 'discharge')) return [];
   const days = daysIn(stay, s.day);
   const state = wardState(stay, days);
-  const norm = stayNorm(db, p.closed.diagnosis);
   const ward = wardDay(s);
-  let end: 'discharged' | 'early' | 'transferred';
+  let end: StayEnd;
   if (how === 'transfer') {
     end = 'transferred';
     p.closed.outcome = { kind: 'transferred', day: days, cured: false };
@@ -1128,24 +1148,59 @@ function leaveWard(db: ContentDb, s: ShiftState, id: string, how: 'discharge' | 
     ward.discharged++;
     ward.early++;
   }
-  if (end !== 'transferred') {
+  closeStay(db, s, p, end, days);
+  return advanceBy(db, s, 2 * MIN); // выписка, эпикриз
+}
+
+/**
+ * Случай стационара кончился: срок — у выписанных, касса — по тому, как кончился. Без показаний
+ * — то, что разбор приёма счёл лишним: по нужде пациента, как оценка «где лечить»; умер —
+ * страховая платит за случай, как за законченный (часть 28б).
+ */
+function closeStay(db: ContentDb, s: ShiftState, p: ShiftPatient, end: StayEnd, days: number) {
+  const stay = p.stay!;
+  const closed = p.closed!;
+  const norm = stayNorm(db, closed.diagnosis);
+  const ward = wardDay(s);
+  if (end === 'discharged' || end === 'early') {
     ward.stayDays += days;
     ward.stayNorm += norm;
   }
-  p.closed.stay = { days, norm, end };
+  closed.stay = { days, norm, end };
   p.status = 'done';
   if (s.economy) {
-    // без показаний — то, что разбор приёма счёл лишним: по нужде пациента, как оценка «где лечить»
     const chosen = stay.plan.setting === 'surgery' ? 'surgery' : 'admit';
-    const close: WardClose = settingFit(recommendedSetting(db, p.patient), chosen) === 'over' ? 'unindicated' : end === 'discharged' ? 'full' : 'interrupted';
+    const close: WardClose = settingFit(recommendedSetting(db, p.patient), chosen) === 'over' ? 'unindicated' : end === 'discharged' || end === 'died' ? 'full' : 'interrupted';
     const ledger = ledgerOf(s);
     ledger.ward ??= { cases: 0, income: 0, interrupted: 0, unindicated: 0 };
     ledger.ward.cases++;
-    ledger.ward.income += wardIncome(db, p.closed.diagnosis, p.closed.grades.defensibility, close, stay.op?.done === true);
+    ledger.ward.income += wardIncome(db, closed.diagnosis, closed.grades.defensibility, close, stay.op?.done === true);
     if (close === 'interrupted') ledger.ward.interrupted++;
     if (close === 'unindicated') ledger.ward.unindicated++;
   }
-  return advanceBy(db, s, 2 * MIN); // выписка, эпикриз
+}
+
+/**
+ * Ночь (часть 28б): кому после операции выпало умереть — умирает; в «мягком режиме» его вместо
+ * этого переводят в областную больницу в тяжёлом состоянии, оценки те же. В итогах — одной
+ * спокойной строкой.
+ */
+function nightDeaths(db: ContentDb, s: ShiftState) {
+  for (const p of inpatientsOf(s)) {
+    const stay = p.stay!;
+    const days = daysIn(stay, s.day);
+    if (stay.dies === undefined || days < stay.dies || !p.closed) continue;
+    const ward = wardDay(s);
+    if (s.meta.soft) {
+      p.closed.outcome = { kind: 'transferred', day: days, cured: false, severe: true };
+      ward.transferred++;
+      closeStay(db, s, p, 'transferred', days);
+    } else {
+      p.closed.outcome = { kind: 'died', day: days, cured: false };
+      ward.died = (ward.died ?? 0) + 1;
+      closeStay(db, s, p, 'died', days);
+    }
+  }
 }
 
 /** Сменить лечение лежащего на обходе: болезнь идёт дальше с новым планом с этих суток. */

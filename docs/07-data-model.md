@@ -76,6 +76,9 @@ interface Condition {
     // complications?: { after: [number, number]; when?: Cond; add: Id; p: P }[];
   };
   surgery?: { tx: Id; window: number }; // лечат операцией tx; «в срок» — не позже window часов (0.0.45)
+  // осложнённая стадия по часам без лечения (0.0.46): за первые early.hours — early.p, дальше
+  // later.p за каждые later.every часов; после операции в ней — свой срок стационара
+  complication?: { name: Text; early: { hours: number; p: P }; later: { every: number; p: P }; stay?: [number, number] };
   findings: Link[];                     // связи «состояние → признак»
   vitals?: VitalShift[];                // сдвиги витальных по стадиям и тяжести
   confirm: Id[] | 'clinical';
@@ -218,7 +221,11 @@ interface Treatment {
   texts: { hint: Text };                 // «Что это?» простыми словами (05-content.md §4)
   sources: Source[]; review: Review; replacedBy?: Id;
   // операция (0.0.45): где, какая бригада, какие аппараты — все сразу, минуты, доля осложнений
-  surgery?: { room: Id; team: Id[]; equipment: Id[]; minutes: number; complications: P };
+  surgery?: {
+    room: Id; team: Id[]; equipment: Id[]; minutes: number; complications: P;
+    death?: P;                                           // умерли в стационаре (0.0.46)
+    complicated?: { complications: P; death?: P };       // в осложнённой стадии на момент разреза
+  };
   // позже: room?, staff?, time? (процедуры в кабинетах), findings в effects
   // (жаропонижающее снимает температуру), sideEffects: { add: Id; p: P; if?: Id }[]
 }
@@ -404,6 +411,13 @@ interface Patient {
   `taken`, сколько его пациентов вы забрали. Приём с `from` — ваш: в прежних строках итогов,
   в профиле и оценке «Смены».
 
+- С 0.0.46 — перфорация и смерть (часть 28б): у операции `stay.op.complicated` — на момент
+  разреза болезнь была в осложнённой стадии; у лежащего `stay.dies` — сутки, в ночь которых он
+  умрёт (решено в конце операции). Исход `died`; в «мягком режиме» — `transferred` с
+  `severe: true`; у случая стационара `end: 'died'`. В итогах дня `ward.died` и
+  `surgery.complicated`; в разборе — `op.complicated` (болезнь, часы от начала, была ли уже
+  при поступлении). У смены `meta.soft` — команда `soft { on }`: её подаёт сессия по настройке
+  `softMode` перед любым действием. Схема сохранения прежняя.
 - С 0.0.45 — операционная (часть 28а): у лежащего `stay.op` — операция: `tx`, когда решили
   оперировать (`queued`), операционная и хирург, начало и конец по часам смены, `done`,
   `complication`; пока `start` нет — ждёт в очереди операционной (по `queued`). Выбор места

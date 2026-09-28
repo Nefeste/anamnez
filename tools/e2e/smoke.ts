@@ -316,6 +316,9 @@ try {
   const quiet = () => page.getByTestId('sound-1').getAttribute('aria-selected');
   check((await vibration()) === 'true' && (await page.getByTestId('sound-3').getAttribute('aria-selected')) === 'true', 'настройки: по умолчанию вибрация включена, звук громкий');
   check((await page.getByTestId('settings-ambience').getAttribute('aria-checked')) === 'true', 'настройки: фон амбулатории по умолчанию включён');
+  // «мягкий режим» (spec 2026-09-chapter-2, часть 28б): по умолчанию выключен
+  check((await page.getByTestId('settings-soft').getAttribute('aria-checked')) === 'false' && (await text(page, 'settings-soft')).includes('перевод в областную больницу'),
+    `настройки: мягкий режим — выключен, ${(await text(page, 'settings-soft')).replace(/\n/g, ' · ')}`);
   await page.getByTestId('settings-vibration').click();
   await page.getByTestId('sound-1').click();
   await page.screenshot({ path: join(OUT, '10-settings.png'), fullPage: true });
@@ -1096,6 +1099,12 @@ try {
   const team = (await visibleText(page, 'enc-block-team')).toLowerCase();
   check((await visibleText(page, 'enc-article-title')) === 'Аппендэктомия' && team === 'бригада' && (await visible(page, 'enc-block-treats').count()) === 1,
     `энциклопедия, операция: ${await visibleText(page, 'enc-article-title')} — что лечит, где, ${team}`);
+  // перфорация (часть 28б): исходы по стадии — у операции, риск по часам — у болезни
+  check((await visible(page, 'enc-block-outcomes').count()) === 1, 'энциклопедия, операция: исходы — без перфорации и с ней');
+  await page.goto(`${base}/encyclopedia/article/cond.appendicitis`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const risk = await page.locator('text=Перфорация без операции').first().isVisible().catch(() => false);
+  check(risk, 'энциклопедия, аппендицит: «Перфорация без операции: за первые 36 ч — до 2 %…»');
 
   // энциклопедия: раздел «Шкалы», статья NEWS2 — баллы по показателям
   await page.goto(`${base}/encyclopedia/article/score.news2`);
@@ -1108,6 +1117,8 @@ try {
   await page.getByTestId('menu-campaign').click();
   await page.getByTestId('career-1').waitFor({ timeout: 10_000 });
   await page.getByTestId('career-1').click();
+  // при начале карьеры — тот же «мягкий режим», что в настройках
+  check((await page.getByTestId('career-soft').getAttribute('aria-checked')) === 'false', 'кампания: при начале карьеры — «Мягкий режим», выключен');
   await page.getByTestId('career-begin').click();
   await page.getByTestId('chapter').waitFor({ timeout: 10_000 });
   check((await text(page, 'chapter')).startsWith('Глава 1. Участок') && (await page.locator('[data-testid^="mission-"]').count()) === 5,

@@ -1,6 +1,6 @@
 {
-  "version": "0.0.45",
-  "base": 22,
+  "version": "0.0.46",
+  "base": 23,
   "ids": {
     "achievements": [
       "ach.allergy_10",

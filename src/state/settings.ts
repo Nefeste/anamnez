@@ -34,9 +34,13 @@ export interface Settings {
   textScale: number;
   /** тема интерфейса; по умолчанию — как в телефоне */
   theme: ThemeChoice;
+  /** «мягкий режим» (spec 2026-09-chapter-2, часть 28б): вместо смерти — перевод в тяжёлом состоянии */
+  softMode: boolean;
 }
 
-export const DEFAULTS: Settings = { sound: 1, ambience: true, vibration: true, pauseOnRed: true, pauseOnResults: true, disclaimerAccepted: false, textScale: 1, theme: 'system' };
+export const DEFAULTS: Settings = {
+  sound: 1, ambience: true, vibration: true, pauseOnRed: true, pauseOnResults: true, disclaimerAccepted: false, textScale: 1, theme: 'system', softMode: false,
+};
 
 export interface SettingsView extends Settings {
   /** ready — прочитаны с диска (или их там нет и действуют умолчания) */
@@ -73,11 +77,14 @@ export function setSettingsStore(s: RawStore) {
  */
 export function sanitize(data: unknown): Settings {
   const d = (data !== null && typeof data === 'object' ? data : {}) as Record<string, unknown>;
-  const flag = (k: 'ambience' | 'vibration' | 'pauseOnRed' | 'pauseOnResults' | 'disclaimerAccepted') => (typeof d[k] === 'boolean' ? (d[k] as boolean) : DEFAULTS[k]);
+  const flag = (k: 'ambience' | 'vibration' | 'pauseOnRed' | 'pauseOnResults' | 'disclaimerAccepted' | 'softMode') => (typeof d[k] === 'boolean' ? (d[k] as boolean) : DEFAULTS[k]);
   const sound = typeof d.sound === 'number' && d.sound >= 0 && d.sound <= 1 ? d.sound : DEFAULTS.sound;
   const textScale = (TEXT_SCALES as readonly number[]).includes(d.textScale as number) ? (d.textScale as number) : DEFAULTS.textScale;
   const theme = (THEME_CHOICES as readonly unknown[]).includes(d.theme) ? (d.theme as ThemeChoice) : DEFAULTS.theme;
-  return { sound, ambience: flag('ambience'), vibration: flag('vibration'), pauseOnRed: flag('pauseOnRed'), pauseOnResults: flag('pauseOnResults'), disclaimerAccepted: flag('disclaimerAccepted'), textScale, theme };
+  return {
+    sound, ambience: flag('ambience'), vibration: flag('vibration'), pauseOnRed: flag('pauseOnRed'), pauseOnResults: flag('pauseOnResults'), disclaimerAccepted: flag('disclaimerAccepted'),
+    textScale, theme, softMode: flag('softMode'),
+  };
 }
 
 /** Прочитать настройки, если ещё не читали; файла нет или он испорчен — умолчания. */

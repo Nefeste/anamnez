@@ -97,6 +97,22 @@ export interface Surgery {
   equipment: Id[];
   minutes: number;
   complications: P;
+  /** умерли в стационаре после операции (spec 2026-09-chapter-2, часть 28б) */
+  death?: P;
+  /** в осложнённой стадии болезни на момент разреза — свои доли */
+  complicated?: { complications: P; death?: P };
+}
+
+/**
+ * Осложнённая стадия (часть 28б): без действенного лечения наступает по часам от начала болезни —
+ * за первые `early.hours` часов с долей `early.p`, дальше — `later.p` за каждые `later.every` часов.
+ */
+export interface Complication {
+  name: Text;
+  early: { hours: number; p: P };
+  later: { every: number; p: P };
+  /** срок стационара после операции в этой стадии, сутки */
+  stay?: [number, number];
 }
 
 export interface Stage {
@@ -149,6 +165,8 @@ export interface Condition {
   stay?: [number, number];
   /** лечат операцией (часть 28): какой и за сколько часов от поступления, чтобы не поздно */
   surgery?: { tx: Id; window: number };
+  /** осложнённая стадия (часть 28б): перфорация аппендикса */
+  complication?: Complication;
   /** тактика; есть у всех, с чем приходят (валидатор) */
   treatment?: Tactics;
   texts: { summary: Text };
