@@ -194,6 +194,11 @@ export interface Exam {
   radiation?: 'none' | 'low' | 'medium' | 'high';
   /** спрашивают каждого (анамнез жизни) */
   routine?: boolean;
+  /** кому делают: только этому полу — о месячных и беременности спрашивают женщин */
+  sex?: 'm' | 'f';
+  /** кому делают по возрасту, лет включительно */
+  ageMin?: number;
+  ageMax?: number;
   checks: ExamCheck[];
   /** summary — как делают; hint — что показывает, простыми словами */
   texts: { summary: Text; hint?: Text };

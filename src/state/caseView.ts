@@ -6,7 +6,7 @@ import { db } from '@/content';
 import { type BodySystem, type Id, type Setting, SYSTEMS } from '@/content/types';
 import { fnv1a } from '@/engine/core/hash';
 import type { Outcome } from '@/engine/med/course';
-import { complaintObservations } from '@/engine/med/exams';
+import { complaintObservations, examFits } from '@/engine/med/exams';
 import { type Belief, knownFacts, posterior } from '@/engine/med/infer';
 import type { PlanEval } from '@/engine/med/plan';
 import type { ReviewData } from '@/engine/med/review';
@@ -96,7 +96,7 @@ export interface VisitView {
   groups: ResultGroup[];
   /** сколько результатов пришло за последнее действие */
   freshCount: number;
-  pending: { name: string; at: string }[];
+  pending: { exam: Id; name: string; at: string }[];
   meanwhile: string[];
   /** смена: за это время пришёл срочный пациент — звук «срочно», а не «готово» */
   urgent?: boolean;
@@ -309,7 +309,7 @@ export function makeCaseView(c: CaseInput): VisitView {
       })
       .reverse(),
     freshCount: c.arrived.filter(a => c.step > 0 && a.step === c.step).reduce((n, a) => n + a.obs.length, 0),
-    pending: c.pending.map(x => ({ name: db.exams[x.exam].name.ru, at: hhmm(x.readyAt) })),
+    pending: c.pending.map(x => ({ exam: x.exam, name: db.exams[x.exam].name.ru, at: hhmm(x.readyAt) })),
     meanwhile: c.meanwhile,
     ...(c.urgent ? { urgent: true } : {}),
     done: c.done,
@@ -401,12 +401,15 @@ export function noteText(n: ScoreNote): string {
   }
 }
 
-/** Обследования по разделам действий карты пациента. */
-export function examsByAction(): Record<'ask' | 'examine' | 'order', Id[]> {
+/**
+ * Обследования по разделам действий карты пациента — те, что ему подходят по полу и возрасту:
+ * о месячных и беременности мужчину не спрашивают.
+ */
+export function examsByAction(patient: { sex: 'm' | 'f'; age: number }): Record<'ask' | 'examine' | 'order', Id[]> {
   // по названию; в «Спросить» сначала расспрос о жалобах по системам, потом анамнез жизни
   const byName = (a: Id, b: Id) => (db.exams[a].name.ru < db.exams[b].name.ru ? -1 : 1);
   const history = (id: Id) => (db.exams[id].checks.every(c => c.f.startsWith('hx.')) ? 1 : 0);
-  const ids = Object.keys(db.exams).sort(byName);
+  const ids = Object.keys(db.exams).filter(id => examFits(db.exams[id], patient)).sort(byName);
   return {
     ask: ids.filter(id => db.exams[id].kind === 'ask').sort((a, b) => history(a) - history(b) || byName(a, b)),
     examine: ids.filter(id => ['physical', 'bedside'].includes(db.exams[id].kind)),

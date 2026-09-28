@@ -1,13 +1,13 @@
 // Настройки (03-game-design.md §12, spec 2026-09-first-shift): звук, вибрация, автопауза
-// смены, размер текста; перенос на другой телефон; «Сообщить об ошибке»; «Об игре»; прототипы первого этапа — ими на телефоне меряют отпечаток движка,
+// смены, тема (spec 2026-09-own-look) и размер текста; перенос на другой телефон; «Сообщить об ошибке»; «Об игре»; прототипы первого этапа — ими на телефоне меряют отпечаток движка,
 // кадры карты и запись сохранения.
 import { type Href, router } from 'expo-router';
 import { useEffect } from 'react';
-import { Platform } from 'react-native';
+import { Platform, useColorScheme } from 'react-native';
 import { play } from '@/audio/sounds';
 import { T } from '@/i18n';
-import { loadSettings, TEXT_SCALES, updateSettings, useSettings, VOLUMES } from '@/state/settings';
-import { Button, Card, H, P, Screen, Tabs, Toggle } from '@/ui/components';
+import { loadSettings, TEXT_SCALES, THEME_CHOICES, type ThemeChoice, updateSettings, useSettings, VOLUMES } from '@/state/settings';
+import { Button, Card, Choice, H, P, Screen, Tabs, Toggle } from '@/ui/components';
 
 type Level = '0' | '1' | '2' | '3';
 type Size = '0' | '1' | '2';
@@ -23,6 +23,7 @@ const levelOf = (sound: number): Level => {
 
 export default function SettingsScreen() {
   const s = useSettings();
+  const scheme = useColorScheme();
   useEffect(() => {
     loadSettings();
   }, []);
@@ -54,7 +55,14 @@ export default function SettingsScreen() {
         <Toggle testID="settings-pause-results" title={t.pauseOnResults} value={s.pauseOnResults} onChange={v => updateSettings({ pauseOnResults: v })} />
       </Card>
       <Card>
-        <H>{t.text}</H>
+        <H>{t.screen}</H>
+        <P muted>{t.theme}</P>
+        <Choice<ThemeChoice>
+          testPrefix="theme"
+          value={s.theme}
+          onChange={k => updateSettings({ theme: k })}
+          items={THEME_CHOICES.map(key => ({ key, title: t.themes[key], hint: key === 'system' ? t.themeHints.system(scheme === 'dark') : t.themeHints[key] }))}
+        />
         <P muted>{t.textSize}</P>
         <Tabs<Size>
           testPrefix="text-size"

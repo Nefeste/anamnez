@@ -11,7 +11,7 @@ import type { Id, Season, Setting } from '@/content/types';
 import { fnv1a } from '@/engine/core/hash';
 import { Rng } from '@/engine/core/rng';
 import { observe } from '@/engine/med/course';
-import { complaintObservations, runExam } from '@/engine/med/exams';
+import { complaintObservations, examFits, runExam } from '@/engine/med/exams';
 import { generatePatient } from '@/engine/med/generate';
 import { evaluatePlan } from '@/engine/med/plan';
 import { examCost } from '@/engine/med/policy';
@@ -121,8 +121,8 @@ export function createVisit(first: number, opts: { season?: Season; onFinish?: (
     // провести обследование: часы двигаются на время процедуры, результат — сразу или позже
     act(examId) {
       const s = state;
-      if (s.decision || s.done.includes(examId)) return;
       const e = db.exams[examId];
+      if (s.decision || s.done.includes(examId) || !examFits(e, s.patient)) return;
       s.step++;
       s.meanwhile = [];
       s.clock += e.time.procedure;

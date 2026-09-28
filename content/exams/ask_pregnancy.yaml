@@ -4,6 +4,10 @@ kind: ask
 time: { procedure: 1 }
 cost: 0
 discomfort: 0
+# кому: женщинам детородного возраста — мужчине и женщине после 50 не предлагается
+sex: f
+ageMin: 12
+ageMax: 50
 checks:
   - { f: hx.pregnancy, sens: 95, spec: 99 }
   - { f: hx.heavy_periods, sens: 90, spec: 97 }

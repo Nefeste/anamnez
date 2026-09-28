@@ -1,7 +1,9 @@
 // Корень: стек Expo Router (ADR 0003) внутри корня жестов. Здесь же смене, настройкам и
 // профилю даётся хранилище платформы, и смена сохраняется, когда приложение уходит в фон.
+// Шапка, строка состояния и фон окна — по теме (spec 2026-09-own-look).
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import * as SystemUI from 'expo-system-ui';
 import { useEffect } from 'react';
 import { AppState } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -12,7 +14,8 @@ import { loadProfile, setProfileStore } from '@/state/profile';
 import { saveNow, setStore } from '@/state/session';
 import { loadSettings, setSettingsStore } from '@/state/settings';
 import { rawStore } from '@/state/storage';
-import { colors } from '@/ui/theme';
+import { installFonts } from '@/ui/fonts';
+import { useTheme } from '@/ui/theme';
 
 setStore(rawStore);
 setSettingsStore(rawStore);
@@ -22,8 +25,15 @@ void installErrorLog(rawStore);
 // громкость и вибрация нужны и тому, кто пришёл не через меню; профиль — чтобы записывать приёмы
 loadSettings();
 loadProfile();
+// веб: шрифты из сборки правилами @font-face; на телефоне они встроены плагином expo-font
+installFonts();
 
 export default function RootLayout() {
+  const t = useTheme();
+  // фон окна — под экраном при переходах и за клавиатурой
+  useEffect(() => {
+    SystemUI.setBackgroundColorAsync(t.colors.bg).catch(() => undefined);
+  }, [t]);
   useEffect(() => {
     const sub = AppState.addEventListener('change', state => {
       if (state !== 'active') saveNow();
@@ -34,15 +44,18 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <StatusBar style="dark" />
+        <StatusBar style={t.name === 'dark' ? 'light' : 'dark'} />
         <Stack
           screenOptions={{
-            headerStyle: { backgroundColor: colors.card },
-            headerTintColor: colors.ink,
-            contentStyle: { backgroundColor: colors.bg },
+            headerStyle: { backgroundColor: t.colors.card },
+            headerTintColor: t.colors.ink,
+            headerTitleStyle: { fontFamily: t.fonts.title, fontWeight: '700' },
+            // черту под шапкой рисует экран: двойную в «Медкарте», тонкую в «Мониторе»
+            headerShadowVisible: false,
+            contentStyle: { backgroundColor: t.colors.bg },
             headerBackTitle: T.common.back,
           }}>
-          <Stack.Screen name="index" options={{ title: T.common.appName }} />
+          <Stack.Screen name="index" options={{ title: T.common.appName, headerShown: false }} />
           <Stack.Screen name="settings" options={{ title: T.settings.title }} />
           <Stack.Screen name="about" options={{ title: T.about.title }} />
           <Stack.Screen name="report" options={{ title: T.report.title }} />

@@ -2,7 +2,7 @@
 // плашками. Открывается и из «Что это?» в карте пациента, и из разбора случая. У болезни —
 // сколько раз она встречалась в практике игрока (профиль).
 import { Stack, useLocalSearchParams } from 'expo-router';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import { Text } from '@/ui/text';
 import { db } from '@/content';
 import { T } from '@/i18n';
@@ -10,9 +10,10 @@ import { article } from '@/state/encyclopedia';
 import { useProfile } from '@/state/profile';
 import { Card, Chips, P, Screen } from '@/ui/components';
 import { EncyclopediaNote, RefChip } from '@/ui/encyclopedia';
-import { colors, space } from '@/ui/theme';
+import { makeStyles, space } from '@/ui/theme';
 
 export default function ArticleScreen() {
+  const styles = useStyles();
   const { id } = useLocalSearchParams<{ id: string }>();
   const t = T.encyclopedia;
   const a = article(db, String(id));
@@ -54,9 +55,9 @@ export default function ArticleScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  title: { fontSize: 22, fontWeight: '700', color: colors.ink },
-  label: { fontSize: 13, fontWeight: '700', color: colors.muted, textTransform: 'uppercase' },
+const useStyles = makeStyles(t => ({
+  title: { fontSize: 22, fontWeight: '700', color: t.colors.ink },
+  label: { fontSize: 13, fontWeight: '700', letterSpacing: 1.2, color: t.colors.muted, textTransform: 'uppercase' },
   row: { gap: space.xs, marginTop: space.xs },
-  rowLabel: { fontSize: 14, fontWeight: '600', color: colors.ink },
-});
+  rowLabel: { fontSize: 14, fontWeight: '600', color: t.colors.ink },
+}));

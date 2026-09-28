@@ -159,6 +159,7 @@ interface Exam {
   cost: number; consumables?: number;
   discomfort: 0 | 1 | 2 | 3; radiation?: 'none' | 'low' | 'medium' | 'high';
   routine?: boolean;                             // спрашивают каждого (анамнез жизни)
+  sex?: 'm' | 'f'; ageMin?: number; ageMax?: number;  // кому делают: о беременности — женщинам 12–50
   contraindications?: { id: Id; level: 'relative' | 'absolute' }[];   // позже: рентген при беременности
   checks: { f: Id; sens: P; spec: P }[];         // какие признаки проверяет и как точно
   modifiers?: { by: Id; sens?: number; spec?: number }[];  // ожирение, навык, уровень аппарата

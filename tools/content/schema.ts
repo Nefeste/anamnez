@@ -166,6 +166,11 @@ export const examSchema = z.strictObject({
   radiation: z.enum(['none', 'low', 'medium', 'high']).optional(),
   /** спрашивают каждого (анамнез жизни): «виртуальный врач» делает это первым */
   routine: z.boolean().optional(),
+  /** кому делают: только этому полу (о месячных и беременности — женщин) */
+  sex: z.enum(['m', 'f']).optional(),
+  /** кому делают по возрасту, лет включительно: вне его не предлагается */
+  ageMin: z.number().int().min(0).max(120).optional(),
+  ageMax: z.number().int().min(0).max(120).optional(),
   /** чувствительность и специфичность — в процентах */
   checks: z.array(z.strictObject({ f: z.string(), sens: accuracy, spec: accuracy })).min(1),
   texts: z.strictObject({ summary: text, hint }),

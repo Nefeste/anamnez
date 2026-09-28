@@ -2,19 +2,20 @@
 // задания с ходом. Между сменами — над своей больницей; касание письма — лист с портретом.
 // В первую смену главы — подсказки наставника листом поверх приёма.
 import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import { T } from '@/i18n';
 import { Portrait } from '@/render/Portrait';
 import { type CampaignView, type MissionView, readLetter, seenTip, tipsOff, useTip } from '@/state/session';
 import type { TipScreen } from '@/state/tips';
 import { Button, Card, H, P, Sheet } from './components';
 import { Text } from './text';
-import { colors, space } from './theme';
+import { makeStyles, space } from './theme';
 
 /** Первые слова письма — подпись под именем в списке. */
 const opening = (text: string) => (text.length > 60 ? `${text.slice(0, 60).replace(/\s+\S*$/, '')}…` : text);
 
 export function ChapterCard({ c }: { c: CampaignView }) {
+  const styles = useStyles();
   const t = T.campaign;
   const [open, setOpen] = useState<string>();
   const letter = c.letters.find(l => l.id === open);
@@ -68,6 +69,7 @@ export function ChapterCard({ c }: { c: CampaignView }) {
  * за карьеру — ещё «Без подсказок».
  */
 export function MentorTip({ screen }: { screen: TipScreen }) {
+  const styles = useStyles();
   const t = T.campaign;
   const tip = useTip(screen);
   return (
@@ -90,6 +92,7 @@ export function MentorTip({ screen }: { screen: TipScreen }) {
 }
 
 function Mission({ m }: { m: MissionView }) {
+  const styles = useStyles();
   return (
     <View testID={`mission-${m.id}`} style={styles.mission}>
       <Text style={[styles.mark, m.done !== undefined && styles.markDone]}>{m.done !== undefined ? '✓' : '○'}</Text>
@@ -101,14 +104,14 @@ function Mission({ m }: { m: MissionView }) {
   );
 }
 
-const styles = StyleSheet.create({
-  label: { fontSize: 13, fontWeight: '700', color: colors.muted, textTransform: 'uppercase', marginTop: space.s },
+const useStyles = makeStyles(t => ({
+  label: { fontSize: 13, fontWeight: '700', letterSpacing: 1.2, color: t.colors.muted, textTransform: 'uppercase', marginTop: space.s },
   head: { flexDirection: 'row', alignItems: 'center', gap: space.m },
   headText: { flex: 1, gap: 2 },
   mission: { flexDirection: 'row', gap: space.s, alignItems: 'flex-start', paddingVertical: 2 },
-  mark: { width: 20, fontSize: 16, lineHeight: 22, color: colors.muted },
-  markDone: { color: colors.green, fontWeight: '700' },
+  mark: { width: 20, fontSize: 16, lineHeight: 22, color: t.colors.muted },
+  markDone: { color: t.colors.green, fontWeight: '700' },
   missionText: { flex: 1, gap: 1 },
-  missionTitle: { fontSize: 15, lineHeight: 21, color: colors.ink },
-  missionMeta: { fontSize: 13, lineHeight: 18, color: colors.muted },
-});
+  missionTitle: { fontSize: 15, lineHeight: 21, color: t.colors.ink },
+  missionMeta: { fontSize: 13, lineHeight: 18, color: t.colors.muted },
+}));

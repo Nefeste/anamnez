@@ -231,6 +231,29 @@ try {
   const large = await fontOf();
   check(Math.abs(large / normal - 1.3) < 0.02, `настройки: размер текста «Крупный» — ${normal} → ${large} px`);
   await page.getByTestId('text-size-0').click();
+  // тема (spec 2026-09-own-look): по умолчанию — как в телефоне, у сценария телефон светлый;
+  // «Тёмная» меняет вид сразу, без перезапуска, и остаётся после перезапуска
+  const sheetBg = () => page.getByTestId('settings-about').evaluate(el => getComputedStyle(el).backgroundColor);
+  const LIGHT_CARD = 'rgb(255, 253, 248)';
+  const DARK_CARD = 'rgb(21, 38, 42)';
+  check((await page.getByTestId('theme-system').getAttribute('aria-checked')) === 'true' && (await sheetBg()) === LIGHT_CARD, `настройки: тема как в телефоне — светлая «Медкарта» (${await sheetBg()})`);
+  await page.getByTestId('theme-dark').click();
+  check((await sheetBg()) === DARK_CARD, `настройки: «Тёмная» — сразу тёмный «Монитор» (${await sheetBg()})`);
+  await page.screenshot({ path: join(OUT, '10-settings-dark.png') });
+  await page.goto(`${base}/settings`);
+  await page.getByTestId('settings-about').waitFor({ timeout: 10_000 });
+  check((await page.getByTestId('theme-dark').getAttribute('aria-checked')) === 'true' && (await sheetBg()) === DARK_CARD, 'настройки: тёмная тема — та же после перезапуска');
+  await page.getByTestId('theme-system').click();
+  check((await sheetBg()) === LIGHT_CARD, 'настройки: снова как в телефоне — светлая');
+  {
+    // телефон в тёмной теме — «как в телефоне» даёт тёмную без выбора в настройках
+    const dark = await browser.newPage({ viewport: { width: 412, height: 915 }, colorScheme: 'dark' });
+    await dark.goto(`${base}/settings`);
+    await dark.getByTestId('settings-about').waitFor({ timeout: 30_000 });
+    const bg = await dark.getByTestId('settings-about').evaluate(el => getComputedStyle(el).backgroundColor);
+    check(bg === DARK_CARD && (await dark.getByTestId('theme-system').getAttribute('aria-checked')) === 'true', `настройки: тёмный телефон — «Монитор» по умолчанию (${bg})`);
+    await dark.close();
+  }
   // отчёт об ошибке: весь текст виден, описание — первой строкой
   await page.getByTestId('settings-report').click();
   await page.getByTestId('report-text').waitFor({ timeout: 5000 });
@@ -328,6 +351,10 @@ try {
   await page.getByTestId('exam-exam.ask_complaints').waitFor({ timeout: 5000 });
   check((await page.getByTestId('term-sheet').count()) === 0, 'П4: из статьи «назад» — в карту пациента');
   await page.getByTestId('exam-exam.ask_complaints').click();
+  // ответ — на месте вопроса, листать вверх к «Известно» не нужно (отзыв на 0.0.37)
+  await page.getByTestId('done-exam.ask_complaints').waitFor({ timeout: 5000 });
+  const asked = await text(page, 'done-exam.ask_complaints');
+  check(asked.split('\n').length > 1 && (await page.getByTestId('exam-exam.ask_complaints').count()) === 0, `П4: ответ под вопросом — «${asked.replace(/\n/g, ' · ')}»`);
   await page.getByTestId('tab-examine').click();
   await page.getByTestId('exam-exam.lung_auscultation').click();
   await page.getByTestId('visit-fresh').first().waitFor({ timeout: 5000 });
@@ -461,6 +488,9 @@ try {
     seatedWho = (await page.getByTestId('map-who').count()) > 0 ? await text(page, 'map-who') : '';
   }
   check(seatedWho.includes('Ждёт приёма') && (await page.getByTestId('map-invite').isVisible()), `смена: коснулись ждущего в зале — «${seatedWho.replace(/\n/g, ' · ')}»`);
+  // значок у вашего кабинета — сколько ждут вас (spec 2026-09-living-map, часть 23)
+  const officeSign = (await page.getByTestId(`sign-${CLINIC.mine}`).getAttribute('aria-label')) ?? '';
+  check(/^Ждут: [1-9]\d*$/.test(officeSign), `смена: значок очереди у кабинета — «${officeSign}»`);
   await page.screenshot({ path: join(OUT, '08-shift-queue.png') });
   // «Пригласить» — он идёт в кабинет, карта пациента открывается, когда вошёл
   const invited = Date.now();
@@ -773,7 +803,7 @@ try {
   await page.screenshot({ path: join(OUT, '14-hired-colleague-case.png'), fullPage: true });
   await page.getByTestId('colleague-take').click();
   await visible(page, 'visit-decide').waitFor({ timeout: 10_000 });
-  check((await page.locator('[data-testid="visit-colleague"]:visible').count()) === 0 && (await visible(page, 'exam-exam.ask_onset').count()) === 1,
+  check((await page.locator('[data-testid="visit-colleague"]:visible').count()) === 0 && (await visible(page, 'exam-exam.ask_onset').count()) + (await visible(page, 'done-exam.ask_onset').count()) === 1,
     'забрали себе: пациент у вас в кабинете, карта — ваша');
 
   // нанятый врач (spec 2026-09-hired-doctors): песочница с терапевтом во втором кабинете — в

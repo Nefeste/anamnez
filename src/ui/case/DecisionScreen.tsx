@@ -3,20 +3,20 @@
 // Выбор — черновик приёма: можно вернуться, дообследовать и продолжить.
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { StyleSheet } from 'react-native';
 import { Text } from '../text';
 import type { Setting } from '@/content/types';
 import { T } from '@/i18n';
 import { conditionTerm, diagnosisGroups, type TermInfo, treatmentTerm, type VisitView } from '@/state/caseView';
 import { Button, Card, Chip, Chips, H, P, Screen } from '@/ui/components';
 import { TermSheet } from '@/ui/TermSheet';
-import { colors, space } from '@/ui/theme';
+import { makeStyles, space } from '@/ui/theme';
 import type { CaseActions } from './actions';
 
 type Step = 'diagnosis' | 'plan';
 const SETTINGS: Setting[] = ['home', 'ward', 'ambulance'];
 
 export function DecisionScreen({ view: v, actions }: { view: VisitView; actions: CaseActions }) {
+  const styles = useStyles();
   const [step, setStep] = useState<Step>('diagnosis');
   const [term, setTerm] = useState<TermInfo | null>(null);
   const t = T.spikes.patient;
@@ -103,6 +103,6 @@ export function DecisionScreen({ view: v, actions }: { view: VisitView; actions:
   );
 }
 
-const styles = StyleSheet.create({
-  label: { fontSize: 13, fontWeight: '700', color: colors.muted, textTransform: 'uppercase', marginTop: space.s },
-});
+const useStyles = makeStyles(t => ({
+  label: { fontSize: 13, fontWeight: '700', letterSpacing: 1.2, color: t.colors.muted, textTransform: 'uppercase', marginTop: space.s },
+}));

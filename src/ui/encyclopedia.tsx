@@ -7,7 +7,7 @@ import type { Id } from '@/content/types';
 import { T } from '@/i18n';
 import type { Ref } from '@/state/encyclopedia';
 import { Chip } from './components';
-import { colors, space, touch } from './theme';
+import { makeStyles, space, touch } from './theme';
 
 /** Статья поверх текущего экрана: «назад» возвращает туда, откуда пришли, — в карту пациента тоже. */
 export function openArticle(id: Id) {
@@ -15,6 +15,7 @@ export function openArticle(id: Id) {
 }
 
 export function EncyclopediaNote() {
+  const styles = useStyles();
   return <Text testID="enc-disclaimer" style={styles.note}>{T.encyclopedia.disclaimer}</Text>;
 }
 
@@ -23,6 +24,7 @@ export function RefChip({ r }: { r: Ref }) {
 }
 
 export function ListRow({ title, hint, onPress, testID }: { title: string; hint?: string; onPress: () => void; testID?: string }) {
+  const styles = useStyles();
   return (
     <Pressable testID={testID} accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.row, pressed && styles.pressed]}>
       <View style={styles.fill}>
@@ -34,12 +36,12 @@ export function ListRow({ title, hint, onPress, testID }: { title: string; hint?
   );
 }
 
-const styles = StyleSheet.create({
-  note: { fontSize: 13, lineHeight: 18, color: colors.muted },
-  row: { minHeight: touch, flexDirection: 'row', alignItems: 'center', gap: space.s, paddingVertical: space.s, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
+const useStyles = makeStyles(t => ({
+  note: { fontSize: 13, lineHeight: 18, color: t.colors.muted },
+  row: { minHeight: touch, flexDirection: 'row', alignItems: 'center', gap: space.s, paddingVertical: space.s, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.colors.line },
   pressed: { opacity: 0.6 },
   fill: { flex: 1 },
-  rowTitle: { fontSize: 16, color: colors.ink },
-  rowHint: { fontSize: 13, color: colors.muted, marginTop: 2 },
-  chevron: { fontSize: 22, color: colors.muted },
-});
+  rowTitle: { fontSize: 16, color: t.colors.ink },
+  rowHint: { fontSize: 13, color: t.colors.muted, marginTop: 2 },
+  chevron: { fontSize: 22, color: t.colors.muted },
+}));

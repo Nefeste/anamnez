@@ -6,7 +6,7 @@ import { act, chooseDiagnosis, chooseSetting, conditionChoices, conditionTerm, d
 
 describe('приём', () => {
   test('разделы действий делят обследования без пересечений', () => {
-    const by = examsByAction();
+    const by = examsByAction({ sex: 'f', age: 30 });
     const all = [...by.ask, ...by.examine, ...by.order];
     expect(new Set(all).size).toBe(all.length);
     expect(by.ask).toContain('exam.ask_complaints');
@@ -14,6 +14,19 @@ describe('приём', () => {
     expect(by.order).toContain('exam.xray_chest');
     expect(examInfo('exam.xray_chest').minutes).toBeGreaterThan(examInfo('exam.throat').minutes);
     expect(conditionChoices().map(c => c.id)).toContain('cond.pneumonia_cap');
+  });
+
+  test('о месячных и беременности спрашивают женщин детородного возраста, а не мужчину и не женщину 73 лет', () => {
+    const woman = examsByAction({ sex: 'f', age: 30 });
+    expect(woman.ask).toContain('exam.ask_pregnancy');
+    expect(woman.order).toContain('exam.pregnancy_test');
+    for (const who of [{ sex: 'm', age: 73 }, { sex: 'm', age: 30 }, { sex: 'f', age: 73 }] as const) {
+      const by = examsByAction(who);
+      expect(by.ask).not.toContain('exam.ask_pregnancy');
+      expect(by.order).not.toContain('exam.pregnancy_test');
+      // остальное — как у всех
+      expect(by.ask).toContain('exam.ask_onset');
+    }
   });
 
   test('первый пациент готов при загрузке модуля', () => {

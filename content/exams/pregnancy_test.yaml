@@ -4,6 +4,10 @@ kind: rapid
 time: { procedure: 2, turnaround: 5 }
 cost: 150
 discomfort: 0
+# кому: женщинам детородного возраста — мужчине и женщине после 50 не предлагается
+sex: f
+ageMin: 12
+ageMax: 50
 checks:
   - { f: lab.hcg_positive, sens: 97, spec: 99 }
 texts:

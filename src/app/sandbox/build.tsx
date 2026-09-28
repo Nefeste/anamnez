@@ -5,7 +5,7 @@
 // в нём и чего не хватает, дверь, аппараты, снос. «Готово» — отменять больше нечего.
 import { router, Stack } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { db } from '@/content';
 import type { Cell, Id, RoomSizeId } from '@/content/types';
 import { sizeOf } from '@/engine/hospital/build';
@@ -16,7 +16,7 @@ import { buildAction, type BuildView, endBuild, undoBuild, useBuild, useStaff } 
 import { buildErrorText, centered, type GhostSpec, ghostOf, rotated, statusText } from '@/state/sandboxView';
 import { Button, Card, H, P, Screen, Sheet } from '@/ui/components';
 import { Text } from '@/ui/text';
-import { colors, radius, space, touch } from '@/ui/theme';
+import { makeStyles, space, touch } from '@/ui/theme';
 
 const rub = (n: number) => T.common.rub(n);
 /** Межстрочный подсказки под картой, px при обычном размере текста. */
@@ -37,6 +37,7 @@ export default function BuildScreen() {
 }
 
 function Builder({ b }: { b: BuildView }) {
+  const styles = useStyles();
   const t = T.sandbox;
   const { textScale } = useSettings();
   const [area, setArea] = useState({ w: 0, h: 0 });
@@ -191,6 +192,7 @@ function RoomPicker({ picking, allowed, onPick, onChoose }: {
 function RoomCard({ b, id, onClose, onDemolish, act }: {
   b: BuildView; id: string; onClose: () => void; onDemolish: () => void; act: (cmd: Parameters<typeof buildAction>[0]) => boolean;
 }) {
+  const styles = useStyles();
   const t = T.sandbox;
   const staff = useStaff();
   const [buying, setBuying] = useState(false);
@@ -262,6 +264,7 @@ function Demolish({ b, id, onDone }: { b: BuildView; id: string; onDone: () => v
  * слова. Несколько слов — до двух строк.
  */
 function Small({ title, onPress, disabled, strong, testID }: { title: string; onPress: () => void; disabled?: boolean; strong?: boolean; testID?: string }) {
+  const styles = useStyles();
   const word = !/\s/.test(title);
   return (
     <Pressable
@@ -275,20 +278,20 @@ function Small({ title, onPress, disabled, strong, testID }: { title: string; on
   );
 }
 
-const styles = StyleSheet.create({
+const useStyles = makeStyles(t => ({
   fill: { flex: 1 },
   panel: { gap: space.s },
   row: { flexDirection: 'row', gap: space.s, alignItems: 'center' },
-  cash: { flex: 1, fontSize: 16, fontWeight: '700', color: colors.ink },
-  hint: { fontSize: 13, lineHeight: HINT_LINE, color: colors.muted },
-  warn: { color: colors.danger },
+  cash: { flex: 1, fontSize: 16, fontWeight: '700', color: t.colors.ink },
+  hint: { fontSize: 13, lineHeight: HINT_LINE, color: t.colors.muted },
+  warn: { color: t.colors.danger },
   small: {
-    flex: 1, minHeight: touch, borderRadius: radius, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.card,
+    flex: 1, minHeight: touch, borderRadius: t.shape.radius, borderWidth: 1, borderColor: t.colors.line, backgroundColor: t.colors.card,
     alignItems: 'center', justifyContent: 'center', paddingHorizontal: space.s,
   },
-  strong: { backgroundColor: colors.accent, borderColor: colors.accent },
+  strong: { backgroundColor: t.colors.accent, borderColor: t.colors.accent },
   disabled: { opacity: 0.45 },
   pressed: { opacity: 0.7 },
-  smallText: { fontSize: 14, fontWeight: '600', color: colors.ink, textAlign: 'center' },
-  strongText: { color: '#FFFFFF' },
-});
+  smallText: { fontSize: 14, fontWeight: '600', color: t.colors.ink, textAlign: 'center' },
+  strongText: { color: t.colors.onAccent },
+}));

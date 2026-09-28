@@ -60,6 +60,13 @@ export const spikes = {
     sendAway: 'Отпустить ждать результатов',
     sendAwayHint: 'а пока принять другого: вернётся в очередь, когда всё будет готово',
     pending: (name: string, at: string) => `${name} — будет в ${at}`,
+    readyAt: (at: string) => `Будет в ${at}`,
+    // свёрнутые результаты (отзыв на 0.0.37: меньше листать, когда обследований много)
+    quiet: (names: string) => `Без особенностей: ${names}`,
+    moreQuiet: (n: number) => `ещё ${n} без особенностей`,
+    nothingFound: 'без особенностей',
+    expand: 'Развернуть',
+    collapse: 'Свернуть',
     meanwhile: 'За это время',
     ready: (name: string) => `Готово: ${name}`,
     likely: 'Похоже на (уровень «Студент»)',

@@ -5,11 +5,11 @@
 // его карта открывается, когда он вошёл.
 import { router, Stack, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Pressable, useWindowDimensions, View } from 'react-native';
 import { Text } from '@/ui/text';
 import { buzz, play } from '@/audio/sounds';
 import { db } from '@/content';
-import type { Difficulty, Triage } from '@/engine/shift/types';
+import type { Difficulty } from '@/engine/shift/types';
 import { T } from '@/i18n';
 import { BuildMap } from '@/render/map/BuildMap';
 import { ClinicMap } from '@/render/map/ClinicMap';
@@ -21,11 +21,11 @@ import {
 } from '@/state/session';
 import { CaseRow } from '@/ui/case/CaseRow';
 import { gradeColor } from '@/ui/case/OutcomeScreen';
-import { Button, Card, Chip, Chips, H, P, Screen, Sheet, Tabs } from '@/ui/components';
+import { Button, Card, Chip, Chips, H, Lamp, P, Screen, Sheet, Tabs, Urgency } from '@/ui/components';
 import { DifficultyChoice } from '@/ui/difficulty';
 import { ChapterCard } from '@/ui/campaign';
 import { NewSandbox } from '@/ui/sandbox';
-import { colors, radius, space, touch } from '@/ui/theme';
+import { makeStyles, space, touch, useTheme } from '@/ui/theme';
 
 export default function ShiftScreen() {
   const v = useShift();
@@ -157,8 +157,13 @@ function openVisit() {
 }
 
 function Queue({ v }: { v: ShiftView }) {
+  const styles = useStyles();
+  const theme = useTheme();
   const t = T.shift;
   const { width } = useWindowDimensions();
+  // план — в рамке: в «Мониторе» — зелёной, как снимок на негатоскопе (spec 2026-09-own-look)
+  const frame = theme.shape.ruled ? 1 : 2;
+  const mapWidth = Math.min(width, 640) - 2 * (space.s + frame);
   const [focused, setFocused] = useState(true);
   // кого или какое помещение коснулись на карте; кого пригласили — он идёт в кабинет
   const [selected, setSelected] = useState<string>();
@@ -224,7 +229,7 @@ function Queue({ v }: { v: ShiftView }) {
   const footer = v.inRoom
     ? <Button testID="shift-continue" title={`${entering === v.inRoom.id ? t.entering(v.inRoom.name) : t.continueVisit(v.inRoom.name)} ▶`} onPress={enter} />
     : first
-      ? <Button testID="shift-call" title={`${t.call(first.name)} ▶`} hint={v.queue.length > 1 ? t.callHint : undefined} onPress={() => call(first.id)} />
+      ? <Button testID="shift-call" lamp title={`${t.call(first.name)} ▶`} hint={v.queue.length > 1 ? t.callHint : undefined} onPress={() => call(first.id)} />
       : v.allDone
         ? <Button testID="shift-close-day" title={t.closeDay} hint={t.closeDayHint(0)} onPress={closeDay} />
         : <Button testID="shift-skip" title={t.skip} hint={t.skipHint(v.away.length)} onPress={skip} />;
@@ -237,10 +242,12 @@ function Queue({ v }: { v: ShiftView }) {
   const who = selected === undefined ? undefined : v.who[selected];
   const map = (
     <>
+      <View style={[styles.mapFrame, { borderWidth: frame }]}>
       <ClinicMap
         layout={v.layout ?? CLINIC}
         people={v.people}
-        width={Math.min(width, 640)}
+        signs={v.signs}
+        width={mapWidth}
         active={focused}
         label={t.map.label(v.queue.length, v.away.length, v.inRoom?.name)}
         selected={who ? selected : undefined}
@@ -250,6 +257,7 @@ function Queue({ v }: { v: ShiftView }) {
         room={v.rooms && room ? room : undefined}
         onRoom={v.rooms ? setRoom : undefined}
       />
+      </View>
       {who && selected !== undefined ? (
         <WhoStrip who={who} onCall={who.callable ? () => call(selected) : undefined} onOpen={who.colleague ? () => openColleague(selected) : undefined} />
       ) : null}
@@ -260,13 +268,21 @@ function Queue({ v }: { v: ShiftView }) {
   return (
     <Screen header={map} footer={footer}>
       <Card>
-        <H>{`${t.day(v.day)} · `}<Text testID="shift-clock">{v.clock}</Text></H>
+        {/* часы — крупно, моноширинным; скорости — рядом, на узком экране — под ними */}
+        <View style={styles.clockRow}>
+          <View>
+            <Text style={styles.day}>{t.day(v.day)}</Text>
+            <Text testID="shift-clock" style={styles.clock}>{v.clock}</Text>
+          </View>
+          <View style={styles.speeds}>
+            <Tabs<SpeedKey>
+              value={speed}
+              onChange={onSpeed}
+              items={[{ key: 'pause', title: t.speed.pause }, { key: 'x1', title: t.speed.x1 }, { key: 'x2', title: t.speed.x2 }, { key: 'x4', title: t.speed.x4 }]}
+            />
+          </View>
+        </View>
         <P muted testID="shift-counts">{t.counts(v.counts.seen, v.counts.waiting, v.counts.left)}</P>
-        <Tabs<SpeedKey>
-          value={speed}
-          onChange={onSpeed}
-          items={[{ key: 'pause', title: t.speed.pause }, { key: 'x1', title: t.speed.x1 }, { key: 'x2', title: t.speed.x2 }, { key: 'x4', title: t.speed.x4 }]}
-        />
         {v.pauseReason ? <P testID="shift-pause-reason">{v.pauseReason}</P> : null}
         {v.restored ? <P>{t.restored}</P> : null}
         {v.afterHours && !v.allDone ? <P muted>{t.afterHours}</P> : null}
@@ -281,8 +297,8 @@ function Queue({ v }: { v: ShiftView }) {
 
       <Card>
         <Text style={styles.label}>{t.queue}</Text>
-        {v.queue.length === 0 ? <P muted>{t.queueEmpty}</P> : v.queue.map(r => (
-          <QueueItem key={r.id} r={r} disabled={v.inRoom !== undefined} onPress={() => call(r.id)} />
+        {v.queue.length === 0 ? <P muted>{t.queueEmpty}</P> : v.queue.map((r, i) => (
+          <QueueItem key={r.id} r={r} n={i + 1} disabled={v.inRoom !== undefined} onPress={() => call(r.id)} />
         ))}
       </Card>
 
@@ -316,21 +332,22 @@ function Queue({ v }: { v: ShiftView }) {
   );
 }
 
-const TRIAGE_COLOR: Record<Triage, string> = { red: colors.red, yellow: colors.yellow, green: colors.green };
 
 /** Кого коснулись на карте: кто это и что делает; ждущего приёма можно пригласить, приём нанятого врача — открыть. */
 function WhoStrip({ who, onCall, onOpen }: { who: WhoView; onCall?: () => void; onOpen?: () => void }) {
+  const styles = useStyles();
   return (
     <View testID="map-who" style={styles.who}>
       <View style={styles.itemHead}>
         <Text style={styles.itemName} numberOfLines={1}>{who.title}</Text>
-        {who.triage ? <Text style={[styles.pill, styles.whoPill, { backgroundColor: TRIAGE_COLOR[who.triage] }]}>{T.shift.triage[who.triage]}</Text> : null}
+        {who.triage ? <Urgency level={who.triage} label={T.shift.triage[who.triage]} /> : null}
       </View>
       {who.complaint ? <Text style={styles.itemText} numberOfLines={1}>{`«${who.complaint}»`}</Text> : null}
       <View style={styles.whoFoot}>
         <Text style={[styles.itemMeta, styles.whoDoing]}>{who.doing}</Text>
         {onCall ? (
-          <Pressable testID="map-invite" accessibilityRole="button" onPress={onCall} style={({ pressed }) => [styles.invite, pressed && styles.pressed]}>
+          <Pressable testID="map-invite" accessibilityRole="button" onPress={onCall} style={({ pressed }) => [styles.invite, styles.inviteLamp, pressed && styles.pressed]}>
+            <Lamp />
             <Text style={styles.inviteText}>{`${T.shift.map.invite} ▶`}</Text>
           </Pressable>
         ) : onOpen ? (
@@ -345,6 +362,7 @@ function WhoStrip({ who, onCall, onOpen }: { who: WhoView; onCall?: () => void; 
 
 /** Какого помещения коснулись на карте своей больницы: что это, работает ли, кто в нём и что там сейчас. */
 function RoomStrip({ room }: { room: RoomView }) {
+  const styles = useStyles();
   return (
     <View testID="map-room" style={styles.who}>
       <Text style={styles.itemName} numberOfLines={1}>{room.title}</Text>
@@ -354,25 +372,40 @@ function RoomStrip({ room }: { room: RoomView }) {
   );
 }
 
-function QueueItem({ r, disabled, onPress }: { r: QueueRow; disabled: boolean; onPress: () => void }) {
+/**
+ * Строка очереди: в «Медкарте» — запись журнала, номер на поле за красной линией; в «Мониторе»
+ * — панель с полосой цвета срочности. Срочность — ещё и словом со значком.
+ */
+function QueueItem({ r, n, disabled, onPress }: { r: QueueRow; n: number; disabled: boolean; onPress: () => void }) {
+  const styles = useStyles();
+  const t = useTheme();
+  const journal = t.shape.ruled;
   return (
     <Pressable
       testID={`queue-${r.id}`}
       accessibilityRole="button"
       disabled={disabled}
       onPress={onPress}
-      style={({ pressed }) => [styles.item, { borderLeftColor: TRIAGE_COLOR[r.triage] }, disabled && styles.itemDisabled, pressed && styles.pressed]}>
-      <View style={styles.itemHead}>
-        <Text style={styles.itemName}>{`${r.name}, ${r.age}`}</Text>
-        <Text style={[styles.pill, { backgroundColor: TRIAGE_COLOR[r.triage] }]}>{T.shift.triage[r.triage]}</Text>
+      style={({ pressed }) => [journal ? styles.entry : [styles.item, { borderLeftColor: t.colors[r.triage] }], disabled && styles.itemDisabled, pressed && styles.pressed]}>
+      {journal && (
+        <View style={styles.entryMargin} aria-hidden importantForAccessibility="no-hide-descendants">
+          <Text style={styles.entryNumber}>{n}</Text>
+        </View>
+      )}
+      <View style={styles.entryBody}>
+        <View style={styles.itemHead}>
+          <Text style={styles.itemName}>{`${r.name}, ${r.age}`}</Text>
+          <Urgency level={r.triage} label={T.shift.triage[r.triage]} />
+        </View>
+        <Text style={[styles.itemText, journal && styles.said]}>{`«${r.complaint}»`}</Text>
+        <Text style={styles.itemMeta}>{[...r.badges, r.waits].join(' · ')}</Text>
       </View>
-      <Text style={styles.itemText}>{`«${r.complaint}»`}</Text>
-      <Text style={styles.itemMeta}>{[...r.badges, r.waits].join(' · ')}</Text>
     </Pressable>
   );
 }
 
 function Summary({ v }: { v: ShiftView }) {
+  const styles = useStyles();
   const t = T.shift.summary;
   const [confirm, setConfirm] = useState(false);
   const s = v.summary;
@@ -458,6 +491,8 @@ function Summary({ v }: { v: ShiftView }) {
 
 /** «Смена»: оценки по категориям, общая, кого приняли и сколько минут на приём, лучший здесь. */
 function SingleCard({ r }: { r: NonNullable<SummaryView['single']> }) {
+  const styles = useStyles();
+  const theme = useTheme();
   const t = T.single;
   return (
     <Card testID="single-result">
@@ -466,13 +501,13 @@ function SingleCard({ r }: { r: NonNullable<SummaryView['single']> }) {
         <View style={styles.grades}>
           {r.grades.map(g => (
             <View key={g.key} style={styles.gradeCell}>
-              <Text testID={`single-${g.key}`} style={[styles.gradeLetter, gradeColor(g.grade)]}>{g.grade}</Text>
+              <Text testID={`single-${g.key}`} style={[styles.gradeLetter, gradeColor(theme, g.grade)]}>{g.grade}</Text>
               <Text style={styles.gradeName}>{g.label}</Text>
             </View>
           ))}
           {r.overall && (
             <View style={[styles.gradeCell, styles.gradeTotal]}>
-              <Text testID="single-overall" style={[styles.gradeLetter, gradeColor(r.overall)]}>{r.overall}</Text>
+              <Text testID="single-overall" style={[styles.gradeLetter, gradeColor(theme, r.overall)]}>{r.overall}</Text>
               <Text style={styles.gradeName}>{t.overall}</Text>
             </View>
           )}
@@ -502,6 +537,7 @@ function CampaignDay({ d }: { d: NonNullable<SummaryView['chapterDay']> }) {
 
 /** Песочница: касса за день и репутация — из чего сложились (spec 2026-09-own-hospital, часть 9). */
 function Cash({ c }: { c: CashView }) {
+  const styles = useStyles();
   const t = T.sandbox;
   return (
     <>
@@ -530,6 +566,7 @@ function Cash({ c }: { c: CashView }) {
 
 /** Строка кассы: название слева, сумма справа. */
 function Line({ title, sum, testID }: { title: string; sum: string; testID?: string }) {
+  const styles = useStyles();
   return (
     <View testID={testID} style={styles.line}>
       <Text style={styles.lineTitle}>{title}</Text>
@@ -539,6 +576,7 @@ function Line({ title, sum, testID }: { title: string; sum: string; testID?: str
 }
 
 function Grades({ s }: { s: SummaryView }) {
+  const styles = useStyles();
   return (
     <Card>
       <Text style={styles.label}>{T.shift.summary.grades}</Text>
@@ -549,32 +587,45 @@ function Grades({ s }: { s: SummaryView }) {
   );
 }
 
-const styles = StyleSheet.create({
-  label: { fontSize: 13, fontWeight: '700', color: colors.muted, textTransform: 'uppercase', marginTop: space.s },
-  room: { backgroundColor: colors.accentSoft },
+const useStyles = makeStyles(t => ({
+  label: { fontSize: 13, fontWeight: '700', letterSpacing: 1.2, color: t.colors.muted, textTransform: 'uppercase', marginTop: space.s },
+  room: { backgroundColor: t.colors.accentSoft },
   colleague: { gap: 2 },
-  item: { borderLeftWidth: 5, borderRadius: radius, backgroundColor: colors.bg, paddingVertical: space.s, paddingHorizontal: space.m, gap: 2 },
+  item: { borderLeftWidth: 5, borderRadius: t.shape.radius, backgroundColor: t.colors.bg, paddingHorizontal: space.m },
+  entry: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: t.colors.line },
+  entryMargin: { width: 28, alignItems: 'center', paddingTop: space.s + 2, borderRightWidth: 1.5, borderRightColor: t.colors.margin },
+  entryNumber: { fontSize: 15, color: t.colors.margin },
+  entryBody: { flex: 1, gap: 2, paddingVertical: space.s, paddingLeft: t.shape.ruled ? space.m : 0 },
+  said: { fontFamily: t.fonts.title, fontStyle: 'italic' },
+  clockRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end', gap: space.m },
+  day: { fontSize: 13, fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase', color: t.colors.muted },
+  clock: {
+    fontFamily: t.fonts.mono, fontWeight: '500', fontVariant: ['tabular-nums'],
+    fontSize: t.shape.ruled ? 32 : 40, lineHeight: t.shape.ruled ? 38 : 46, color: t.shape.ruled ? t.colors.ink : t.colors.accent,
+  },
+  // скорости — рядом с часами, если помещаются все четыре подписи; иначе — строкой ниже
+  speeds: { flex: 1, minWidth: t.shape.ruled ? 220 : 250 },
+  mapFrame: { margin: space.s, borderColor: t.shape.ruled ? t.colors.edge : t.colors.accent, borderRadius: t.shape.ruled ? 2 : 8, overflow: 'hidden' },
   itemDisabled: { opacity: 0.6 },
   pressed: { opacity: 0.8 },
   itemHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.s },
-  itemName: { flexShrink: 1, fontSize: 15, fontWeight: '600', color: colors.ink },
-  itemText: { fontSize: 14, color: colors.ink },
-  itemMeta: { fontSize: 13, color: colors.muted },
-  pill: { fontSize: 12, fontWeight: '700', color: '#fff', borderRadius: 10, paddingHorizontal: space.s, paddingVertical: 2, overflow: 'hidden' },
-  who: { gap: 2, width: '100%', maxWidth: 640, paddingHorizontal: space.l, paddingVertical: space.s, borderTopWidth: 1, borderTopColor: colors.line },
-  whoPill: { flexShrink: 0 },
+  itemName: { flexShrink: 1, fontSize: 15, fontWeight: '600', color: t.colors.ink },
+  itemText: { fontSize: 14, color: t.colors.ink },
+  itemMeta: { fontSize: 13, color: t.colors.muted },
+  who: { gap: 2, width: '100%', maxWidth: 640, paddingHorizontal: space.l, paddingVertical: space.s, borderTopWidth: 1, borderTopColor: t.colors.line },
   whoFoot: { flexDirection: 'row', alignItems: 'center', gap: space.m },
   whoDoing: { flex: 1 },
-  invite: { minHeight: touch, justifyContent: 'center', paddingHorizontal: space.l, borderRadius: radius, backgroundColor: colors.accent },
-  inviteText: { fontSize: 15, fontWeight: '700', color: '#fff' },
-  log: { fontSize: 14, lineHeight: 20, color: colors.ink },
+  invite: { minHeight: touch, justifyContent: 'center', paddingHorizontal: space.l, borderRadius: t.shape.radius, backgroundColor: t.colors.accent },
+  inviteLamp: { flexDirection: 'row', alignItems: 'center', gap: space.s },
+  inviteText: { fontSize: 15, fontWeight: '700', color: t.colors.onAccent },
+  log: { fontSize: 14, lineHeight: 20, color: t.colors.ink },
   line: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: space.m },
   grades: { flexDirection: 'row', flexWrap: 'wrap', gap: space.s },
-  gradeCell: { width: '30%', minWidth: 90, alignItems: 'center', paddingVertical: space.s, borderRadius: radius, backgroundColor: colors.bg },
-  gradeTotal: { backgroundColor: colors.accentSoft },
+  gradeCell: { width: '30%', minWidth: 90, alignItems: 'center', paddingVertical: space.s, borderRadius: t.shape.radius, backgroundColor: t.colors.bg },
+  gradeTotal: { backgroundColor: t.colors.accentSoft },
   gradeLetter: { fontSize: 24, fontWeight: '800' },
-  gradeName: { fontSize: 12, color: colors.muted, textAlign: 'center' },
-  lineTitle: { flexShrink: 1, fontSize: 15, lineHeight: 22, color: colors.ink },
-  lineSum: { fontSize: 15, lineHeight: 22, fontWeight: '600', color: colors.ink, fontVariant: ['tabular-nums'] },
-  logRed: { color: colors.red, fontWeight: '600' },
-});
+  gradeName: { fontSize: 12, color: t.colors.muted, textAlign: 'center' },
+  lineTitle: { flexShrink: 1, fontSize: 15, lineHeight: 22, color: t.colors.ink },
+  lineSum: { fontSize: 15, lineHeight: 22, fontWeight: '600', color: t.colors.ink, fontVariant: ['tabular-nums'] },
+  logRed: { color: t.colors.red, fontWeight: '600' },
+}));

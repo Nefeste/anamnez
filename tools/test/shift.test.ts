@@ -91,6 +91,22 @@ describe('смена: приём', () => {
     expect(p.done.filter(x => x === 'exam.ask_complaints').length).toBe(1);
   });
 
+  test('мужчину о месячных и беременности не спрашивают: вопроса нет, часы не идут', () => {
+    const s = newShift(db, { seed: 3, ...winter });
+    apply(db, s, minutes(120));
+    const man = s.queue.find(id => s.patients[id].patient.sex === 'm')!;
+    expect(man).toBeDefined();
+    apply(db, s, { kind: 'call', id: man });
+    const p = current(s)!;
+    const t0 = s.t;
+    apply(db, s, { kind: 'exam', exam: 'exam.ask_pregnancy' });
+    apply(db, s, { kind: 'exam', exam: 'exam.pregnancy_test' });
+    expect(p.done).not.toContain('exam.ask_pregnancy');
+    expect(p.done).not.toContain('exam.pregnancy_test');
+    expect(s.t).toBe(t0);
+    expect(p.results.some(r => r.exam === 'exam.ask_pregnancy')).toBe(false);
+  });
+
   test('рентген-кабинет один: второй снимок ждёт, пока освободится аппарат', () => {
     const s = newShift(db, { seed: 5, ...winter });
     apply(db, s, minutes(90));

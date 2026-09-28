@@ -1,7 +1,7 @@
 // Обследование открывает признаки — и ошибается так, как ошибаются в жизни
 // (`docs/04-medical-model.md` §5): у каждой пары «обследование — признак» своя
 // чувствительность и специфичность, поправленные навыком и оборудованием.
-import type { ContentDb, Id } from '../../content/types';
+import type { ContentDb, Exam, Id } from '../../content/types';
 import { P_ONE, Rng } from '../core/rng';
 import { sampleRange } from './generate';
 import type { Observation, Patient } from './types';
@@ -29,6 +29,17 @@ export function effectiveCheck(sens: number, spec: number, skill: ExamSkill): { 
     sens: skill.sens === 1 && sp === 0 ? sens : clampP(sens * skill.sens + sp * 100),
     spec: skill.spec === 1 && cp === 0 ? spec : clampP(spec * skill.spec + cp * 100),
   };
+}
+
+/**
+ * Подходит ли обследование пациенту — по полу и возрасту из базы: о месячных и беременности
+ * не спрашивают мужчину и женщину 73 лет. Не подходит — его нет в карте пациента, движок его не
+ * делает, «виртуальный врач» не назначает.
+ */
+export function examFits(exam: Exam, patient: Pick<Patient, 'sex' | 'age'>): boolean {
+  return (exam.sex === undefined || exam.sex === patient.sex)
+    && (exam.ageMin === undefined || patient.age >= exam.ageMin)
+    && (exam.ageMax === undefined || patient.age <= exam.ageMax);
 }
 
 /**
