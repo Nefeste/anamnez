@@ -382,11 +382,28 @@ try {
   await page.getByTestId('exam-exam.ask_complaints').waitFor({ timeout: 5000 });
   check((await page.getByTestId('tab-ask').getAttribute('aria-selected')) === 'true', 'П4: у следующего пациента открыта вкладка «Спросить»');
 
-  // П5: снимки, ЭКГ, портреты
+  // П5: снимки, ЭКГ, портреты; с 0.0.34 — срезы головы на КТ и МРТ (spec 2026-09-ct-mri-ultrasound)
   await page.goto(`${base}/spikes/imaging`);
   await page.waitForTimeout(2500);
   await page.screenshot({ path: join(OUT, '06-imaging.png'), fullPage: true });
   check(true, 'П5: экран снимков открылся (смотреть 06-imaging.png)');
+  // нарисован ли холст: неподвижный рисунок в вебе копируется в 2D-холст (без своего контекста
+  // WebGL) — посередине непрозрачный пиксель; холст, потерявший контекст, пуст
+  const drawn = async (selector: string) => page.locator(selector).evaluateAll(els => els.map(el => {
+    const c = el as HTMLCanvasElement;
+    const d = c.getContext('2d')?.getImageData(Math.floor(c.width / 2), Math.floor(c.height / 2), 1, 1).data;
+    return d !== undefined && d[3] === 255;
+  }));
+  const heads = await drawn('[data-testid^="head-ct-"] canvas, [data-testid^="head-mri-"] canvas');
+  const us = await drawn('[data-testid^="us-"] canvas');
+  const allImages = await drawn('canvas');
+  check(heads.length === 7 && heads.every(Boolean) && us.length === 5 && us.every(Boolean) && allImages.every(Boolean),
+    `П5: срезы головы нарисованы — ${heads.filter(Boolean).length} из 7, УЗИ — ${us.filter(Boolean).length} из 5; все рисунки экрана — ${allImages.filter(Boolean).length} из ${allImages.length} (смотреть 06-head-*.png, 06-us.png)`);
+  for (const id of ['head-ct', 'head-mri', 'us']) {
+    await page.getByTestId(id).scrollIntoViewIfNeeded();
+    await page.waitForTimeout(300);
+    await page.getByTestId(id).screenshot({ path: join(OUT, `06-${id}.png`) });
+  }
 
   // П6: сохранение с копией и откат
   await page.goto(`${base}/spikes/save`);
