@@ -61,6 +61,7 @@ export default function Menu() {
 /** Что продолжим: практика — день и время; песочница — день и касса; карьера — глава и день. */
 export function continueHint(g: GameSummary): string {
   if (g.mode === 'sandbox') return T.sandbox.continueHint(g.day, T.common.rub(g.cash ?? 0));
+  if (g.mode === 'single') return T.single.continueHint(g.venue ?? '', g.clock);
   if (g.mode === 'campaign') {
     const ch = g.chapter ? db.chapters[g.chapter] : undefined;
     return `${T.campaign.career(g.career ?? 1)}: ${ch ? T.campaign.chapter(ch.order, ch.name.ru) : ''} · ${T.campaign.day(g.day)}`;

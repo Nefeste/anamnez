@@ -10,7 +10,7 @@ export const daily = {
   base: (n: number) => `База ${n}.`,
   today: 'Сегодня',
   yesterday: 'Вчера',
-  date: (d: number, month: number) => `${d} ${MONTHS[month]}`,
+  date: (d: number, month: number) => `${d}\u00a0${MONTHS[month]}`,
   verdict: { correct: 'верно', partly: 'почти', wrong: 'неверно' } as Record<string, string>,
   played: (grade: string, verdict: string) => `Сыгран: ${grade} · ${verdict}`,
   playedBase: (grade: string, verdict: string, base: number) => `Сыгран: ${grade} · ${verdict} · база ${base}`,

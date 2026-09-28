@@ -1,6 +1,6 @@
-// Быстрая игра (03-game-design.md §10; spec 2026-09-campaign): практика в амбулатории,
-// «Случай дня» и песочница — своя больница. У практики и песочницы по сохранению: есть оно —
-// лист «продолжить или начать заново». Дальше здесь появится «Смена».
+// Быстрая игра (03-game-design.md §10; spec 2026-09-campaign): практика в амбулатории, «Смена»
+// в выбранной больнице, «Случай дня» и песочница — своя больница. У практики и песочницы по
+// сохранению: есть оно — лист «продолжить или начать заново».
 import { router, Stack, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import type { Difficulty, Mode } from '@/engine/shift/types';
@@ -67,6 +67,7 @@ export default function QuickGame() {
         hint={practice ? t.practiceSavedHint(practice.day, practice.clock) : t.practiceHint}
         onPress={() => pick('shift', practice)}
       />
+      <Button testID="menu-single" kind="plain" title={T.single.title} hint={T.single.menuHint} onPress={() => router.push('/single')} />
       <Button testID="menu-daily" kind="plain" title={T.daily.title} hint={dailyMenuHint(p.daily)} onPress={() => router.push('/daily')} />
       <Button
         testID="menu-sandbox"

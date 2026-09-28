@@ -40,7 +40,8 @@ export type PatientStatus = 'coming' | 'waiting' | 'inRoom' | 'away' | 'done' | 
 
 /** Практика в готовой амбулатории или песочница — своя больница (spec 2026-09-own-hospital). */
 /** Практика, песочница, кампания (spec 2026-09-campaign) — у каждой свои сохранения. */
-export type Mode = 'shift' | 'sandbox' | 'campaign';
+/** Практика, песочница, кампания и «Смена» — один день в выбранной больнице (spec 2026-09-campaign, часть 14). */
+export type Mode = 'shift' | 'sandbox' | 'campaign' | 'single';
 
 export type VisitKind = 'appointment' | 'walkIn' | 'return';
 export type ReturnReason = 'worse' | 'reaction' | 'unchanged';
@@ -192,6 +193,8 @@ export interface ShiftState {
     start?: 'empty' | 'clinic';
     /** кампания: номер карьеры — её слот (1–3) */
     career?: number;
+    /** «Смена»: в какой больнице — запись готовой больницы (preset.*) или своя из песочницы (sandbox) */
+    venue?: Id;
     seed: number;
     season: Season;
     department: Id;

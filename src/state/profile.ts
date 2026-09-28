@@ -70,6 +70,16 @@ export interface CareerProgress {
   closedDays: string[];
 }
 
+/** «Смена» — лучший результат в больнице: общий балл и оценка, кого приняли, зерно, когда (ISO). */
+export interface SingleBest {
+  points: number;
+  overall: Grade;
+  seen: number;
+  arrived: number;
+  seed: number;
+  at: string;
+}
+
 /** «Случай дня» — первая попытка: вердикт, итоговая оценка, версия базы, когда сыгран (ISO). */
 export interface DailyRecord {
   verdict: 'correct' | 'partly' | 'wrong';
@@ -97,6 +107,8 @@ export interface Profile {
   achievements: CareerProgress;
   /** «Случай дня»: день (ГГГГ-ММ-ДД) → первая попытка, последние DAILY_KEEP дней */
   daily: Record<string, DailyRecord>;
+  /** «Смена»: больница (preset.* или sandbox) → лучший результат */
+  best: Record<string, SingleBest>;
 }
 
 export interface ProfileView extends Profile {
@@ -106,7 +118,7 @@ export interface ProfileView extends Profile {
 const GRADES: Grade[] = ['A', 'B', 'C', 'D'];
 const emptyStats = (): ProfileStats => ({ cases: 0, correct: 0, partly: 0, wrong: 0, grades: { A: 0, B: 0, C: 0, D: 0 }, money: 0 });
 const emptyProgress = (): CareerProgress => ({ got: {}, days: 0, run: 0, gradeA: 0, thrift: 0, allergy: 0, noLeftDays: 0, daily: 0, closedDays: [] });
-const empty = (): Profile => ({ stats: emptyStats(), seen: {}, archive: [], achievements: emptyProgress(), daily: {} });
+const empty = (): Profile => ({ stats: emptyStats(), seen: {}, archive: [], achievements: emptyProgress(), daily: {}, best: {} });
 const VERDICTS = ['correct', 'partly', 'wrong'] as const;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -177,6 +189,13 @@ export function sanitizeProfile(data: unknown): Profile {
     }
   }
   if (Array.isArray(a.closedDays)) out.achievements.closedDays = a.closedDays.filter((k): k is string => typeof k === 'string').slice(0, DAY_KEYS);
+  if (isObject(d.best)) {
+    for (const [venue, b] of Object.entries(d.best)) {
+      if (isObject(b) && typeof b.points === 'number' && GRADES.includes(b.overall as Grade) && typeof b.at === 'string') {
+        out.best[venue] = { points: b.points, overall: b.overall as Grade, seen: count(b.seen), arrived: count(b.arrived), seed: count(b.seed), at: b.at };
+      }
+    }
+  }
   if (Array.isArray(d.archive)) {
     out.archive = d.archive
       .filter((r): r is CaseRecord => isObject(r) && typeof r.key === 'string' && typeof r.seed === 'number' && typeof r.department === 'string'
@@ -337,6 +356,25 @@ export function recordDaily(day: string, r: Omit<DailyRecord, 'at'>): Id[] {
   changed();
   void persist();
   return fresh;
+}
+
+/**
+ * «Смена» закрыта: лучший ли это результат в этой больнице — по общей оценке, при равной — по
+ * баллу, затем — кого приняли больше. Отдаёт прежний лучший (его не было — undefined) и стал ли
+ * этот лучшим.
+ */
+export function recordSingle(venue: string, r: Omit<SingleBest, 'at'>): { previous?: SingleBest; best: boolean } {
+  const previous = current.best[venue];
+  const rank = (x: Omit<SingleBest, 'at'>) => [GRADES.length - GRADES.indexOf(x.overall), x.points, x.seen];
+  const [a, b] = [rank(r), previous ? rank(previous) : []];
+  const better = !previous || a[0] > b[0] || (a[0] === b[0] && (a[1] > b[1] || (a[1] === b[1] && a[2] > b[2])));
+  // повтор той же смены (после сбоя) лучшим не становится: равный результат с тем же зерном
+  if (previous && previous.seed === r.seed && previous.points === r.points && previous.seen === r.seen) return { best: true };
+  if (!better || status !== 'ready') return { ...(previous ? { previous } : {}), best: false };
+  current = { ...current, best: { ...current.best, [venue]: { ...r, at: new Date().toISOString() } } };
+  changed();
+  void persist();
+  return { ...(previous ? { previous } : {}), best: true };
 }
 
 /** Достижения, которые принёс приём или день (по ключу), — в порядке записи. */

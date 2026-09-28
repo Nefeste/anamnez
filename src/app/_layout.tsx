@@ -66,6 +66,7 @@ export default function RootLayout() {
           <Stack.Screen name="sandbox/staff" options={{ title: T.sandbox.staffTitle }} />
           <Stack.Screen name="campaign/index" options={{ title: T.campaign.title }} />
           <Stack.Screen name="quick" options={{ title: T.campaign.quick }} />
+          <Stack.Screen name="single" options={{ title: T.single.title }} />
           <Stack.Screen name="daily/index" options={{ title: T.daily.title }} />
           <Stack.Screen name="daily/patient" options={{ title: T.spikes.patient.title }} />
           <Stack.Screen name="daily/decision" options={{ title: T.spikes.decision.title }} />

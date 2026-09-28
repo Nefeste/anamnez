@@ -19,24 +19,27 @@ import { type ClinicLayout, cropPlan, layoutOf } from '@/engine/hospital/clinic'
 import { memberAt, type StaffMember, staffingOf } from '@/engine/hospital/staff';
 import { missionProgress } from '@/engine/campaign/campaign';
 import { levelOf } from '@/engine/economy/economy';
-import { apply, current, type HospitalCtx, hospitalCtx, newCampaign, newSandbox, newShift, observationsOf, reviewFor } from '@/engine/shift/engine';
+import { apply, current, type HospitalCtx, hospitalCtx, newCampaign, newSandbox, newShift, newSingle, observationsOf, reviewFor, SANDBOX_VENUE } from '@/engine/shift/engine';
 import {
   type Command, DAY, type Difficulty, type Mode, type Notice, SHIFT_END, SHIFT_SCHEMA_VERSION, type ShiftPatient, type ShiftState, type Triage,
 } from '@/engine/shift/types';
 import { T } from '@/i18n';
 import { type Arrival, type Decision, decisionOf, hhmm, makeCaseView, outcomeText, patientName, type VisitView } from './caseView';
 import { CLINIC, type Doing, type Placement, placements } from './clinicMap';
-import { achievementsBy, archivedCase, caseKey, type DayRecord, recordCases, recordDay } from './profile';
-import { type CashView, cashView, examBlockText, levelText, paymentText, personName, statusText } from './sandboxView';
+import { achievementsBy, archivedCase, caseKey, type DayRecord, profile, recordCases, recordDay, recordSingle } from './profile';
+import { dateText } from './profileView';
+import { SINGLE_CATEGORIES, type SingleCategory, singleResult } from './single';
+import { blockText, type CashView, cashView, examBlockText, levelText, paymentText, personName, statusText } from './sandboxView';
 import { loadSlot, type RawStore, saveSlot } from './saves';
 import { settings } from './settings';
 import { momentKey, momentOf, type TipMoment, type TipScreen, tipFor } from './tips';
 
-/** Слоты сохранения: практика и песочница — у каждой своё, у кампании — три карьеры. */
+/** Слоты сохранения: практика, песочница и «Смена» — у каждой своё, у кампании — три карьеры. */
 export const SLOT = 'shift';
 export const SANDBOX_SLOT = 'sandbox';
+export const SINGLE_SLOT = 'single';
 export const CAREERS = [1, 2, 3] as const;
-export const slotOf = (m: Mode, career = 1) => (m === 'sandbox' ? SANDBOX_SLOT : m === 'campaign' ? `campaign-${career}` : SLOT);
+export const slotOf = (m: Mode, career = 1) => (m === 'sandbox' ? SANDBOX_SLOT : m === 'campaign' ? `campaign-${career}` : m === 'single' ? SINGLE_SLOT : SLOT);
 /** Скорость часов на карте — игровых минут в секунду. */
 export const SPEEDS = [1, 2, 4] as const;
 export type Speed = (typeof SPEEDS)[number];
@@ -110,6 +113,33 @@ export interface SummaryView {
   chapterDay?: { done: string[]; letters: number };
   /** достижения, полученные этим днём, — названия */
   achievements: string[];
+  /** «Смена»: итог по категориям и лучший результат в этой больнице */
+  single?: SingleView;
+}
+
+/** Итог «Смены»: оценки по категориям, общая, строки, лучший в этой больнице. */
+export interface SingleView {
+  venue: string;
+  grades: { key: SingleCategory; label: string; grade: Grade }[];
+  overall?: Grade;
+  lines: string[];
+  best?: string;
+}
+
+function singleView(s: ShiftState): SingleView {
+  const t = T.single;
+  const venue = s.meta.venue ?? 'preset.clinic';
+  const r = singleResult(s);
+  if (!r) return { venue: venueName(venue), grades: [], lines: [t.nobody] };
+  const b = profile().best[venue];
+  const mine = b && b.seed === s.meta.seed && b.points === r.points && b.seen === r.seen;
+  return {
+    venue: venueName(venue),
+    grades: SINGLE_CATEGORIES.map(key => ({ key, label: t.category[key], grade: r.grades[key] })),
+    overall: r.overall,
+    lines: [t.seen(r.seen, r.arrived), t.correct(r.correct), t.minutes(r.minutes)],
+    ...(b ? { best: mine ? t.isBest : t.best(b.overall, points(b.points), dateText(b.at)) } : {}),
+  };
 }
 
 export interface ShiftView {
@@ -201,12 +231,14 @@ export function setStore(s: RawStore) {
 
 /** Сохранение от этой базы: всё, на что оно ссылается, в ней есть (после обновления — может не быть). */
 export function compatible(s: ShiftState | undefined): boolean {
-  if (!s || (s.meta?.mode !== 'shift' && s.meta?.mode !== 'sandbox' && s.meta?.mode !== 'campaign') || typeof s.patients !== 'object') return false;
+  if (!s || !['shift', 'sandbox', 'campaign', 'single'].includes(s.meta?.mode) || typeof s.patients !== 'object') return false;
   const has = (table: Record<string, unknown>) => (id: Id) => table[id] !== undefined;
   if (s.meta.mode === 'campaign' && (!s.campaign || !db.chapters[s.campaign.chapter])) return false;
-  if (s.meta.mode === 'sandbox' || s.meta.mode === 'campaign') {
+  if (s.meta.mode === 'single' && s.meta.venue !== SANDBOX_VENUE && !db.presets[s.meta.venue ?? '']) return false;
+  // своя больница — у песочницы и кампании всегда, у «Смены» — кроме амбулатории практики
+  if (s.meta.mode === 'sandbox' || s.meta.mode === 'campaign' || (s.meta.mode === 'single' && s.hospital)) {
     const h = s.hospital;
-    if (!h || !s.economy || !Array.isArray(h.rooms)) return false;
+    if (!h || (s.meta.mode !== 'single' && !s.economy) || !Array.isArray(h.rooms)) return false;
     const ok = h.rooms.every(r => db.rooms[r.type]?.sizes.some(z => z.id === r.size) && r.equipment.every(e => e === null || has(db.equipment)(e)));
     if (!ok) return false;
   }
@@ -339,6 +371,77 @@ export function startSandbox(opts: { start: 'empty' | 'clinic'; budget: Budget; 
 /** Новая карьера в слоте `career`: глава 1, её больница и бюджет, письма. Прежняя в этом слоте перезаписывается. */
 export function startCampaign(opts: { career: number; difficulty: Difficulty; seed?: number; season?: Season }) {
   begin(newCampaign(db, { seed: opts.seed ?? Date.now() % 0x7fffffff, season: opts.season ?? seasonOf(new Date()), difficulty: opts.difficulty, career: opts.career }));
+}
+
+/** Своя больница из песочницы: живая партия или сохранение; песочницы нет — undefined. */
+async function sandboxHospital(): Promise<{ hospital: HospitalState; staff: StaffMember[] } | undefined> {
+  const live = session?.s;
+  if (live?.meta.mode === 'sandbox' && live.hospital) return { hospital: live.hospital, staff: live.staff ?? [] };
+  if (!store) return undefined;
+  await saved();
+  const r = await loadSlot<ShiftState>(store, SANDBOX_SLOT, e => fits(e, 'sandbox', 1)).catch(() => null);
+  const s = r?.envelope.data;
+  return s?.hospital ? { hospital: s.hospital, staff: s.staff ?? [] } : undefined;
+}
+
+/** Чего не хватает, чтобы открыть смену в этой больнице; всё есть — пусто. */
+function blocksOf(h: { hospital: HospitalState; staff: StaffMember[] }) {
+  const plan = planOf(db, h.hospital);
+  const staffed = staffingOf(h.staff);
+  return openBlocks(db, plan, workingRooms(db, plan, staffed), staffed);
+}
+
+/** Больница в списке «Смены»: можно ли, почему нет, лучший результат в ней. */
+export interface VenueView {
+  venue: Id;
+  name: string;
+  ok: boolean;
+  hint: string;
+}
+
+const venueName = (venue: Id) => (venue === SANDBOX_VENUE ? T.single.sandbox : (db.presets[venue]?.name.ru ?? venue));
+const points = (n: number) => n.toFixed(2).replace('.', ',');
+
+/**
+ * Где можно провести «Смену» (spec 2026-09-campaign, часть 14): амбулатория практики — всегда;
+ * больница главы — если глава открыта в какой-нибудь карьере; своя из песочницы — если смену в
+ * ней можно открыть. Нельзя — в списке с причиной.
+ */
+export async function singleVenues(): Promise<VenueView[]> {
+  const games = await savedGames();
+  const opened = Math.max(0, ...games.map(g => (g.mode === 'campaign' && g.chapter ? (db.chapters[g.chapter]?.order ?? 0) : 0)));
+  const best = profile().best;
+  const bestHint = (venue: Id, fallback: string) => (best[venue] ? T.single.bestShort(best[venue].overall, points(best[venue].points)) : fallback);
+  const out: VenueView[] = [{ venue: 'preset.clinic', name: venueName('preset.clinic'), ok: true, hint: bestHint('preset.clinic', T.single.menuHint) }];
+  for (const ch of Object.values(db.chapters)) {
+    if (ch.preset === 'preset.clinic' || out.some(v => v.venue === ch.preset)) continue;
+    const ok = ch.order <= opened;
+    out.push({ venue: ch.preset, name: venueName(ch.preset), ok, hint: ok ? bestHint(ch.preset, ch.place.ru) : T.single.needChapter(ch.order, ch.name.ru) });
+  }
+  const own = await sandboxHospital();
+  const blocks = own ? blocksOf(own) : [];
+  out.push({
+    venue: SANDBOX_VENUE, name: venueName(SANDBOX_VENUE), ok: !!own && blocks.length === 0,
+    hint: !own ? T.single.noSandbox : blocks.length > 0 ? `${T.sandbox.needToOpen} ${blocks.map(b => blockText(db, b)).join(', ')}` : bestHint(SANDBOX_VENUE, T.single.sandboxHint),
+  });
+  return out;
+}
+
+/**
+ * Новая «Смена»: один день в выбранной больнице; своя — копия песочницы. Прежняя смена
+ * перезаписывается. Нельзя (больницы нет или смену в ней не открыть) — false.
+ */
+export async function startSingle(opts: { venue: Id; difficulty: Difficulty; seed?: number; season?: Season }): Promise<boolean> {
+  let own: { hospital: HospitalState; staff: StaffMember[] } | undefined;
+  if (opts.venue === SANDBOX_VENUE) {
+    own = await sandboxHospital();
+    if (!own || blocksOf(own).length > 0) return false;
+  } else if (!db.presets[opts.venue]) return false;
+  begin(newSingle(db, {
+    seed: (opts.seed ?? Date.now() % 0x7fffffff) >>> 0, season: opts.season ?? seasonOf(new Date()), difficulty: opts.difficulty, venue: opts.venue,
+    ...(own ? { hospital: own.hospital, staff: own.staff } : {}),
+  }));
+  return true;
 }
 
 function begin(s: ShiftState) {
@@ -539,6 +642,9 @@ export function closeDay() {
   if (!sess || !sess.s.dayOpen) return;
   run(sess, { kind: 'closeDay' });
   recordDay(dayRecord(sess.s));
+  // «Смена»: лучший результат в этой больнице — в профиль
+  const r = sess.s.meta.mode === 'single' ? singleResult(sess.s) : undefined;
+  if (r) recordSingle(sess.s.meta.venue ?? 'preset.clinic', { points: r.points, overall: r.overall, seen: r.seen, arrived: r.arrived, seed: sess.s.meta.seed });
   sess.focus = undefined;
   sess.meanwhile = [];
   sess.urgent = false;
@@ -786,6 +892,8 @@ export interface GameSummary {
   career?: number;
   chapter?: string;
   mains?: { done: number; of: number };
+  /** «Смена»: в какой больнице — названием */
+  venue?: string;
 }
 
 /** Обе партии с диска, последняя записанная — первой. Живая партия сначала записывается. */
@@ -794,7 +902,7 @@ export async function savedGames(): Promise<GameSummary[]> {
   if (!st) return [];
   await saved();
   const out: GameSummary[] = [];
-  const slots: [Mode, number][] = [['shift', 1], ['sandbox', 1], ...CAREERS.map(c => ['campaign', c] as [Mode, number])];
+  const slots: [Mode, number][] = [['shift', 1], ['sandbox', 1], ['single', 1], ...CAREERS.map(c => ['campaign', c] as [Mode, number])];
   for (const [m, c] of slots) {
     const r = await loadSlot<ShiftState>(st, slotOf(m, c), e => fits(e, m, c)).catch(() => null);
     if (!r) continue;
@@ -805,6 +913,7 @@ export async function savedGames(): Promise<GameSummary[]> {
       mode: m, savedAt: r.envelope.savedAt, day: s.day, clock: hhmm(minuteOfDay(s.t)), difficulty: s.meta.difficulty ?? 'doctor',
       ...(s.economy ? { cash: s.economy.cash } : {}),
       ...(ch && s.campaign ? { career: c, chapter: ch.id, mains: { done: mains.filter(x => s.campaign!.done[x.id] !== undefined).length, of: mains.length } } : {}),
+      ...(m === 'single' ? { venue: venueName(s.meta.venue ?? 'preset.clinic') } : {}),
     });
   }
   return out.sort((a, b) => (a.savedAt < b.savedAt ? 1 : a.savedAt > b.savedAt ? -1 : 0));
@@ -1049,6 +1158,7 @@ function summaryOf(s: ShiftState): SummaryView | undefined {
       },
     } : {}),
     achievements: achievementNames(dayKey(s, h.day)),
+    ...(s.meta.mode === 'single' ? { single: singleView(s) } : {}),
   };
 }
 

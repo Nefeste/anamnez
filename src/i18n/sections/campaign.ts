@@ -31,7 +31,7 @@ export const campaign = {
   missions: 'Задания',
   main: 'Основные',
   optional: 'Дополнительные',
-  seenProgress: (seen: number, of: number, accuracy: number) => `${seen} из ${of}, точность ${accuracy} %`,
+  seenProgress: (seen: number, of: number, accuracy: number) => `${seen} из ${of}, точность ${accuracy}\u00a0%`,
   dayProgress: (n: number, of: number) => `${n} из ${of}\u00a0${pluralRu(of, 'дня', 'дней', 'дней')}`,
   notYet: 'пока нет',
   doneOn: (day: number) => `выполнено, день ${day}`,

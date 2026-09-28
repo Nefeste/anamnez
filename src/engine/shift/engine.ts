@@ -157,6 +157,34 @@ export function newSandbox(db: ContentDb, opts: { seed: number; season: Season; 
   };
 }
 
+/** Где идёт «Смена»: своя больница из песочницы — не запись базы. */
+export const SANDBOX_VENUE = 'sandbox';
+
+/**
+ * «Смена» (spec 2026-09-campaign, часть 14): один день в выбранной больнице — готовой из базы
+ * (амбулатория практики, больница главы) или копии своей из песочницы, со своим штатом. Кассы
+ * нет, как в практике; итог — по категориям (src/state/single.ts).
+ */
+export function newSingle(
+  db: ContentDb,
+  opts: { seed: number; season: Season; difficulty?: Difficulty; venue: Id; hospital?: HospitalState; staff?: StaffMember[] },
+): ShiftState {
+  const s = newShift(db, opts);
+  s.meta.mode = 'single';
+  s.meta.venue = opts.venue;
+  // амбулатория практики — та, что у движка по умолчанию; другая готовая — из её записи
+  const rec = db.presets[opts.venue];
+  if (opts.venue !== 'preset.clinic' && rec) {
+    s.hospital = presetHospital(db, rec).hospital;
+    s.staff = presetStaff(db, rec);
+  } else if (opts.hospital) {
+    // копия: смена своей больницы не меняет песочницу
+    s.hospital = JSON.parse(JSON.stringify(opts.hospital)) as HospitalState;
+    s.staff = JSON.parse(JSON.stringify(opts.staff ?? [])) as StaffMember[];
+  }
+  return s;
+}
+
 /**
  * Кампания (spec 2026-09-campaign): карьера в слоте `career`, первая глава — по порядку.
  * Больница главы — её готовая больница на участке песочницы со штатом, касса — бюджет главы;

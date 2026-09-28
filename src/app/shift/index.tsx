@@ -20,6 +20,7 @@ import {
   type RoomView, saveNow, setSpeed, skipIdle, startSandbox, startShift, TICK_MS, tick, useBuild, useCampaign, useShift, type WhoView,
 } from '@/state/session';
 import { CaseRow } from '@/ui/case/CaseRow';
+import { gradeColor } from '@/ui/case/OutcomeScreen';
 import { Button, Card, Chip, Chips, H, P, Screen, Sheet, Tabs } from '@/ui/components';
 import { DifficultyChoice } from '@/ui/difficulty';
 import { ChapterCard } from '@/ui/campaign';
@@ -41,7 +42,11 @@ export default function ShiftScreen() {
       </Screen>
     );
   }
-  if (v.status === 'none') return v.mode === 'sandbox' ? <NewSandbox onStart={opts => startSandbox(opts)} /> : v.mode === 'campaign' ? <NoCareer /> : <NewPractice />;
+  if (v.status === 'none') {
+    if (v.mode === 'sandbox') return <NewSandbox onStart={opts => startSandbox(opts)} />;
+    if (v.mode === 'campaign') return <NoCareer />;
+    return v.mode === 'single' ? <NoSingle /> : <NewPractice />;
+  }
   // своя больница между сменами — песочница и глава кампании: стройка, персонал, «Открыть
   // смену» (spec 2026-09-own-hospital, 2026-09-campaign)
   const own = v.mode === 'sandbox' || v.mode === 'campaign';
@@ -49,8 +54,20 @@ export default function ShiftScreen() {
   return (
     <>
       {own && <OwnTitle mode={v.mode} />}
+      {v.mode === 'single' && <Stack.Screen options={{ title: T.single.title }} />}
       {v.dayOpen ? <Queue v={v} /> : <Summary v={v} />}
     </>
+  );
+}
+
+/** «Смены» нет — к выбору больницы. */
+function NoSingle() {
+  return (
+    <Screen footer={<Button testID="to-single" title={T.single.title} onPress={() => router.replace('/single')} />}>
+      <Card>
+        <P>{T.single.noSave}</P>
+      </Card>
+    </Screen>
   );
 }
 
@@ -344,8 +361,12 @@ function Summary({ v }: { v: ShiftView }) {
     openCase(id);
     router.push('/shift/outcome');
   };
+  const footer = v.mode === 'single'
+    ? <Button testID="single-again" title={T.single.again} onPress={() => router.replace('/single')} />
+    : <Button testID="shift-next-day" title={t.nextDay} onPress={nextDay} />;
   return (
-    <Screen footer={<Button testID="shift-next-day" title={t.nextDay} onPress={nextDay} />}>
+    <Screen footer={footer}>
+      {s.single && <SingleCard r={s.single} />}
       <Card>
         <H>{t.title(s.day)}</H>
         <P testID="summary-seen">{t.seen(s.seen, s.arrived)}</P>
@@ -386,7 +407,7 @@ function Summary({ v }: { v: ShiftView }) {
         </Card>
       )}
 
-      {!own && <Button kind="plain" testID="shift-restart" title={t.restart} onPress={() => setConfirm(true)} />}
+      {v.mode === 'shift' && <Button kind="plain" testID="shift-restart" title={t.restart} onPress={() => setConfirm(true)} />}
       <Sheet visible={confirm} onClose={() => setConfirm(false)} closeTitle={t.cancel} testID="restart-sheet">
         <P>{t.restartConfirm}</P>
         <Button testID="restart-yes" title={t.restartYes} onPress={() => {
@@ -395,6 +416,34 @@ function Summary({ v }: { v: ShiftView }) {
         }} />
       </Sheet>
     </Screen>
+  );
+}
+
+/** «Смена»: оценки по категориям, общая, кого приняли и сколько минут на приём, лучший здесь. */
+function SingleCard({ r }: { r: NonNullable<SummaryView['single']> }) {
+  const t = T.single;
+  return (
+    <Card testID="single-result">
+      <H>{t.resultTitle(r.venue)}</H>
+      {r.grades.length > 0 && (
+        <View style={styles.grades}>
+          {r.grades.map(g => (
+            <View key={g.key} style={styles.gradeCell}>
+              <Text testID={`single-${g.key}`} style={[styles.gradeLetter, gradeColor(g.grade)]}>{g.grade}</Text>
+              <Text style={styles.gradeName}>{g.label}</Text>
+            </View>
+          ))}
+          {r.overall && (
+            <View style={[styles.gradeCell, styles.gradeTotal]}>
+              <Text testID="single-overall" style={[styles.gradeLetter, gradeColor(r.overall)]}>{r.overall}</Text>
+              <Text style={styles.gradeName}>{t.overall}</Text>
+            </View>
+          )}
+        </View>
+      )}
+      {r.lines.map(l => <P key={l}>{l}</P>)}
+      {r.best && <P muted testID="single-best">{r.best}</P>}
+    </Card>
   );
 }
 
@@ -482,6 +531,11 @@ const styles = StyleSheet.create({
   inviteText: { fontSize: 15, fontWeight: '700', color: '#fff' },
   log: { fontSize: 14, lineHeight: 20, color: colors.ink },
   line: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: space.m },
+  grades: { flexDirection: 'row', flexWrap: 'wrap', gap: space.s },
+  gradeCell: { width: '30%', minWidth: 90, alignItems: 'center', paddingVertical: space.s, borderRadius: radius, backgroundColor: colors.bg },
+  gradeTotal: { backgroundColor: colors.accentSoft },
+  gradeLetter: { fontSize: 24, fontWeight: '800' },
+  gradeName: { fontSize: 12, color: colors.muted, textAlign: 'center' },
   lineTitle: { flexShrink: 1, fontSize: 15, lineHeight: 22, color: colors.ink },
   lineSum: { fontSize: 15, lineHeight: 22, fontWeight: '600', color: colors.ink, fontVariant: ['tabular-nums'] },
   logRed: { color: colors.red, fontWeight: '600' },

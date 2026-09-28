@@ -4,7 +4,7 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import { chromium, type Page } from 'playwright';
 import { clinicLayout } from '../../src/engine/hospital/clinic';
-import { apply, newSandbox, newShift } from '../../src/engine/shift/engine';
+import { apply, newSandbox, newShift, newSingle } from '../../src/engine/shift/engine';
 import { SHIFT_SCHEMA_VERSION } from '../../src/engine/shift/types';
 import { buildDb } from '../content/load';
 
@@ -71,6 +71,23 @@ function endOfDaySave(): string {
   apply(db, s, { kind: 'advance', seconds: 6 * 3600 });
   while (s.queue.length > 0) see();
   return JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s });
+}
+
+/** «Смена» в амбулатории посёлка в конце дня: все приняты — «Закрыть день». Записана «позже всех» — её берёт «Продолжить». */
+function singleEndOfDaySave(): string {
+  const { db } = buildDb();
+  const s = newSingle(db, { seed: 44, season: 'winter', difficulty: 'student', venue: 'preset.village' });
+  const see = () => {
+    apply(db, s, { kind: 'call', id: s.queue[0] });
+    apply(db, s, { kind: 'exam', exam: 'exam.ask_complaints' });
+    apply(db, s, { kind: 'diagnose', id: 'cond.arvi' });
+    apply(db, s, { kind: 'finish' });
+  };
+  apply(db, s, { kind: 'advance', seconds: 3600 });
+  for (let i = 0; i < 2 && s.queue.length > 0; i++) see();
+  apply(db, s, { kind: 'advance', seconds: 6 * 3600 });
+  while (s.queue.length > 0) see();
+  return JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: '9999-12-31T00:00:00.000Z', data: s });
 }
 
 /** Песочница с готовой амбулаторией в конце дня 1: все приняты — «Закрыть день». */
@@ -347,11 +364,12 @@ try {
   await page.getByTestId('map-who').waitFor({ timeout: 5_000 });
   const nurseWho = await text(page, 'map-who');
   check(nurseWho.includes('Медсестра доврачебного кабинета') && nurseWho.includes('давление'), `смена: касание на карте — «${nurseWho.replace(/\n/g, ' · ')}»`);
-  // первый пришедший доходит до стойки, до медсестры и садится в зале — тогда его и касаемся
+  // первые пришедшие доходят до стойки, до медсестры и садятся в зале — тогда их и касаемся;
+  // на какой стул сел первый, зависит от зерна смены: перебираем стулья по кругу
   let seatedWho = '';
-  for (let i = 0; i < 50 && !seatedWho.includes('Ждёт приёма'); i++) {
-    await tapCell(CLINIC.seats[0]);
-    await page.waitForTimeout(400);
+  for (let i = 0; i < 120 && !seatedWho.includes('Ждёт приёма'); i++) {
+    await tapCell(CLINIC.seats[i % CLINIC.seats.length]);
+    await page.waitForTimeout(200);
     seatedWho = (await page.getByTestId('map-who').count()) > 0 ? await text(page, 'map-who') : '';
   }
   check(seatedWho.includes('Ждёт приёма') && (await page.getByTestId('map-invite').isVisible()), `смена: коснулись ждущего в зале — «${seatedWho.replace(/\n/g, ' · ')}»`);
@@ -719,6 +737,28 @@ try {
   check((await today.innerText()).includes('Сыгран: '), `случай дня: в списке — ${(await today.innerText()).replace(/\n/g, ' · ')}`);
   await page.waitForTimeout(500);
   await page.screenshot({ path: join(OUT, '17-daily.png') });
+
+  // «Смена»: больница главы открыта (карьера есть), своя — есть песочница; смена в посёлке из
+  // сохранения в конце дня — «Продолжить», закрыть день, итог по категориям, лучший результат
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-single').click();
+  await page.getByTestId('venue-preset.clinic').waitFor({ timeout: 10_000 });
+  check(!(await page.getByTestId('venue-preset.village').isDisabled()) && (await page.locator('[data-testid^="venue-"]').count()) === 3,
+    `смена: больницы — практика, посёлок, своя (${(await text(page, 'venue-sandbox')).replace(/\n/g, ' · ')})`);
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/single.json', singleEndOfDaySave()]);
+  await page.goto(base);
+  await page.getByTestId('menu-continue').waitFor({ timeout: 10_000 });
+  check((await text(page, 'menu-continue')).includes('смена: Амбулатория в посёлке'), `меню: «Продолжить» — ${(await text(page, 'menu-continue')).replace(/\n/g, ' · ')}`);
+  await page.getByTestId('menu-continue').click();
+  await page.getByTestId('shift-close-day').waitFor({ timeout: 15_000 });
+  await page.getByTestId('shift-close-day').click();
+  await page.getByTestId('single-result').waitFor({ timeout: 10_000 });
+  check((await page.getByTestId('single-accuracy').count()) === 1 && (await page.getByTestId('single-speed').count()) === 1 && /^[ABCD]$/.test(await text(page, 'single-overall'))
+    && (await text(page, 'single-best')) === 'Лучший результат в этой больнице.', `смена: итог — ${(await text(page, 'single-result')).replace(/\n/g, ' · ')}`);
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(OUT, '18-single.png'), fullPage: true });
+  check(await page.getByTestId('single-again').isVisible() && (await page.getByTestId('shift-next-day').count()) === 0, 'смена: в итогах — «Новая смена», следующего дня нет');
 
   // конец дня из сохранения: закрыть день, итоги, разбор случая из итогов, следующий день
   const day = await browser.newContext({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2 });
