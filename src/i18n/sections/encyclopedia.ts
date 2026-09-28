@@ -15,6 +15,7 @@ export const encyclopedia = {
     exams: 'Обследования',
     treatments: 'Лечение',
     risks: 'Факторы риска',
+    scores: 'Шкалы',
     hospital: 'Больница',
     tips: 'Подсказки',
   },
@@ -107,6 +108,17 @@ export const encyclopedia = {
 
   // фактор риска
   riskKind: 'Фактор риска',
+  // шкалы (часть 27)
+  scoreKind: 'Шкала',
+  scorePoints: 'Баллы',
+  scoreUpTo: (v: string) => `${v} и меньше`,
+  scoreFrom: (v: string) => `${v} и больше`,
+  scoreOxygen: (n: number) => `Дышит кислородом — ${n}`,
+  scoreConfusion: (n: number) => `Спутанность, ответ только на голос или боль, нет ответа — ${n}`,
+  scoreLevels: 'Что значит сумма',
+  scoreLevelsText: (medium: number, single: number, high: number) =>
+    `0–${medium - 1} — низкий риск; ${medium}–${high - 1} — средний: срочно к врачу, как и при ${single} по одному показателю; ${high} и больше — высокий: экстренно.`,
+  scoreUses: 'По каким признакам',
   shows: 'Как проявляется',
   raises: 'Чаще бывают',
   limits: 'Мешает лечению',
@@ -124,8 +136,8 @@ export const encyclopedia = {
   needMachine: 'Аппарат — хотя бы один',
   machines: 'Аппараты',
   sizes: 'Размеры и цена',
-  sizeLine: (id: string, w: number, h: number, cost: string, upkeep: string, seats: number, beds = 0) =>
-    `${id} — ${w}\u00a0×\u00a0${h}\u00a0м, ${cost}, содержание ${upkeep} в\u00a0день${seats > 0 ? `, ${seats}\u00a0${pluralRu(seats, 'место', 'места', 'мест')}` : ''}${beds > 0 ? `, ${beds}\u00a0${pluralRu(beds, 'койка', 'койки', 'коек')}` : ''}.`,
+  sizeLine: (id: string, w: number, h: number, cost: string, upkeep: string, seats: number, beds = 0, bays = 0) =>
+    `${id} — ${w}\u00a0×\u00a0${h}\u00a0м, ${cost}, содержание ${upkeep} в\u00a0день${seats > 0 ? `, ${seats}\u00a0${pluralRu(seats, 'место', 'места', 'мест')}` : ''}${beds > 0 ? `, ${beds}\u00a0${pluralRu(beds, 'койка', 'койки', 'коек')}` : ''}${bays > 0 ? `, ${bays}\u00a0${pluralRu(bays, 'место', 'места', 'мест')} для скорой` : ''}.`,
   sizeNote: 'Размер — вместе со стенами; соседние помещения делят стену.',
   equipmentKind: 'Аппарат',
   examsBy: 'Что им делают',

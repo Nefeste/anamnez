@@ -3,6 +3,7 @@ import { pluralRu } from '../plural';
 
 const patients = (n: number) => `${n}\u00a0${pluralRu(n, 'пациент', 'пациента', 'пациентов')}`;
 const ago = (female: boolean, m: string, f: string) => (female ? f : m);
+const COLOR: Record<string, string> = { red: 'красный', yellow: 'жёлтый', green: 'зелёный' };
 
 export const shift = {
   title: 'Амбулатория',
@@ -24,6 +25,7 @@ export const shift = {
   paused: 'Пауза',
   pause: {
     red: (name: string) => `Пауза: срочный пациент — ${name}`,
+    ambulance: (name: string) => `Пауза: привезла скорая — ${name}`,
     results: (name: string) => `Пауза: результаты готовы — ${name}`,
     end: 'Пауза: все приняты, новых пациентов не будет',
   },
@@ -40,7 +42,7 @@ export const shift = {
   log: 'Что происходит',
   waits: (min: number) => `ждёт ${min}\u00a0мин`,
   arrivedAt: (hh: string) => `пришёл в ${hh}`,
-  badge: { return: 'повторно', results: 'с результатами', appointment: 'по записи', walkIn: 'без записи' },
+  badge: { return: 'повторно', results: 'с результатами', appointment: 'по записи', walkIn: 'без записи', ambulance: 'скорая' },
   // срочность — цветом и словом со значком: цвет один различают не все (ui/theme.ts)
   triage: { red: '‼ срочно', yellow: '! нужно скоро', green: 'в порядке очереди' } as Record<string, string>,
   counts: (seen: number, waiting: number, left: number) =>
@@ -51,6 +53,7 @@ export const shift = {
   notice: {
     arrived: (name: string, female: boolean) => `${ago(female, 'Пришёл', 'Пришла')}: ${name}`,
     red: (name: string, complaint: string) => `Срочно: ${name} — ${complaint}`,
+    ambulance: (name: string, complaint: string) => `Скорая: ${name} — ${complaint}`,
     results: (name: string, female: boolean) => `${name}: результаты готовы — ${ago(female, 'вернулся', 'вернулась')} в очередь`,
     left: (name: string, female: boolean) => `${name} ${ago(female, 'ушёл', 'ушла')}, не дождавшись приёма`,
     end: '14:00 — приём по записи окончен, новых пациентов не будет',
@@ -87,6 +90,14 @@ export const shift = {
     noCases: 'Сегодня никого не приняли',
     news: 'Что стало с прошлыми пациентами',
     // стационар за день (spec 2026-09-chapter-2, часть 26)
+    // скорая за день (часть 27): сверка сортировки со шкалой NEWS2 и красными флагами
+    ambulance: {
+      title: 'Скорая',
+      line: (arrived: number, sorted: number) => `Привезли: ${arrived}, отсортировали: ${sorted}.`,
+      check: (right: number, under: number, over: number) =>
+        `Со шкалой совпало: ${right}. Недооценили: ${under}, переоценили: ${over}.`,
+      unsorted: (n: number) => `Не отсортировали до конца дня: ${n}.`,
+    },
     ward: {
       title: 'Стационар',
       moves: (admitted: number, discharged: number, transferred: number, lying: number) =>
@@ -119,6 +130,8 @@ export const shift = {
       toilet: 'Санузел',
       // палата (spec 2026-09-chapter-2, часть 26)
       ward: 'Палата',
+      // смотровая приёмного (часть 27)
+      emergency: 'Приёмное',
     } as Record<string, string>,
     // для чтения с экрана: что на карте, словами
     label: (waiting: number, away: number, inRoom: string | undefined) =>
@@ -169,6 +182,13 @@ export const shift = {
       left: (female: boolean) => ago(female, 'Не дождался приёма и уходит', 'Не дождалась приёма и уходит'),
       // палата (spec 2026-09-chapter-2, часть 26): день поступления — «первые сутки»
       ward: (days: number) => `В палате: ${days + 1}-е\u00a0сутки`,
+      // скорая (spec 2026-09-chapter-2, часть 27)
+      ambulance: {
+        unsorted: 'Привезла скорая — ждёт сортировки',
+        waiting: 'Привезла скорая — ждёт врача в смотровой',
+        door: 'На каталке у входа: в смотровой мест нет',
+        withYou: 'У вас на осмотре в смотровой приёмного',
+      } as Record<'unsorted' | 'waiting' | 'door' | 'withYou', string>,
     },
   },
   // стационар своей больницы (spec 2026-09-chapter-2, часть 26)
@@ -207,6 +227,28 @@ export const shift = {
     transfer: 'Перевести',
     replanTitle: 'Сменить лечение',
     replanDone: 'Готово',
+  },
+  // скорая (spec 2026-09-chapter-2, часть 27): лист передачи и сортировка врачом
+  ambulance: {
+    title: 'Скорая — ждут сортировки',
+    reason: (complaint: string) => `повод: ${complaint}`,
+    sheetReason: (complaint: string) => `Повод к вызову: ${complaint}`,
+    bay: 'в смотровой приёмного',
+    door: 'на каталке у входа: мест нет',
+    sheet: 'Лист передачи',
+    measured: 'Фельдшер измерил',
+    news2: (n: number) => `NEWS2 — ${n}\u00a0${pluralRu(n, 'балл', 'балла', 'баллов')}: 7 и больше — красный, 5–6 или 3 по одному показателю — жёлтый`,
+    // на «Студенте»: тревожный признак, что поднял цвет выше баллов
+    flag: (f: string, triage: string) => `Тревожный признак: ${f.toLowerCase()} — ${COLOR[triage] ?? triage}`,
+    sortLabel: 'Как срочно смотреть',
+    sort: {
+      red: 'Красный — сразу',
+      yellow: 'Жёлтый — скоро',
+      green: 'Зелёный — в порядке очереди',
+    } as Record<'red' | 'yellow' | 'green', string>,
+    sortHint: 'цвет — место в очереди; сверка со шкалой — в итогах дня',
+    close: 'Потом',
+    next: (name: string) => `Скорая: ${name} — сортировать`,
   },
   entering: (name: string) => `${name} идёт к вам`,
   // пациенты нанятых врачей (spec 2026-09-hired-doctors, часть 19)

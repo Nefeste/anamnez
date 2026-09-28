@@ -3,15 +3,16 @@
 // Здесь только вид: разделы, статьи, поиск; экраны — src/app/encyclopedia. База приходит
 // параметром, как у движка: тесты подставляют ту же собранную базу.
 import {
-  type Condition, type ContentDb, type Equipment, type Exam, type Finding, type Id, type Link, type P, type Risk, type RoomType, type StaffRole, SYSTEMS, type Tactics,
-  type Tip, type Treatment,
+  type Condition, type ContentDb, type Equipment, type Exam, type Finding, type Id, type Link, type P, type Risk, type RoomType, type Score, type StaffRole, SYSTEMS,
+  type Tactics, type Tip, type Treatment,
 } from '@/content/types';
+import { formatNumber } from '@/engine/med/text';
 import { T } from '@/i18n';
 import { TX_GROUP_ORDER, txGroupOfClass } from './caseView';
 import { sourceLine } from './sources';
 
-export type Section = 'conditions' | 'findings' | 'exams' | 'treatments' | 'risks' | 'hospital' | 'tips';
-export const SECTIONS: Section[] = ['conditions', 'findings', 'exams', 'treatments', 'risks', 'hospital', 'tips'];
+export type Section = 'conditions' | 'findings' | 'exams' | 'treatments' | 'risks' | 'scores' | 'hospital' | 'tips';
+export const SECTIONS: Section[] = ['conditions', 'findings', 'exams', 'treatments', 'risks', 'scores', 'hospital', 'tips'];
 
 /** Ссылка на статью; `note` — пометка рядом: частота, «в 2 раза чаще», точность. */
 export interface Ref {
@@ -76,13 +77,14 @@ export function sectionOf(db: ContentDb, id: Id): Section | undefined {
   if (db.exams[id]) return 'exams';
   if (db.treatments[id]) return 'treatments';
   if (db.risks[id]) return 'risks';
+  if (db.scores[id]) return 'scores';
   if (db.rooms[id] || db.equipment[id] || db.roles[id]) return 'hospital';
   if (db.tips[id]) return 'tips';
   return undefined;
 }
 
 function nameOf(db: ContentDb, id: Id): string {
-  return (db.conditions[id] ?? db.findings[id] ?? db.exams[id] ?? db.treatments[id] ?? db.risks[id] ?? db.rooms[id] ?? db.equipment[id] ?? db.roles[id] ?? db.tips[id])?.name.ru ?? id;
+  return (db.conditions[id] ?? db.findings[id] ?? db.exams[id] ?? db.treatments[id] ?? db.risks[id] ?? db.scores[id] ?? db.rooms[id] ?? db.equipment[id] ?? db.roles[id] ?? db.tips[id])?.name.ru ?? id;
 }
 
 const ref = (db: ContentDb, id: Id, note?: string): Ref => (note ? { id, title: nameOf(db, id), note } : { id, title: nameOf(db, id) });
@@ -323,6 +325,30 @@ function riskArticle(db: ContentDb, r: Risk): Article {
   return { id: r.id, section: 'risks', title: r.name.ru, subtitle: e.riskKind, blocks };
 }
 
+// --- шкалы (spec 2026-09-chapter-2, часть 27) --------------------------------------------
+
+/** Шкала по витальным: что это, баллы по показателям, что значит сумма, по каким признакам, источники. */
+function scoreArticle(db: ContentDb, x: Score): Article {
+  const e = T.encyclopedia;
+  const num = (f: Id, v: number) => formatNumber(v, db.findings[f]?.value?.decimals ?? 0);
+  const lines = x.params.map(par => {
+    const unit = db.findings[par.f]?.value?.unit ?? '';
+    const bands = par.points.map(([lo, hi, pts]) => {
+      const range = lo === null ? e.scoreUpTo(num(par.f, hi ?? 0)) : hi === null ? e.scoreFrom(num(par.f, lo)) : `${num(par.f, lo)}–${num(par.f, hi)}`;
+      return `${range} — ${pts}`;
+    });
+    return `${T.shift.ward.vital[par.f] ?? nameOf(db, par.f)}, ${unit}: ${bands.join('; ')}`;
+  });
+  const blocks: Block[] = [
+    { key: 'what', title: e.what, text: [x.texts.summary.ru] },
+    { key: 'points', title: e.scorePoints, text: [...lines, e.scoreOxygen(x.oxygen), e.scoreConfusion(x.confusion)] },
+    { key: 'levels', title: e.scoreLevels, text: [e.scoreLevelsText(x.levels.medium, x.levels.single, x.levels.high)] },
+    { key: 'uses', title: e.scoreUses, refs: x.params.map(p => ref(db, p.f)) },
+    sources(db, x),
+  ];
+  return { id: x.id, section: 'scores', title: x.name.ru, subtitle: e.scoreKind, blocks };
+}
+
 // --- больница: помещения, аппараты, должности (spec 2026-09-own-hospital) ----------------
 
 function roomArticle(db: ContentDb, r: RoomType): Article {
@@ -338,7 +364,7 @@ function roomArticle(db: ContentDb, r: RoomType): Article {
   blocks.push({
     key: 'sizes',
     title: e.sizes,
-    text: r.sizes.map(z => e.sizeLine(z.id, z.w, z.h, rub(z.cost), rub(z.upkeep), z.seats, z.beds)),
+    text: r.sizes.map(z => e.sizeLine(z.id, z.w, z.h, rub(z.cost), rub(z.upkeep), z.seats, r.beds ? z.beds : 0, r.emergency ? z.beds : 0)),
     note: e.sizeNote,
   });
   const from = Math.min(...r.sizes.map(z => z.cost));
@@ -396,6 +422,7 @@ export function article(db: ContentDb, id: Id): Article | undefined {
   if (db.exams[id]) return examArticle(db, db.exams[id]);
   if (db.treatments[id]) return treatmentArticle(db, db.treatments[id]);
   if (db.risks[id]) return riskArticle(db, db.risks[id]);
+  if (db.scores[id]) return scoreArticle(db, db.scores[id]);
   if (db.rooms[id]) return roomArticle(db, db.rooms[id]);
   if (db.equipment[id]) return equipmentArticle(db, db.equipment[id]);
   if (db.roles[id]) return roleArticle(db, db.roles[id]);
@@ -416,6 +443,7 @@ const EXAM_GROUPS: { key: 'ask' | 'examine' | 'lab' | 'imaging'; kinds: Exam['ki
 function table(db: ContentDb, section: Section): { id: Id; name: { ru: string } }[] {
   if (section === 'hospital') return [...Object.values(db.rooms), ...Object.values(db.equipment), ...Object.values(db.roles)];
   if (section === 'tips') return Object.values(db.tips);
+  if (section === 'scores') return Object.values(db.scores);
   const t = { conditions: db.conditions, findings: db.findings, exams: db.exams, treatments: db.treatments, risks: db.risks }[section];
   return Object.values(t);
 }
@@ -445,6 +473,8 @@ export function sectionView(db: ContentDb, section: Section): SectionView {
       { key: 'equipment', title: e.hospitalGroup.equipment, items: refs(Object.values(db.equipment)) },
       { key: 'roles', title: e.hospitalGroup.roles, items: refs(Object.values(db.roles)) },
     ];
+  } else if (section === 'scores') {
+    groups = [{ key: 'scores', title: e.sections.scores, items: refs(Object.values(db.scores)) }];
   } else if (section === 'tips') {
     // в том порядке, в каком наставник подсказывает
     groups = [{ key: 'tips', title: e.tipKind, items: Object.values(db.tips).map(x => ({ id: x.id, title: x.name.ru })) }];

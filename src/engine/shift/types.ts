@@ -13,7 +13,7 @@ import type { StaffMember } from '../hospital/staff';
 import type { DoctorPhase } from '../med/policy';
 import type { Grade, ScoreNote } from '../med/score';
 import type { Observation, Patient } from '../med/types';
-import type { Stay, StayResult } from './ward';
+import type { Bed, Stay, StayResult } from './ward';
 
 export const SHIFT_SCHEMA_VERSION = 1;
 
@@ -46,7 +46,8 @@ export type PatientStatus = 'coming' | 'waiting' | 'inRoom' | 'away' | 'done' | 
 /** Практика, песочница, кампания и «Смена» — один день в выбранной больнице (spec 2026-09-campaign, часть 14). */
 export type Mode = 'shift' | 'sandbox' | 'campaign' | 'single';
 
-export type VisitKind = 'appointment' | 'walkIn' | 'return';
+/** ambulance — привезла скорая (spec 2026-09-chapter-2, часть 27) */
+export type VisitKind = 'appointment' | 'walkIn' | 'return' | 'ambulance';
 export type ReturnReason = 'worse' | 'reaction' | 'unchanged';
 
 /** Результаты одного обследования; step — номер действия врача, за которое они пришли. */
@@ -109,6 +110,12 @@ export interface ShiftPatient {
   phase?: DoctorPhase;
   /** лежит в палате своей больницы: койка, план, как идёт болезнь (часть 26) */
   stay?: Stay;
+  /** привезла скорая (часть 27): место в смотровой приёмного; нет — ждёт у входа */
+  bay?: Bed;
+  /** скорая: врач отсортировал по листу передачи (цвет — `triage`) */
+  sorted?: boolean;
+  /** скорая: как отсортировала бы медсестра по шкале NEWS2 и красным флагам — для сверки; `flag` — признак, что поднял цвет выше баллов */
+  scale?: { triage: Triage; news2: number; flag?: Id };
 }
 
 export interface ClosedCase {
@@ -172,13 +179,17 @@ export type Command =
   /** обход (spec 2026-09-chapter-2, часть 26): выписать, перевести, сменить лечение лежащего */
   | { kind: 'discharge'; id: string }
   | { kind: 'transfer'; id: string }
-  | { kind: 'replan'; id: string; treatments: Id[] };
+  | { kind: 'replan'; id: string; treatments: Id[] }
+  /** скорая (часть 27): врач сортирует привезённого по листу передачи */
+  | { kind: 'sort'; id: string; triage: Triage };
 
 /** Что случилось — для интерфейса: звук, автопауза, сводка «за это время». */
 export type Notice =
   | { kind: 'arrived'; id: string; triage: Triage }
   | { kind: 'resultsReady'; id: string }
   | { kind: 'left'; id: string }
+  /** привезла скорая (часть 27): звук и автопауза, как у «красного» */
+  | { kind: 'ambulance'; id: string }
   | { kind: 'shiftEnd' };
 
 export interface DaySummary {
@@ -206,6 +217,15 @@ export interface DaySummary {
   colleagues?: Record<string, ColleagueDay>;
   /** стационар за день (часть 26): поступили, выписаны (из них рано), переведены, лежат вечером; суток и обычных сроков у выписанных */
   ward?: WardDay;
+  /** скорая за день (часть 27): привезли, отсортировали, из них недооценили и переоценили по шкале */
+  ambulance?: AmbulanceDay;
+}
+
+export interface AmbulanceDay {
+  arrived: number;
+  sorted: number;
+  under: number;
+  over: number;
 }
 
 export interface WardDay {

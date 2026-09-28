@@ -14,7 +14,7 @@ import { findBrand } from './brands';
 import {
   BANDS, type ChapterSrc, chapterSchema, type CharacterSrc, characterSchema, type ConditionSrc, conditionSchema, type EconomySrc, economySchema, type EquipmentSrc, equipmentSchema, type ExamSrc, examSchema, type FindingSrc, findingSchema,
   type LinkSrc, PREVALENCE, type PresetSrc, presetSchema, type ProbabilitySrc, type RiskSrc, type RoleSrc, riskSchema, roleSchema, type RoomSrc, roomSchema,
-  type TipSrc, tipSchema, type TreatmentSrc, treatmentSchema, versionSchema, type AchievementSrc, achievementSchema,
+  type TipSrc, tipSchema, type TreatmentSrc, treatmentSchema, versionSchema, type AchievementSrc, achievementSchema, type ScoreSrc, scoreSchema,
 } from './schema';
 
 export const CONTENT_DIR = join(import.meta.dir, '../../content');
@@ -33,6 +33,7 @@ export const NO_ECONOMY: ContentDb['economy'] = {
   consumables: { ask: 0, physical: 0, bedside: 0, lab: 0, rapid: 0, functional: 0, imaging: 0 },
   interest: 0,
   ward: { bedDay: 0, interrupted: 0 },
+  ambulance: { perDay: [0, 0], weight: { minor: 0, moderate: 0, serious: 0, critical: 0 }, severe: 0 },
   reputation: { start: 50, pull: 1, waitShort: 0, waitShortMin: 0, waitLong: 0, waitLongMin: 0, noToilet: 0 },
   flow: 0,
   sandbox: { plot: [8, 8], entrance: [0, 1], corridor: [], budgets: { modest: 0, normal: 0, generous: 0 }, clinicShare: 0 },
@@ -85,6 +86,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   const chapters: Record<string, ChapterSrc> = {};
   const tips: Record<string, TipSrc> = {};
   const achievements: Record<string, AchievementSrc> = {};
+  const scores: Record<string, ScoreSrc> = {};
   let economy: EconomySrc | undefined;
   let contentVersion = 0;
 
@@ -160,8 +162,11 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     } else if (top === 'achievements') {
       const a = check(achievementSchema);
       if (a) { expectId(a.id, 'ach'); put(achievements, a); }
+    } else if (top === 'scores') {
+      const x = check(scoreSchema);
+      if (x) { expectId(x.id, 'score'); put(scores, x); }
     } else {
-      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/economy.yaml, campaign/characters, campaign/chapters, campaign/tips, achievements)`);
+      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/economy.yaml, campaign/characters, campaign/chapters, campaign/tips, achievements, scores)`);
     }
   }
   if (!contentVersion) errors.push('version.yaml: нет contentVersion');
@@ -245,6 +250,22 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (!revealedBy[f]) errors.push(`${f}: ни одно обследование его не открывает`);
     else revealedBy[f].sort();
   }
+  // шкалы по витальным: признак с числом, полосы подряд без щелей и перекрытий, края открыты
+  for (const x of Object.values(scores)) {
+    for (const par of x.params) {
+      const spec = findings[par.f]?.value;
+      if (!spec) { errors.push(`${x.id}: признак ${par.f} не найден или без числового значения`); continue; }
+      const step = 10 ** -spec.decimals;
+      const [first, last] = [par.points[0], par.points[par.points.length - 1]];
+      if (first[0] !== null || last[1] !== null) errors.push(`${x.id}: ${par.f} — первая полоса без нижней границы, последняя — без верхней`);
+      par.points.forEach(([lo, hi], i) => {
+        if (lo !== null && hi !== null && lo > hi) errors.push(`${x.id}: ${par.f} — полоса ${lo}–${hi} наоборот`);
+        const next = par.points[i + 1];
+        if (next && (hi === null || next[0] === null || Math.abs(next[0] - hi - step) > step / 2)) errors.push(`${x.id}: ${par.f} — после ${hi} следующая полоса должна начинаться с ${hi === null ? '?' : Number((hi + step).toFixed(spec.decimals))}`);
+      });
+    }
+    if (!(x.levels.medium < x.levels.high)) errors.push(`${x.id}: средний уровень ответа должен быть ниже высокого`);
+  }
   checkWho({ conditions, findings, exams, risks }, errors);
   checkHospital({ rooms, equipment, roles, exams, conditions }, errors);
 
@@ -257,6 +278,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     chapters: Object.fromEntries(Object.values(chapters).sort((a, b) => a.order - b.order).map(c => [c.id, c])),
     tips: Object.fromEntries(Object.values(tips).sort((a, b) => a.order - b.order).map(t => [t.id, t])),
     achievements: Object.fromEntries(Object.values(achievements).sort((a, b) => a.order - b.order).map(a => [a.id, a])),
+    scores: Object.fromEntries(Object.values(scores).sort((a, b) => (a.id < b.id ? -1 : 1)).map(x => [x.id, x])),
     economy: economy
       ? { ...economy, sandbox: { ...economy.sandbox, corridor: rects(economy.sandbox.corridor) } }
       : NO_ECONOMY,
@@ -336,13 +358,13 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   const examIds = Object.keys(exams).sort();
   for (const r of Object.values(rooms).sort((a, b) => (a.id < b.id ? -1 : 1))) {
     const out: RoomType = {
-      id: r.id, name: r.name, gen: r.gen, staff: r.staff, needsEquipment: r.needsEquipment, seats: r.seats, beds: r.beds,
+      id: r.id, name: r.name, gen: r.gen, staff: r.staff, needsEquipment: r.needsEquipment, seats: r.seats, beds: r.beds, emergency: r.emergency,
       sizes: r.sizes.map(z => ({
         id: z.id, w: z.w, h: z.h, cost: z.cost, upkeep: z.upkeep, door: { x: z.door.x, width: z.door.width },
         objects: z.objects.map(([kind, x, y]) => ({ kind, x, y })), slots: z.slots, staff: z.staff,
         ...(z.patient ? { patient: z.patient } : {}),
         seats: r.seats ? z.objects.filter(([kind]) => kind === 'chair').length : 0,
-        beds: r.beds ? z.objects.filter(([kind]) => kind === 'bed').length : 0,
+        beds: r.beds || r.emergency ? z.objects.filter(([kind]) => kind === 'bed').length : 0,
         places: z.places,
       })),
       equipment: sortedIds(Object.values(equipment).filter(e => e.room === r.id).map(e => e.id)),
@@ -382,6 +404,16 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     checkPresets(db, errors);
     checkCampaign(db, errors);
     checkAchievements(db, errors);
+    // скорая везёт болезнь отделения (engine.ts, ambulancePatient): раз смотровую приёмного
+    // можно построить, у каждого отделения должно быть кого везти — иначе день не начнётся
+    if (Object.values(db.rooms).some(r => r.emergency)) {
+      const conditions = Object.values(db.conditions);
+      const departments = new Set([...conditions.map(x => x.department), ...Object.values(db.chapters).map(ch => ch.department)]);
+      for (const d of departments) {
+        const carried = conditions.some(x => x.department === d && x.presenting && !x.checkup && x.treatment && x.weight > 0 && db.economy.ambulance.weight[x.severity] > 0);
+        if (!carried) errors.push(`${d}: скорой некого везти — нет болезни отделения с тяжестью, которую везут (hospital/economy.yaml, ambulance.weight)`);
+      }
+    }
     // готовая амбулатория помещается на участок песочницы, вход песочницы — в краю
     const sb = db.economy.sandbox;
     for (const p of Object.values(db.presets)) {
@@ -602,6 +634,8 @@ function checkHospital(c: {
       else if (visited.has(r.id)) errors.push(`${at}: сюда приходят пациенты, а места для пациента нет`);
       if (r.seats && !z.objects.some(([kind]) => kind === 'chair')) errors.push(`${at}: зона ожидания без стульев`);
       if (r.beds && !z.objects.some(([kind]) => kind === 'bed')) errors.push(`${at}: палата без коек`);
+      if (r.emergency && !z.objects.some(([kind]) => kind === 'bed')) errors.push(`${at}: смотровая приёмного без мест для скорой`);
+      if (r.beds && r.emergency) errors.push(`${at}: помещение — или палата, или смотровая приёмного`);
     }
   }
   for (const e of Object.values(equipment)) {

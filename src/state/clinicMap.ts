@@ -35,7 +35,9 @@ export type Doing =
   | { kind: 'leaving' }
   | { kind: 'left' }
   /** лежит в палате своей больницы; `days` — сутки в стационаре (spec 2026-09-chapter-2, часть 26) */
-  | { kind: 'ward'; days: number };
+  | { kind: 'ward'; days: number }
+  /** привезла скорая (часть 27): ждёт сортировки, ждёт врача, на каталке у входа — мест нет, у вас на осмотре */
+  | { kind: 'ambulance'; state: 'unsorted' | 'waiting' | 'door' | 'withYou' };
 
 export interface Placement {
   id: string;
@@ -123,7 +125,14 @@ export function placements(db: ContentDb, layout: ClinicLayout, s: ShiftState): 
   for (const p of Object.values(s.patients)) {
     const figure = figureOf(p);
     const look = lookOfPatient(p);
-    if (p.status === 'inRoom' && p.by) {
+    if (p.kind === 'ambulance' && (p.status === 'waiting' || p.status === 'inRoom')) {
+      // скорая (spec 2026-09-chapter-2, часть 27): на месте в смотровой приёмного, мест нет — на
+      // каталке у входа; смотрят его там же, в кабинет он не идёт
+      const bay = p.bay ? layout.beds[p.bay.room]?.[p.bay.bed] : undefined;
+      const state = p.status === 'inRoom' ? 'withYou' : !p.sorted ? 'unsorted' : bay ? 'waiting' : 'door';
+      const callable = p.status === 'waiting' && p.sorted === true && s.current === undefined;
+      out.push({ id: p.id, figure, look, where: bay ? { cell: bay } : exit, doing: { kind: 'ambulance', state }, callable });
+    } else if (p.status === 'inRoom' && p.by) {
       // у нанятого врача — в его кабинете (spec 2026-09-hired-doctors)
       const room = s.staff?.find(m => m.id === p.by)?.room;
       out.push({ id: p.id, figure, look, where: { cell: (room && layout.offices[room]) || layout.spots.office }, doing: { kind: 'office', by: p.by } });

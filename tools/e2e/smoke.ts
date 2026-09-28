@@ -206,6 +206,31 @@ function wardSave(): { save: string; admitted: string; next: string } {
   return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s }), admitted, next };
 }
 
+/**
+ * Песочница со смотровой приёмного (spec 2026-09-chapter-2, часть 27), день 1 после рабочих
+ * часов: скорая привозила пациентов, никого не отсортировали — ждут в смотровой и у входа.
+ */
+function ambulanceSave(): { save: string; id: string; dx: string; scale: string; flag?: string; cars: number } {
+  const { db } = buildDb();
+  const s = newSandbox(db, { seed: 21, season: 'winter', difficulty: 'student', start: 'clinic', budget: db.economy.sandbox.budgets.generous });
+  const cells: [number, number][] = [];
+  for (let x = 29; x <= 38; x++) for (let y = 7; y <= 9; y++) cells.push([x, y]);
+  apply(db, s, { kind: 'build', cmd: { kind: 'corridor', cells } });
+  apply(db, s, { kind: 'build', cmd: { kind: 'room', type: 'room.emergency', size: 'M', x: 29, y: 1, rot: 0 } });
+  apply(db, s, { kind: 'buildEnd' });
+  const er = s.hospital!.rooms[s.hospital!.rooms.length - 1].id;
+  apply(db, s, { kind: 'assign', id: s.staff!.find(m => m.role === 'role.nurse' && m.room === 'r7')!.id, room: er });
+  apply(db, s, { kind: 'nextDay' });
+  while (s.t < (s.day - 1) * DAY + SHIFT_END) apply(db, s, { kind: 'advance', seconds: 10 * 60 });
+  const cars = Object.values(s.patients).filter(p => p.kind === 'ambulance').sort((a, b) => a.arriveT - b.arriveT);
+  const p = cars[0];
+  const flag = p.scale!.flag ? db.findings[p.scale!.flag].name.ru : undefined;
+  return {
+    save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s }), id: p.id, dx: p.patient.truth.conditions[0].id, scale: p.scale!.triage,
+    ...(flag ? { flag } : {}), cars: cars.length,
+  };
+}
+
 /** Песочница до открытия: готовая амбулатория, бюджет «обычный» — экран «Перед открытием». */
 function sandboxFreshSave(): string {
   const { db } = buildDb();
@@ -930,6 +955,64 @@ try {
   check((await text(page, 'cash-ward-note')) === 'Госпитализация без показаний — 1: не оплачено', `стационар, касса: ${await text(page, 'cash-ward-note')}`);
   await page.waitForTimeout(1500); // лист меню «Продолжить» ещё уезжает вниз (веб)
   await page.screenshot({ path: join(OUT, '16-ward-summary.png'), fullPage: true });
+
+  // скорая (spec 2026-09-chapter-2, часть 27): после рабочих часов привезённые ждут сортировки —
+  // карточка «Скорая», внизу — «сортировать»; лист передачи — повод, что измерил фельдшер, на «Студенте» — NEWS2;
+  // отсортировали — в очереди со значком «скорая»; позвали — карта сразу (смотрят в смотровой);
+  // в итогах дня — сверка со шкалой и «не отсортировали»
+  const amb = ambulanceSave();
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', amb.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId(`ambulance-${amb.id}`).waitFor({ timeout: 15_000 });
+  await page.getByTestId('tab-pause').click();
+  const row = await text(page, `ambulance-${amb.id}`);
+  check(/\nповод: .+ · в смотровой приёмного$/.test(row), `скорая: ждут сортировки — ${row.replace(/\n/g, ' · ')}`);
+  // внизу — не «Пропустить ожидание»: сначала сортировать первого привезённого
+  const sortNext = await text(page, 'shift-sort');
+  check(sortNext.startsWith(`Скорая: ${row.split('\n')[0]} — сортировать`) && (await page.getByTestId('shift-skip').count()) === 0, `скорая, кнопка внизу: ${sortNext}`);
+  await page.getByTestId('shift-sort').click();
+  await page.getByTestId('handover-news2').waitFor({ timeout: 5000 });
+  const handover = await text(page, 'handover-sheet');
+  // подписи листа — прописными (стиль подписей), innerText отдаёт как на экране
+  check(/^NEWS2 — \d+\u00a0балл/.test(await text(page, 'handover-news2')) && handover.toLowerCase().includes('фельдшер измерил') && /Пульс \d+\sуд\/мин/.test(handover),
+    `скорая, лист передачи: ${handover.replace(/\n/g, ' · ').slice(0, 220)}`);
+  // на «Студенте» — и тревожный признак, если цвет поднял он, а не баллы
+  const flagLine = (await page.getByTestId('handover-flag').count()) > 0 ? await text(page, 'handover-flag') : undefined;
+  check(amb.flag === undefined ? flagLine === undefined : flagLine?.startsWith(`Тревожный признак: ${amb.flag.toLowerCase()} — `) === true,
+    `скорая, тревожный признак в листе: ${flagLine ?? 'нет — цвет дали баллы'}`);
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(OUT, '17-ambulance-handover.png') });
+  await page.getByTestId(`sort-${amb.scale}`).click();
+  await page.getByTestId('handover-sheet').waitFor({ state: 'detached', timeout: 5000 });
+  const queued = await text(page, `queue-${amb.id}`);
+  // скорая не платит отдельно: привезённый — всегда ОМС
+  check(queued.includes('скорая') && queued.includes('ОМС') && (await page.getByTestId(`ambulance-${amb.id}`).count()) === 0,
+    `скорая: отсортирован — в очереди: ${queued.replace(/\n/g, ' · ')}`);
+  await page.getByTestId(`queue-${amb.id}`).click();
+  await visible(page, 'visit-decide').waitFor({ timeout: 10_000 });
+  check(true, 'скорая: позвали — карта сразу, без похода в кабинет');
+  await visible(page, 'visit-decide').click();
+  await page.getByTestId(`dx-${amb.dx}`).click();
+  await page.getByTestId('decision-to-plan').click();
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-outcome').waitFor({ timeout: 10_000 });
+  await page.getByTestId('shift-to-queue').click();
+  await page.locator('[data-testid="shift-close-day-early"], [data-testid="shift-close-day"]').first().click();
+  await page.getByTestId('summary-ambulance').waitFor({ timeout: 10_000 });
+  const ambDay = await text(page, 'summary-ambulance');
+  check(ambDay.includes(`Привезли: ${amb.cars}, отсортировали: 1.`) && ambDay.includes('Со шкалой совпало: 1. Недооценили: 0, переоценили: 0.')
+    && (amb.cars === 1 || ambDay.includes(`Не отсортировали до конца дня: ${amb.cars - 1}.`)), `скорая, итоги дня: ${ambDay.replace(/\n/g, ' · ')}`);
+  await page.waitForTimeout(1500); // лист меню «Продолжить» ещё уезжает вниз (веб)
+  await page.screenshot({ path: join(OUT, '17-ambulance-summary.png'), fullPage: true });
+  // энциклопедия: раздел «Шкалы», статья NEWS2 — баллы по показателям
+  await page.goto(`${base}/encyclopedia/article/score.news2`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  check((await visibleText(page, 'enc-article-title')).startsWith('NEWS2'), `энциклопедия, шкала: ${await visibleText(page, 'enc-article-title')}`);
 
   // кампания: карьера 1 → глава 1 — письма и задания; письмо наставника; смена открывается;
   // «Продолжить» в меню — карьера (spec 2026-09-campaign)

@@ -5,6 +5,8 @@ const UNDER: Record<string, string> = {
   home: 'лечить дома', ward: 'направить в стационар', ambulance: 'вызвать скорую', admit: 'положить в палату',
   surgery: 'взять в операционную', transfer: 'перевести в областную',
 };
+/** Цвет сортировки словами — в разборе скорой (часть 27). */
+const TRIAGE: Record<string, string> = { red: 'красный', yellow: 'жёлтый', green: 'зелёный' };
 const OVER: Record<string, string> = {
   home: 'лечения дома', ward: 'направления в стационар', ambulance: 'скорой', admit: 'палаты',
   surgery: 'операционной', transfer: 'перевода',
@@ -169,6 +171,12 @@ export const spikes = {
       redFlagIgnored: (f: string) => `Тревожный признак («${f.toLowerCase()}») был перед глазами — тяжесть недооценена`,
       redFlagUnchecked: (f: string) => `Не проверили тревожный признак — «${f.toLowerCase()}» был`,
       thriftOver: (times: number) => `Обследования в ${String(times).replace('.', ',')}\u00a0${Number.isInteger(times) ? pluralRu(times, 'раз', 'раза', 'раз') : 'раза'} дороже разумного пути`,
+      // скорая (spec 2026-09-chapter-2, часть 27): сверка сортировки врача со шкалой; `flag` —
+      // тревожный признак, что поднял цвет выше баллов
+      triageUnder: (triage: string, news2: number, flag?: string) =>
+        `При сортировке недооценили: по листу передачи NEWS2 — ${news2}\u00a0${pluralRu(news2, 'балл', 'балла', 'баллов')}${flag ? `, но «${flag.toLowerCase()}» — тревожный признак` : ''}, по шкале это ${TRIAGE[triage] ?? triage}`,
+      triageOver: (triage: string, news2: number, flag?: string) =>
+        `При сортировке переоценили: по листу передачи — ${TRIAGE[triage] ?? triage} (NEWS2 — ${news2}\u00a0${pluralRu(news2, 'балл', 'балла', 'баллов')}${flag ? `, тревожный признак «${flag.toLowerCase()}»` : ''})`,
     },
     done: 'Уже сделано',
     cost: (min: number, rub: number) => (rub > 0 ? `${min}\u00a0мин · ${rub}\u00a0₽` : `${min}\u00a0мин`),

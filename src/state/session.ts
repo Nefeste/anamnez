@@ -12,7 +12,7 @@ import type { Id, Season, Setting } from '@/content/types';
 import { complaintObservations } from '@/engine/med/exams';
 import { evaluatePlan } from '@/engine/med/plan';
 import type { Grade } from '@/engine/med/score';
-import { complaintText } from '@/engine/med/text';
+import { complaintText, observationText } from '@/engine/med/text';
 import { build, type BuildCommand, type BuildError, type HospitalState, type Plan, planOf } from '@/engine/hospital/build';
 import { type Block, doctorRoom, examWhere, openBlocks, type Problem, problemsOf, standInOf, workingRooms } from '@/engine/hospital/requirements';
 import { type ClinicLayout, cropPlan, layoutOf } from '@/engine/hospital/clinic';
@@ -20,7 +20,8 @@ import { memberAt, type StaffMember, staffingOf } from '@/engine/hospital/staff'
 import { missionProgress } from '@/engine/campaign/campaign';
 import { levelOf } from '@/engine/economy/economy';
 import {
-  apply, current, freeBeds, type HospitalCtx, hospitalCtx, inpatientsOf, newCampaign, newSandbox, newShift, newSingle, observationsOf, reviewFor, SANDBOX_VENUE, wardBeds,
+  apply, atDoorOf, current, freeBeds, type HospitalCtx, hospitalCtx, inpatientsOf, newCampaign, newSandbox, newShift, newSingle, observationsOf, reviewFor, SANDBOX_VENUE,
+  wardBeds,
 } from '@/engine/shift/engine';
 import {
   type Command, DAY, type Difficulty, type Mode, type Notice, SHIFT_END, SHIFT_SCHEMA_VERSION, type ShiftPatient, type ShiftState, type Triage,
@@ -65,6 +66,8 @@ export interface QueueRow {
   complaint: string;
   waits: string;
   badges: string[];
+  /** привезла скорая: смотрят в смотровой приёмного, в кабинет не идёт (часть 27) */
+  ambulance?: boolean;
 }
 
 /** Кого коснулись на карте: кто это и что делает. */
@@ -129,6 +132,8 @@ export interface SummaryView {
   single?: SingleView;
   /** стационар за день (spec 2026-09-chapter-2, часть 26): поступили, выписаны, лежат; сроки у выписанных */
   wardLines?: string[];
+  /** скорая за день (часть 27): привезли, отсортировали, сверка со шкалой */
+  ambulanceLines?: string[];
 }
 
 /** Итог «Смены»: оценки по категориям, общая, строки, лучший в этой больнице. */
@@ -198,6 +203,8 @@ export interface ShiftView {
   colleagues: { id: string; name: string; hint: string }[];
   /** сколько лежит в палатах своей больницы — кнопка «Обход» (spec 2026-09-chapter-2, часть 26) */
   inpatients: number;
+  /** привезённые скорой, что ждут сортировки врачом (часть 27) */
+  ambulance: AmbulanceRow[];
 }
 
 interface Session {
@@ -503,7 +510,9 @@ function dayStart(s: ShiftState) {
 
 function allDone(s: ShiftState) {
   return s.t >= dayStart(s) + SHIFT_END && s.queue.length === 0 && !s.current
-    && !Object.values(s.patients).some(p => p.status === 'away' || p.status === 'coming' || (p.by !== undefined && (p.status === 'inRoom' || p.status === 'waiting')));
+    && !Object.values(s.patients).some(p => p.status === 'away' || p.status === 'coming' || (p.by !== undefined && (p.status === 'inRoom' || p.status === 'waiting'))
+      // привезённый скорой ждёт сортировки — в очереди его ещё нет (часть 27)
+      || (p.kind === 'ambulance' && p.status === 'waiting' && !p.sorted));
 }
 
 /**
@@ -515,9 +524,10 @@ export function tick(ms: number = TICK_MS): Notice[] {
   if (!sess || sess.paused || !sess.s.dayOpen || sess.s.current || allDone(sess.s)) return [];
   const notices = run(sess, { kind: 'advance', seconds: Math.round((ms / 1000) * sess.speed * 60) });
   const { pauseOnRed, pauseOnResults } = settings();
-  const red = pauseOnRed ? notices.find(n => n.kind === 'arrived' && n.triage === 'red') : undefined;
+  const red = pauseOnRed ? notices.find(n => (n.kind === 'arrived' && n.triage === 'red') || n.kind === 'ambulance') : undefined;
   const back = pauseOnResults ? notices.find(n => n.kind === 'resultsReady' && sess.s.patients[n.id].status === 'waiting') : undefined;
-  if (red && red.kind === 'arrived') pause(sess, T.shift.pause.red(nameOf(sess.s.patients[red.id])));
+  if (red && red.kind === 'ambulance') pause(sess, T.shift.pause.ambulance(nameOf(sess.s.patients[red.id])));
+  else if (red && red.kind === 'arrived') pause(sess, T.shift.pause.red(nameOf(sess.s.patients[red.id])));
   else if (back && back.kind === 'resultsReady') pause(sess, T.shift.pause.results(nameOf(sess.s.patients[back.id])));
   changed();
   return notices;
@@ -539,11 +549,13 @@ const SKIP_MAX = 4 * 3600;
 export function skipIdle(): Notice[] {
   const sess = session;
   if (!sess || !sess.s.dayOpen || sess.s.current || sess.s.queue.length > 0 || allDone(sess.s)) return [];
+  // привезённого скорой ждёт сортировка — мимо него часы не проматываем (часть 27)
+  if (Object.values(sess.s.patients).some(p => p.kind === 'ambulance' && p.status === 'waiting' && !p.sorted)) return [];
   const out: Notice[] = [];
   for (let spent = 0; spent < SKIP_MAX && !allDone(sess.s); spent += 60) {
     const notices = run(sess, { kind: 'advance', seconds: 60 });
     out.push(...notices);
-    if (sess.s.queue.length > 0 || notices.some(n => n.kind === 'shiftEnd')) break;
+    if (sess.s.queue.length > 0 || notices.some(n => n.kind === 'shiftEnd' || n.kind === 'ambulance')) break;
   }
   sess.paused = false;
   sess.pauseReason = undefined;
@@ -590,7 +602,7 @@ function doctor(cmd: Command, justDone?: Id) {
   if (!sess || !p) return;
   const notices = run(sess, cmd);
   sess.meanwhile = meanwhileOf(sess.s, p, notices, justDone);
-  sess.urgent = notices.some(n => n.kind === 'arrived' && n.triage === 'red');
+  sess.urgent = notices.some(n => (n.kind === 'arrived' && n.triage === 'red') || n.kind === 'ambulance');
   changed();
 }
 
@@ -1166,6 +1178,7 @@ function record(sess: Session, notices: Notice[]) {
     if (n.kind === 'arrived' && p) item(n.triage === 'red' ? 'red' : 'arrived', n.triage === 'red' ? T.shift.notice.red(nameOf(p), complaintOf(p)) : T.shift.notice.arrived(nameOf(p), female(p)));
     else if (n.kind === 'resultsReady' && p && p.status === 'waiting') item('results', T.shift.notice.results(nameOf(p), female(p)));
     else if (n.kind === 'left' && p) item('left', T.shift.notice.left(nameOf(p), female(p)));
+    else if (n.kind === 'ambulance' && p) item('red', T.shift.notice.ambulance(nameOf(p), complaintOf(p)));
     else if (n.kind === 'shiftEnd') item('end', T.shift.notice.end);
   }
   sess.log.length = Math.min(sess.log.length, LOG_SIZE);
@@ -1178,6 +1191,7 @@ function record(sess: Session, notices: Notice[]) {
 function meanwhileOf(s: ShiftState, p: ShiftPatient, notices: Notice[], justDone?: Id): string[] {
   const out: string[] = [];
   const arrived = notices.filter((n): n is Extract<Notice, { kind: 'arrived' }> => n.kind === 'arrived');
+  for (const n of notices) if (n.kind === 'ambulance') out.push(T.shift.notice.ambulance(nameOf(s.patients[n.id]), complaintOf(s.patients[n.id])));
   for (const n of arrived) if (n.triage === 'red') out.push(T.shift.notice.red(nameOf(s.patients[n.id]), complaintOf(s.patients[n.id])));
   for (const r of p.results) if (r.step === p.step && r.exam !== justDone) out.push(T.spikes.patient.ready(db.exams[r.exam].name.ru));
   const others = arrived.filter(n => n.triage !== 'red').length;
@@ -1199,6 +1213,7 @@ const closedDay = (p: ShiftPatient) => Math.floor(p.closed!.at / DAY) + 1;
 function row(s: ShiftState, p: ShiftPatient): QueueRow {
   const badges: string[] = [];
   if (p.kind === 'return') badges.push(T.shift.badge.return);
+  else if (p.kind === 'ambulance') badges.push(T.shift.badge.ambulance);
   else badges.push(p.kind === 'appointment' ? T.shift.badge.appointment : T.shift.badge.walkIn);
   if (p.payer) badges.push(T.sandbox.payers[p.payer]);
   if (p.step > 0) badges.push(T.shift.badge.results);
@@ -1210,6 +1225,7 @@ function row(s: ShiftState, p: ShiftPatient): QueueRow {
     complaint: complaintOf(p),
     waits: T.shift.waits(Math.max(0, Math.floor((s.t - p.arriveT) / 60))),
     badges,
+    ...(p.kind === 'ambulance' ? { ambulance: true } : {}),
   };
 }
 
@@ -1252,7 +1268,17 @@ function summaryOf(s: ShiftState): SummaryView | undefined {
     achievements: achievementNames(dayKey(s, h.day)),
     ...(s.meta.mode === 'single' ? { single: singleView(s) } : {}),
     ...(h.ward ? { wardLines: wardLines(h.ward) } : {}),
+    ...(h.ambulance && h.ambulance.arrived > 0 ? { ambulanceLines: ambulanceLines(h.ambulance) } : {}),
   };
+}
+
+/** Скорая за день — строками итогов: привезли, отсортировали, сколько совпало со шкалой. */
+function ambulanceLines(a: NonNullable<ShiftState['summary']['ambulance']>): string[] {
+  const t = T.shift.summary.ambulance;
+  const out = [t.line(a.arrived, a.sorted)];
+  if (a.sorted > 0) out.push(t.check(a.sorted - a.under - a.over, a.under, a.over));
+  if (a.arrived > a.sorted) out.push(t.unsorted(a.arrived - a.sorted));
+  return out;
 }
 
 /** Стационар за день — строками итогов: сколько поступило, выписано (из них рано), переведено, лежит; сроки. */
@@ -1266,7 +1292,7 @@ function wardLines(w: NonNullable<ShiftState['summary']['ward']>): string[] {
 
 const EMPTY: Omit<ShiftView, 'version' | 'status' | 'mode'> = {
   difficulty: 'student', day: 0, clock: '', dayOpen: false, afterHours: false, allDone: false, speed: 1, paused: false,
-  queue: [], away: [], log: [], counts: { seen: 0, left: 0, waiting: 0, unseen: 0 }, restored: false, people: [], who: {}, colleagues: [], signs: [], inpatients: 0,
+  queue: [], away: [], log: [], counts: { seen: 0, left: 0, waiting: 0, unseen: 0 }, restored: false, people: [], who: {}, colleagues: [], signs: [], inpatients: 0, ambulance: [],
 };
 
 function buildShiftView(): ShiftView {
@@ -1305,6 +1331,7 @@ function buildShiftView(): ShiftView {
     signs: roomSigns(layout ?? CLINIC, s, s.hospital ? understaffed(s) : undefined),
     colleagues: colleagueRows(s),
     inpatients: inpatientsOf(s).length,
+    ambulance: ambulanceRows(s),
     ...(s.hospital ? { rooms: roomsOf(s) } : {}),
     ...(layout ? { layout } : {}),
   };
@@ -1447,6 +1474,8 @@ function doingText(s: ShiftState, p: ShiftPatient, d: Doing): string {
       return t.left(female(p));
     case 'ward':
       return t.ward(d.days);
+    case 'ambulance':
+      return t.ambulance[d.state];
     case 'staff':
       return '';
   }
@@ -1539,6 +1568,57 @@ function wardAct(cmd: Command) {
   run(sess, cmd);
   // выписан или переведён — в архиве профиля его приём с исходом
   if (cmd.kind !== 'replan') recordCases(closedCases(sess.s));
+  save();
+  changed();
+}
+
+// --- скорая (spec 2026-09-chapter-2, часть 27) -------------------------------------------------
+
+/** Лист передачи фельдшера: повод, что он измерил; на «Студенте» — баллы NEWS2 и тревожный признак, что поднял цвет. */
+export interface HandoverView {
+  reason: string;
+  measured: string[];
+  news2?: string;
+  flag?: string;
+}
+
+/** Привезённый скорой, что ждёт сортировки: кто, повод, где лежит, лист передачи. */
+export interface AmbulanceRow {
+  id: string;
+  name: string;
+  line: string;
+  handover: HandoverView;
+}
+
+function ambulanceRows(s: ShiftState): AmbulanceRow[] {
+  const t = T.shift.ambulance;
+  const door = new Set(atDoorOf(s).map(p => p.id));
+  return Object.values(s.patients)
+    .filter(p => p.kind === 'ambulance' && p.status === 'waiting' && !p.sorted)
+    .sort((a, b) => a.arriveT - b.arriveT || (a.id < b.id ? -1 : 1))
+    .map(p => {
+      const paramedic = p.results.find(r => r.exam === 'exam.vitals');
+      const student = s.meta.difficulty === 'student' && p.scale !== undefined;
+      const flag = student && p.scale?.flag ? db.findings[p.scale.flag]?.name.ru : undefined;
+      return {
+        id: p.id,
+        name: `${nameOf(p)}, ${T.spikes.patient.years(p.patient.age)}`,
+        line: `${t.reason(complaintOf(p))} · ${door.has(p.id) ? t.door : t.bay}`,
+        handover: {
+          reason: t.sheetReason(complaintOf(p)),
+          measured: (paramedic?.obs ?? []).filter(o => o.value !== undefined).map(o => observationText(db, o, p.patient.sex, p.patient.seed)),
+          ...(student && p.scale ? { news2: t.news2(p.scale.news2) } : {}),
+          ...(flag && p.scale ? { flag: t.flag(flag, p.scale.triage) } : {}),
+        },
+      };
+    });
+}
+
+/** Отсортировать привезённого скорой: цвет — место в очереди. */
+export function sortAmbulance(id: string, triage: Triage) {
+  const sess = session;
+  if (!sess || !sess.s.dayOpen) return;
+  run(sess, { kind: 'sort', id, triage });
   save();
   changed();
 }

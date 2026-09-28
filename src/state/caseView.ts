@@ -417,6 +417,8 @@ export function noteText(n: ScoreNote): string {
     case 'safety.redFlagIgnored': return t.redFlagIgnored(db.findings[n.f].name.ru);
     case 'safety.redFlagUnchecked': return t.redFlagUnchecked(db.findings[n.f].name.ru);
     case 'thrift.over': return t.thriftOver(n.times);
+    case 'triage.under': return t.triageUnder(n.triage, n.news2, n.flag && db.findings[n.flag]?.name.ru);
+    case 'triage.over': return t.triageOver(n.triage, n.news2, n.flag && db.findings[n.flag]?.name.ru);
   }
 }
 

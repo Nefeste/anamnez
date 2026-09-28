@@ -1,0 +1,41 @@
+id: score.news2
+name: { ru: "NEWS2 — шкала раннего предупреждения" }
+# баллы: [от, до, баллы], null — без границы; значения — как их показывает измерение
+params:
+  - f: vital.tachypnea
+    points: [[null, 8, 3], [9, 11, 1], [12, 20, 0], [21, 24, 2], [25, null, 3]]
+  - f: vital.spo2_low
+    points: [[null, 91, 3], [92, 93, 2], [94, 95, 1], [96, null, 0]]
+  - f: vital.bp_high
+    points: [[null, 90, 3], [91, 100, 2], [101, 110, 1], [111, 219, 0], [220, null, 3]]
+  - f: vital.tachycardia
+    points: [[null, 40, 3], [41, 50, 1], [51, 90, 0], [91, 110, 1], [111, 130, 2], [131, null, 3]]
+  - f: vital.fever
+    points: [[null, 35.0, 3], [35.1, 36.0, 1], [36.1, 38.0, 0], [38.1, 39.0, 1], [39.1, null, 2]]
+# дышит кислородом — 2 балла; спутанность, ответ только на голос или боль, нет ответа — 3
+oxygen: 2
+confusion: 3
+# 0–4 — низкий риск; 5–6 — средний, срочно к врачу (3 балла по одному параметру — тоже срочно);
+# 7 и больше — высокий, экстренный ответ (RCP 2017: urgent и emergency response)
+levels: { medium: 5, single: 3, high: 7 }
+texts:
+  summary:
+    ru: >-
+      Шкала раннего предупреждения: частота дыхания, сатурация, дышит ли кислородом, верхнее
+      давление, пульс, сознание и температура дают баллы, и по сумме видно, насколько срочно
+      пациенту нужен врач. В игре по ней сверяют сортировку пациентов скорой: 7 баллов и больше —
+      красный, 5–6 или 3 балла по одному показателю — жёлтый, остальное — зелёный; тревожный
+      признак, например давящая боль за грудиной, поднимает цвет.
+  hint:
+    ru: "Сумма баллов по витальным показателям: чем она больше, тем срочнее пациенту нужен врач. 7 и больше — экстренно, 5–6 — срочно."
+sources:
+  - kind: score
+    title: "Royal College of Physicians. National Early Warning Score (NEWS) 2: Standardising the assessment of acute-illness severity in the NHS. Updated report of a working party. London: RCP, 2017"
+    year: 2017
+    note: "Таблица баллов сверена по двум открытым статьям PubMed Central, 28.09.2026: PMC11933513 (Woolfe Loftus N et al., J Clin Nurs 2025, табл. 2 «NEWS2 scoring parameters (Royal College of Physicians 2017)») и PMC12101901 (Osti N et al., Emerg Med Int 2025, табл. 3). Уровни ответа — PMC12942630 (Biuzzi C et al., Medicina 2026, табл. 1). Цвета сортировки по уровням — правило игры."
+  - kind: paper
+    title: "Woolfe Loftus N, Smith D, Aitken LM. The Scope of Nurses' Assessment of Deteriorating Patients in Coronary Care Units: A Mixed Methods Study. J Clin Nurs 2025;34:1250–1263"
+    year: 2025
+    url: "https://pubmed.ncbi.nlm.nih.gov/39861931/"
+    note: "doi 10.1111/jocn.17500; табл. 2 — параметры NEWS2 по RCP 2017"
+review: draft

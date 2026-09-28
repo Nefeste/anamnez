@@ -256,7 +256,7 @@ export interface RoomSize {
   patient?: Cell;
   /** стулья зоны ожидания — места в очереди */
   seats: number;
-  /** койки палаты — места лежащих */
+  /** койки палаты — места лежащих; у смотровой приёмного — места для пациентов скорой */
   beds: number;
   /** мест для нанятых врачей — ординаторская */
   places: number;
@@ -272,6 +272,8 @@ export interface RoomType {
   needsEquipment: boolean;
   seats: boolean;
   beds: boolean;
+  /** смотровая приёмного: койки — места для пациентов скорой (spec 2026-09-chapter-2, часть 27) */
+  emergency: boolean;
   sizes: RoomSize[];
   /** производное: какие аппараты ставят сюда и какие обследования здесь делают или берут материал */
   equipment: Id[];
@@ -392,6 +394,8 @@ export interface Economy {
   interest: number;
   /** стационар: койко-день, ₽; доля тарифа за прерванный случай (перевод, выписка раньше срока), % */
   ward: { bedDay: number; interrupted: number };
+  /** скорая: машин за смену; вес болезни по тяжести; доля тяжёлых, % (часть 27) */
+  ambulance: { perDay: [number, number]; weight: Record<'minor' | 'moderate' | 'serious' | 'critical', number>; severe: number };
   /** репутация 0–100: начало, на сколько % вечером сдвигается к оценке дня, поправки оценки */
   reputation: {
     start: number; pull: number;
@@ -483,6 +487,23 @@ export type Achievement = { id: Id; order: number; category: AchievementCategory
   | { kind: 'chapter'; chapter: Id }
 );
 
+/**
+ * Шкала раннего предупреждения по витальным (NEWS2, spec 2026-09-chapter-2, часть 27): баллы по
+ * значению признака — [от, до, баллы], `null` — без границы; дышит кислородом и спутанность —
+ * отдельные строки; уровни ответа.
+ */
+export interface Score {
+  id: Id;
+  name: Text;
+  params: { f: Id; points: [number | null, number | null, number][] }[];
+  oxygen: number;
+  confusion: number;
+  levels: { medium: number; single: number; high: number };
+  texts: { summary: Text; hint: Text };
+  sources: Source[];
+  review: Review;
+}
+
 export interface ContentDb {
   contentVersion: number;
   hash: string;
@@ -500,6 +521,8 @@ export interface ContentDb {
   chapters: Record<Id, Chapter>;
   tips: Record<Id, Tip>;
   achievements: Record<Id, Achievement>;
+  /** шкалы по витальным: NEWS2 (часть 27) */
+  scores: Record<Id, Score>;
   /** производное: какие обследования проверяют признак */
   revealedBy: Record<Id, Id[]>;
 }

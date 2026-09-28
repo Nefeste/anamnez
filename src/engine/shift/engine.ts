@@ -19,6 +19,7 @@ import { observe } from '../med/course';
 import { complaintObservations, type ExamSkill, examFits, NORMAL_SKILL, runExam } from '../med/exams';
 import { generatePatient, typicalPatient } from '../med/generate';
 import { knownFacts, posterior } from '../med/infer';
+import { scaleTriage } from '../med/news2';
 import { choiceFor, evaluatePlan, recommendedSetting, settingFit, type Venue } from '../med/plan';
 import { examCost, indicated, nextStep } from '../med/policy';
 import { buildReview, type ReviewData } from '../med/review';
@@ -26,7 +27,7 @@ import { scoreCase } from '../med/score';
 import type { Observation } from '../med/types';
 import {
   type ClosedCase, type ColleagueDay, type Command, DAY, type DaySummary, type Difficulty, type Notice, type PlannedReturn, SHIFT_END, SHIFT_SCHEMA_VERSION,
-  SHIFT_START, type ShiftEvent, type ShiftPatient, type ShiftState, type Triage, type VisitKind, type WardDay,
+  SHIFT_START, type ShiftEvent, type ShiftPatient, type ShiftState, type Triage, type VisitKind, type WardDay, type AmbulanceDay,
 } from './types';
 import { type Bed, daysIn, stayNorm, wardCourse, wardState } from './ward';
 
@@ -309,6 +310,8 @@ export function apply(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
       return leaveWard(db, s, cmd.id, cmd.kind);
     case 'replan':
       return replan(db, s, cmd.id, cmd.treatments);
+    case 'sort':
+      return sortAmbulance(db, s, cmd.id, cmd.triage);
   }
 }
 
@@ -412,6 +415,17 @@ function planDay(db: ContentDb, s: ShiftState) {
   for (const ret of s.returns.filter(x => x.day === d)) {
     plan.push({ t: base + SHIFT_START + r.fork(`return:${ret.of}`).range(0, 120) * MIN, kind: 'return', key: `return:${ret.of}`, ret });
   }
+  // скорая (spec 2026-09-chapter-2, часть 27): работает смотровая приёмного — машины в любое
+  // время смены, из своей ветви дня; без смотровой день прежний
+  if (emergencyBays(db, s).length > 0) {
+    const a = db.economy.ambulance;
+    const ar = r.fork('ambulance');
+    const cars = ar.range(a.perDay[0], a.perDay[1]);
+    for (let i = 0; i < cars; i++) {
+      const minute = ar.fork(`amb:${i}`).range(0, (SHIFT_END - SHIFT_START) / MIN - 30);
+      plan.push({ t: base + SHIFT_START + minute * MIN, kind: 'ambulance', key: `amb:${i}` });
+    }
+  }
   plan.sort((a, b) => a.t - b.t || (a.key < b.key ? -1 : 1));
   // кампания: в первый день главы первые пришедшие — с болезнями, заданными главой (обучение
   // с наставником); человек — тот же, что пришёл бы, если болезнь у него обычна
@@ -420,22 +434,41 @@ function planDay(db: ContentDb, s: ShiftState) {
   plan.forEach((a, i) => {
     const id = `${d}-${String(i + 1).padStart(2, '0')}`;
     const gen = { department: s.meta.department, season: s.meta.season };
-    const primary = a.ret ? undefined : tutorial[taught];
+    const primary = a.ret || a.kind === 'ambulance' ? undefined : tutorial[taught];
     if (primary) taught++;
     const patient = a.ret
       ? returningPatient(db, s, a.ret)
-      : primary
+      : a.kind === 'ambulance'
+        ? ambulancePatient(db, s, d, a.key)
+        : primary
         ? typicalPatient(db, k => fnv1a(`${s.meta.seed}:${d}:${a.key}${k ? `:${k}` : ''}`), { ...gen, primary })
         : generatePatient(db, fnv1a(`${s.meta.seed}:${d}:${a.key}`), gen);
     s.patients[id] = {
       id, patient, arriveT: a.t, kind: a.kind, triage: 'green', status: 'coming', queuedT: 0, wait: 0, patience: 0,
       results: [], pending: [], done: [], step: 0, spent: { seconds: 0, money: 0 }, draft: { treatments: [], setting: 'home' },
       ...(a.ret ? { returnOf: a.ret.of, returnReason: a.ret.reason } : {}),
-      ...(s.economy ? { payer: payerOf(db, s.meta.seed, id, s.economy.reputation ?? db.economy.reputation.start) } : {}),
+      // скорая не платит отдельно: привезённый — случай ОМС (spec 2026-09-chapter-2, «Баланс»;
+      // скорую и экстренную помощь оказывают бесплатно — 323-ФЗ, ст. 11 и 35)
+      ...(s.economy ? { payer: a.kind === 'ambulance' ? 'oms' : payerOf(db, s.meta.seed, id, s.economy.reputation ?? db.economy.reputation.start) } : {}),
     };
     schedule(s, a.t, { kind: 'arrive', id });
   });
   schedule(s, base + SHIFT_END, { kind: 'shiftEnd' });
+}
+
+/**
+ * Кого везёт скорая: болезнь отделения с весом по тяжести (лёгкое не везут) и распространённости;
+ * у болезни с тяжестью — чаще тяжёлая. Всё — из ветви этой машины.
+ */
+function ambulancePatient(db: ContentDb, s: ShiftState, d: number, key: string) {
+  const a = db.economy.ambulance;
+  const br = branch(s, `ambulance:${d}:${key}`);
+  const pool = Object.values(db.conditions).filter(c => c.department === s.meta.department && c.presenting && !c.checkup && c.treatment && a.weight[c.severity] > 0);
+  const c = br.weighted(pool, x => x.weight * a.weight[x.severity]);
+  const severe = c.params?.severity?.severe !== undefined && br.fork('severe').chance(a.severe * 100);
+  return generatePatient(db, fnv1a(`${s.meta.seed}:${d}:${key}`), {
+    department: s.meta.department, season: s.meta.season, primary: c.id, ...(severe ? { params: { severity: 'severe' } } : {}),
+  });
 }
 
 /**
@@ -568,6 +601,8 @@ function prune(s: ShiftState) {
 function call(db: ContentDb, s: ShiftState, id: string): Notice[] {
   const p = s.patients[id];
   if (!s.dayOpen || s.current || !p || p.status !== 'waiting' || p.by) return [];
+  // привезённого скорой сначала сортируют по листу передачи (часть 27)
+  if (p.kind === 'ambulance' && !p.sorted) return [];
   s.queue = s.queue.filter(x => x !== id);
   p.status = 'inRoom';
   p.calledT ??= s.t;
@@ -666,6 +701,17 @@ function closePatient(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase
   if (p.from) closed.from = p.from;
   p.closed = closed;
   p.status = 'done';
+  // скорая (часть 27): сверка сортировки со шкалой — строкой разбора; место в смотровой свободно
+  if (p.kind === 'ambulance' && p.sorted && p.scale) {
+    const d = TRIAGE_RANK[p.triage] - TRIAGE_RANK[p.scale.triage];
+    if (d !== 0) {
+      closed.notes.push({ code: d > 0 ? 'triage.under' : 'triage.over', triage: p.scale.triage, news2: p.scale.news2, ...(p.scale.flag ? { flag: p.scale.flag } : {}) });
+    }
+  }
+  if (p.bay) {
+    delete p.bay;
+    seatAtDoor(db, s);
+  }
   // песочница: ОМС и ДМС платят после экспертизы, платный пациент — за всё сделанное
   if (s.economy) {
     const payer = p.payer ?? 'oms';
@@ -783,6 +829,64 @@ function venueOf(db: ContentDb, s: ShiftState, admitting = false): Venue {
 /** Лежащие сейчас. */
 export function inpatientsOf(s: ShiftState): ShiftPatient[] {
   return Object.values(s.patients).filter(p => p.status === 'admitted' && p.stay).sort((a, b) => a.stay!.since - b.stay!.since || (a.id < b.id ? -1 : 1));
+}
+
+// --- приёмное и скорая (spec 2026-09-chapter-2, часть 27) -----------------------------------
+
+/** Места смотровой приёмного в работающих помещениях, по порядку помещений и коек. */
+export function emergencyBays(db: ContentDb, s: ShiftState): Bed[] {
+  if (!s.hospital) return [];
+  const ctx = hospitalCtx(db, s);
+  return ctx.plan.rooms
+    .filter(r => db.rooms[r.type]?.emergency && ctx.working.has(r.id))
+    .flatMap(r => r.beds.map((_, bed) => ({ room: r.id, bed })));
+}
+
+/** Место занято, пока пациента не закрыли: ждёт, у врача или на обследовании. */
+const holdsBay = (p: ShiftPatient) => p.bay !== undefined && (p.status === 'waiting' || p.status === 'inRoom' || p.status === 'away');
+
+/** Свободные места смотровой. */
+export function freeBays(db: ContentDb, s: ShiftState): Bed[] {
+  const taken = new Set(Object.values(s.patients).filter(holdsBay).map(p => `${p.bay!.room}:${p.bay!.bed}`));
+  return emergencyBays(db, s).filter(b => !taken.has(`${b.room}:${b.bed}`));
+}
+
+/** Привезённые скорой, что ждут у входа: мест в смотровой не было. По времени приезда. */
+export function atDoorOf(s: ShiftState): ShiftPatient[] {
+  return Object.values(s.patients)
+    .filter(p => p.kind === 'ambulance' && !p.bay && p.status === 'waiting')
+    .sort((a, b) => a.arriveT - b.arriveT || (a.id < b.id ? -1 : 1));
+}
+
+/** Освободилось место — первый ждущий у входа занимает его. */
+function seatAtDoor(db: ContentDb, s: ShiftState) {
+  for (const p of atDoorOf(s)) {
+    const bay = freeBays(db, s)[0];
+    if (!bay) return;
+    p.bay = bay;
+  }
+}
+
+function ambulanceDay(s: ShiftState): AmbulanceDay {
+  return (s.summary.ambulance ??= { arrived: 0, sorted: 0, under: 0, over: 0 });
+}
+
+/**
+ * Врач сортирует привезённого по листу передачи: цвет — место в очереди. Сверка со шкалой —
+ * в итогах дня и в разборе. Прочитать лист — минута.
+ */
+function sortAmbulance(db: ContentDb, s: ShiftState, id: string, triage: Triage): Notice[] {
+  const p = s.patients[id];
+  if (!s.dayOpen || !p || p.kind !== 'ambulance' || p.sorted || p.status !== 'waiting' || !p.scale) return [];
+  p.triage = triage;
+  p.sorted = true;
+  const day = ambulanceDay(s);
+  day.sorted++;
+  const d = TRIAGE_RANK[triage] - TRIAGE_RANK[p.scale.triage];
+  if (d > 0) day.under++;
+  if (d < 0) day.over++;
+  enqueue(s, p, p.arriveT);
+  return advanceBy(db, s, MIN);
 }
 
 function wardDay(s: ShiftState): WardDay {
@@ -925,6 +1029,7 @@ function handle(db: ContentDb, s: ShiftState, ev: ShiftEvent, notices: Notice[])
 /** Пришёл: медсестра меряет витальные и сортирует — по тому, что видит (жалобы и измерения). */
 function arrive(db: ContentDb, s: ShiftState, p: ShiftPatient, notices: Notice[]) {
   if (p.status !== 'coming') return;
+  if (p.kind === 'ambulance') return arriveByAmbulance(db, s, p, notices);
   const ctx = hospitalCtx(db, s);
   // медсестра доврачебного кабинета меряет давление, пульс, температуру; нет её — врач сам
   if (ctx.triage && db.exams['exam.vitals']) {
@@ -942,6 +1047,28 @@ function arrive(db: ContentDb, s: ShiftState, p: ShiftPatient, notices: Notice[]
   enqueue(s, p, s.t);
   notices.push({ kind: 'arrived', id: p.id, triage: p.triaged === false ? 'green' : p.triage });
   staffDesks(db, s);
+}
+
+/**
+ * Привезла скорая (часть 27): фельдшер передаёт лист — жалобы и витальные, которые он измерил;
+ * пациент — на свободное место в смотровой приёмного, мест нет — ждёт у входа. В очередь он
+ * встаёт, когда его отсортирует врач; шкала (NEWS2 и красные флаги) — для сверки. Не уходит.
+ */
+function arriveByAmbulance(db: ContentDb, s: ShiftState, p: ShiftPatient, notices: Notice[]) {
+  if (db.exams['exam.vitals']) {
+    p.done.push('exam.vitals');
+    p.results.push({ exam: 'exam.vitals', obs: runExam(db, p.patient, 'exam.vitals', branch(s, `paramedic:${p.id}`), undefined, exact(s)), at: s.t, step: 0 });
+  }
+  p.scale = scaleTriage(db, p.patient.complaints, p.results.flatMap(r => r.obs));
+  p.sorted = false;
+  p.patience = 0;
+  p.status = 'waiting';
+  p.queuedT = s.t;
+  const bay = freeBays(db, s)[0];
+  if (bay) p.bay = bay;
+  s.summary.arrived++;
+  ambulanceDay(s).arrived++;
+  notices.push({ kind: 'ambulance', id: p.id });
 }
 
 export function triageOf(db: ContentDb, p: ShiftPatient): Triage {
@@ -1005,7 +1132,7 @@ function colleaguesOf(db: ContentDb, s: ShiftState): StaffMember[] {
  * доврачебного кабинета срочность никто не определил — берёт по очереди прихода.
  */
 function colleagueTakes(p: ShiftPatient): boolean {
-  return p.status === 'waiting' && p.by === undefined && p.calledT === undefined && p.kind !== 'return' && !(p.triaged !== false && p.triage === 'red');
+  return p.status === 'waiting' && p.by === undefined && p.calledT === undefined && p.kind !== 'return' && p.kind !== 'ambulance' && !(p.triaged !== false && p.triage === 'red');
 }
 
 /**

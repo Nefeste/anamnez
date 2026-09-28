@@ -1,6 +1,6 @@
 {
-  "version": "0.0.43",
-  "base": 20,
+  "version": "0.0.44",
+  "base": 21,
   "ids": {
     "achievements": [
       "ach.allergy_10",
@@ -345,6 +345,7 @@
     ],
     "rooms": [
       "room.ecg",
+      "room.emergency",
       "room.lab",
       "room.office",
       "room.procedure",
@@ -358,6 +359,9 @@
     ],
     "rooms.sizes": [
       "room.ecg/S",
+      "room.emergency/L",
+      "room.emergency/M",
+      "room.emergency/S",
       "room.lab/M",
       "room.lab/S",
       "room.office/M",
@@ -373,6 +377,9 @@
       "room.ward/M",
       "room.ward/S",
       "room.xray/M"
+    ],
+    "scores": [
+      "score.news2"
     ],
     "tips": [
       "tip.decision",

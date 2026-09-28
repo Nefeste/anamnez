@@ -144,7 +144,7 @@ describe('валидатор базы', () => {
 describe('каталог больницы', () => {
   test('собран: у помещений — что открывают, у аппаратов — какие обследования, у должностей — где работают', () => {
     const { db } = buildDb();
-    expect(Object.keys(db.rooms)).toHaveLength(11);
+    expect(Object.keys(db.rooms)).toHaveLength(12);
     // нанятый врач (spec 2026-09-hired-doctors): встаёт на место врача, нужна ординаторская с местами
     expect(db.roles['role.therapist']).toMatchObject({ hire: true, stands: 'role.doctor', needs: 'room.staff', rooms: ['room.office'] });
     expect(db.rooms['room.staff'].sizes.map(z => z.places)).toEqual([2, 4]);
@@ -154,14 +154,29 @@ describe('каталог больницы', () => {
     expect(db.rooms['room.lab'].equipment).toContain('eq.biochem_analyzer');
     expect(db.equipment['eq.immuno_analyzer'].exams).toEqual(['exam.tsh']);
     expect(db.equipment['eq.xray_digital'].upgradeOf).toBe('eq.xray_analog');
-    expect(db.roles['role.nurse'].rooms).toEqual(['room.ecg', 'room.procedure', 'room.triage', 'room.ward']);
+    expect(db.roles['role.nurse'].rooms).toEqual(['room.ecg', 'room.emergency', 'room.procedure', 'room.triage', 'room.ward']);
     // палата (spec 2026-09-chapter-2, часть 26): койки — места лежащих
     expect(db.rooms['room.ward'].sizes.map(z => z.beds)).toEqual([2, 4]);
     expect(db.rooms['room.office'].sizes.every(z => z.beds === 0)).toBe(true);
+    // смотровая приёмного (часть 27): койки — места для пациентов скорой, одно, два, три
+    expect(db.rooms['room.emergency']).toMatchObject({ emergency: true, beds: false, staff: ['role.nurse'] });
+    expect(db.rooms['room.emergency'].sizes.map(z => z.beds)).toEqual([1, 2, 3]);
     expect(db.roles['role.doctor'].hire).toBe(false);
     expect(db.rooms['room.waiting'].sizes.map(z => z.seats)).toEqual([6, 10, 18]);
     // у каждого обследования в лаборатории, ЭКГ и рентгене — аппарат
     for (const e of Object.values(db.exams)) if (e.room && db.rooms[e.room].needsEquipment) expect(e.equipment?.length).toBeGreaterThan(0);
+  });
+
+  test('смотровая приёмного без мест для скорой; шкала с щелью между полосами или с чужим признаком', () => {
+    const bare = broken(d => edit(d, 'hospital/rooms/emergency.yaml', '      - [bed, 2, 2]\n', ''));
+    expect(bare.some(e => e.includes('room.emergency S: смотровая приёмного без мест для скорой'))).toBe(true);
+    const gap = broken(d => edit(d, 'scores/news2.yaml', '[[null, 8, 3], [9, 11, 1]', '[[null, 8, 3], [10, 11, 1]'));
+    expect(gap.some(e => e.includes('score.news2: vital.tachypnea — после 8 следующая полоса должна начинаться с 9'))).toBe(true);
+    const alien = broken(d => edit(d, 'scores/news2.yaml', '  - f: vital.fever\n', '  - f: sym.cough\n'));
+    expect(alien.some(e => e.includes('score.news2: признак sym.cough не найден или без числового значения'))).toBe(true);
+    // скорая везёт только лёгкое, а лёгкого не везут — дня со смотровой не начать
+    const nobody = broken(d => edit(d, 'hospital/economy.yaml', 'weight: { minor: 0, moderate: 1, serious: 3, critical: 12 }', 'weight: { minor: 0, moderate: 0, serious: 0, critical: 0 }'));
+    expect(nobody.some(e => e.includes('dept.therapy: скорой некого везти'))).toBe(true);
   });
 
   test('обследование с неизвестным аппаратом или аппаратом из чужого помещения', () => {

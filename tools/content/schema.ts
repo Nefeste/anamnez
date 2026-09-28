@@ -54,8 +54,7 @@ const link = z.strictObject({
 });
 const riskMultiplier = z.strictObject({ id: z.string(), x: z.number().positive() });
 const txId = z.string().regex(/^tx\.[a-z0-9_]+$/);
-/** Где лечить: дома, направить в стационар, вызвать скорую (перевод). */
-/** что нужно пациенту; `admit` — только выбор врача, в базе его нет */
+/** Где лечить — что нужно пациенту; `admit` («в палату») — только выбор врача, в базе его нет. */
 export const SETTINGS = ['home', 'ward', 'ambulance', 'surgery', 'transfer'] as const;
 const setting = z.enum(SETTINGS);
 const season = z.strictObject({ winter: z.number(), spring: z.number(), summer: z.number(), autumn: z.number() });
@@ -265,6 +264,8 @@ export const roomSchema = z.strictObject({
   seats: z.boolean().default(false),
   /** койки — места лежащих пациентов (палата, spec 2026-09-chapter-2, часть 26) */
   beds: z.boolean().default(false),
+  /** смотровая приёмного: койки — места для пациентов скорой (часть 27) */
+  emergency: z.boolean().default(false),
   sizes: z.array(roomSize).min(1),
   texts: z.strictObject({ hint }),
 });
@@ -392,6 +393,15 @@ export const economySchema = z.strictObject({
   interest: int,
   /** стационар: койко-день — питание и расходники лежащего, ₽; доля тарифа за прерванный случай, % */
   ward: z.strictObject({ bedDay: int, interrupted: pct }),
+  /**
+   * скорая (spec 2026-09-chapter-2, часть 27): машин за смену, если работает смотровая приёмного;
+   * вес болезни по тяжести (с распространённостью) и доля тяжёлых среди тех, у кого тяжесть есть, %
+   */
+  ambulance: z.strictObject({
+    perDay: z.tuple([int, int]),
+    weight: z.strictObject({ minor: int, moderate: int, serious: int, critical: int }),
+    severe: pct,
+  }),
   /** репутация: начало, шаг к оценке дня, %; поправки оценки за ожидание и санузел */
   reputation: z.strictObject({
     start: pct, pull: z.number().int().min(1).max(100),
@@ -504,6 +514,27 @@ export const achievementSchema = z.discriminatedUnion('kind', [
   z.strictObject({ ...achievementBase, kind: z.literal('chapter'), chapter: z.string().regex(/^chapter\.[a-z0-9_]+$/) }),
 ]);
 
+/**
+ * Шкала раннего предупреждения по витальным (NEWS2, spec 2026-09-chapter-2, часть 27): баллы по
+ * измеренному значению признака — [от, до, баллы], `null` — без границы; отдельные строки — дышит
+ * кислородом и спутанность; уровни ответа — средний с `medium` баллов или `single` по одному
+ * параметру, высокий — с `high`.
+ */
+export const scoreSchema = z.strictObject({
+  id: z.string().regex(/^score\.[a-z0-9_]+$/),
+  name: text,
+  params: z.array(z.strictObject({
+    f: z.string(),
+    points: z.array(z.tuple([z.number().nullable(), z.number().nullable(), z.number().int().min(0).max(3)])).min(2),
+  })).min(1),
+  oxygen: z.number().int().min(0).max(3),
+  confusion: z.number().int().min(0).max(3),
+  levels: z.strictObject({ medium: z.number().int().min(1), single: z.number().int().min(1), high: z.number().int().min(1) }),
+  texts: z.strictObject({ summary: text, hint }),
+  sources: z.array(source).min(1),
+  review,
+});
+
 export const versionSchema = z.strictObject({ contentVersion: z.number().int().min(1) });
 
 export type ConditionSrc = z.infer<typeof conditionSchema>;
@@ -520,5 +551,6 @@ export type CharacterSrc = z.infer<typeof characterSchema>;
 export type ChapterSrc = z.infer<typeof chapterSchema>;
 export type TipSrc = z.infer<typeof tipSchema>;
 export type AchievementSrc = z.infer<typeof achievementSchema>;
+export type ScoreSrc = z.infer<typeof scoreSchema>;
 export type LinkSrc = z.infer<typeof link>;
 export type ProbabilitySrc = z.infer<typeof probability>;
