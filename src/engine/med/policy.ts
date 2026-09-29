@@ -86,6 +86,8 @@ export function choosePlan(db: ContentDb, diagnosis: Id, observations: readonly 
     const alt = [...t.firstLine, ...t.acceptable].filter(ok).find(cures);
     if (alt && (t.plan ?? t.firstLine).some(cures)) treatments.push(alt);
   }
+  // обязательная профилактика по вероятным значениям (часть 32г-2): о прививках спрашивает, пока не уверен
+  treatments.push(...(t.prevent ?? []).filter(ok));
   const seen = new Set(observations.filter(o => o.shown).map(o => o.f));
   let setting = t.setting.default;
   const raise = (s: Setting) => {
@@ -220,7 +222,8 @@ export function nextStep(db: ContentDb, patient: Patient, obs: readonly Observat
   const opt = { ...options, exams: options.exams.filter(id => examFits(db.exams[id], patient)) };
   let now = phase;
   if (now.diagnosis === undefined) {
-    const routine = opt.exams.find(id => db.exams[id].routine && !done.includes(id));
+    // вопросы всем и то, что делают каждому с такой жалобой (часть 32г-2: неврологический осмотр при ране головы)
+    const routine = opt.exams.find(id => (db.exams[id].routine || db.exams[id].routineFor?.some(f => patient.complaints.includes(f))) && !done.includes(id));
     if (routine) return { step: { kind: 'exam', exam: routine }, phase: now };
     const ctx = contextOf(db, patient, obs);
     const beliefs = posterior(db, opt.candidates, obs, ctx);

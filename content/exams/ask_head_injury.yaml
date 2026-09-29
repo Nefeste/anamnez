@@ -5,7 +5,10 @@ time: { procedure: 2 }
 cost: 0
 discomfort: 0
 # спрашивают пришедших с травмой головы: иначе вопрос о рвоте и тошноте задавали бы и при пиелонефрите
-complaints: [sym.head_injury]
+complaints: [sym.head_injury, sym.head_wound]
+# пока черепно-мозговая травма не исключена — каждому с травмой и раной головы (733_2, раздел 2.1;
+# 734_2, раздел 2.1)
+routineFor: [sym.head_injury, sym.head_wound]
 checks:
   - { f: sym.loss_of_consciousness, sens: 85, spec: 97 }
   - { f: sym.amnesia, sens: 85, spec: 95 }

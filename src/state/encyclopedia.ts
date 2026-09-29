@@ -173,7 +173,7 @@ export function similar(db: ContentDb, id: Id): Id[] {
 // --- статьи -------------------------------------------------------------------------------
 
 /** Тактика: подпись в статье болезни и, если есть, в статье лечения («первая линия при …»). */
-const TACTICS: { key: keyof Omit<Tactics, 'setting' | 'byParam'>; label: 'firstLine' | 'plan' | 'acceptable' | 'supportive' | 'notIndicated' | 'harmful'; forLabel?: 'firstLineFor' | 'planFor' | 'acceptableFor' | 'supportiveFor' | 'harmfulFor' }[] = [
+const TACTICS: { key: keyof Omit<Tactics, 'setting' | 'byParam'>; label: 'firstLine' | 'plan' | 'acceptable' | 'supportive' | 'notIndicated' | 'harmful' | 'prevent'; forLabel?: 'firstLineFor' | 'planFor' | 'acceptableFor' | 'supportiveFor' | 'harmfulFor' | 'preventFor' }[] = [
   { key: 'firstLine', label: 'firstLine', forLabel: 'firstLineFor' },
   { key: 'plan', label: 'plan', forLabel: 'planFor' },
   { key: 'acceptable', label: 'acceptable', forLabel: 'acceptableFor' },
@@ -182,6 +182,8 @@ const TACTICS: { key: keyof Omit<Tactics, 'setting' | 'byParam'>; label: 'firstL
   // и по делу только в статье болезни
   { key: 'notIndicated', label: 'notIndicated' },
   { key: 'harmful', label: 'harmful', forLabel: 'harmfulFor' },
+  // обязательная профилактика (часть 32г-2): анатоксин столбнячный при просроченной прививке
+  { key: 'prevent', label: 'prevent', forLabel: 'preventFor' },
 ];
 
 function whereLines(db: ContentDb, c: Condition, t: Tactics): string[] {

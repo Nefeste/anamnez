@@ -288,6 +288,16 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
         const curesHere = (id: string) => treatments[id]?.effects.some(e => e.on === owner && e.kind === 'cure' && overlaps(e.when, x.when)) === true;
         for (const id of [...x.notIndicated, ...x.harmful]) if (curesHere(id)) errors.push(`${owner}: ${what} — ${id} при этих значениях действует на причину, а стоит «не показано» или «вредно»`);
       }
+      // обязательная профилактика (часть 32г-2): лечение есть; роль у него одна — «профилактика»,
+      // ни в каком списке тактики его нет, иначе роль при одних значениях спорила бы с другой
+      const roled = new Set([...lists.flat(), ...(t.byParam ?? []).flatMap(x => [x.firstLine, x.acceptable, x.supportive, x.notIndicated, x.harmful].flat())]);
+      for (const [what, ids] of [['профилактика', t.prevent ?? []], ...(t.byParam ?? []).map((x, i) => [`профилактика тактики по параметру №${i + 1}`, x.prevent ?? []] as const)] as const) {
+        for (const id of ids) {
+          if (!(id in treatments)) errors.push(`${owner}: ${what} — лечение ${id} не найдено`);
+          if (roled.has(id)) errors.push(`${owner}: ${what} — ${id} стоит и в списке тактики`);
+        }
+        if (new Set(ids).size !== ids.length) errors.push(`${owner}: ${what} — лечение повторяется`);
+      }
     }
     // с чем приходят — узнаётся по нескольким признакам; хроническому фону хватит одного (часть 30)
     if (c.presenting && c.findings.length < 3) errors.push(`${owner}: у болезни, с которой приходят, меньше трёх признаков`);
@@ -382,6 +392,11 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   }
   // обследование только при жалобе (часть 32г): жалоба — признак с текстом жалобы
   for (const x of Object.values(exams)) for (const f of x.complaints ?? []) if (!findings[f]?.texts.complaint) errors.push(`${x.id}: жалоба ${f} не найдена или без текста жалобы`);
+  // каждому с жалобой (часть 32г-2): жалоба есть, и обследование ей предлагается
+  for (const x of Object.values(exams)) for (const f of x.routineFor ?? []) {
+    if (!findings[f]?.texts.complaint) errors.push(`${x.id}: жалоба ${f} для обязательного обследования не найдена или без текста жалобы`);
+    if (x.complaints && !x.complaints.includes(f)) errors.push(`${x.id}: обязательно при жалобе ${f}, а при ней не предлагается`);
+  }
   // правила решения (часть 32): жалобы — признаки с жалобой, признаки и обследования есть, и
   // обследование правила открывает хоть один признак болезней, о которых оно
   for (const x of Object.values(rules)) {
@@ -501,6 +516,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (e.collect) out.collect = e.collect;
     if (e.radiation) out.radiation = e.radiation;
     if (e.routine) out.routine = true;
+    if (e.routineFor) out.routineFor = e.routineFor;
     if (e.sex) out.sex = e.sex;
     if (e.ageMin !== undefined) out.ageMin = e.ageMin;
     if (e.ageMax !== undefined) out.ageMax = e.ageMax;

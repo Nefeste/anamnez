@@ -10,6 +10,8 @@ export type ScoreNote =
   | { code: 'tx.harmful' | 'tx.notIndicated' | 'tx.acceptable'; tx: Id }
   | { code: 'tx.noCure' | 'tx.none' }
   | { code: 'tx.preHospitalMissing'; tx: Id }
+  /** не назначена обязательная профилактика (часть 32г-2): анатоксин столбнячный, вакцина от бешенства */
+  | { code: 'tx.preventMissing'; tx: Id }
   /** `recommended` — что надо было выбрать здесь: в амбулатории «вызвать скорую», со своей палатой — «в палату» */
   | { code: 'setting.under' | 'setting.over'; recommended: Setting }
   | { code: 'safety.knownViolation' | 'safety.unaskedViolation'; tx: Id; by: Id }
@@ -74,6 +76,8 @@ export function scoreCase(x: CaseInput): CaseScore {
   // лечение
   const roles = x.plan.roles;
   let treatment: Grade = 'A';
+  // безопасность, которую решает уже лечение: пропущенная профилактика (часть 32г-2)
+  let safety0: Grade = 'A';
   for (const r of roles) {
     if (r.role === 'harmful') { treatment = 'D'; notes.push({ code: 'tx.harmful', tx: r.tx }); }
     if (r.role === 'notIndicated') { treatment = worst(treatment, x.plan.effective ? 'B' : 'C'); notes.push({ code: 'tx.notIndicated', tx: r.tx }); }
@@ -88,6 +92,15 @@ export function scoreCase(x: CaseInput): CaseScore {
     notes.push({ code: 'tx.preHospitalMissing', tx: x.plan.preHospital[0] });
   }
   if (roles.length === 0 && x.selfLimiting) { treatment = worst(treatment, 'B'); notes.push({ code: 'tx.none' }); }
+  // обязательная профилактика (часть 32г-2): рана заживёт и без неё, но столбняк и бешенство не
+  // предупреждены — лечение неполное и опасное; переведённого прививают там, куда перевели
+  if (!referred) {
+    for (const tx of x.plan.preventMissing) {
+      treatment = worst(treatment, 'C');
+      safety0 = worst(safety0, 'C');
+      notes.push({ code: 'tx.preventMissing', tx });
+    }
+  }
   if (x.plan.effective && !roles.some(r => r.role === 'firstLine')) {
     // замена препарата выбора оправдана, если о противопоказании к нему врач знал
     if (!x.plan.firstLineBlocked) treatment = worst(treatment, 'B');
@@ -103,7 +116,7 @@ export function scoreCase(x: CaseInput): CaseScore {
   else if (fit === 'over') { setting = 'C'; notes.push({ code: 'setting.over', recommended: should }); }
 
   // безопасность
-  let safety: Grade = 'A';
+  let safety: Grade = safety0;
   for (const v of x.plan.violations) {
     if (v.known) { safety = 'D'; notes.push({ code: 'safety.knownViolation', tx: v.tx, by: v.by }); }
     else { safety = worst(safety, 'C'); notes.push({ code: 'safety.unaskedViolation', tx: v.tx, by: v.by }); }

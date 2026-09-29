@@ -308,7 +308,7 @@ describe('каталог больницы', () => {
       edit(d, C, '  ct: rule.ct_head', '  ct: rule.ct_brain');
       edit(d, C, '{ f: sym.nausea, band: sometimes }', '{ f: sym.nausea, band: sometimes, when: { ct: [yes] } }');
       // обследование только при жалобе — жалоба должна быть
-      edit(d, 'exams/ask_head_injury.yaml', 'complaints: [sym.head_injury]', 'complaints: [sym.head_trauma]');
+      edit(d, 'exams/ask_head_injury.yaml', 'complaints: [sym.head_injury, sym.head_wound]', 'complaints: [sym.head_trauma, sym.head_wound]');
     });
     expect(has(c, 'exam.ask_head_injury: жалоба sym.head_trauma не найдена или без текста жалобы')).toBe(true);
     expect(has(c, 'cond.concussion: правило rule.ct_brain параметра ct не найдено')).toBe(true);

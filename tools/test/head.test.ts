@@ -233,9 +233,10 @@ describe('виртуальный врач', () => {
 });
 
 describe('расспрос о травме головы — только при травме головы', () => {
-  test('кому подходит: с травмой головы — да, с пиелонефритом — нет; разумный врач терапии его не назначает', () => {
+  test('кому подходит: с травмой и раной головы — да, с пиелонефритом — нет; разумный врач терапии его не назначает', () => {
     const exam = db.exams['exam.ask_head_injury'];
-    expect(exam.complaints).toEqual(['sym.head_injury']);
+    // рана головы (часть 32г-2): пока ЧМТ не исключена — те же вопросы (733_2, раздел 2.1)
+    expect(exam.complaints).toEqual(['sym.head_injury', 'sym.head_wound']);
     expect(examFits(exam, people(CONC, 1, 1)[0])).toBe(true);
     const pyelo = people('cond.pyelonephritis', 60, 1);
     expect(pyelo.some(p => examFits(exam, p))).toBe(false);
@@ -243,7 +244,7 @@ describe('расспрос о травме головы — только при 
     const therapy = candidatesOf(db, 'dept.therapy');
     const runs = pyelo.map(p => runDoctor(db, p, 'rational', Rng.seeded(p.seed).fork('doctor'), { candidates: therapy, exams, threshold: 0.9 }));
     expect(runs.some(r => r.exams.includes('exam.ask_head_injury'))).toBe(false);
-    expect(article(db, 'exam.ask_head_injury')!.blocks.find(b => b.key === 'forComplaints')!.refs!.map(r => r.id)).toEqual(['sym.head_injury']);
+    expect(article(db, 'exam.ask_head_injury')!.blocks.find(b => b.key === 'forComplaints')!.refs!.map(r => r.id).sort()).toEqual(['sym.head_injury', 'sym.head_wound']);
   }, 30_000);
 });
 
