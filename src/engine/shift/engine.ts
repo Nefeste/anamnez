@@ -1065,12 +1065,15 @@ function finishOperation(db: ContentDb, s: ShiftState, p: ShiftPatient | undefin
   const hours = onset + (op.start - p.arriveT) / 3600;
   const at = complicationAt(db, p.patient);
   const complicated = hours >= at;
+  // после операции — свой срок стационара от суток операции: в осложнённой стадии (часть 28б) и у
+  // того, что лечат и без операции, — после рассечения спаек дольше, чем без него (часть 30в)
+  const after = db.conditions[truth]?.surgery;
+  const own = after?.tx === op.tx ? after.stay : undefined;
+  const norm = complicated ? (db.conditions[truth]?.complication?.stay ?? own) : own;
+  if (norm && stay.readyAfter !== undefined) stay.readyAfter = daysIn(stay, s.day) + branch(s, `surgery:${p.id}:stay`).range(norm[0], norm[1]);
   if (complicated) {
     op.complicated = true;
     day.complicated = (day.complicated ?? 0) + 1;
-    // после операции в осложнённой стадии — свой срок стационара, от суток операции
-    const norm = db.conditions[truth]?.complication?.stay;
-    if (norm && stay.readyAfter !== undefined) stay.readyAfter = daysIn(stay, s.day) + branch(s, `surgery:${p.id}:stay`).range(norm[0], norm[1]);
     p.closed!.notes.push({ code: 'op.complicated', tx: op.tx, of: truth, hours: Math.round(hours), before: at <= onset });
   }
   if (branch(s, `surgery:${p.id}`).chance(complicationsOf(db, op.tx, surgeon, complicated))) {
@@ -1087,10 +1090,17 @@ function finishOperation(db: ContentDb, s: ShiftState, p: ShiftPatient | undefin
   if (plan) {
     const fromOnset = plan.from === 'onset';
     const rounded = fromOnset ? Math.round(hours * 10) / 10 : Math.round((op.start - p.closed!.at) / 360) / 10;
-    const onTime = rounded <= plan.window;
+    // экстренной операции не было нужно, лечили в палате — срок после наблюдения (часть 30в): у
+    // непроходимости без ишемии и перитонита — не позже 72 ч от поступления
+    const observed = plan.observe !== undefined && recommendedSetting(db, p.patient) !== 'surgery';
+    const window = observed ? plan.observe! : plan.window;
+    const onTime = rounded <= window;
     if (onTime) day.onTime++;
     else day.late++;
-    p.closed!.notes.push({ code: onTime ? 'op.onTime' : 'op.late', tx: op.tx, hours: rounded, window: plan.window, ...(fromOnset ? { onset: true as const } : {}) });
+    p.closed!.notes.push({
+      code: onTime ? 'op.onTime' : 'op.late', tx: op.tx, hours: rounded, window,
+      ...(fromOnset ? { onset: true as const } : {}), ...(observed ? { observed: true as const } : {}),
+    });
   }
   if (s.economy) ledgerOf(s).expenses.consumables += db.treatments[op.tx].cost;
   startOperations(db, s);

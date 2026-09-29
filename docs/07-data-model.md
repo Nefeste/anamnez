@@ -75,11 +75,11 @@ interface Condition {
     // позже (приёмное и скорая, этап 4) — осложнения новыми состояниями:
     // complications?: { after: [number, number]; when?: Cond; add: Id; p: P }[];
   };
-  surgery?: { tx: Id; window: number; from?: 'onset' }; // лечат операцией tx; «в срок» — не позже window часов (0.0.45) от поступления или от начала болезни (0.0.48)
+  surgery?: { tx: Id; window: number; from?: 'onset'; observe?: number; stay?: [number, number] }; // лечат операцией tx; «в срок» — не позже window часов (0.0.45) от поступления или от начала болезни (0.0.48); лечили в палате без нужды в экстренной — не позже observe часов (0.0.50); после операции — stay суток от её суток (0.0.50)
   // осложнённая стадия по часам без лечения (0.0.46): по риску — за первые early.hours — early.p,
   // дальше later.p за каждые later.every часов; или по сроку (0.0.49) — наверняка через after
-  // часов от начала болезни; после операции в ней — свой срок стационара
-  complication?: { name: Text; early?: { hours: number; p: P }; later?: { every: number; p: P }; after?: number; stay?: [number, number] };
+  // часов от начала болезни; только при значениях параметров when (0.0.50); после операции в ней — свой срок стационара
+  complication?: { name: Text; early?: { hours: number; p: P }; later?: { every: number; p: P }; after?: number; when?: Record<string, string[]>; stay?: [number, number] };
   findings: Link[];                     // связи «состояние → признак»
   vitals?: VitalShift[];                // сдвиги витальных по стадиям и тяжести
   confirm: Id[] | 'clinical';
@@ -215,7 +215,7 @@ interface Treatment {
   route?: 'oral' | 'inhaled' | 'nasal' | 'iv' | 'im';
   cost: number;
   // cure — на причину: к выздоровлению с вероятностью p за days дней; relieve — облегчает
-  effects: { on: Id; kind: 'cure' | 'relieve'; p: P; days: [number, number] }[];
+  effects: { on: Id; kind: 'cure' | 'relieve'; p: P; days: [number, number]; when?: Record<string, string[]> }[]; // when — только при таких значениях параметров болезни (0.0.50)
   // противопоказание — фактор риска (аллергия) или состояние; reaction — вероятность
   // вреда, если назначить, когда оно у пациента есть (знал врач или нет)
   contraindications: { id: Id; level: 'relative' | 'absolute'; reaction: P }[];
@@ -414,6 +414,11 @@ interface Patient {
   `taken`, сколько его пациентов вы забрали. Приём с `from` — ваш: в прежних строках итогов,
   в профиле и оценке «Смены».
 
+- С 0.0.50 — хирургия живота, третий шаг (часть 30в): у действия лечения и у осложнённой стадии
+  — условие `when` по скрытым параметрам болезни; у операции болезни — `observe` (срок после
+  наблюдения в палате) и `stay` (стационар после операции). У заметки разбора `op.onTime` и
+  `op.late` — `observed`, если срок был после наблюдения. Схема сохранения прежняя: всё новое —
+  необязательные поля.
 - С 0.0.49 — хирургия живота, второй шаг (часть 30б): у осложнённой стадии болезни — `after`
   (стадия по сроку, прободная язва — давняя перфорация позже 24 ч), у операции — `surgery.delay`
   (каждый полный час от поступления до разреза выживаемость ниже на эту долю). Картинка

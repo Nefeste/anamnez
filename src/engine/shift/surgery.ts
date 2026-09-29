@@ -8,7 +8,7 @@ import type { ContentDb, Id } from '../../content/types';
 import { log2 } from '../core/math';
 import { P_ONE, Rng } from '../core/rng';
 import type { StaffMember } from '../hospital/staff';
-import { primaryOf } from '../med/plan';
+import { primaryOf, whenHolds } from '../med/plan';
 import type { Patient } from '../med/types';
 
 /** Операция лежащего: какая, когда решили, где и когда шла, чем кончилась. */
@@ -73,8 +73,10 @@ export function onsetHours(patient: Patient): number {
  * Осложнённой стадии у болезни нет — никогда.
  */
 export function complicationAt(db: ContentDb, patient: Patient): number {
-  const c = db.conditions[primaryOf(patient).id]?.complication;
-  if (!c) return Infinity;
+  const primary = primaryOf(patient);
+  const c = db.conditions[primary.id]?.complication;
+  // стадия только при таком значении скрытого параметра (часть 30в: некроз — при ишемии кишки)
+  if (!c || !whenHolds(c.when, primary.params)) return Infinity;
   // по сроку (часть 30б): прободная язва позже 24 ч от начала — давняя перфорация по шкале Boey
   if (c.after !== undefined) return c.after;
   if (!c.early || !c.later) return Infinity;

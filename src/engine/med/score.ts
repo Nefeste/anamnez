@@ -22,7 +22,7 @@ export type ScoreNote =
    */
   | { code: 'triage.under' | 'triage.over'; triage: 'red' | 'yellow' | 'green'; news2: number; flag?: Id }
   /** операция (часть 28): через сколько часов от решения, в срок `window` болезни или позже; осложнение после неё */
-  | { code: 'op.onTime' | 'op.late'; tx: Id; hours: number; window: number; onset?: true }
+  | { code: 'op.onTime' | 'op.late'; tx: Id; hours: number; window: number; onset?: true; observed?: true }
   | { code: 'op.complication'; tx: Id }
   /**
    * на момент разреза — осложнённая стадия болезни `of` (перфорация, часть 28б): часов от начала

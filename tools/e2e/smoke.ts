@@ -1246,6 +1246,7 @@ try {
   check(surgicalDx && (await visible(page, 'dx-cond.cholelithiasis').count()) === 0, 'холецистит: в выборе диагноза — желчная колика, острый холецистит, острый панкреатит; камни без приступа — нет');
   const ulcerDx = (await Promise.all(['cond.perforated_ulcer', 'cond.ulcer_bleeding', 'cond.strangulated_hernia'].map(id => visible(page, `dx-${id}`).count()))).every(n => n === 1);
   check(ulcerDx, 'хирургия живота (0.0.49): в выборе диагноза — прободная язва, язвенное кровотечение, ущемлённая паховая грыжа');
+  check((await visible(page, 'dx-cond.adhesive_sbo').count()) === 1, 'хирургия живота (0.0.50): в выборе диагноза — спаечная кишечная непроходимость');
   await visible(page, 'dx-cond.cholecystitis').click();
   await page.screenshot({ path: join(OUT, '19-gall-decision.png'), fullPage: true });
   await visible(page, 'decision-to-plan').click();
@@ -1270,6 +1271,19 @@ try {
   await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
   const perHour = await page.locator('text=Каждый час от поступления до операции выживаемость ниже на 2,4\u00a0%.').first().isVisible().catch(() => false);
   check((await visibleText(page, 'enc-article-title')) === 'Ушивание прободной язвы' && perHour, 'энциклопедия, ушивание: каждый час ожидания — выживаемость ниже на 2,4 %');
+  // спаечная непроходимость (0.0.50): без показаний к экстренной — в палате, операция не позже 72 ч;
+  // некроз — при ишемии кишки через 6 ч; у грыжи условие словами, а не «yes»
+  await page.goto(`${base}/encyclopedia/article/cond.adhesive_sbo`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const observe72 = await page.locator('text=не помогло — операция не позже 72\u00a0ч после поступления').first().isVisible().catch(() => false);
+  const necrosis = await page.locator('text=При ишемии кишки позже 6\u00a0ч от начала болезни — некроз кишки.').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'Спаечная кишечная непроходимость' && observe72 && necrosis,
+    `энциклопедия, непроходимость: ${await visibleText(page, 'enc-article-title')} — наблюдение до 72 ч, некроз при ишемии через 6 ч`);
+  await page.goto(`${base}/encyclopedia/article/cond.strangulated_hernia`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const herniaWhen = await page.locator('text=при непроходимости кишки').first().isVisible().catch(() => false);
+  const herniaYes = await page.locator('text=(yes)').count();
+  check(herniaWhen && herniaYes === 0, 'энциклопедия, ущемлённая грыжа: условие словами — «при непроходимости кишки», без «yes»');
 
   // энциклопедия: раздел «Шкалы», статья NEWS2 — баллы по показателям
   await page.goto(`${base}/encyclopedia/article/score.news2`);

@@ -1,6 +1,6 @@
 {
-  "version": "0.0.49",
-  "base": 26,
+  "version": "0.0.50",
+  "base": 27,
   "ids": {
     "achievements": [
       "ach.allergy_10",
@@ -51,6 +51,7 @@
     "conditions": [
       "cond.acs",
       "cond.acute_bronchitis",
+      "cond.adhesive_sbo",
       "cond.allergic_rhinitis",
       "cond.anemia_iron",
       "cond.appendicitis",
@@ -91,6 +92,7 @@
       "cond.acute_bronchitis/onset",
       "cond.acute_bronchitis/peak",
       "cond.acute_bronchitis/protracted",
+      "cond.adhesive_sbo/early",
       "cond.allergic_rhinitis/active",
       "cond.anemia_iron/active",
       "cond.appendicitis/early",
@@ -217,6 +219,7 @@
       "ecg.lvh",
       "ecg.st_depression",
       "ecg.st_elevation",
+      "hx.abdominal_surgery",
       "hx.alcohol",
       "hx.allergy_nsaid",
       "hx.allergy_penicillin",
@@ -297,11 +300,13 @@
       "sym.aura",
       "sym.back_pain",
       "sym.back_radiation",
+      "sym.bloating",
       "sym.chest_pain_pressing",
       "sym.chest_tightness",
       "sym.chills",
       "sym.chronic_cough",
       "sym.cold_intolerance",
+      "sym.colicky_pain",
       "sym.constipation",
       "sym.cough",
       "sym.cough_long",
@@ -451,6 +456,7 @@
     ],
     "treatments": [
       "tx.ace_inhibitor",
+      "tx.adhesiolysis",
       "tx.amoxicillin",
       "tx.amoxicillin_clavulanate",
       "tx.antacid",
@@ -476,6 +482,7 @@
       "tx.metformin",
       "tx.nasal_saline",
       "tx.nasal_steroid",
+      "tx.ng_tube",
       "tx.nitrofurantoin",
       "tx.nitroglycerin",
       "tx.ors",

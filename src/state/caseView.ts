@@ -447,8 +447,8 @@ export function noteText(n: ScoreNote): string {
     case 'thrift.over': return t.thriftOver(n.times);
     case 'triage.under': return t.triageUnder(n.triage, n.news2, n.flag && db.findings[n.flag]?.name.ru);
     case 'triage.over': return t.triageOver(n.triage, n.news2, n.flag && db.findings[n.flag]?.name.ru);
-    case 'op.onTime': return t.opOnTime(tx(n.tx), n.hours, n.window, n.onset === true);
-    case 'op.late': return t.opLate(tx(n.tx), n.hours, n.window, n.onset === true);
+    case 'op.onTime': return t.opOnTime(tx(n.tx), n.hours, n.window, n.onset === true, n.observed === true);
+    case 'op.late': return t.opLate(tx(n.tx), n.hours, n.window, n.onset === true, n.observed === true);
     case 'op.complication': return t.opComplication(tx(n.tx));
     case 'op.complicated': return t.opComplicated(db.conditions[n.of]?.complication?.name.ru ?? n.of, n.hours, n.before);
   }

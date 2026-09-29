@@ -174,6 +174,13 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
 
   // --- ссылки ---
   const hasF = (id: string) => id in findings;
+  /** условие по скрытому параметру болезни (часть 30в): параметр объявлен, значения — из его списка */
+  const checkWhen = (owner: string, what: string, when: Record<string, string[]> | undefined, params?: Record<string, Record<string, number>>) => {
+    for (const [param, values] of Object.entries(when ?? {})) {
+      if (!params?.[param]) errors.push(`${owner}: ${what} — условие по необъявленному параметру ${param}`);
+      else for (const v of values) if (!(v in params[param])) errors.push(`${owner}: ${what} — у параметра ${param} нет значения ${v}`);
+    }
+  };
   const checkLinks = (owner: string, links: LinkSrc[], params?: Record<string, Record<string, number>>, stages?: string[]) => {
     for (const l of links) {
       if (!hasF(l.f)) { errors.push(`${owner}: признак ${l.f} не найден`); continue; }
@@ -243,16 +250,25 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       else if (!op.effects.some(e => e.on === owner && e.kind === 'cure')) errors.push(`${owner}: операция ${c.surgery.tx} не действует на причину`);
       // осложнённая стадия (часть 28б): у операции — свои доли для неё
       else if (c.complication && !op.surgery?.complicated) errors.push(`${owner}: у болезни есть осложнённая стадия, а у операции ${c.surgery.tx} нет долей для неё (complicated)`);
+      // срок после наблюдения в палате (часть 30в) — у того, что лечат и без операции, и дольше экстренного
+      const x = c.surgery;
+      if (x.observe !== undefined && x.observe <= x.window) errors.push(`${owner}: срок после наблюдения (observe) должен быть больше срока экстренной операции`);
+      if (x.observe !== undefined && x.from === 'onset') errors.push(`${owner}: срок после наблюдения (observe) считается от поступления, а срок операции — от начала болезни`);
+      if (x.stay && x.stay[0] > x.stay[1]) errors.push(`${owner}: срок стационара после операции — от большего к меньшему`);
     }
     if (c.complication) {
       const x = c.complication;
       if ((x.early && prob(x.early.p) >= 10000) || (x.later && prob(x.later.p) >= 10000)) errors.push(`${owner}: доля осложнённой стадии за отрезок должна быть меньше 100 %`);
       if (x.stay && x.stay[0] > x.stay[1]) errors.push(`${owner}: срок стационара в осложнённой стадии — от большего к меньшему`);
+      checkWhen(owner, 'осложнённая стадия', x.when, c.params);
     }
     if (!c.course.selfLimiting && c.presenting && !c.course.untreated) warnings.push(`${owner}: не проходит само, но не сказано, что будет без лечения`);
   }
   for (const t of Object.values(treatments)) {
-    for (const e of t.effects) if (!(e.on in conditions)) errors.push(`${t.id}: действует на неизвестное состояние ${e.on}`);
+    for (const e of t.effects) {
+      if (!(e.on in conditions)) errors.push(`${t.id}: действует на неизвестное состояние ${e.on}`);
+      else checkWhen(t.id, `действие на ${e.on}`, e.when, conditions[e.on].params);
+    }
     // операция: помещение, бригада из его штата и аппараты из этого помещения
     if ((t.kind === 'surgery') !== (t.surgery !== undefined)) errors.push(`${t.id}: у операции (kind: surgery) должен быть блок surgery, и только у неё`);
     if (t.surgery) {
@@ -341,7 +357,15 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (c.course.selfLimiting) out.selfLimiting = true;
     if (c.course.untreated) out.untreated = { p: prob(c.course.untreated.band), days: c.course.untreated.days };
     if (c.course.stay) out.stay = c.course.stay;
-    if (c.surgery) out.surgery = { tx: c.surgery.tx, window: c.surgery.window, ...(c.surgery.from === 'onset' ? { from: 'onset' as const } : {}) };
+    if (c.surgery) {
+      const x = c.surgery;
+      out.surgery = {
+        tx: x.tx, window: x.window,
+        ...(x.from === 'onset' ? { from: 'onset' as const } : {}),
+        ...(x.observe !== undefined ? { observe: x.observe } : {}),
+        ...(x.stay ? { stay: x.stay } : {}),
+      };
+    }
     if (c.complication) {
       const x = c.complication;
       out.complication = {
@@ -349,6 +373,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
         ...(x.early ? { early: { hours: x.early.hours, p: prob(x.early.p) } } : {}),
         ...(x.later ? { later: { every: x.later.every, p: prob(x.later.p) } } : {}),
         ...(x.after !== undefined ? { after: x.after } : {}),
+        ...(x.when ? { when: x.when } : {}),
         ...(x.stay ? { stay: x.stay } : {}),
       };
     }
@@ -389,7 +414,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   for (const t of Object.values(treatments).sort((a, b) => (a.id < b.id ? -1 : 1))) {
     const out: Treatment = {
       id: t.id, name: t.name, kind: t.kind, cost: t.cost,
-      effects: t.effects.map(e => ({ on: e.on, kind: e.kind, p: prob(e.band), days: e.days })),
+      effects: t.effects.map(e => ({ on: e.on, kind: e.kind, p: prob(e.band), days: e.days, ...(e.when ? { when: e.when } : {}) })),
       contraindications: t.contraindications.map(k => ({ id: k.id, level: k.level, reaction: prob(k.reaction) })),
       texts: t.texts, sources: t.sources, review: t.review,
     };

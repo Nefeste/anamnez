@@ -6,7 +6,7 @@
 // (ADR 0004): одинаковый исход на телефоне и в тестах.
 import type { ContentDb, Id } from '../../content/types';
 import { P_ONE, type Rng } from '../core/rng';
-import { type Plan, type PlanEval, primaryOf, SETTING_ORDER } from './plan';
+import { curesOf, type Plan, type PlanEval, primaryOf, SETTING_ORDER } from './plan';
 import type { Patient } from './types';
 
 /** Сколько дней после приёма модель следит за пациентом, отпущенным домой. */
@@ -51,7 +51,7 @@ export function observe(db: ContentDb, patient: Patient, plan: Plan, ev: PlanEva
   }
 
   // 2. Лечение причины. Дома то, что надо лечить в стационаре, помогает вдвое реже.
-  const cures = plan.treatments.flatMap(tx => db.treatments[tx]?.effects.filter(e => e.on === primary.id && e.kind === 'cure') ?? []);
+  const cures = curesOf(db, primary, plan.treatments);
   const underTreated = SETTING_ORDER[ev.setting.recommended] > SETTING_ORDER.home;
   const pCure = anyOf(cures.map(e => (underTreated ? Math.floor(e.p / 2) : e.p)));
   if (cures.length > 0 && rng.fork('cure').chance(pCure)) {

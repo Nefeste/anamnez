@@ -125,6 +125,13 @@ export const conditionSchema = z.strictObject({
     tx: txId, window: z.number().int().min(1).max(240),
     /** срок — от начала болезни, а не от поступления: ранняя холецистэктомия — в первые 72 ч болезни (часть 30) */
     from: z.enum(['arrival', 'onset']).optional(),
+    /**
+     * срок, если экстренной операции не нужно и лечат в палате (часть 30в): неоперативное лечение
+     * не помогло — операция не позже стольких часов от поступления
+     */
+    observe: z.number().int().min(1).max(240).optional(),
+    /** стационар после операции, сутки от суток операции — если он дольше, чем без неё (часть 30в) */
+    stay: z.tuple([z.number().int().min(1), z.number().int().min(1)]).optional(),
   }).optional(),
   /**
    * осложнённая стадия (часть 28б): без действенного лечения наступает по часам от начала
@@ -138,6 +145,8 @@ export const conditionSchema = z.strictObject({
     later: z.strictObject({ every: z.number().int().min(1).max(240), p: probability }).optional(),
     /** наступает наверняка через столько часов от начала болезни (часть 30б: прободная язва позже 24 ч — Boey) */
     after: z.number().int().min(1).max(240).optional(),
+    /** стадия бывает только при таком значении скрытого параметра (часть 30в: некроз — при ишемии кишки) */
+    when: z.record(z.string(), z.array(z.string())).optional(),
     stay: z.tuple([z.number().int().min(1), z.number().int().min(1)]).optional(),
   }).refine(x => (x.after !== undefined) !== (x.early !== undefined && x.later !== undefined) && (x.early === undefined) === (x.later === undefined), {
     message: 'осложнённая стадия — либо по риску (early и later), либо по сроку (after)',
@@ -223,6 +232,8 @@ export const treatmentSchema = z.strictObject({
     kind: z.enum(['cure', 'relieve']),
     band: probability,
     days: z.tuple([z.number().int().min(0), z.number().int().min(0)]),
+    /** действует, только если у болезни такое значение скрытого параметра (часть 30в: без ишемии кишки) */
+    when: z.record(z.string(), z.array(z.string())).optional(),
   })).default([]),
   /** противопоказание — фактор риска (аллергия) или состояние; reaction — вероятность вреда, если назначить */
   contraindications: z.array(z.strictObject({

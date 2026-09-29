@@ -104,10 +104,14 @@ function strongest(links: readonly Link[]): Link[] {
   return [...best.values()];
 }
 
-/** Условие связи словами: «при тяжёлом течении», «с подъёмом ST». */
-function whenNote(when: Link['when']): string | undefined {
+/**
+ * Условие по скрытому параметру словами: «при тяжёлом течении», «при ишемии кишки». Подпись —
+ * по паре «параметр:значение», иначе по значению (тяжесть одна у многих болезней); без подписи
+ * значение не показываем — «yes» в статье хуже, чем ничего.
+ */
+export function whenText(when: Record<string, string[]> | undefined): string | undefined {
   if (!when) return undefined;
-  const words = Object.values(when).flat().map(v => T.encyclopedia.when[v] ?? v);
+  const words = Object.entries(when).flatMap(([name, values]) => values.map(v => T.encyclopedia.when[`${name}:${v}`] ?? T.encyclopedia.when[v])).filter((w): w is string => w !== undefined);
   return words.length > 0 ? words.join(', ') : undefined;
 }
 
@@ -181,12 +185,15 @@ function whereLines(db: ContentDb, c: Condition, t: Tactics): string[] {
   const e = T.encyclopedia;
   const s = t.setting;
   const lines = [e.whereDefault(e.setting[s.default])];
-  for (const [value, set] of Object.entries(s.param?.map ?? {})) if (set !== s.default) lines.push(e.whereIf(e.when[value] ?? value, e.setting[set]));
+  for (const [value, set] of Object.entries(s.param?.map ?? {})) if (set !== s.default) lines.push(e.whereIf(whenText({ [s.param!.name]: [value] }) ?? value, e.setting[set]));
   if (s.redFlag && s.redFlag !== s.default) lines.push(e.whereRedFlag(e.setting[s.redFlag]));
   for (const r of s.risks ?? []) if (r.setting !== s.default) lines.push(e.whereRisk(nameOf(db, r.id), e.setting[r.setting]));
   // операция и срок стационара (spec 2026-09-chapter-2, части 26 и 28), после осложнённой стадии — свой (28б)
   if (c.surgery) lines.push(e.whereSurgery(nameOf(db, c.surgery.tx), c.surgery.window, c.surgery.from === 'onset'));
+  // без показаний к экстренной операции — наблюдение в палате, не помогло — операция в срок (часть 30в)
+  if (c.surgery?.observe !== undefined) lines.push(e.whereObserve(c.surgery.observe));
   if (c.stay) lines.push(e.whereStay(c.stay[0], c.stay[1]));
+  if (c.surgery?.stay) lines.push(e.whereStayOperated(c.surgery.stay[0], c.surgery.stay[1]));
   if (c.complication?.stay) lines.push(e.whereStayComplicated(c.complication.name.ru, c.complication.stay[0], c.complication.stay[1]));
   return lines;
 }
@@ -211,7 +218,7 @@ function whoLines(c: Condition): string[] {
 function conditionArticle(db: ContentDb, c: Condition): Article {
   const e = T.encyclopedia;
   const blocks: Block[] = [{ key: 'what', title: e.what, text: [c.texts.summary.ru] }];
-  blocks.push({ key: 'signs', title: e.signs, rows: byBand(db, strongest(c.findings).map(l => ({ id: l.f, p: l.p, note: whenNote(l.when) }))) });
+  blocks.push({ key: 'signs', title: e.signs, rows: byBand(db, strongest(c.findings).map(l => ({ id: l.f, p: l.p, note: whenText(l.when) }))) });
 
   const who = whoLines(c);
   const whoRows: Row[] = [];
@@ -238,7 +245,7 @@ function conditionArticle(db: ContentDb, c: Condition): Article {
   if (c.selfLimiting) course.push(e.selfLimiting);
   if (c.untreated && c.untreated.p > 0) course.push(e.untreated(e.band[bandOf(c.untreated.p)], c.untreated.days[0], c.untreated.days[1]));
   const x = c.complication;
-  if (x?.after !== undefined) course.push(e.complicationAfter(x.name.ru, x.after));
+  if (x?.after !== undefined) course.push(e.complicationAfter(x.name.ru, x.after, whenText(x.when)));
   else if (x?.early && x.later) course.push(e.complicationRisk(x.name.ru, x.early.hours, pct(x.early.p), x.later.every, pct(x.later.p)));
   if (course.length > 0) blocks.push({ key: 'course', title: e.course, text: course });
 
@@ -259,7 +266,7 @@ function findingArticle(db: ContentDb, f: Finding): Article {
 
   const inConditions = Object.values(db.conditions).flatMap(c => {
     const l = strongest(c.findings.filter(x => x.f === f.id))[0];
-    return l ? [{ id: c.id, p: l.p, note: whenNote(l.when) }] : [];
+    return l ? [{ id: c.id, p: l.p, note: whenText(l.when) }] : [];
   });
   const rows = byBand(db, inConditions);
   const risks = Object.values(db.risks).filter(r => r.findings.some(l => l.f === f.id)).map(r => ref(db, r.id)).sort(byTitle);
@@ -315,7 +322,7 @@ function treatmentArticle(db: ContentDb, x: Treatment): Article {
   // операция (часть 28): что ею лечат и в какой срок, где делают и какая бригада
   const op = x.surgery;
   if (op) {
-    const treats = conditions.filter(c => c.surgery?.tx === x.id).map(c => ref(db, c.id, e.opWindow(c.surgery!.window, c.surgery!.from === 'onset'))).sort(byTitle);
+    const treats = conditions.filter(c => c.surgery?.tx === x.id).map(c => ref(db, c.id, e.opWindow(c.surgery!.window, c.surgery!.from === 'onset', c.surgery!.observe))).sort(byTitle);
     if (treats.length > 0) blocks.push({ key: 'treats', title: e.opTreats, refs: treats });
     blocks.push({ key: 'where', title: e.whereDone, refs: [ref(db, op.room), ...op.equipment.map(id => ref(db, id))] });
     blocks.push({ key: 'team', title: e.opTeam, refs: op.team.map(id => ref(db, id)) });

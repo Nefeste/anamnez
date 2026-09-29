@@ -6,7 +6,7 @@
 // по суткам в стационаре. Так обход, итоги дня и повтор дают одно и то же.
 import type { ContentDb, Id } from '../../content/types';
 import { P_ONE, type Rng } from '../core/rng';
-import { type Plan, type PlanEval, primaryOf } from '../med/plan';
+import { curesOf, type Plan, type PlanEval, primaryOf } from '../med/plan';
 import type { Patient } from '../med/types';
 import type { Operation } from './surgery';
 
@@ -94,7 +94,7 @@ export function wardCourse(db: ContentDb, patient: Patient, plan: Plan, ev: Plan
       break;
     }
   }
-  const cures = plan.treatments.flatMap(tx => db.treatments[tx]?.effects.filter(e => e.on === primary.id && e.kind === 'cure') ?? []);
+  const cures = curesOf(db, primary, plan.treatments);
   if (cures.length > 0 && rng.fork('cure').chance(anyOf(cures.map(e => e.p)))) {
     const [lo, hi] = cond.stay ?? [Math.max(1, Math.min(...cures.map(e => e.days[0]))), Math.max(1, ...cures.map(e => e.days[1]))];
     out.readyAfter = from + rng.fork('ready').range(lo, hi);

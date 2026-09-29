@@ -81,7 +81,7 @@ export interface Treatment {
   route?: 'oral' | 'inhaled' | 'nasal' | 'iv' | 'im';
   cost: number;
   /** cure — действует на причину: к выздоровлению с вероятностью p за days дней */
-  effects: { on: Id; kind: 'cure' | 'relieve'; p: P; days: [number, number] }[];
+  effects: Effect[];
   /** reaction — вероятность вреда, если назначить при этом противопоказании */
   contraindications: { id: Id; level: 'relative' | 'absolute'; reaction: P }[];
   /** операция (spec 2026-09-chapter-2, часть 28): помещение, бригада, аппараты — все сразу, минуты, осложнений при среднем навыке хирурга */
@@ -89,6 +89,18 @@ export interface Treatment {
   texts: { hint: Text };
   sources: Source[];
   review: Review;
+}
+
+/**
+ * Действие лечения на состояние. `when` (часть 30в) — только при таких значениях скрытых параметров
+ * болезни: неоперативное лечение непроходимости помогает, если нет ишемии кишки.
+ */
+export interface Effect {
+  on: Id;
+  kind: 'cure' | 'relieve';
+  p: P;
+  days: [number, number];
+  when?: Record<string, string[]>;
 }
 
 export interface Surgery {
@@ -117,7 +129,23 @@ export interface Complication {
   later?: { every: number; p: P };
   /** по сроку: наступает наверняка через столько часов от начала болезни (часть 30б) */
   after?: number;
+  /** стадия бывает только при таких значениях скрытых параметров (часть 30в: некроз — при ишемии кишки) */
+  when?: Record<string, string[]>;
   /** срок стационара после операции в этой стадии, сутки */
+  stay?: [number, number];
+}
+
+/**
+ * Операция болезни (часть 28): какая и за сколько часов, чтобы не поздно. С частью 30в — срок
+ * `observe`, если экстренной операции не нужно и лечат в палате, и свой стационар после операции.
+ */
+export interface ConditionSurgery {
+  tx: Id;
+  window: number;
+  from?: 'onset';
+  /** нужды в экстренной операции нет, лечат в палате: не помогло — операция не позже стольких часов от поступления */
+  observe?: number;
+  /** стационар после операции, сутки от суток операции */
   stay?: [number, number];
 }
 
@@ -171,7 +199,7 @@ export interface Condition {
   stay?: [number, number];
   /** лечат операцией (часть 28): какой и за сколько часов от поступления, чтобы не поздно */
   /** срок `window` часов — от поступления или, с `from: 'onset'`, от начала болезни (часть 30) */
-  surgery?: { tx: Id; window: number; from?: 'onset' };
+  surgery?: ConditionSurgery;
   /** осложнённая стадия (часть 28б): перфорация аппендикса */
   complication?: Complication;
   /** тактика; есть у всех, с чем приходят (валидатор) */

@@ -41,6 +41,10 @@ export const encyclopedia = {
     mild: 'при лёгком течении',
     stemi: 'при инфаркте с подъёмом ST',
     nste: 'при ОКС без подъёма ST',
+    // скрытые параметры «есть / нет» — по паре «параметр:значение» (части 30б и 30в)
+    'obstruction:yes': 'при непроходимости кишки',
+    'ischemia:yes': 'при ишемии кишки',
+    'ischemia:no': 'без ишемии кишки',
   } as Record<string, string>,
   icd: (code: string) => `МКБ-10: ${code}`,
 
@@ -77,12 +81,16 @@ export const encyclopedia = {
   // операция и срок стационара (spec 2026-09-chapter-2, части 26 и 28)
   whereSurgery: (op: string, hours: number, onset = false) => `Операция — ${op.toLowerCase()}: в первые ${hours}\u00a0ч ${onset ? 'от начала болезни' : 'после поступления'}.`,
   whereStay: (lo: number, hi: number) => `В стационаре обычно ${lo === hi ? lo : `${lo}–${hi}`}\u00a0${pluralRu(hi, 'день', 'дня', 'дней')}.`,
+  // наблюдение в палате и стационар после операции (часть 30в)
+  whereObserve: (hours: number) => `Без показаний к экстренной операции — лечение в палате; не помогло — операция не позже ${hours}\u00a0ч после поступления.`,
+  whereStayOperated: (lo: number, hi: number) => `После операции — ${lo === hi ? lo : `${lo}–${hi}`}\u00a0${pluralRu(hi, 'день', 'дня', 'дней')}.`,
   // осложнённая стадия (часть 28б): риск по часам без операции, срок после неё, исходы операции
   whereStayComplicated: (name: string, lo: number, hi: number) => `После операции, если была ${name}, — ${lo === hi ? lo : `${lo}–${hi}`}\u00a0${pluralRu(hi, 'день', 'дня', 'дней')}.`,
   complicationRisk: (name: string, hours: number, early: string, every: number, later: string) =>
     `${name[0].toUpperCase()}${name.slice(1)} без операции: за первые ${hours}\u00a0ч — до ${early}\u00a0%, дальше — ${later}\u00a0% за каждые ${every}\u00a0ч.`,
   // по сроку (часть 30б): прободная язва позже суток — поздняя госпитализация
-  complicationAfter: (name: string, hours: number) => `Позже ${hours}\u00a0ч от начала болезни — ${name}.`,
+  complicationAfter: (name: string, hours: number, when?: string) =>
+    `${when ? `${when[0].toUpperCase()}${when.slice(1)} позже` : 'Позже'} ${hours}\u00a0ч от начала болезни — ${name}.`,
   // каждый час до операции (часть 30б, Buck 2013)
   opDelay: (pctHour: string) => `Каждый час от поступления до операции выживаемость ниже на ${pctHour}\u00a0%.`,
   opOutcomes: 'Исходы',
@@ -92,7 +100,8 @@ export const encyclopedia = {
     `Умирают в стационаре — ${plain}\u00a0%${complicated && name ? `; если была ${name}, — ${complicated}\u00a0%` : ''}.`,
   surgeryRow: 'Операция',
   opTreats: 'Чем лечат и в какой срок',
-  opWindow: (hours: number, onset = false) => `в первые ${hours}\u00a0ч ${onset ? 'от начала болезни' : 'после поступления'}`,
+  opWindow: (hours: number, onset = false, observe?: number) =>
+    `в первые ${hours}\u00a0ч ${onset ? 'от начала болезни' : 'после поступления'}${observe !== undefined ? `; после наблюдения — до ${observe}\u00a0ч` : ''}`,
   opTeam: 'Бригада',
   course: 'Без лечения',
   selfLimiting: 'Обычно проходит само.',
