@@ -73,7 +73,7 @@ export function speedOf(db: ContentDb, m?: StaffMember): number {
   return Math.round((b.speed[m.skill - 1] * trait) / 100);
 }
 
-/** Как рентгенолог читает снимок: поправка чувствительности и специфичности, п. п. */
+/** Как читает снимок тот, кто его описывает (рентгенолог, врач УЗД): поправка чувствительности и специфичности, п. п. */
 export function readingOf(db: ContentDb, m?: StaffMember): [number, number] {
   if (!m) return [0, 0];
   const b = db.economy.staff;

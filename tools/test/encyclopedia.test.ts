@@ -87,6 +87,13 @@ describe('энциклопедия', () => {
     expect(needs.map(r => r.label)).toEqual(['Люди', 'Аппарат — хотя бы один']);
     expect(article(db, 'room.procedure')!.blocks.find(b => b.key === 'collectsFor')!.refs!.map(r => r.id)).toContain('exam.cbc');
     expect(article(db, 'room.waiting')!.blocks.find(b => b.key === 'sizes')!.text![2]).toBe('L — 13\u00a0×\u00a07\u00a0м, 26\u00a0000\u00a0₽, содержание 225\u00a0₽ в\u00a0день, 18\u00a0мест.');
+    // смотровая приёмного — места для скорой; шкала NEWS2 — своя статья с баллами (часть 27)
+    expect(article(db, 'room.emergency')!.blocks.find(b => b.key === 'sizes')!.text![1]).toBe('M — 9\u00a0×\u00a06\u00a0м, 38\u00a0000\u00a0₽, содержание 260\u00a0₽ в\u00a0день, 2\u00a0места для скорой.');
+    const news = article(db, 'score.news2')!;
+    expect(news.section).toBe('scores');
+    expect(news.blocks.find(b => b.key === 'points')!.text![0]).toBe('Дыхание, в минуту: 8 и меньше — 3; 9–11 — 1; 12–20 — 0; 21–24 — 2; 25 и больше — 3');
+    expect(news.blocks.find(b => b.key === 'points')!.text).toContain('Температура, °C: 35,0 и меньше — 3; 35,1–36,0 — 1; 36,1–38,0 — 0; 38,1–39,0 — 1; 39,1 и больше — 2');
+    expect(news.blocks.find(b => b.key === 'uses')!.refs!.map(r => r.id)).toEqual(db.scores['score.news2'].params.map(p => p.f));
     // палата — с койками (часть 26)
     expect(article(db, 'room.ward')!.blocks.find(b => b.key === 'sizes')!.text).toEqual([
       'S — 7\u00a0×\u00a07\u00a0м, 22\u00a0000\u00a0₽, содержание 150\u00a0₽ в\u00a0день, 2\u00a0койки.',

@@ -4,7 +4,7 @@
 import type { ContentDb, Id, Setting } from '../../content/types';
 import { Rng } from '../core/rng';
 import { complaintObservations, examFits, runExam } from './exams';
-import { type Belief, expectedGain, knownFacts, posterior } from './infer';
+import { type Belief, contextOf, expectedGain, knownFacts, posterior } from './infer';
 import { choiceFor, type Plan, possibleFor, SETTING_ORDER, type Venue } from './plan';
 import type { Observation, Patient } from './types';
 
@@ -99,8 +99,7 @@ export function choosePlan(db: ContentDb, diagnosis: Id, observations: readonly 
  * решает разумный врач, так проверяет назначение страховая (spec 2026-09-own-hospital, часть 9).
  */
 export function indicated(db: ContentDb, patient: Patient, obs: readonly Observation[], candidates: Id[], examId: Id): boolean {
-  const known = knownFacts(db, obs);
-  const ctx = { sex: patient.sex, age: patient.age, season: patient.season, knownRisks: known.risks, knownConditions: known.conditions };
+  const ctx = contextOf(db, patient, obs);
   const beliefs = posterior(db, candidates, obs, ctx);
   return quantize(expectedGain(db, examId, beliefs, ctx, new Set(obs.map(o => o.f)))) >= quantize(MIN_GAIN);
 }
@@ -163,8 +162,7 @@ export function nextStep(db: ContentDb, patient: Patient, obs: readonly Observat
   if (now.diagnosis === undefined) {
     const routine = opt.exams.find(id => db.exams[id].routine && !done.includes(id));
     if (routine) return { step: { kind: 'exam', exam: routine }, phase: now };
-    const known = knownFacts(db, obs);
-    const ctx = { sex: patient.sex, age: patient.age, season: patient.season, knownRisks: known.risks, knownConditions: known.conditions };
+    const ctx = contextOf(db, patient, obs);
     const beliefs = posterior(db, opt.candidates, obs, ctx);
     if (beliefs[0].p < opt.threshold) {
       const best = bestExam(db, beliefs, ctx, obs, done, opt);
@@ -192,10 +190,7 @@ export function runDoctor(db: ContentDb, patient: Patient, strategy: Strategy, r
   const minGain = opt.minGain ?? MIN_GAIN;
   const obs: Observation[] = complaintObservations(patient);
   const done: Id[] = [];
-  const ctxOf = () => {
-    const known = knownFacts(db, obs);
-    return { sex: patient.sex, age: patient.age, season: patient.season, knownRisks: known.risks, knownConditions: known.conditions };
-  };
+  const ctxOf = () => contextOf(db, patient, obs);
   const doExam = (id: Id) => {
     obs.push(...runExam(db, patient, id, rng.fork(`exam:${done.length}:${id}`)));
     done.push(id);

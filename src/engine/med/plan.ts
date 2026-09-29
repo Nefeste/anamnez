@@ -1,9 +1,9 @@
 // План лечения и его проверка (`docs/04-medical-model.md` §8). План оценивается по правде:
 // роль каждого назначения при настоящем основном заболевании, где на самом деле надо
 // лечить и какие противопоказания нарушены — и знал ли о них врач.
-import type { ContentDb, Id, Setting } from '../../content/types';
+import type { ContentDb, Effect, Id, Setting } from '../../content/types';
 import { knownFacts } from './infer';
-import type { Observation, Patient } from './types';
+import type { ActiveCondition, Observation, Patient } from './types';
 
 export interface Plan {
   treatments: Id[];
@@ -37,15 +37,23 @@ export function settingFit(need: Setting, chosen: Setting): 'ok' | 'under' | 'ov
   return SETTING_ORDER[chosen] < SETTING_ORDER[need] ? 'under' : 'over';
 }
 
-/** Где свободна своя койка — там стационар свой (часть 26); операционная и перевод — с главой 2. */
+/**
+ * Что есть в больнице: свободная своя койка — стационар свой (часть 26); работает операционная с
+ * бригадой и аппаратами для нужной операции и есть койка после неё — операция своя (часть 28).
+ */
 export interface Venue {
   ward?: boolean;
+  or?: boolean;
 }
 
-/** Что выбрать при такой нужде здесь: в амбулатории — направить или скорая, со своей палатой — в неё. */
+/**
+ * Что выбрать при такой нужде здесь: в амбулатории — направить или скорая, со своей палатой — в
+ * неё, со своей операционной — оперировать; центра, которого в районе нет, — скорая.
+ */
 export function choiceFor(need: Setting, venue: Venue = {}): Setting {
   if (need === 'home') return 'home';
   if (need === 'ward' || need === 'ambulance') return venue.ward ? 'admit' : need;
+  if (need === 'surgery' && venue.or) return 'surgery';
   return 'ambulance';
 }
 
@@ -80,7 +88,37 @@ export function primaryOf(patient: Patient) {
   return patient.truth.conditions.find(c => c.role === 'primary') ?? patient.truth.conditions[0];
 }
 
+/** Совпало ли условие по скрытым параметрам болезни (часть 30в): нет условия — совпало. */
+export function whenHolds(when: Record<string, string[]> | undefined, params: Record<string, string>): boolean {
+  return !when || Object.entries(when).every(([name, values]) => values.includes(params[name]));
+}
+
+/**
+ * Что из назначенного действует на причину у этого больного: `cure` на его болезнь — с условием
+ * по её скрытым параметрам (часть 30в: неоперативное лечение непроходимости — без ишемии кишки).
+ */
+export function curesOf(db: ContentDb, condition: Pick<ActiveCondition, 'id' | 'params'>, treatments: readonly Id[]): Effect[] {
+  return treatments.flatMap(tx => db.treatments[tx]?.effects.filter(e => e.on === condition.id && e.kind === 'cure' && whenHolds(e.when, condition.params)) ?? []);
+}
+
+/**
+ * Проходит ли болезнь у этого больного сама: у записи `selfLimiting` может быть условие по
+ * скрытому параметру (часть 30д: неосложнённый дивертикулит проходит и без антибиотиков, абсцесс — нет).
+ */
+export function selfLimits(db: ContentDb, condition: Pick<ActiveCondition, 'id' | 'params'>): boolean {
+  const c = db.conditions[condition.id];
+  return c?.selfLimiting === true && whenHolds(c.selfLimitingWhen, condition.params);
+}
+
+/** Что будет без действенного лечения у этого больного — запись `untreated`, если её условие совпало (часть 30д). */
+export function untreatedOf(db: ContentDb, condition: Pick<ActiveCondition, 'id' | 'params'>): { p: number; days: [number, number] } | undefined {
+  const u = db.conditions[condition.id]?.untreated;
+  return u && whenHolds(u.when, condition.params) ? u : undefined;
+}
+
 export function txRole(db: ContentDb, condId: Id, tx: Id): TxRole {
+  // своя операция болезни — первая линия (часть 28); в тактике её нет: до приезда скорой её не сделать
+  if (db.conditions[condId]?.surgery?.tx === tx) return 'firstLine';
   const t = db.conditions[condId]?.treatment;
   if (!t) return 'notIndicated';
   return ROLES.find(role => t[role].includes(tx)) ?? 'notIndicated';
@@ -134,7 +172,7 @@ export function evaluatePlan(db: ContentDb, patient: Patient, plan: Plan, observ
       if (truly.has(k.id)) violations.push({ tx, by: k.id, level: k.level, known: knownIds.has(k.id), asked });
     }
   }
-  const effective = plan.treatments.some(tx => db.treatments[tx]?.effects.some(e => e.on === primary && e.kind === 'cure'));
+  const effective = curesOf(db, primaryOf(patient), plan.treatments).length > 0;
   const tactics = db.conditions[primary].treatment;
   const firstLineBlocked = (tactics?.firstLine ?? [])
     .some(tx => db.treatments[tx]?.contraindications.some(k => knownIds.has(k.id)));

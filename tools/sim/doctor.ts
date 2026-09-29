@@ -1,11 +1,13 @@
 // npm run doctor — «виртуальный врач» по базе (`docs/05-content.md` §6, `docs/09-testing.md` §3).
 // Три стратегии на одних и тех же пациентах: разумный, ленивый, «всё подряд»; и нанятый врач
 // своей больницы по навыку 1–5 (spec 2026-09-hired-doctors) — тот же разумный с порогами навыка.
-// Флаги: --n 10000 (пациентов), --season winter|spring|summer|autumn|all, --json (для CI).
+// Флаги: --n 10000 (пациентов), --season winter|spring|summer|autumn|all, --json (для CI),
+// --departments therapy,surgery — больница с приёмным (spec 2026-09-chapter-2, часть 30): пациенты
+// и кандидаты из обоих отделений; нет — амбулатория, одна терапия.
 import { Rng } from '../../src/engine/core/rng';
 import { observe, type OutcomeKind } from '../../src/engine/med/course';
 import { generatePatient } from '../../src/engine/med/generate';
-import { evaluatePlan } from '../../src/engine/med/plan';
+import { evaluatePlan, primaryOf, selfLimits } from '../../src/engine/med/plan';
 import { type DoctorResult, examCost, runDoctor, type Strategy } from '../../src/engine/med/policy';
 import { type Grade, scoreCase } from '../../src/engine/med/score';
 import { buildDb } from '../content/load';
@@ -27,7 +29,13 @@ if (errors.length) {
   process.exit(1);
 }
 const department = 'dept.therapy';
-const candidates = Object.keys(db.conditions).filter(id => db.conditions[id].presenting && db.conditions[id].department === department);
+const departments = arg('departments', 'therapy').split(',').map(d => `dept.${d.trim()}`);
+const unknownDept = departments.filter(d => !Object.values(db.conditions).some(c => c.department === d));
+if (unknownDept.length) {
+  console.error(`нет болезней отделения ${unknownDept.join(', ')}`);
+  process.exit(1);
+}
+const candidates = Object.keys(db.conditions).filter(id => db.conditions[id].presenting && departments.includes(db.conditions[id].department));
 const exams = Object.keys(db.exams).sort();
 const SEASONS = ['winter', 'spring', 'summer', 'autumn'] as const;
 const seasons = seasonArg === 'all' ? SEASONS : SEASONS.filter(x => x === seasonArg);
@@ -47,7 +55,7 @@ interface Tally {
 const grades = (): Record<Grade, number> => ({ A: 0, B: 0, C: 0, D: 0 });
 const empty = (): Tally => ({
   n: 0, correct: 0, correctGroup: 0, money: 0, minutes: 0, exams: 0, confusion: {}, perCondition: {},
-  overall: grades(), treatment: grades(), outcomes: { recovered: 0, improved: 0, unchanged: 0, worse: 0, reaction: 0, transferred: 0, admitted: 0 }, needlessAntibiotic: 0,
+  overall: grades(), treatment: grades(), outcomes: { recovered: 0, improved: 0, unchanged: 0, worse: 0, reaction: 0, transferred: 0, admitted: 0, died: 0 }, needlessAntibiotic: 0,
 });
 const costOf = (r: DoctorResult) => r.exams.reduce((a, id) => a + examCost(db, id), 0);
 const strategies: Strategy[] = ['rational', 'lazy', 'shotgun'];
@@ -60,7 +68,7 @@ const timing: Record<Strategy, number> = { rational: 0, lazy: 0, shotgun: 0 };
 const t0 = performance.now();
 for (let i = 0; i < N; i++) {
   const season = seasons[i % seasons.length];
-  const patient = generatePatient(db, 9_000_000 + i, { department, season });
+  const patient = generatePatient(db, 9_000_000 + i, { department, departments, season });
   const truth = patient.truth.conditions[0].id;
   const cond = db.conditions[truth];
   const present = new Set(patient.truth.findings.map(f => f.f));
@@ -75,13 +83,13 @@ for (let i = 0; i < N; i++) {
     const outcome = observe(db, patient, r.plan, ev, Rng.seeded(patient.seed).fork(`outcome:${s}`));
     const score = scoreCase({
       verdict: r.correct ? 'correct' : r.correctGroup ? 'partly' : 'wrong',
-      confidence: r.confidence, cost: costOf(r), rationalCost, plan: ev, outcome, selfLimiting: cond.selfLimiting === true,
+      confidence: r.confidence, cost: costOf(r), rationalCost, plan: ev, outcome, selfLimiting: selfLimits(db, primaryOf(patient)),
       redFlags: (cond.redFlags ?? []).filter(f => present.has(f)).map(f => ({ f, seen: r.observations.some(o => o.f === f && o.shown) })),
     });
     x.overall[score.overall]++;
     x.treatment[score.treatment]++;
     x.outcomes[outcome.kind]++;
-    const needless = cond.selfLimiting === true && ev.roles.some(v => v.role === 'notIndicated' && db.treatments[v.tx].class?.startsWith('antibiotic.'));
+    const needless = selfLimits(db, primaryOf(patient)) && ev.roles.some(v => v.role === 'notIndicated' && db.treatments[v.tx].class?.startsWith('antibiotic.'));
     if (needless) x.needlessAntibiotic++;
     if (s === 'rational' && i < HN) {
       rationalCases.push({ truth, correct: r.correct, correctGroup: r.correctGroup, money: r.money, minutes: r.minutes, exams: r.exams.length, needless, reaction: outcome.kind === 'reaction' });
@@ -114,7 +122,7 @@ const hired: Hired[] = SKILLS.map(skill => {
   const cases: Case[] = [];
   for (let i = 0; i < HN; i++) {
     const season = seasons[i % seasons.length];
-    const patient = generatePatient(db, 9_000_000 + i, { department, season });
+    const patient = generatePatient(db, 9_000_000 + i, { department, departments, season });
     const truth = patient.truth.conditions[0].id;
     const forgot = Rng.seeded(patient.seed).fork('forget');
     const r = runDoctor(db, patient, 'rational', Rng.seeded(patient.seed).fork('doctor:rational'), {
@@ -122,7 +130,7 @@ const hired: Hired[] = SKILLS.map(skill => {
     });
     const ev = evaluatePlan(db, patient, r.plan, r.observations);
     const outcome = observe(db, patient, r.plan, ev, Rng.seeded(patient.seed).fork('outcome:rational'));
-    const needless = db.conditions[truth].selfLimiting === true && ev.roles.some(v => v.role === 'notIndicated' && db.treatments[v.tx].class?.startsWith('antibiotic.'));
+    const needless = selfLimits(db, primaryOf(patient)) && ev.roles.some(v => v.role === 'notIndicated' && db.treatments[v.tx].class?.startsWith('antibiotic.'));
     cases.push({ truth, correct: r.correct, correctGroup: r.correctGroup, money: r.money, minutes: r.minutes, exams: r.exams.length, needless, reaction: outcome.kind === 'reaction' });
   }
   return { skill, cases };
@@ -191,9 +199,9 @@ const thresholds = {
 };
 
 if (asJson) {
-  console.log(JSON.stringify({ contentVersion: db.contentVersion, contentHash: db.hash, patients: N, seasons, threshold, totalMs: total, report, hired: hiredReport, thresholds }, null, 2));
+  console.log(JSON.stringify({ contentVersion: db.contentVersion, contentHash: db.hash, departments, patients: N, seasons, threshold, totalMs: total, report, hired: hiredReport, thresholds }, null, 2));
 } else {
-  console.log(`База ${db.contentVersion} (${db.hash}), отделение ${department}, пациентов ${N}, сезоны: ${seasons.join(', ')}, порог разумного врача ${threshold}`);
+  console.log(`База ${db.contentVersion} (${db.hash}), отделения ${departments.join(', ')}, пациентов ${N}, сезоны: ${seasons.join(', ')}, порог разумного врача ${threshold}`);
   console.log(`Время: ${(total / 1000).toFixed(2)} с на всех трёх врачей (${(total / N).toFixed(2)} мс на пациента)\n`);
   const names: Record<Strategy, string> = { rational: 'разумный', lazy: 'ленивый', shotgun: 'всё подряд' };
   for (const r of report) {

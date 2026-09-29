@@ -1,9 +1,11 @@
 // Снимки кодом (spec 2026-09-ct-mri-ultrasound): срез головы на КТ и МРТ (часть 20) и сектор УЗИ
-// (часть 21) — геометрия очагов, и сам рисунок без экрана (Skia через CanvasKit,
+// (часть 21; подвздошная область с отростком — часть 29), обзорный снимок живота стоя (spec
+// 2026-09-chapter-2, часть 30б) — геометрия очагов, и сам рисунок без экрана (Skia через CanvasKit,
 // tools/imaging/headless.ts): где светло и где темно, то же зерно — тот же рисунок.
 import { beforeAll, describe, expect, test } from 'bun:test';
 import { brainRadius, headGeometry, type HeadFindings, type HeadFocus, inside, skullInnerRadius } from '../../src/render/ct/geometry';
-import { HEAD_CASES, US_CASES } from '../../src/state/imagingCases';
+import { ABDOMEN_CASES, HEAD_CASES, US_CASES } from '../../src/state/imagingCases';
+import { ABDOMEN_ASPECT, abdomenGeometry, colonAt, CRESCENT_X, DIAPHRAGM, domeY, type Loop, loopFolds, loopGas, loopLevels } from '../../src/render/xray/abdomenGeometry';
 import { inSector, polar as usPolar, R1, usGeometry } from '../../src/render/us/geometry';
 import { loadSkia, luma, rasterize } from '../imaging/headless';
 
@@ -195,6 +197,85 @@ describe('сектор УЗИ: геометрия', () => {
     expect(usGeometry({ view: 'kidney' }, 3).fluid).toBeUndefined();
     expect(usGeometry({ view: 'kidney' }, 3).pelvisParts).toBeUndefined();
   });
+
+  test('утолщённая стенка пузыря (часть 30): наружный контур и полоска отёка — снаружи полости, толще с параметром; без неё — нет', () => {
+    const g = usGeometry({ view: 'gallbladder', wall: 0.8 }, 2);
+    const [outer, middle] = g.gbWall!;
+    for (const p of g.gallbladder!) expect(inside(p, middle)).toBe(true);
+    for (const p of middle) expect(inside(p, outer)).toBe(true);
+    const width = (w: number) => {
+      const xs = usGeometry({ view: 'gallbladder', wall: w }, 2).gbWall![0].map(p => p[0]);
+      return Math.max(...xs) - Math.min(...xs);
+    };
+    expect(width(1)).toBeGreaterThan(width(0.2));
+    expect(usGeometry({ view: 'gallbladder' }, 2).gbWall).toBeUndefined();
+    // жидкость — снаружи утолщённой стенки, дальше от датчика
+    const wet = usGeometry({ view: 'gallbladder', wall: 0.8, fluid: 0.6 }, 2);
+    const far = Math.max(...wet.gbWall![0].map(p => usPolar(p).r));
+    expect(Math.max(...wet.fluid!.map(p => usPolar(p).r))).toBeGreaterThan(far);
+  });
+
+  test('подвздошная область: петли и сосуды — в секторе; «мишень» — кольца одно в другом, вокруг — жир; растёт с толщиной', () => {
+    const g = usGeometry({ view: 'appendix', appendix: 0.8 }, 7);
+    expect(g.loops).toHaveLength(3);
+    for (const l of g.loops!) {
+      // петля может уходить за край сектора — рисунок обрезан по нему; середина — в секторе
+      expect(inSector(centroid(l.wall))).toBe(true);
+      for (const p of l.gas) expect(l.wall).toContainEqual(p);
+      // тень под газом — по лучам до конца сектора
+      expect(l.shadow.filter(p => Math.abs(usPolar(p).r - R1) < 1e-9)).toHaveLength(2);
+    }
+    expect(g.vessels).toHaveLength(2);
+    for (const v of g.vessels!) expect(inSector(v.c)).toBe(true);
+    const rings = g.target!;
+    expect(rings).toHaveLength(4);
+    for (const p of rings[0]) expect(inSector(p)).toBe(true);
+    for (let k = 1; k < rings.length; k++) for (const p of rings[k]) expect(inside(p, rings[k - 1])).toBe(true);
+    for (const p of rings[0]) expect(inside(p, g.halo!)).toBe(true);
+    // без отростка — ни мишени, ни жира, ни жидкости у него; толще — шире
+    const none = usGeometry({ view: 'appendix', fluid: 1 }, 7);
+    expect([none.target, none.halo, none.fluid]).toEqual([undefined, undefined, undefined]);
+    const width = (t: number) => {
+      const xs = usGeometry({ view: 'appendix', appendix: t }, 7).target![0].map(p => p[0]);
+      return Math.max(...xs) - Math.min(...xs);
+    };
+    expect(width(1)).toBeGreaterThan(width(0.3));
+    // жидкость — серп под отростком: дальше от датчика, чем его середина
+    const wet = usGeometry({ view: 'appendix', appendix: 0.9, fluid: 0.6 }, 8);
+    const c = centroid(wet.target![0]);
+    for (const p of wet.fluid!) expect(usPolar(p).r).toBeGreaterThan(usPolar(c).r);
+    expect(usGeometry({ view: 'appendix', appendix: 0.9 }, 8).fluid).toBeUndefined();
+  });
+
+  test('левая подвздошная область: кишка вдоль, слои по порядку; дивертикул — у ближней стенки, в жиру, за ним тень; стенка толще с параметром', () => {
+    const g = usGeometry({ view: 'colon', diverticulum: 0.8 }, 11);
+    expect(g.loops).toHaveLength(2);
+    for (const v of g.vessels!) expect(inSector(v.c)).toBe(true);
+    const c = g.colon!;
+    // газ — на ближней стенке просвета; тень под ним — до конца сектора
+    for (const p of c.gas) expect(c.lumen).toContainEqual(p);
+    expect(c.shadow.filter(p => Math.abs(usPolar(p).r - R1) < 1e-9)).toHaveLength(2);
+    // по одному лучу сверху вниз: наружная стенка, подслизистый слой, просвет
+    const top = (poly: [number, number][], k: number) => usPolar(poly[k]).r;
+    for (const k of [5, 20, 35]) {
+      expect(top(c.wall, k)).toBeLessThan(top(c.submucosa, k));
+      expect(top(c.submucosa, k)).toBeLessThan(top(c.lumen, k));
+    }
+    // дивертикул — ближе к датчику, чем стенка кишки под ним; весь в светлом жире; за серединой — тень до конца
+    const d = g.diverticulum!;
+    const pd = usPolar(d.core.c);
+    expect(pd.r).toBeLessThan(top(c.wall, 20));
+    for (const p of d.wall) expect(inside(p, g.halo!)).toBe(true);
+    expect(d.shadow.filter(p => Math.abs(usPolar(p).r - R1) < 1e-9)).toHaveLength(2);
+    // без воспаления — ни дивертикула, ни жира; толще — стенка
+    const none = usGeometry({ view: 'colon' }, 11);
+    expect([none.diverticulum, none.halo]).toEqual([undefined, undefined]);
+    const thick = (t: number) => {
+      const x = usGeometry({ view: 'colon', diverticulum: t }, 11).colon!;
+      return top(x.lumen, 20) - top(x.wall, 20);
+    };
+    expect(thick(1)).toBeGreaterThan(thick(0) * 2);
+  });
 });
 
 describe('сектор УЗИ: рисунок без экрана', () => {
@@ -242,12 +323,193 @@ describe('сектор УЗИ: рисунок без экрана', () => {
     expect(at(wide, c)).toBeLessThan(30);
   });
 
+  test('отросток «мишенью»: тёмный просвет, светлый подслизистый слой, тёмный мышечный; вокруг — светлый жир', async () => {
+    const f = { view: 'appendix' as const, appendix: 0.8 };
+    const ring = usGeometry(f, 7).target![0];
+    const c = centroid(ring);
+    const xs = ring.map(p => p[0]);
+    const R = (Math.max(...xs) - Math.min(...xs)) / 2;
+    /** Средняя яркость по кругу радиуса k·R вокруг середины отростка. */
+    const round = (px: Uint8Array, k: number) => {
+      let sum = 0;
+      for (let i = 0; i < 16; i++) sum += at(px, [c[0] + k * R * Math.cos((i * Math.PI) / 8), c[1] + k * R * Math.sin((i * Math.PI) / 8)]);
+      return sum / 16;
+    };
+    const on = (await draw(f, 7)).rgba;
+    const off = (await draw({ view: 'appendix' }, 7)).rgba;
+    expect(at(on, c)).toBeLessThan(30);
+    expect(round(on, 0.45)).toBeGreaterThan(at(on, c) + 100);
+    expect(round(on, 0.45)).toBeGreaterThan(round(on, 0.72) + 60);
+    // вокруг — светлее, чем кишка там же без отростка; без отростка в середине — серая кишка
+    expect(round(on, 1.3)).toBeGreaterThan(round(off, 1.3) + 25);
+    expect(at(off, c)).toBeGreaterThan(60);
+  });
+
+  test('кишка: толстая стенка — темнее, чем там же без воспаления; дивертикул — яркая середина в тёмном кольце, вокруг светлее', async () => {
+    const f = { view: 'colon' as const, diverticulum: 0.8 };
+    const g = usGeometry(f, 11);
+    const on = (await draw(f, 11)).rgba;
+    const off = (await draw({ view: 'colon' }, 11)).rgba;
+    const d = g.diverticulum!;
+    const R = (Math.max(...d.wall.map(p => p[0])) - Math.min(...d.wall.map(p => p[0]))) / 2;
+    /** Средняя яркость по верхней половине круга радиуса k·R — под дивертикулом тень. */
+    const upper = (px: Uint8Array, k: number) => {
+      let sum = 0;
+      for (let i = 0; i <= 8; i++) sum += at(px, [d.core.c[0] + k * R * Math.cos(Math.PI + (i * Math.PI) / 8), d.core.c[1] + k * R * Math.sin(Math.PI + (i * Math.PI) / 8)]);
+      return sum / 9;
+    };
+    expect(at(on, d.core.c)).toBeGreaterThan(200);
+    expect(upper(on, 0.72)).toBeLessThan(at(on, d.core.c) - 100);
+    expect(upper(on, 1.6)).toBeGreaterThan(upper(off, 1.6) + 20);
+    // мышечный слой толстой стенки — там, где у здоровой кишки уже серая ткань вокруг
+    const k = 32;
+    const m: [number, number] = [(g.colon!.wall[k][0] + g.colon!.submucosa[k][0]) / 2, (g.colon!.wall[k][1] + g.colon!.submucosa[k][1]) / 2];
+    expect(at(on, m)).toBeLessThan(at(off, m) - 20);
+  });
+
   test('то же зерно — те же байты; все варианты «Проверок» рисуются', async () => {
     const a = await draw({ view: 'kidney', fluid: 0.5 }, 9);
     const b = await draw({ view: 'kidney', fluid: 0.5 }, 9);
     expect(Buffer.from(a.png).equals(Buffer.from(b.png))).toBe(true);
-    expect(US_CASES.length).toBe(5);
+    expect(US_CASES.length).toBe(11);
     for (const k of US_CASES) expect((await draw(k.findings, k.seed)).png.length).toBeGreaterThan(1000);
   });
 });
 
+
+describe('снимок живота: геометрия', () => {
+  test('серп газа — под правым куполом: сразу под диафрагмой, слева на снимке, толще с параметром; без газа — нет', () => {
+    const g = abdomenGeometry({ freeGas: 0.8 }, 2);
+    expect(g.crescent!.length).toBeGreaterThan(10);
+    for (const [x, y] of g.crescent!) {
+      expect(x).toBeGreaterThanOrEqual(CRESCENT_X[0] - 1e-9);
+      expect(x).toBeLessThanOrEqual(CRESCENT_X[1] + 1e-9);
+      expect(x).toBeLessThan(0.5);
+      expect(y).toBeGreaterThanOrEqual(domeY(x) + DIAPHRAGM - 1e-9);
+      expect(y).toBeLessThanOrEqual(domeY(x) + DIAPHRAGM + 0.045);
+    }
+    const thick = (gas: number) => Math.max(...abdomenGeometry({ freeGas: gas }, 2).crescent!.map(([x, y]) => y - domeY(x)));
+    expect(thick(1)).toBeGreaterThan(thick(0.2) + 0.015);
+    expect(abdomenGeometry({}, 2).crescent).toBeUndefined();
+    expect(abdomenGeometry({ freeGas: 0 }, 2).crescent).toBeUndefined();
+  });
+
+  test('петли: от трёх до шести по центру живота; дно газа — ровный уровень; в коленах арки — на разной высоте; без непроходимости петель нет', () => {
+    const kinds = new Set<Loop['kind']>();
+    for (const seed of [1, 3, 5, 8]) {
+      const g = abdomenGeometry({ levels: 0.8 }, seed);
+      expect(g.loops.length).toBeGreaterThanOrEqual(3);
+      expect(g.loops.length).toBeLessThanOrEqual(6);
+      for (const l of g.loops) {
+        kinds.add(l.kind);
+        const gas = loopGas(l);
+        for (const [x, y] of gas) {
+          expect(x).toBeGreaterThan(0.2);
+          expect(x).toBeLessThan(0.8);
+          expect(y).toBeGreaterThan(domeY(x) + 0.05);
+          expect(y).toBeLessThan(0.8);
+        }
+        // ниже уровня газа нет: самая нижняя точка газа — на уровне
+        const levels = loopLevels(l);
+        const lowest = Math.max(...gas.map(p => p[1]));
+        expect(lowest).toBeCloseTo(Math.max(...levels.map(v => v[0])), 9);
+        if (l.kind === 'arch') {
+          expect(Math.abs(l.levels[0] - l.levels[1])).toBeGreaterThan(0.005);
+          for (const y of l.levels) {
+            expect(y).toBeLessThanOrEqual(l.foot);
+            expect(y).toBeGreaterThan(l.foot - l.h);
+          }
+        }
+        // складки — поперёк газа: концы внутри контура петли или на нём
+        for (const [p, q] of loopFolds(l)) for (const e of [p, q]) {
+          const xs = gas.map(v => v[0]), ys = gas.map(v => v[1]);
+          expect(e[0]).toBeGreaterThanOrEqual(Math.min(...xs) - 1e-9);
+          expect(e[0]).toBeLessThanOrEqual(Math.max(...xs) + 1e-9);
+          expect(e[1]).toBeGreaterThanOrEqual(Math.min(...ys) - 1e-9);
+          expect(e[1]).toBeLessThanOrEqual(Math.max(...ys) + 1e-9);
+        }
+      }
+    }
+    expect([...kinds].sort()).toEqual(['arch', 'cup']);
+    expect(abdomenGeometry({}, 3).loops).toHaveLength(0);
+    // больше раздуты — больше петель
+    expect(abdomenGeometry({ levels: 1 }, 3).loops.length).toBeGreaterThan(abdomenGeometry({ levels: 0.1 }, 3).loops.length);
+  });
+
+  test('при непроходимости тонкой кишки газа в ободочной почти нет; в норме — по рамке, в поперечной — всегда больше всего', () => {
+    const length = (seed: number, levels?: number) => abdomenGeometry(levels ? { levels } : {}, seed).colon
+      .reduce((a, k) => a + k.pts.slice(1).reduce((b, p, i) => b + Math.hypot(p[0] - k.pts[i][0], (p[1] - k.pts[i][1]) * ABDOMEN_ASPECT), 0), 0);
+    let normal = 0, obstructed = 0;
+    for (let seed = 1; seed <= 12; seed++) {
+      normal += length(seed);
+      obstructed += length(seed, 0.8);
+    }
+    expect(obstructed).toBeLessThan(normal * 0.15);
+    // гаустры — у краёв просвета, не на всю ширину
+    const k = abdomenGeometry({}, 4).colon[0];
+    for (const [edge, tip] of k.septa) expect(Math.hypot(tip[0] - edge[0], (tip[1] - edge[1]) * ABDOMEN_ASPECT)).toBeLessThan(k.width / 2);
+    // ход кишки: слепая внизу справа пациента (слева на снимке), прямая — в малом тазу посередине
+    expect(colonAt(0)[0]).toBeLessThan(0.3);
+    expect(colonAt(1)[1]).toBeGreaterThan(0.85);
+  });
+
+  test('то же зерно — та же геометрия; параметры вне пределов — ближайшие допустимые', () => {
+    expect(JSON.stringify(abdomenGeometry({ freeGas: 0.5, levels: 0.5 }, 11))).toBe(JSON.stringify(abdomenGeometry({ freeGas: 0.5, levels: 0.5 }, 11)));
+    expect(JSON.stringify(abdomenGeometry({ freeGas: 5 }, 1).crescent)).toBe(JSON.stringify(abdomenGeometry({ freeGas: 1 }, 1).crescent));
+    expect(abdomenGeometry({ freeGas: Number.NaN, levels: Number.NaN }, 1).crescent).toBeUndefined();
+    expect(abdomenGeometry({ levels: -1 }, 1).loops).toHaveLength(0);
+  });
+});
+
+describe('снимок живота: рисунок без экрана', () => {
+  const S = 240;
+  const SH = Math.round(S * ABDOMEN_ASPECT);
+  let draw: (f: import('../../src/render/xray/abdomenGeometry').AbdomenFindings, seed: number) => Promise<{ rgba: Uint8Array; png: Uint8Array }>;
+  beforeAll(async () => {
+    await loadSkia();
+    const { recordAbdomenXray } = await import('../../src/render/xray/abdomen');
+    draw = (f, seed) => rasterize(recordAbdomenXray(S, f, seed), S, SH);
+  });
+  const at = (px: Uint8Array, p: [number, number]) => luma(px, S, SH, p[0], p[1]);
+
+  test('лёгкие над куполами — тёмные, позвонок светлее мягких тканей рядом', async () => {
+    const { rgba } = await draw({}, 1);
+    // над куполом — воздух лёгкого, под ним — печень
+    expect(at(rgba, [0.2, 0.09])).toBeLessThan(60);
+    expect(at(rgba, [0.2, 0.25]) - at(rgba, [0.2, 0.09])).toBeGreaterThan(40);
+    // L1 — выше поперечной ободочной кишки: её газ позвонок не перекрывает
+    const l1 = abdomenGeometry({}, 1).vertebrae[1];
+    expect(at(rgba, [0.5, l1.y + l1.h / 2])).toBeGreaterThan(at(rgba, [0.34, l1.y + l1.h / 2]) + 12);
+  });
+
+  test('серп газа под правым куполом темнее того же места без газа', async () => {
+    const x = 0.28;
+    const mid = abdomenGeometry({ freeGas: 0.8 }, 2).crescent!;
+    const ys = mid.filter(p => Math.abs(p[0] - x) < 0.007).map(p => p[1]);
+    const p: [number, number] = [x, (Math.min(...ys) + Math.max(...ys)) / 2];
+    const on = (await draw({ freeGas: 0.8 }, 2)).rgba;
+    const off = (await draw({}, 2)).rgba;
+    expect(at(off, p) - at(on, p)).toBeGreaterThan(30);
+  });
+
+  test('в петле над уровнем — тёмный газ, под уровнем — светлее: жидкость как мягкие ткани', async () => {
+    const g = abdomenGeometry({ levels: 0.8 }, 3);
+    const cup = g.loops.find(l => l.kind === 'cup')!;
+    if (cup.kind !== 'cup') throw new Error('нет чаши');
+    const { rgba } = await draw({ levels: 0.8 }, 3);
+    expect(at(rgba, [cup.cx, cup.level + 0.02]) - at(rgba, [cup.cx, cup.level - cup.b * 0.45])).toBeGreaterThan(25);
+  });
+
+  test('то же зерно — те же байты; другое — другой снимок; все варианты «Проверок» рисуются', async () => {
+    const a = await draw({ levels: 0.5 }, 9);
+    const b = await draw({ levels: 0.5 }, 9);
+    const c = await draw({ levels: 0.5 }, 10);
+    expect(Buffer.from(a.png).equals(Buffer.from(b.png))).toBe(true);
+    expect(Buffer.from(a.png).equals(Buffer.from(c.png))).toBe(false);
+    expect(ABDOMEN_CASES.map(k => k.key)).toEqual(['abd-normal', 'abd-free-gas', 'abd-levels']);
+    for (const k of ABDOMEN_CASES) {
+      expect((await draw(k.findings, k.seed)).png.length).toBeGreaterThan(1000);
+      expect(k.label.length).toBeGreaterThan(0);
+    }
+  });
+});

@@ -25,9 +25,11 @@ const edit = (dir: string, file: string, from: string, to: string) => {
 };
 
 describe('валидатор базы', () => {
-  test('настоящая база — без ошибок; у каждой болезни есть источник и отметка проверки', () => {
-    const { db, errors } = buildDb();
+  test('настоящая база — без ошибок и предупреждений; у каждой болезни есть источник и отметка проверки', () => {
+    const { db, errors, warnings } = buildDb();
     expect(errors).toEqual([]);
+    // точная частота — с пояснением, откуда она (note, с 0.0.47)
+    expect(warnings).toEqual([]);
     for (const c of Object.values(db.conditions)) {
       expect(c.sources.length).toBeGreaterThan(0);
       expect(['draft', 'checked', 'reviewed']).toContain(c.review);
@@ -144,7 +146,7 @@ describe('валидатор базы', () => {
 describe('каталог больницы', () => {
   test('собран: у помещений — что открывают, у аппаратов — какие обследования, у должностей — где работают', () => {
     const { db } = buildDb();
-    expect(Object.keys(db.rooms)).toHaveLength(11);
+    expect(Object.keys(db.rooms)).toHaveLength(14);
     // нанятый врач (spec 2026-09-hired-doctors): встаёт на место врача, нужна ординаторская с местами
     expect(db.roles['role.therapist']).toMatchObject({ hire: true, stands: 'role.doctor', needs: 'room.staff', rooms: ['room.office'] });
     expect(db.rooms['room.staff'].sizes.map(z => z.places)).toEqual([2, 4]);
@@ -154,14 +156,105 @@ describe('каталог больницы', () => {
     expect(db.rooms['room.lab'].equipment).toContain('eq.biochem_analyzer');
     expect(db.equipment['eq.immuno_analyzer'].exams).toEqual(['exam.tsh']);
     expect(db.equipment['eq.xray_digital'].upgradeOf).toBe('eq.xray_analog');
-    expect(db.roles['role.nurse'].rooms).toEqual(['room.ecg', 'room.procedure', 'room.triage', 'room.ward']);
+    expect(db.roles['role.nurse'].rooms).toEqual(['room.ecg', 'room.emergency', 'room.procedure', 'room.triage', 'room.ward']);
     // палата (spec 2026-09-chapter-2, часть 26): койки — места лежащих
     expect(db.rooms['room.ward'].sizes.map(z => z.beds)).toEqual([2, 4]);
     expect(db.rooms['room.office'].sizes.every(z => z.beds === 0)).toBe(true);
+    // смотровая приёмного (часть 27): койки — места для пациентов скорой, одно, два, три
+    expect(db.rooms['room.emergency']).toMatchObject({ emergency: true, beds: false, staff: ['role.nurse'] });
+    expect(db.rooms['room.emergency'].sizes.map(z => z.beds)).toEqual([1, 2, 3]);
+    // операционная (часть 28): бригада из трёх, стол и наркозный аппарат — каждый на своём месте
+    expect(db.rooms['room.or']).toMatchObject({ needsEquipment: true, staff: ['role.surgeon', 'role.anesthetist', 'role.or_nurse'] });
+    expect(db.equipment['eq.or_table']).toMatchObject({ slot: 1, exams: [] });
+    expect(db.equipment['eq.anesthesia']).toMatchObject({ slot: 0, exams: [] });
+    expect(db.treatments['tx.appendectomy'].surgery).toMatchObject({
+      room: 'room.or', equipment: ['eq.or_table', 'eq.anesthesia'], minutes: 45, complications: 413, death: 3, complicated: { complications: 1875, death: 6 },
+    });
+    expect(db.conditions['cond.appendicitis'].surgery).toEqual({ tx: 'tx.appendectomy', window: 24 });
+    // перфорация (часть 28б): Bickell 2006 — 2 % за первые 36 ч, дальше 5 % за 12 ч
+    expect(db.conditions['cond.appendicitis'].complication).toEqual({ name: { ru: 'перфорация' }, early: { hours: 36, p: 200 }, later: { every: 12, p: 500 }, stay: [3, 5] });
+    // кабинет УЗИ (часть 29): врач УЗД сам делает и сам описывает; экспертный аппарат — улучшение базового
+    expect(db.rooms['room.ultrasound']).toMatchObject({ needsEquipment: true, staff: ['role.sonographer'], equipment: ['eq.us_basic', 'eq.us_expert'], exams: ['exam.us_abdomen', 'exam.us_kidney'] });
+    expect(db.equipment['eq.us_expert']).toMatchObject({ upgradeOf: 'eq.us_basic', speed: 0.85, quality: { sens: 5, spec: 1 }, exams: ['exam.us_abdomen', 'exam.us_kidney'] });
+    expect(db.exams['exam.us_abdomen']).toMatchObject({ kind: 'imaging', radiation: 'none' });
+    // отросток — WSES 2020; камни — точность порядка 95 % (877_1); холецистит — 81 и 83 % (819_1, часть 30)
+    expect(db.exams['exam.us_abdomen'].checks).toEqual([
+      { f: 'img.us_appendicitis', sens: 7600, spec: 9500 }, { f: 'img.us_gallstones', sens: 9500, spec: 9500 }, { f: 'img.us_cholecystitis', sens: 8100, spec: 8300 },
+      // дивертикулит — 92 и 90 % (Laméris 2008, часть 30д)
+      { f: 'img.us_diverticulitis', sens: 9200, spec: 9000 },
+    ]);
+    expect(Object.values(db.roles).filter(r => r.reads).map(r => r.id).sort()).toEqual(['role.radiologist', 'role.sonographer']);
+    expect(db.roles['role.sonographer'].rooms).toEqual(['room.ultrasound']);
+    expect(db.conditions['cond.appendicitis'].findings).toContainEqual(expect.objectContaining({ f: 'img.us_appendicitis' }));
     expect(db.roles['role.doctor'].hire).toBe(false);
     expect(db.rooms['room.waiting'].sizes.map(z => z.seats)).toEqual([6, 10, 18]);
     // у каждого обследования в лаборатории, ЭКГ и рентгене — аппарат
     for (const e of Object.values(db.exams)) if (e.room && db.rooms[e.room].needsEquipment) expect(e.equipment?.length).toBeGreaterThan(0);
+  });
+
+  test('пояснение — только у точной частоты; точная без пояснения — предупреждение', () => {
+    const loose = broken(d => edit(d, 'conditions/therapy/appendicitis.yaml', '  - { f: lab.crp_high, band: often }', '  - { f: lab.crp_high, band: often, note: "частота по полосе, пояснять нечего" }'));
+    expect(loose.some(e => e.includes('cond.appendicitis: у lab.crp_high пояснение (note) — только у точной частоты'))).toBe(true);
+    const dir = mkdtempSync(join(tmpdir(), 'anamnez-content-'));
+    try {
+      cpSync(CONTENT_DIR, dir, { recursive: true });
+      const p = join(dir, 'conditions/therapy/appendicitis.yaml');
+      writeFileSync(p, readFileSync(p, 'utf8').replace(/\n {4}note: "[^"]*"/, ''));
+      expect(buildDb(dir).warnings.some(w => w.includes('cond.appendicitis: точная частота img.us_appendicitis = 100 %'))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('снимки описывает один человек и там, где их делают', () => {
+    const two = broken(d => edit(d, 'hospital/roles/radiographer.yaml', 'salary: [1500, 2500]\n', 'salary: [1500, 2500]\nreads: true\n'));
+    expect(two.some(e => e.includes('room.xray: снимки описывают сразу role.radiographer и role.radiologist — должен один'))).toBe(true);
+    const lab = broken(d => edit(d, 'hospital/roles/lab_tech.yaml', 'salary: [1400, 2300]\n', 'salary: [1400, 2300]\nreads: true\n'));
+    expect(lab.some(e => e.includes('role.lab_tech: описывает снимки, а там, где он работает, снимков не делают'))).toBe(true);
+  });
+
+  test('помещение принимает отделение без болезней; у болезни, с которой приходят, меньше трёх признаков (часть 30)', () => {
+    const empty = broken(d => edit(d, 'hospital/rooms/emergency.yaml', 'admits: [dept.surgery]', 'admits: [dept.cardiology]'));
+    expect(empty.some(e => e.includes('room.emergency: принимает dept.cardiology, а болезней этого отделения в базе нет'))).toBe(true);
+    // хроническому фону — камням в пузыре — двух признаков хватает, с ними не приходят
+    const few = broken(d => edit(d, 'conditions/surgery/cholelithiasis.yaml', 'presenting: false\n', ''));
+    expect(few.some(e => e.includes('cond.cholelithiasis') && e.includes('меньше трёх признаков'))).toBe(true);
+    expect(buildDb().db.conditions['cond.cholelithiasis'].findings).toHaveLength(2);
+  });
+
+  test('смотровая приёмного без мест для скорой; шкала с щелью между полосами или с чужим признаком', () => {
+    const bare = broken(d => edit(d, 'hospital/rooms/emergency.yaml', '      - [bed, 2, 2]\n', ''));
+    expect(bare.some(e => e.includes('room.emergency S: смотровая приёмного без мест для скорой'))).toBe(true);
+    const gap = broken(d => edit(d, 'scores/news2.yaml', '[[null, 8, 3], [9, 11, 1]', '[[null, 8, 3], [10, 11, 1]'));
+    expect(gap.some(e => e.includes('score.news2: vital.tachypnea — после 8 следующая полоса должна начинаться с 9'))).toBe(true);
+    const alien = broken(d => edit(d, 'scores/news2.yaml', '  - f: vital.fever\n', '  - f: sym.cough\n'));
+    expect(alien.some(e => e.includes('score.news2: признак sym.cough не найден или без числового значения'))).toBe(true);
+    // скорая везёт только лёгкое, а лёгкого не везут — дня со смотровой не начать
+    const nobody = broken(d => edit(d, 'hospital/economy.yaml', 'weight: { minor: 0, moderate: 1, serious: 3, critical: 12 }', 'weight: { minor: 0, moderate: 0, serious: 0, critical: 0 }'));
+    expect(nobody.some(e => e.includes('dept.therapy: скорой некого везти'))).toBe(true);
+  });
+
+  test('операция: у болезни — не операция; у операции — чужая бригада, аппарат из другого помещения, место аппарата за краем', () => {
+    const notOp = broken(d => edit(d, 'conditions/therapy/appendicitis.yaml', 'surgery: { tx: tx.appendectomy, window: 24 }', 'surgery: { tx: tx.paracetamol, window: 24 }'));
+    expect(notOp.some(e => e.includes('cond.appendicitis: tx.paracetamol — не операция (kind: surgery)'))).toBe(true);
+    const kind = broken(d => edit(d, 'treatments/appendectomy.yaml', 'kind: surgery', 'kind: procedure'));
+    expect(kind.some(e => e.includes('tx.appendectomy: у операции (kind: surgery) должен быть блок surgery, и только у неё'))).toBe(true);
+    const team = broken(d => edit(d, 'treatments/appendectomy.yaml', 'team: [role.surgeon, role.anesthetist, role.or_nurse]', 'team: [role.surgeon, role.nurse]'));
+    expect(team.some(e => e.includes('tx.appendectomy: role.nurse — не из штата room.or'))).toBe(true);
+    const alien = broken(d => edit(d, 'treatments/appendectomy.yaml', 'equipment: [eq.or_table, eq.anesthesia]', 'equipment: [eq.or_table, eq.ecg]'));
+    expect(alien.some(e => e.includes('tx.appendectomy: аппарат eq.ecg стоит в room.ecg, а операция — в room.or'))).toBe(true);
+    const slot = broken(d => edit(d, 'hospital/equipment/or_table.yaml', 'slot: 1', 'slot: 2'));
+    expect(slot.some(e => e.includes('eq.or_table: места 2 под аппарат нет у всех размеров room.or'))).toBe(true);
+    // осложнённая стадия (часть 28б): у операции нет долей для неё, доля за отрезок — 100 %, срок наоборот
+    const stage = broken(d => edit(d, 'treatments/appendectomy.yaml', '  complicated: { complications: { pct: 18.75 }, death: { pct: 0.06 } }\n', ''));
+    expect(stage.some(e => e.includes('cond.appendicitis: у болезни есть осложнённая стадия, а у операции tx.appendectomy нет долей для неё (complicated)'))).toBe(true);
+    const all = broken(d => edit(d, 'conditions/therapy/appendicitis.yaml', 'early: { hours: 36, p: { pct: 2 } }', 'early: { hours: 36, p: { pct: 100 } }'));
+    expect(all.some(e => e.includes('cond.appendicitis: доля осложнённой стадии за отрезок должна быть меньше 100 %'))).toBe(true);
+    const back = broken(d => edit(d, 'conditions/therapy/appendicitis.yaml', '  stay: [3, 5]\n', '  stay: [5, 3]\n'));
+    expect(back.some(e => e.includes('cond.appendicitis: срок стационара в осложнённой стадии — от большего к меньшему'))).toBe(true);
+    // лечит не ту болезнь, что в записи болезни
+    const cure = broken(d => edit(d, 'treatments/appendectomy.yaml', 'on: cond.appendicitis, kind: cure', 'on: cond.gastroenteritis, kind: cure'));
+    expect(cure.some(e => e.includes('cond.appendicitis: операция tx.appendectomy не действует на причину'))).toBe(true);
   });
 
   test('обследование с неизвестным аппаратом или аппаратом из чужого помещения', () => {
@@ -170,7 +263,7 @@ describe('каталог больницы', () => {
     const foreign = broken(d => edit(d, 'exams/tsh.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.ecg]'));
     expect(foreign.some(e => e.includes('exam.tsh: аппарат eq.ecg стоит в room.ecg'))).toBe(true);
     // и тогда иммунохимическим анализатором ничего не делают
-    expect(foreign.some(e => e.includes('eq.immuno_analyzer: ни одно обследование им не делают'))).toBe(true);
+    expect(foreign.some(e => e.includes('eq.immuno_analyzer: ни одно обследование и ни одна операция им не делают'))).toBe(true);
   });
 
   test('в лаборатории без аппарата не работают — у анализа должен быть анализатор', () => {
@@ -232,8 +325,8 @@ describe('достижения', () => {
     expect(room.some(e => e.includes('ach.lab: помещение room.laboratory не найдено'))).toBe(true);
     const chapter = broken(d => edit(d, 'achievements/district.yaml', 'chapter: chapter.district', 'chapter: chapter.city'));
     expect(chapter.some(e => e.includes('ach.district: глава chapter.city не найдена'))).toBe(true);
-    const dept = broken(d => edit(d, 'achievements/therapy.yaml', 'department: dept.therapy', 'department: dept.surgery'));
-    expect(dept.some(e => e.includes('ach.therapy: в отделении dept.surgery нет болезней'))).toBe(true);
+    const dept = broken(d => edit(d, 'achievements/therapy.yaml', 'department: dept.therapy', 'department: dept.trauma'));
+    expect(dept.some(e => e.includes('ach.therapy: в отделении dept.trauma нет болезней'))).toBe(true);
     const order = broken(d => edit(d, 'achievements/month.yaml', 'order: 5', 'order: 4'));
     expect(order.some(e => e.includes('порядок 4 уже у другого достижения'))).toBe(true);
     const kind = broken(d => edit(d, 'achievements/month.yaml', 'kind: days', 'kind: streakDays'));

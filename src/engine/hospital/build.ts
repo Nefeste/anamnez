@@ -280,7 +280,9 @@ export function build(db: ContentDb, s: Built, cmd: BuildCommand): BuildResult {
     const eq = db.equipment[cmd.equipment];
     if (!eq) return fail({ kind: 'unknown' });
     if (eq.room !== room.type) return fail({ kind: 'wrongRoom' });
-    const slot = room.equipment.indexOf(null);
+    // у аппарата может быть своё место: стол операционной — под пациентом (часть 28)
+    const own = eq.slot !== undefined && room.equipment[eq.slot] === null ? eq.slot : -1;
+    const slot = own >= 0 ? own : room.equipment.indexOf(null);
     if (slot < 0) return fail({ kind: 'noSlot' });
     if (s.cash < eq.price) return fail({ kind: 'money', need: eq.price - s.cash });
     const equipment = room.equipment.map((x, i) => (i === slot ? eq.id : x));
@@ -352,7 +354,7 @@ export interface PlacedRoom {
   patient?: Cell;
   /** стулья зоны ожидания: ближний к двери ряд — первым */
   seats: Cell[];
-  /** койки палаты по порядку — номер койки лежащего (spec 2026-09-chapter-2, часть 26) */
+  /** койки палаты или смотровой приёмного по порядку — номер койки лежащего или привезённого скорой (spec 2026-09-chapter-2, части 26–27) */
   beds: Cell[];
   slots: Cell[];
   equipment: (Id | null)[];
@@ -408,7 +410,7 @@ export function planOf(db: ContentDb, hs: HospitalState): Plan {
         .sort((a, b) => b.row - a.row || a.cell[1] - b.cell[1] || a.cell[0] - b.cell[0])
         .map(o => o.cell)
       : [];
-    const beds = db.rooms[r.type].beds ? z.objects.filter(o => o.kind === 'bed').map(o => at([o.x, o.y])) : [];
+    const beds = db.rooms[r.type].beds || db.rooms[r.type].emergency ? z.objects.filter(o => o.kind === 'bed').map(o => at([o.x, o.y])) : [];
     const ok = doorOk(z, r, r.door, hs, occ);
     rooms.push({
       id: r.id, type: r.type, size: r.size, rot: r.rot, x: r.x, y: r.y, w, h,

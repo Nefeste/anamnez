@@ -7,7 +7,7 @@ import { type BodySystem, type Id, type Setting, SYSTEMS } from '@/content/types
 import { fnv1a } from '@/engine/core/hash';
 import type { Outcome } from '@/engine/med/course';
 import { complaintObservations, examFits } from '@/engine/med/exams';
-import { type Belief, knownFacts, posterior } from '@/engine/med/infer';
+import { type Belief, contextOf, knownFacts, posterior } from '@/engine/med/infer';
 import type { PlanEval } from '@/engine/med/plan';
 import type { ReviewData } from '@/engine/med/review';
 import type { CaseScore, Grade, ScoreNote } from '@/engine/med/score';
@@ -31,7 +31,16 @@ export interface Line {
  */
 export type ResultImage =
   | { kind: 'xray'; infiltrate?: 'right' | 'left' | 'both'; hyperinflation: boolean; seed: number }
-  | { kind: 'ecg'; rate: number; st: number; rScale: number; seed: number };
+  | { kind: 'ecg'; rate: number; st: number; rScale: number; seed: number }
+  /**
+   * УЗИ брюшной полости: правая подвздошная область, `appendix` — виден воспалённый отросток (часть
+   * 29); или желчный пузырь — `stones` камней, `wall` — утолщённая стенка (часть 30); или левая
+   * подвздошная область — `diverticulum`, воспалённый дивертикул (часть 30д); УЗИ почек — почка,
+   * `pelvis` — расширенная лоханка (часть 30г)
+   */
+  | { kind: 'us'; view: 'appendix' | 'gallbladder' | 'kidney' | 'colon'; appendix?: number; stones?: number; wall?: number; pelvis?: number; diverticulum?: number; seed: number }
+  /** обзорный снимок живота стоя (часть 30б): серп свободного газа под куполом, раздутые петли с уровнями */
+  | { kind: 'abdomen'; freeGas: boolean; levels: boolean; seed: number };
 
 /** Результаты одного обследования. `fresh` — пришли за последнее действие игрока. */
 export interface ResultGroup {
@@ -114,6 +123,8 @@ export interface VisitView {
   /** где лечить: варианты этой больницы */
   settings: SettingOption[];
   hints: { id: Id; name: string; outOf10: number }[];
+  /** из чего выбирают диагноз — болезни отделений этой больницы по системам органов */
+  diagnoses: DiagnosisGroup[];
   /** всё лечение базы по алфавиту; warning — противопоказание, о котором врач уже знает */
   treatments: { id: Id; name: string; warning?: string }[];
   /** то же лечение — по группам (антибиотики, обезболивающие…) для экрана решения */
@@ -171,6 +182,8 @@ export interface CaseInput {
   difficulty?: Difficulty;
   /** своя больница: обследования, которых здесь не сделать, — и почему (spec 2026-09-own-hospital) */
   unavailable?: Record<Id, string>;
+  /** отделения больницы: из их болезней диагноз и «Похоже на» (часть 30); нет — терапия */
+  departments?: readonly Id[];
   /** где лечить — что есть в этой больнице; нет — как в амбулатории: домой, в стационар, скорая */
   settings?: SettingOption[];
   payerNote?: string;
@@ -192,8 +205,9 @@ export function patientName(p: Patient): string {
   return `${p.sex === 'm' ? surname : n.feminine(surname)} ${first[fnv1a(`${p.seed}:f`) % first.length]}`;
 }
 
-export function candidates(): Id[] {
-  return Object.keys(db.conditions).filter(id => db.conditions[id].presenting && db.conditions[id].department === DEPARTMENT);
+/** Болезни, из которых выбирают диагноз: отделения больницы (с приёмным — и хирургия, часть 30); нет — терапия. */
+export function candidates(departments: readonly Id[] = [DEPARTMENT]): Id[] {
+  return Object.keys(db.conditions).filter(id => db.conditions[id].presenting && departments.includes(db.conditions[id].department));
 }
 
 /** Жалобы и всё, что пришло, — как для вывода. */
@@ -201,9 +215,8 @@ export function observationsOfCase(patient: Patient, arrived: readonly Arrival[]
   return [...complaintObservations(patient), ...arrived.flatMap(a => a.obs)];
 }
 
-export function beliefsOf(patient: Patient, obs: readonly Observation[]): Belief[] {
-  const known = knownFacts(db, obs);
-  return posterior(db, candidates(), obs, { sex: patient.sex, age: patient.age, season: patient.season, knownRisks: known.risks, knownConditions: known.conditions });
+export function beliefsOf(patient: Patient, obs: readonly Observation[], departments?: readonly Id[]): Belief[] {
+  return posterior(db, candidates(departments), obs, contextOf(db, patient, obs));
 }
 
 /** Противопоказание — фактор риска (аллергия) или состояние. */
@@ -248,13 +261,15 @@ export function treatmentGroupsFor(obs: readonly Observation[]): VisitView['trea
   return groupTreatments(treatmentChoices(obs));
 }
 
-export function conditionChoices(): { id: Id; name: string }[] {
-  return candidates().map(id => ({ id, name: db.conditions[id].name.ru })).sort((a, b) => (a.name < b.name ? -1 : 1));
+export function conditionChoices(departments?: readonly Id[]): { id: Id; name: string }[] {
+  return candidates(departments).map(id => ({ id, name: db.conditions[id].name.ru })).sort((a, b) => (a.name < b.name ? -1 : 1));
 }
 
+export type DiagnosisGroup = { key: BodySystem; title: string; items: { id: Id; name: string }[] };
+
 /** Диагнозы по системам органов — в порядке SYSTEMS; внутри — по алфавиту. */
-export function diagnosisGroups(): { key: BodySystem; title: string; items: { id: Id; name: string }[] }[] {
-  const all = conditionChoices();
+export function diagnosisGroups(departments?: readonly Id[]): DiagnosisGroup[] {
+  const all = conditionChoices(departments);
   return SYSTEMS
     .map(key => ({ key, title: T.spikes.decision.system[key], items: all.filter(c => db.conditions[c.id].system === key) }))
     .filter(g => g.items.length > 0);
@@ -264,7 +279,9 @@ export function diagnosisGroups(): { key: BodySystem; title: string; items: { id
 function treatmentChoices(obs: readonly Observation[]): VisitView['treatments'] {
   const known = knownFacts(db, obs);
   const knownIds = new Set([...known.risks, ...known.conditions]);
+  // операцию выбирают не здесь, а «В операционную»: какая — по диагнозу (часть 28)
   return Object.values(db.treatments)
+    .filter(x => x.kind !== 'surgery')
     .map(x => {
       const by = x.contraindications.find(k => knownIds.has(k.id));
       return { id: x.id, name: x.name.ru, warning: by ? T.spikes.patient.contraindicated(riskName(by.id)) : undefined };
@@ -272,7 +289,7 @@ function treatmentChoices(obs: readonly Observation[]): VisitView['treatments'] 
     .sort((a, b) => (a.name < b.name ? -1 : 1));
 }
 
-/** Снимок и лента — по тому, что показало это обследование; частота на ленте — по пульсу. */
+/** Снимок, лента и сектор УЗИ — по тому, что показало это обследование; частота на ленте — по пульсу. */
 function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observation[], seed: number): ResultImage | undefined {
   const shown = (f: Id) => obs.find(o => o.f === f && o.shown);
   if (exam === 'exam.xray_chest') {
@@ -294,6 +311,18 @@ function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observat
       seed,
     };
   }
+  if (exam === 'exam.xray_abdomen') {
+    return { kind: 'abdomen', freeGas: shown('img.xr_free_gas') !== undefined, levels: shown('img.xr_bowel_levels') !== undefined, seed };
+  }
+  if (exam === 'exam.us_abdomen') {
+    // что нашли, то и на картинке: отросток — «мишенью»; иначе желчный пузырь — с камнями и
+    // утолщённой стенкой, если их показало УЗИ, или обычный
+    if (shown('img.us_appendicitis')) return { kind: 'us', view: 'appendix', appendix: 0.8, seed };
+    if (shown('img.us_diverticulitis')) return { kind: 'us', view: 'colon', diverticulum: 0.8, seed };
+    return { kind: 'us', view: 'gallbladder', stones: shown('img.us_gallstones') ? 3 : 0, wall: shown('img.us_cholecystitis') ? 0.8 : 0, seed };
+  }
+  // почка (часть 30г): расширенная лоханка — если её показало УЗИ
+  if (exam === 'exam.us_kidney') return { kind: 'us', view: 'kidney', pelvis: shown('img.us_hydronephrosis') ? 0.8 : 0, seed };
   return undefined;
 }
 
@@ -333,7 +362,8 @@ export function makeCaseView(c: CaseInput): VisitView {
     unavailable: c.unavailable ?? {},
     settings: c.settings ?? (['home', 'ward', 'ambulance'] as const).map(key => ({ key, title: T.spikes.patient.setting[key] })),
     // «0 из 10» ничего не подсказывает — такие не показываем, первую — всегда
-    hints: c.difficulty === 'doctor' ? [] : beliefsOf(p, obs).slice(0, HINTS)
+    diagnoses: diagnosisGroups(c.departments),
+    hints: c.difficulty === 'doctor' ? [] : beliefsOf(p, obs, c.departments).slice(0, HINTS)
       .map(b => ({ id: b.id, name: db.conditions[b.id].name.ru, outOf10: Math.round(b.p * 10) }))
       .filter((h, i) => i === 0 || h.outOf10 > 0),
     treatments,
@@ -394,8 +424,11 @@ export function outcomeText(outcome: Outcome, setting: Setting, female: boolean)
     case 'unchanged': return out.unchanged;
     case 'worse': return out.worse(outcome.day);
     case 'reaction': return outcome.reaction ? out.reaction(db.treatments[outcome.reaction.tx].name.ru, riskName(outcome.reaction.by)) : out.unchanged;
-    case 'transferred': return setting === 'ambulance' ? out.ambulance : setting === 'admit' ? out.transferred(female) : out.ward(female);
-    case 'admitted': return out.admitted;
+    case 'transferred':
+      if (outcome.severe) return out.transferredSevere(female);
+      return setting === 'ambulance' ? out.ambulance : setting === 'admit' || setting === 'surgery' ? out.transferred(female) : out.ward(female);
+    case 'admitted': return setting === 'surgery' ? out.operated : out.admitted;
+    case 'died': return out.died(outcome.day, female);
   }
 }
 
@@ -417,6 +450,12 @@ export function noteText(n: ScoreNote): string {
     case 'safety.redFlagIgnored': return t.redFlagIgnored(db.findings[n.f].name.ru);
     case 'safety.redFlagUnchecked': return t.redFlagUnchecked(db.findings[n.f].name.ru);
     case 'thrift.over': return t.thriftOver(n.times);
+    case 'triage.under': return t.triageUnder(n.triage, n.news2, n.flag && db.findings[n.flag]?.name.ru);
+    case 'triage.over': return t.triageOver(n.triage, n.news2, n.flag && db.findings[n.flag]?.name.ru);
+    case 'op.onTime': return t.opOnTime(tx(n.tx), n.hours, n.window, n.onset === true, n.observed === true);
+    case 'op.late': return t.opLate(tx(n.tx), n.hours, n.window, n.onset === true, n.observed === true);
+    case 'op.complication': return t.opComplication(tx(n.tx));
+    case 'op.complicated': return t.opComplicated(db.conditions[n.of]?.complication?.name.ru ?? n.of, n.hours, n.before);
   }
 }
 

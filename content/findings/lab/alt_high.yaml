@@ -1,0 +1,17 @@
+id: lab.alt_high
+name: { ru: "АЛТ выше нормы" }
+leak: { pct: 3 }
+value:
+  unit: "Ед/л"
+  ref: [0, 40]
+  present: [45, 400]
+  absent: [8, 40]
+  decimals: 0
+texts:
+  hint:
+    ru: "Фермент клеток печени: выходит в кровь, когда они повреждаются. Бывает повышен и при воспалении желчного пузыря."
+  present:
+    - ru: "АЛТ {value} {unit}"
+  absent:
+    - ru: "АЛТ {value} {unit}"
+review: draft

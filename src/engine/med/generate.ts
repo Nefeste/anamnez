@@ -9,6 +9,11 @@ import type { ActiveCondition, Patient, Sex, TrueFinding } from './types';
 
 export interface GenContext {
   department: Id;
+  /**
+   * из болезней каких отделений основное заболевание: больница с приёмным принимает и хирургию
+   * (spec 2026-09-chapter-2, часть 30); нет — только `department`
+   */
+  departments?: readonly Id[];
   season: Season;
   /** задать основное заболевание (задания, «Случай дня», тесты) */
   primary?: Id;
@@ -20,6 +25,12 @@ export interface GenContext {
   visit?: number;
   /** заменить скрытые параметры основного заболевания: вернулся хуже — тяжёлая форма */
   params?: Record<string, string>;
+  /**
+   * везёт скорая (spec 2026-09-chapter-2, части 27 и 30): вес основного заболевания у этого
+   * человека умножается на вес его тяжести (0 — такое не везут); осмотры и болезни без лечения
+   * не везут. Человек — прежде болезни: камни, привычки и возраст решают, чем он заболел
+   */
+  carried?: Readonly<Record<Condition['severity'], number>>;
 }
 
 /** Возрастная пирамида обращающихся взрослых: [от, до, вес]. Черновик для среза. */
@@ -63,7 +74,7 @@ export function generatePatient(db: ContentDb, seed: number, ctx: GenContext): P
   });
 
   // Основное заболевание.
-  const primaryId = ctx.primary ?? pickPrimary(db, root.fork('primary'), { sex, age, season: ctx.season, department: ctx.department, risks, chronic });
+  const primaryId = ctx.primary ?? pickPrimary(db, root.fork('primary'), { sex, age, season: ctx.season, departments: ctx.departments ?? [ctx.department], risks, chronic }, ctx.carried);
   const primary = db.conditions[primaryId];
   if (!primary) throw new Error(`generatePatient: unknown condition ${primaryId}`);
 
@@ -86,7 +97,8 @@ export function generatePatient(db: ContentDb, seed: number, ctx: GenContext): P
   const values = realizeValues(db, again('values'), findings);
   const complaints = pickComplaints(db, findings);
 
-  return { seed, sex, age, season: ctx.season, department: ctx.department, truth: { conditions, risks, findings, values }, complaints };
+  // отделение пациента — его основного заболевания: в больнице с приёмным это и хирургия
+  return { seed, sex, age, season: ctx.season, department: primary.department, truth: { conditions, risks, findings, values }, complaints };
 }
 
 /**
@@ -119,13 +131,13 @@ interface Who {
   sex: Sex;
   age: number;
   season: Season;
-  department: Id;
+  departments: readonly Id[];
   risks: readonly Id[];
   chronic: readonly Id[];
 }
 
 /** Вес состояния как основного заболевания у этого человека (0 — не бывает). */
-export function presentingWeight(c: Condition, who: Omit<Who, 'department'>): number {
+export function presentingWeight(c: Condition, who: Omit<Who, 'departments'>): number {
   if (!c.presenting) return 0;
   if (who.age < c.age.min || who.age > c.age.max) return 0;
   if ((c.requires ?? []).some(r => !who.chronic.includes(r))) return 0;
@@ -138,10 +150,18 @@ export function presentingWeight(c: Condition, who: Omit<Who, 'department'>): nu
   return w;
 }
 
-function pickPrimary(db: ContentDb, rng: Rng, who: Who): Id {
-  const ids = sortedKeys(db.conditions).filter(id => db.conditions[id].department === who.department);
-  const weights = ids.map(id => Math.round(presentingWeight(db.conditions[id], who) * 100));
-  return rng.weighted(ids.map((id, i) => ({ id, w: weights[i] })), x => x.w).id;
+function pickPrimary(db: ContentDb, rng: Rng, who: Who, carried?: GenContext['carried']): Id {
+  const ids = sortedKeys(db.conditions).filter(id => who.departments.includes(db.conditions[id].department));
+  const base = ids.map(id => presentingWeight(db.conditions[id], who));
+  // скорая: вес ещё и по тяжести; ничего из того, что везут, у этого человека не бывает — как пришёл сам
+  const carriedBy = carried && ids.map((id, i) => base[i] * carriedWeight(db.conditions[id], carried));
+  const w = carriedBy && carriedBy.some(x => Math.round(x * 100) > 0) ? carriedBy : base;
+  return rng.weighted(ids.map((id, i) => ({ id, w: Math.round(w[i] * 100) })), x => x.w).id;
+}
+
+/** Множитель скорой: вес тяжести болезни; осмотры и болезни без лечения не везут. */
+export function carriedWeight(c: Condition, carried: NonNullable<GenContext['carried']>): number {
+  return c.checkup || !c.treatment ? 0 : carried[c.severity];
 }
 
 /**

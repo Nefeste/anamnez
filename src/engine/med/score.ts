@@ -15,7 +15,20 @@ export type ScoreNote =
   | { code: 'safety.knownViolation' | 'safety.unaskedViolation'; tx: Id; by: Id }
   | { code: 'safety.notAsked'; by: Id }
   | { code: 'safety.redFlagIgnored' | 'safety.redFlagUnchecked'; f: Id }
-  | { code: 'thrift.over'; times: number };
+  | { code: 'thrift.over'; times: number }
+  /**
+   * скорая (spec 2026-09-chapter-2, часть 27): врач отсортировал срочнее или спокойнее, чем шкала
+   * NEWS2 с красными флагами; `flag` — признак, что поднял цвет выше баллов
+   */
+  | { code: 'triage.under' | 'triage.over'; triage: 'red' | 'yellow' | 'green'; news2: number; flag?: Id }
+  /** операция (часть 28): через сколько часов от решения, в срок `window` болезни или позже; осложнение после неё */
+  | { code: 'op.onTime' | 'op.late'; tx: Id; hours: number; window: number; onset?: true; observed?: true }
+  | { code: 'op.complication'; tx: Id }
+  /**
+   * на момент разреза — осложнённая стадия болезни `of` (перфорация, часть 28б): часов от начала
+   * болезни до операции; `before` — была уже при поступлении
+   */
+  | { code: 'op.complicated'; tx: Id; of: Id; hours: number; before: boolean };
 
 export interface CaseInput {
   verdict: 'correct' | 'partly' | 'wrong';

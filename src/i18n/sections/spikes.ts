@@ -1,10 +1,13 @@
 import { pluralRu } from '../plural';
+import { lowerFirst } from '../case';
 
 /** Что надо было выбрать — в разборе: «нужно было …» и «хватило бы …» (spec 2026-09-chapter-2, «Место лечения»). */
 const UNDER: Record<string, string> = {
   home: 'лечить дома', ward: 'направить в стационар', ambulance: 'вызвать скорую', admit: 'положить в палату',
   surgery: 'взять в операционную', transfer: 'перевести в областную',
 };
+/** Цвет сортировки словами — в разборе скорой (часть 27). */
+const TRIAGE: Record<string, string> = { red: 'красный', yellow: 'жёлтый', green: 'зелёный' };
 const OVER: Record<string, string> = {
   home: 'лечения дома', ward: 'направления в стационар', ambulance: 'скорой', admit: 'палаты',
   surgery: 'операционной', transfer: 'перевода',
@@ -105,7 +108,7 @@ export const spikes = {
     settingLabel: 'Где лечить',
     finish: 'Завершить приём',
     finishNeedsDx: 'Выберите диагноз, чтобы завершить приём',
-    contraindicated: (by: string) => `Противопоказано: ${by.toLowerCase()}`,
+    contraindicated: (by: string) => `Противопоказано: ${lowerFirst(by)}`,
     setting: { home: 'Дома', ward: 'В стационар', ambulance: 'Вызвать скорую', admit: 'В палату', surgery: 'В операционную', transfer: 'Перевести' } as Record<string, string>,
     role: {
       firstLine: 'препарат выбора',
@@ -121,12 +124,17 @@ export const spikes = {
       improved: (female: boolean) => `Через неделю ${female ? 'ей' : 'ему'} лучше, но болезнь ещё не прошла`,
       unchanged: 'Через неделю без изменений — придёт снова',
       worse: (day: number) => `${day === 0 ? 'В тот же день' : day === 1 ? 'На следующий день' : `На ${day}-й день`} стало хуже — вернётся на приём`,
-      reaction: (tx: string, by: string) => `На следующий день — реакция на ${tx.toLowerCase()} (${by.toLowerCase()}): вернётся на приём`,
+      reaction: (tx: string, by: string) => `На следующий день — реакция на ${lowerFirst(tx)} (${lowerFirst(by)}): вернётся на приём`,
       ward: (female: boolean) => (female ? 'Направлена в стационар' : 'Направлен в стационар'),
       ambulance: 'Увезла скорая',
       // своя палата (spec 2026-09-chapter-2, часть 26)
       admitted: 'Лежит в палате — чем кончится, покажет обход',
+      // операционная (spec 2026-09-chapter-2, часть 28)
+      operated: 'В операционную, после операции — в палату: чем кончится, покажет обход',
       transferred: (female: boolean) => (female ? 'Переведена в другую больницу' : 'Переведён в другую больницу'),
+      // смерть в стационаре и «мягкий режим» вместо неё (часть 28б) — спокойно, без оценок
+      died: (day: number, female: boolean) => `${female ? 'Умерла' : 'Умер'} в стационаре на ${day + 1}-е\u00a0сутки`,
+      transferredSevere: (female: boolean) => `${female ? 'Переведена' : 'Переведён'} в областную больницу в тяжёлом состоянии`,
     },
     outcomeLabel: 'Что было дальше',
     gradesLabel: 'Оценка случая',
@@ -160,15 +168,32 @@ export const spikes = {
       acceptable: (tx: string) => `${tx}: допустимая замена — без противопоказаний лучше препарат выбора`,
       noCure: 'Не назначено лечение причины болезни',
       none: 'Ничего не рекомендовано — даже при простуде пациенту нужен совет',
-      preHospitalMissing: (tx: string) => `До приезда скорой не дали: ${tx.toLowerCase()}`,
+      preHospitalMissing: (tx: string) => `До приезда скорой не дали: ${lowerFirst(tx)}`,
       settingUnder: (should: string) => `Недооценили тяжесть: нужно было ${UNDER[should] ?? UNDER.ambulance}`,
       settingOver: (should: string) => `Перестраховка: хватило бы ${OVER[should] ?? OVER.ward}`,
-      knownViolation: (tx: string, by: string) => `${tx}: противопоказано (${by.toLowerCase()}), и вы об этом знали`,
-      unaskedViolation: (tx: string, by: string) => `${tx}: противопоказано (${by.toLowerCase()}) — вы не спросили, а оно было`,
-      notAsked: (by: string) => `Перед назначением не спросили: ${by.toLowerCase()}`,
-      redFlagIgnored: (f: string) => `Тревожный признак («${f.toLowerCase()}») был перед глазами — тяжесть недооценена`,
-      redFlagUnchecked: (f: string) => `Не проверили тревожный признак — «${f.toLowerCase()}» был`,
+      knownViolation: (tx: string, by: string) => `${tx}: противопоказано (${lowerFirst(by)}), и вы об этом знали`,
+      unaskedViolation: (tx: string, by: string) => `${tx}: противопоказано (${lowerFirst(by)}) — вы не спросили, а оно было`,
+      notAsked: (by: string) => `Перед назначением не спросили: ${lowerFirst(by)}`,
+      redFlagIgnored: (f: string) => `Тревожный признак («${lowerFirst(f)}») был перед глазами — тяжесть недооценена`,
+      redFlagUnchecked: (f: string) => `Не проверили тревожный признак — «${lowerFirst(f)}» был`,
       thriftOver: (times: number) => `Обследования в ${String(times).replace('.', ',')}\u00a0${Number.isInteger(times) ? pluralRu(times, 'раз', 'раза', 'раз') : 'раза'} дороже разумного пути`,
+      // скорая (spec 2026-09-chapter-2, часть 27): сверка сортировки врача со шкалой; `flag` —
+      // тревожный признак, что поднял цвет выше баллов
+      triageUnder: (triage: string, news2: number, flag?: string) =>
+        `При сортировке недооценили: по листу передачи NEWS2 — ${news2}\u00a0${pluralRu(news2, 'балл', 'балла', 'баллов')}${flag ? `, но «${lowerFirst(flag)}» — тревожный признак` : ''}, по шкале это ${TRIAGE[triage] ?? triage}`,
+      triageOver: (triage: string, news2: number, flag?: string) =>
+        `При сортировке переоценили: по листу передачи — ${TRIAGE[triage] ?? triage} (NEWS2 — ${news2}\u00a0${pluralRu(news2, 'балл', 'балла', 'баллов')}${flag ? `, тревожный признак «${lowerFirst(flag)}»` : ''})`,
+      // операционная (spec 2026-09-chapter-2, часть 28): срок от поступления — или от начала болезни
+      // (холецистит, часть 30), или после наблюдения в палате (непроходимость, часть 30в) — и
+      // осложнение после операции
+      opOnTime: (tx: string, hours: number, window: number, onset = false, observed = false) =>
+        `${tx} — через ${String(hours).replace('.', ',')}\u00a0ч ${onset ? 'от начала болезни' : 'после поступления'}: в срок${observed ? ' после наблюдения' : ''}, до ${window}\u00a0ч`,
+      opLate: (tx: string, hours: number, window: number, onset = false, observed = false) =>
+        `${tx} — через ${String(hours).replace('.', ',')}\u00a0ч ${onset ? 'от начала болезни' : 'после поступления'}: позже срока${observed ? ' после наблюдения' : ''} в ${window}\u00a0ч`,
+      opComplication: (tx: string) => `После операции (${lowerFirst(tx)}) — осложнение: инфекция раны или абсцесс, стационар дольше`,
+      // стадия болезни на момент разреза (часть 28б): перфорация — уже при поступлении или пока ждали
+      opComplicated: (name: string, hours: number, before: boolean) =>
+        before ? `Осложнение — ${name}, уже при поступлении: от начала болезни ${hours}\u00a0ч` : `Осложнение — ${name}, пока ждали операции: от начала болезни до разреза ${hours}\u00a0ч`,
     },
     done: 'Уже сделано',
     cost: (min: number, rub: number) => (rub > 0 ? `${min}\u00a0мин · ${rub}\u00a0₽` : `${min}\u00a0мин`),
@@ -242,10 +267,27 @@ export const spikes = {
       title: 'УЗИ',
       gb: 'Печень и желчный пузырь',
       gbFoci: 'Светлые точки у нижней стенки пузыря, за ними — тень',
+      // утолщённая стенка пузыря (часть 30)
+      gallbladderWall: 'Камни, толстая двухконтурная стенка пузыря и полоска жидкости',
       kidney: 'Почка под печенью',
       kidneyPelvis: 'Тёмная середина почки расширена',
       kidneyFluid: 'Тёмная полоса жидкости между печенью и почкой',
+      // подвздошная область (spec 2026-09-chapter-2, часть 29)
+      appendix: 'Правая подвздошная область: петли кишки, отростка не видно',
+      appendixTarget: 'Толстый отросток «мишенью», вокруг — светлый отёчный жир',
+      appendixFluid: 'Отросток «мишенью» и тёмный серп жидкости под ним',
+      // левая подвздошная область (часть 30д)
+      colon: 'Левая подвздошная область: сигмовидная кишка вдоль, стенка тонкая',
+      colonDiverticulum: 'Стенка кишки толстая, от неё — тёмный дивертикул с яркой серединой, вокруг — светлый жир',
       note: 'Датчик — сверху, глубина — вниз, шкала справа. Жидкость — чёрная, за ней светлее; за плотной точкой — тень.',
+    },
+    // обзорный снимок живота стоя (spec 2026-09-chapter-2, часть 30б): подпись — что нарисовано
+    abdomen: {
+      title: 'Обзорный снимок живота',
+      normal: 'Газ в желудке и в ободочной кишке по рамке живота',
+      freeGas: 'Тёмный серп под правым куполом диафрагмы',
+      levels: 'Раздутые петли «арками» и «чашами» с горизонтальными уровнями, в ободочной кишке газа почти нет',
+      note: 'Снимок стоя: газ всегда сверху, под ним — ровная граница с жидкостью. Правая сторона пациента — слева на снимке.',
     },
   },
   save: {

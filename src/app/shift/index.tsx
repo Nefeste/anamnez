@@ -16,8 +16,8 @@ import { ClinicMap } from '@/render/map/ClinicMap';
 import { CLINIC } from '@/state/clinicMap';
 import { blockText, type CashView } from '@/state/sandboxView';
 import {
-  callPatient, closeDay, leaveCase, loadShift, nextDay, openCase, openColleagueCase, pauseClock, type QueueRow, type ShiftView, SPEEDS, type Speed, type SummaryView,
-  type RoomView, saveNow, setSpeed, skipIdle, startSandbox, startShift, TICK_MS, tick, useBuild, useCampaign, useShift, type WhoView,
+  type AmbulanceRow, callPatient, closeDay, leaveCase, loadShift, nextDay, openCase, openColleagueCase, pauseClock, type QueueRow, type ShiftView, SPEEDS, type Speed, type SummaryView,
+  type RoomView, saveNow, setSpeed, skipIdle, sortAmbulance, startSandbox, startShift, TICK_MS, tick, useBuild, useCampaign, useShift, type WhoView,
 } from '@/state/session';
 import { CaseRow } from '@/ui/case/CaseRow';
 import { gradeColor } from '@/ui/case/OutcomeScreen';
@@ -172,6 +172,8 @@ function Queue({ v }: { v: ShiftView }) {
   const [selected, setSelected] = useState<string>();
   const [room, setRoom] = useState<string>();
   const [entering, setEntering] = useState<string>();
+  // лист передачи скорой, открытый для сортировки (spec 2026-09-chapter-2, часть 27)
+  const [handover, setHandover] = useState<string>();
 
   // часы — только пока экран на виду: поверх него карта пациента или разбор. Пока на виду —
   // и фон амбулатории; в кабинете, за закрытой дверью, тихо
@@ -182,7 +184,7 @@ function Queue({ v }: { v: ShiftView }) {
       let door = 0;
       const id = setInterval(() => {
         const notices = tick(TICK_MS);
-        if (notices.some(n => n.kind === 'arrived' && n.triage === 'red')) {
+        if (notices.some(n => (n.kind === 'arrived' && n.triage === 'red') || n.kind === 'ambulance')) {
           play('urgent');
           buzz('urgent');
         } else if (notices.some(n => n.kind === 'resultsReady')) {
@@ -209,7 +211,7 @@ function Queue({ v }: { v: ShiftView }) {
 
   const skip = () => {
     const notices = skipIdle();
-    if (notices.some(n => n.kind === 'arrived' && n.triage === 'red')) {
+    if (notices.some(n => (n.kind === 'arrived' && n.triage === 'red') || n.kind === 'ambulance')) {
       play('urgent');
       buzz('urgent');
     } else if (notices.some(n => n.kind === 'resultsReady' || n.kind === 'arrived')) {
@@ -224,7 +226,9 @@ function Queue({ v }: { v: ShiftView }) {
     buzz('tap');
     if (callPatient(id)) {
       setSelected(undefined);
-      setEntering(id);
+      // привезённого скорой смотрят в смотровой приёмного: карта — сразу (часть 27)
+      if (v.queue.some(r => r.id === id && r.ambulance)) enter();
+      else setEntering(id);
     }
   };
   const enter = () => {
@@ -243,7 +247,10 @@ function Queue({ v }: { v: ShiftView }) {
   const first = v.queue[0];
   const footer = v.inRoom
     ? <Button testID="shift-continue" title={`${entering === v.inRoom.id ? t.entering(v.inRoom.name) : t.continueVisit(v.inRoom.name)} ▶`} onPress={enter} />
-    : first
+    : v.ambulance.length > 0
+      // привезённого скорой — сначала сортировать (spec 2026-09-chapter-2, часть 27)
+      ? <Button testID="shift-sort" lamp title={`${t.ambulance.next(v.ambulance[0].name)} ▶`} onPress={() => setHandover(v.ambulance[0].id)} />
+      : first
       ? <Button testID="shift-call" lamp title={`${t.call(first.name)} ▶`} hint={v.queue.length > 1 ? t.callHint : undefined} onPress={() => call(first.id)} />
       : v.allDone
         ? <Button testID="shift-close-day" title={t.closeDay} hint={t.closeDayHint(0)} onPress={closeDay} />
@@ -310,6 +317,13 @@ function Queue({ v }: { v: ShiftView }) {
         </Card>
       )}
 
+      {v.ambulance.length > 0 && (
+        <Card testID="shift-ambulance">
+          <Text style={styles.label}>{t.ambulance.title}</Text>
+          {v.ambulance.map(a => <Button key={a.id} testID={`ambulance-${a.id}`} kind="plain" title={a.name} hint={a.line} onPress={() => setHandover(a.id)} />)}
+        </Card>
+      )}
+
       <Card>
         <Text style={styles.label}>{t.queue}</Text>
         {v.queue.length === 0 ? <P muted>{t.queueEmpty}</P> : v.queue.map((r, i) => (
@@ -349,7 +363,39 @@ function Queue({ v }: { v: ShiftView }) {
       {v.afterHours && !v.allDone && (
         <Button kind="plain" testID="shift-close-day-early" title={t.closeDay} hint={t.closeDayHint(v.counts.unseen)} onPress={closeDay} />
       )}
+
+      <Handover row={v.ambulance.find(a => a.id === handover)} onClose={() => setHandover(undefined)} />
     </Screen>
+  );
+}
+
+/** Лист передачи скорой: повод, что измерил фельдшер, на «Студенте» — NEWS2 и тревожный признак; три цвета — сортировка врачом. */
+function Handover({ row, onClose }: { row?: AmbulanceRow; onClose: () => void }) {
+  const styles = useStyles();
+  const t = T.shift.ambulance;
+  return (
+    <Sheet visible={row !== undefined} onClose={onClose} closeTitle={t.close} testID="handover-sheet">
+      {row ? (
+        <>
+          <H>{row.name}</H>
+          <Text style={styles.label}>{t.sheet}</Text>
+          <P testID="handover-reason">{row.handover.reason}</P>
+          <Text style={styles.label}>{t.measured}</Text>
+          {row.handover.measured.map(m => <P key={m}>{m}</P>)}
+          {row.handover.news2 ? <P muted testID="handover-news2">{row.handover.news2}</P> : null}
+          {row.handover.flag ? <P muted testID="handover-flag">{row.handover.flag}</P> : null}
+          <Text style={styles.label}>{t.sortLabel}</Text>
+          {(['red', 'yellow', 'green'] as const).map(c => (
+            <Button key={c} testID={`sort-${c}`} kind="plain" title={t.sort[c]} onPress={() => {
+              buzz('tap');
+              sortAmbulance(row.id, c);
+              onClose();
+            }} />
+          ))}
+          <P muted>{t.sortHint}</P>
+        </>
+      ) : null}
+    </Sheet>
   );
 }
 
@@ -498,10 +544,24 @@ function Summary({ v }: { v: ShiftView }) {
         </Card>
       )}
 
+      {s.ambulanceLines && (
+        <Card testID="summary-ambulance">
+          <Text style={styles.label}>{t.ambulance.title}</Text>
+          {s.ambulanceLines.map(line => <P key={line}>{line}</P>)}
+        </Card>
+      )}
+
       {s.wardLines && (
         <Card testID="summary-ward">
           <Text style={styles.label}>{t.ward.title}</Text>
           {s.wardLines.map(line => <P key={line}>{line}</P>)}
+        </Card>
+      )}
+
+      {s.surgeryLines && (
+        <Card testID="summary-surgery">
+          <Text style={styles.label}>{t.surgery.title}</Text>
+          {s.surgeryLines.map(line => <P key={line}>{line}</P>)}
         </Card>
       )}
 

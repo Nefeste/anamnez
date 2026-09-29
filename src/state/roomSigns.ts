@@ -18,9 +18,9 @@ export interface RoomSign {
 }
 
 /** У каких помещений лампа над дверью: туда входят к врачу или медсестре на приём и процедуру. */
-export const LAMP_ROOMS: ReadonlySet<string> = new Set(['office', 'triage', 'procedure', 'ecg', 'xray']);
+export const LAMP_ROOMS: ReadonlySet<string> = new Set(['office', 'triage', 'procedure', 'ecg', 'xray', 'ultrasound']);
 /** К аппаратам этих помещений ждут на скамье. */
-const EXAM_ROOMS: ReadonlySet<string> = new Set(['ecg', 'xray']);
+const EXAM_ROOMS: ReadonlySet<string> = new Set(['ecg', 'xray', 'ultrasound']);
 
 /**
  * Знаки помещений на сейчас:
@@ -54,6 +54,17 @@ export function roomSigns(layout: ClinicLayout, s: ShiftState, down: ReadonlySet
     const room = p.by === undefined ? mine : office.get(p.by);
     const sign = room === undefined ? undefined : signs.get(room);
     if (sign) sign.queue++;
+  }
+  // операционная (spec 2026-09-chapter-2, часть 28): идёт операция — горят лампа и монитор;
+  // ждущие операции — очередь у первой операционной
+  const or = layout.rooms.find(r => r.type === 'or');
+  for (const p of all) {
+    const op = p.status === 'admitted' ? p.stay?.op : undefined;
+    if (!op || op.done) continue;
+    if (op.start !== undefined && op.room && op.start <= s.t) {
+      const sign = signs.get(op.room);
+      if (sign) sign.lit = true;
+    } else if (op.start === undefined && or) signs.get(or.id)!.queue++;
   }
   return layout.rooms.map(r => signs.get(r.id)!);
 }

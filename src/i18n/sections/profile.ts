@@ -1,6 +1,7 @@
 // Профиль врача (spec 2026-09-first-shift, «Профиль-минимум»): имя и пол, практика, архив приёмов;
 // достижения (spec 2026-09-campaign, часть 13).
 import { pluralRu } from '../plural';
+import { lowerFirst } from '../case';
 
 // между числом и единицей — неразрывный пробел (голос студии)
 const times = (n: number) => `${n}\u00a0${pluralRu(n, 'раз', 'раза', 'раз')}`;
@@ -32,7 +33,7 @@ export const profile = {
   danger: (ok: number, all: number) => `Нужны были стационар или скорая — направлено ${ok} из ${all}`,
   ranks: ['Интерн', 'Ординатор', 'Врач', 'Врач высшей категории'],
   rankLadder: (steps: { name: string; cases: number }[]) =>
-    `Звание растёт с принятыми пациентами: ${steps.map((x, i) => (i === 0 ? x.name.toLowerCase() : `${x.name.toLowerCase()} (${x.cases})`)).join(' → ')}.`,
+    `Звание растёт с принятыми пациентами: ${steps.map((x, i) => (i === 0 ? lowerFirst(x.name) : `${lowerFirst(x.name)} (${x.cases})`)).join(' → ')}.`,
   portrait: 'Портрет',
   portraitN: (n: number) => `Портрет ${n}`,
   seen: (n: number, total: number) => `Встречалось болезней: ${n} из ${total}`,

@@ -4,6 +4,7 @@ import { mkdirSync, readFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import { chromium, type Page } from 'playwright';
 import { clinicLayout } from '../../src/engine/hospital/clinic';
+import { generatePatient } from '../../src/engine/med/generate';
 import { apply, newSandbox, newShift, newSingle } from '../../src/engine/shift/engine';
 import { DAY, SHIFT_END, SHIFT_SCHEMA_VERSION } from '../../src/engine/shift/types';
 import { buildDb } from '../content/load';
@@ -206,6 +207,128 @@ function wardSave(): { save: string; admitted: string; next: string } {
   return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s }), admitted, next };
 }
 
+/**
+ * Песочница со смотровой приёмного (spec 2026-09-chapter-2, часть 27), день 1 после рабочих
+ * часов: скорая привозила пациентов, никого не отсортировали — ждут в смотровой и у входа.
+ */
+function ambulanceSave(): { save: string; id: string; dx: string; scale: string; flag?: string; cars: number } {
+  const { db } = buildDb();
+  const s = newSandbox(db, { seed: 21, season: 'winter', difficulty: 'student', start: 'clinic', budget: db.economy.sandbox.budgets.generous });
+  const cells: [number, number][] = [];
+  for (let x = 29; x <= 38; x++) for (let y = 7; y <= 9; y++) cells.push([x, y]);
+  apply(db, s, { kind: 'build', cmd: { kind: 'corridor', cells } });
+  apply(db, s, { kind: 'build', cmd: { kind: 'room', type: 'room.emergency', size: 'M', x: 29, y: 1, rot: 0 } });
+  apply(db, s, { kind: 'buildEnd' });
+  const er = s.hospital!.rooms[s.hospital!.rooms.length - 1].id;
+  apply(db, s, { kind: 'assign', id: s.staff!.find(m => m.role === 'role.nurse' && m.room === 'r7')!.id, room: er });
+  apply(db, s, { kind: 'nextDay' });
+  while (s.t < (s.day - 1) * DAY + SHIFT_END) apply(db, s, { kind: 'advance', seconds: 10 * 60 });
+  const cars = Object.values(s.patients).filter(p => p.kind === 'ambulance').sort((a, b) => a.arriveT - b.arriveT);
+  const p = cars[0];
+  const flag = p.scale!.flag ? db.findings[p.scale!.flag].name.ru : undefined;
+  return {
+    save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s }), id: p.id, dx: p.patient.truth.conditions[0].id, scale: p.scale!.triage,
+    ...(flag ? { flag } : {}), cars: cars.length,
+  };
+}
+
+/**
+ * Песочница с палатой и операционной (spec 2026-09-chapter-2, часть 28): стол, наркозный
+ * аппарат, бригада из кандидатов; день 1 после рабочих часов — у вас в кабинете пациент с
+ * аппендицитом, диагноз поставлен.
+ */
+function surgerySave(): { save: string; id: string } {
+  const { db } = buildDb();
+  const s = newSandbox(db, { seed: 21, season: 'winter', difficulty: 'student', start: 'clinic', budget: db.economy.sandbox.budgets.generous });
+  const cells: [number, number][] = [];
+  for (let x = 29; x <= 38; x++) for (let y = 7; y <= 9; y++) cells.push([x, y]);
+  apply(db, s, { kind: 'build', cmd: { kind: 'corridor', cells } });
+  apply(db, s, { kind: 'build', cmd: { kind: 'room', type: 'room.ward', size: 'M', x: 29, y: 0, rot: 0 } });
+  apply(db, s, { kind: 'build', cmd: { kind: 'room', type: 'room.or', size: 'M', x: 29, y: 10, rot: 2 } });
+  const ward = s.hospital!.rooms.find(r => r.type === 'room.ward')!.id;
+  const or = s.hospital!.rooms.find(r => r.type === 'room.or')!.id;
+  for (const equipment of ['eq.or_table', 'eq.anesthesia']) apply(db, s, { kind: 'build', cmd: { kind: 'buy', room: or, equipment } });
+  apply(db, s, { kind: 'buildEnd' });
+  apply(db, s, { kind: 'assign', id: s.staff!.find(m => m.role === 'role.nurse' && m.room === 'r7')!.id, room: ward });
+  for (const role of ['role.surgeon', 'role.anesthetist', 'role.or_nurse']) {
+    const c = s.candidates!.find(x => x.role === role)!;
+    apply(db, s, { kind: 'hire', id: c.id });
+    apply(db, s, { kind: 'assign', id: c.id, room: or });
+  }
+  apply(db, s, { kind: 'nextDay' });
+  for (let i = 0; i < 600 && s.queue.length === 0; i++) apply(db, s, { kind: 'advance', seconds: 60 });
+  const id = s.queue[0];
+  // пришёл с аппендицитом: болезнь пациента — из генератора, как в тестах движка
+  s.patients[id].patient = generatePatient(db, 4242, { department: 'dept.therapy', season: 'winter', primary: 'cond.appendicitis', params: {} });
+  apply(db, s, { kind: 'call', id });
+  apply(db, s, { kind: 'exam', exam: 'exam.vitals' });
+  apply(db, s, { kind: 'diagnose', id: 'cond.appendicitis' });
+  while (s.t < (s.day - 1) * DAY + SHIFT_END) apply(db, s, { kind: 'advance', seconds: 10 * 60 });
+  return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s }), id };
+}
+
+/**
+ * Песочница с кабинетом УЗИ (spec 2026-09-chapter-2, часть 29): УЗ-аппарат, врач УЗД из
+ * кандидатов; день 1 — у вас в кабинете пациент с аппендицитом, УЗИ сделано и описано
+ * («Студент»: обследования не ошибаются — отросток виден).
+ */
+function usSave(): { save: string; id: string } {
+  const { db } = buildDb();
+  const s = newSandbox(db, { seed: 23, season: 'winter', difficulty: 'student', start: 'clinic', budget: db.economy.sandbox.budgets.generous });
+  const cells: [number, number][] = [];
+  for (let x = 29; x <= 38; x++) for (let y = 7; y <= 9; y++) cells.push([x, y]);
+  apply(db, s, { kind: 'build', cmd: { kind: 'corridor', cells } });
+  apply(db, s, { kind: 'build', cmd: { kind: 'room', type: 'room.ultrasound', size: 'S', x: 29, y: 0, rot: 0 } });
+  const us = s.hospital!.rooms.find(r => r.type === 'room.ultrasound')!.id;
+  apply(db, s, { kind: 'build', cmd: { kind: 'buy', room: us, equipment: 'eq.us_basic' } });
+  apply(db, s, { kind: 'buildEnd' });
+  const c = s.candidates!.find(x => x.role === 'role.sonographer')!;
+  apply(db, s, { kind: 'hire', id: c.id });
+  apply(db, s, { kind: 'assign', id: c.id, room: us });
+  apply(db, s, { kind: 'nextDay' });
+  for (let i = 0; i < 600 && s.queue.length === 0; i++) apply(db, s, { kind: 'advance', seconds: 60 });
+  const id = s.queue[0];
+  s.patients[id].patient = generatePatient(db, 4343, { department: 'dept.therapy', season: 'winter', primary: 'cond.appendicitis', params: {} });
+  apply(db, s, { kind: 'call', id });
+  apply(db, s, { kind: 'exam', exam: 'exam.vitals' });
+  apply(db, s, { kind: 'exam', exam: 'exam.us_abdomen' });
+  apply(db, s, { kind: 'waitResults' });
+  return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s }), id };
+}
+
+/**
+ * Песочница со смотровой приёмного и кабинетом УЗИ (spec 2026-09-chapter-2, часть 30): больница
+ * принимает и хирургию; день 1 — у вас в кабинете больной острым холециститом, УЗИ сделано и
+ * описано («Студент»: обследования не ошибаются — камни и толстая стенка видны).
+ */
+function gallSave(): { save: string; id: string } {
+  const { db } = buildDb();
+  const s = newSandbox(db, { seed: 25, season: 'winter', difficulty: 'student', start: 'clinic', budget: db.economy.sandbox.budgets.generous });
+  const cells: [number, number][] = [];
+  for (let x = 29; x <= 38; x++) for (let y = 7; y <= 9; y++) cells.push([x, y]);
+  apply(db, s, { kind: 'build', cmd: { kind: 'corridor', cells } });
+  apply(db, s, { kind: 'build', cmd: { kind: 'room', type: 'room.emergency', size: 'M', x: 29, y: 1, rot: 0 } });
+  const er = s.hospital!.rooms[s.hospital!.rooms.length - 1].id;
+  apply(db, s, { kind: 'build', cmd: { kind: 'room', type: 'room.ultrasound', size: 'S', x: 29, y: 10, rot: 2 } });
+  const us = s.hospital!.rooms.find(r => r.type === 'room.ultrasound')!.id;
+  apply(db, s, { kind: 'build', cmd: { kind: 'buy', room: us, equipment: 'eq.us_basic' } });
+  apply(db, s, { kind: 'buildEnd' });
+  apply(db, s, { kind: 'assign', id: s.staff!.find(m => m.role === 'role.nurse' && m.room === 'r7')!.id, room: er });
+  const c = s.candidates!.find(x => x.role === 'role.sonographer')!;
+  apply(db, s, { kind: 'hire', id: c.id });
+  apply(db, s, { kind: 'assign', id: c.id, room: us });
+  apply(db, s, { kind: 'nextDay' });
+  for (let i = 0; i < 600 && s.queue.length === 0; i++) apply(db, s, { kind: 'advance', seconds: 60 });
+  const id = s.queue[0];
+  if (!s.patients[id].departments?.includes('dept.surgery')) throw new Error('gallSave: смотровая приёмного не работает — хирургию не принимают');
+  s.patients[id].patient = generatePatient(db, 4545, { department: 'dept.therapy', departments: s.patients[id].departments, season: 'winter', primary: 'cond.cholecystitis', params: {} });
+  apply(db, s, { kind: 'call', id });
+  apply(db, s, { kind: 'exam', exam: 'exam.vitals' });
+  apply(db, s, { kind: 'exam', exam: 'exam.us_abdomen' });
+  apply(db, s, { kind: 'waitResults' });
+  return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s }), id };
+}
+
 /** Песочница до открытия: готовая амбулатория, бюджет «обычный» — экран «Перед открытием». */
 function sandboxFreshSave(): string {
   const { db } = buildDb();
@@ -255,6 +378,9 @@ try {
   const quiet = () => page.getByTestId('sound-1').getAttribute('aria-selected');
   check((await vibration()) === 'true' && (await page.getByTestId('sound-3').getAttribute('aria-selected')) === 'true', 'настройки: по умолчанию вибрация включена, звук громкий');
   check((await page.getByTestId('settings-ambience').getAttribute('aria-checked')) === 'true', 'настройки: фон амбулатории по умолчанию включён');
+  // «мягкий режим» (spec 2026-09-chapter-2, часть 28б): по умолчанию выключен
+  check((await page.getByTestId('settings-soft').getAttribute('aria-checked')) === 'false' && (await text(page, 'settings-soft')).includes('перевод в областную больницу'),
+    `настройки: мягкий режим — выключен, ${(await text(page, 'settings-soft')).replace(/\n/g, ' · ')}`);
   await page.getByTestId('settings-vibration').click();
   await page.getByTestId('sound-1').click();
   await page.screenshot({ path: join(OUT, '10-settings.png'), fullPage: true });
@@ -414,6 +540,16 @@ try {
   await page.waitForTimeout(500);
   check((await page.getByTestId('result-xray').count()) === 1 && (await page.getByTestId('result-xray').isVisible()), 'П4: рентген в карте — снимком');
   await page.screenshot({ path: join(OUT, '04-xray.png') });
+  // обзорный снимок живота стоя — тоже рисунком (0.0.49): кадр выше, чем шире
+  await page.getByTestId('tab-order').click();
+  await page.getByTestId('exam-exam.xray_abdomen').click();
+  for (let i = 0; i < 5 && (await page.getByTestId('visit-wait').count()) > 0; i++) await page.getByTestId('visit-wait').click();
+  await page.getByTestId('result-xray-abdomen').scrollIntoViewIfNeeded();
+  await page.waitForTimeout(500);
+  const abdBox = await page.getByTestId('result-xray-abdomen').boundingBox();
+  check((await page.getByTestId('result-xray-abdomen').count()) === 1 && abdBox !== null && abdBox.height > abdBox.width,
+    `П4: обзорный снимок живота в карте — рисунком ${Math.round(abdBox?.width ?? 0)} × ${Math.round(abdBox?.height ?? 0)}`);
+  await page.screenshot({ path: join(OUT, '04-xray-abdomen.png') });
   await page.screenshot({ path: join(OUT, '04-patient-exams.png'), fullPage: true });
   // решение — отдельный экран в два шага, а не четвёртая вкладка (отзыв на 0.0.5)
   check((await page.locator('[data-testid^="tab-"]').count()) === 3 && (await page.getByTestId('visit-decide').isVisible()), 'П4: три вкладки действий, «Решение» — отдельной кнопкой внизу');
@@ -462,10 +598,11 @@ try {
   }));
   const heads = await drawn('[data-testid^="head-ct-"] canvas, [data-testid^="head-mri-"] canvas');
   const us = await drawn('[data-testid^="us-"] canvas');
+  const abd = await drawn('[data-testid^="abd-"] canvas');
   const allImages = await drawn('canvas');
-  check(heads.length === 7 && heads.every(Boolean) && us.length === 5 && us.every(Boolean) && allImages.every(Boolean),
-    `П5: срезы головы нарисованы — ${heads.filter(Boolean).length} из 7, УЗИ — ${us.filter(Boolean).length} из 5; все рисунки экрана — ${allImages.filter(Boolean).length} из ${allImages.length} (смотреть 06-head-*.png, 06-us.png)`);
-  for (const id of ['head-ct', 'head-mri', 'us']) {
+  check(heads.length === 7 && heads.every(Boolean) && us.length === 11 && us.every(Boolean) && abd.length === 3 && abd.every(Boolean) && allImages.every(Boolean),
+    `П5: срезы головы нарисованы — ${heads.filter(Boolean).length} из 7, УЗИ — ${us.filter(Boolean).length} из 11, снимки живота — ${abd.filter(Boolean).length} из 3; все рисунки экрана — ${allImages.filter(Boolean).length} из ${allImages.length} (смотреть 06-head-*.png, 06-us.png, 06-abdomen.png)`);
+  for (const id of ['head-ct', 'head-mri', 'us', 'abdomen']) {
     await page.getByTestId(id).scrollIntoViewIfNeeded();
     await page.waitForTimeout(300);
     await page.getByTestId(id).screenshot({ path: join(OUT, `06-${id}.png`) });
@@ -544,6 +681,9 @@ try {
   check((await text(page, 'visit-clock')) === roomClock, 'смена: в кабинете часы идут только делами');
   await page.getByTestId('exam-exam.ask_complaints').click();
   await page.getByTestId('tab-order').click();
+  // кабинета УЗИ в амбулатории нет (часть 29): обследование серым, с причиной
+  const usHere = page.getByTestId('exam-exam.us_abdomen');
+  check(await usHere.isDisabled() && (await usHere.innerText()).includes('нет кабинета УЗИ'), `смена: УЗИ в амбулатории — «${(await usHere.innerText()).replace(/\n/g, ' · ')}»`);
   await page.getByTestId('exam-exam.cbc').click();
   await page.screenshot({ path: join(OUT, '08-shift-card.png') });
   await page.getByTestId('visit-send-away').click();
@@ -555,6 +695,9 @@ try {
   await page.getByTestId('visit-fresh').first().waitFor({ timeout: 10_000 });
   check(await page.getByTestId('visit-fresh').first().isVisible(), 'смена: пришедшее без врача — «новое» при вызове');
   await page.getByTestId('visit-decide').click();
+  // в амбулатории хирургии нет (часть 30): среди диагнозов — ни холецистита, ни панкреатита
+  const surgicalHere = await page.locator('[data-testid="dx-cond.cholecystitis"], [data-testid="dx-cond.pancreatitis"], [data-testid="dx-cond.biliary_colic"]').count();
+  check(surgicalHere === 0 && (await page.getByTestId('dx-cond.appendicitis').count()) === 1, `смена: в амбулатории хирургических диагнозов нет (${surgicalHere}), аппендицит — есть`);
   await page.locator('[data-testid^="hint-"]').first().click();
   await page.getByTestId('decision-to-plan').click();
   await page.getByTestId('setting-home').click();
@@ -931,12 +1074,257 @@ try {
   await page.waitForTimeout(1500); // лист меню «Продолжить» ещё уезжает вниз (веб)
   await page.screenshot({ path: join(OUT, '16-ward-summary.png'), fullPage: true });
 
+  // скорая (spec 2026-09-chapter-2, часть 27): после рабочих часов привезённые ждут сортировки —
+  // карточка «Скорая», внизу — «сортировать»; лист передачи — повод, что измерил фельдшер, на «Студенте» — NEWS2;
+  // отсортировали — в очереди со значком «скорая»; позвали — карта сразу (смотрят в смотровой);
+  // в итогах дня — сверка со шкалой и «не отсортировали»
+  const amb = ambulanceSave();
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', amb.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId(`ambulance-${amb.id}`).waitFor({ timeout: 15_000 });
+  await page.getByTestId('tab-pause').click();
+  const row = await text(page, `ambulance-${amb.id}`);
+  check(/\nповод: .+ · в смотровой приёмного$/.test(row), `скорая: ждут сортировки — ${row.replace(/\n/g, ' · ')}`);
+  // внизу — не «Пропустить ожидание»: сначала сортировать первого привезённого
+  const sortNext = await text(page, 'shift-sort');
+  check(sortNext.startsWith(`Скорая: ${row.split('\n')[0]} — сортировать`) && (await page.getByTestId('shift-skip').count()) === 0, `скорая, кнопка внизу: ${sortNext}`);
+  await page.getByTestId('shift-sort').click();
+  await page.getByTestId('handover-news2').waitFor({ timeout: 5000 });
+  const handover = await text(page, 'handover-sheet');
+  // подписи листа — прописными (стиль подписей), innerText отдаёт как на экране
+  check(/^NEWS2 — \d+\u00a0балл/.test(await text(page, 'handover-news2')) && handover.toLowerCase().includes('фельдшер измерил') && /Пульс \d+\sуд\/мин/.test(handover),
+    `скорая, лист передачи: ${handover.replace(/\n/g, ' · ').slice(0, 220)}`);
+  // на «Студенте» — и тревожный признак, если цвет поднял он, а не баллы
+  const flagLine = (await page.getByTestId('handover-flag').count()) > 0 ? await text(page, 'handover-flag') : undefined;
+  check(amb.flag === undefined ? flagLine === undefined : flagLine?.startsWith(`Тревожный признак: ${amb.flag.toLowerCase()} — `) === true,
+    `скорая, тревожный признак в листе: ${flagLine ?? 'нет — цвет дали баллы'}`);
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(OUT, '17-ambulance-handover.png') });
+  await page.getByTestId(`sort-${amb.scale}`).click();
+  await page.getByTestId('handover-sheet').waitFor({ state: 'detached', timeout: 5000 });
+  const queued = await text(page, `queue-${amb.id}`);
+  // скорая не платит отдельно: привезённый — всегда ОМС
+  check(queued.includes('скорая') && queued.includes('ОМС') && (await page.getByTestId(`ambulance-${amb.id}`).count()) === 0,
+    `скорая: отсортирован — в очереди: ${queued.replace(/\n/g, ' · ')}`);
+  await page.getByTestId(`queue-${amb.id}`).click();
+  await visible(page, 'visit-decide').waitFor({ timeout: 10_000 });
+  check(true, 'скорая: позвали — карта сразу, без похода в кабинет');
+  await visible(page, 'visit-decide').click();
+  await page.getByTestId(`dx-${amb.dx}`).click();
+  await page.getByTestId('decision-to-plan').click();
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-outcome').waitFor({ timeout: 10_000 });
+  await page.getByTestId('shift-to-queue').click();
+  await page.locator('[data-testid="shift-close-day-early"], [data-testid="shift-close-day"]').first().click();
+  await page.getByTestId('summary-ambulance').waitFor({ timeout: 10_000 });
+  const ambDay = await text(page, 'summary-ambulance');
+  check(ambDay.includes(`Привезли: ${amb.cars}, отсортировали: 1.`) && ambDay.includes('Со шкалой совпало: 1. Недооценили: 0, переоценили: 0.')
+    && (amb.cars === 1 || ambDay.includes(`Не отсортировали до конца дня: ${amb.cars - 1}.`)), `скорая, итоги дня: ${ambDay.replace(/\n/g, ' · ')}`);
+  await page.waitForTimeout(1500); // лист меню «Продолжить» ещё уезжает вниз (веб)
+  await page.screenshot({ path: join(OUT, '17-ambulance-summary.png'), fullPage: true });
+  // операционная (spec 2026-09-chapter-2, часть 28): у вас пациент с аппендицитом — в решении
+  // «В операционную» с операцией и койками; итог приёма — операция и палата; на обходе —
+  // «идёт операция» и выписать нельзя; вечером — в итогах дня операционная
+  const surg = surgerySave();
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', surg.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId('shift-continue').waitFor({ timeout: 15_000 });
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId('shift-continue').click();
+  await visible(page, 'visit-decide').waitFor({ timeout: 10_000 });
+  await visible(page, 'visit-decide').click();
+  await page.getByTestId('decision-to-plan').click();
+  await page.getByTestId('setting-surgery').waitFor({ timeout: 5000 });
+  const opOption = await text(page, 'setting-surgery');
+  check(opOption.startsWith('В операционную') && opOption.includes('Аппендэктомия · коек свободно 4 из 4') && !(await page.getByTestId('setting-surgery').isDisabled()),
+    `операционная, решение: ${opOption.replace(/\n/g, ' · ')}`);
+  await page.getByTestId('setting-surgery').click();
+  await page.screenshot({ path: join(OUT, '18-surgery-decision.png'), fullPage: true });
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-outcome').waitFor({ timeout: 10_000 });
+  check((await text(page, 'visit-outcome')).includes('В операционную, после операции — в палату'), `операционная, итог приёма: ${await text(page, 'visit-outcome')}`);
+  await page.getByTestId('shift-to-queue').click();
+  await page.getByTestId('rounds-open').waitFor({ timeout: 10_000 });
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(OUT, '18-surgery-map.png') });
+  await page.getByTestId('rounds-open').click();
+  await page.getByTestId(`round-op-${surg.id}`).waitFor({ timeout: 10_000 });
+  const opLine = await text(page, `round-op-${surg.id}`);
+  check(/^Идёт операция: аппендэктомия, до \d{2}:\d{2}$/.test(opLine) && await page.getByTestId(`round-discharge-${surg.id}`).isDisabled()
+    && await page.getByTestId(`round-transfer-${surg.id}`).isDisabled(), `операционная, обход: ${opLine}; выписать и перевести нельзя`);
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(OUT, '18-surgery-rounds.png'), fullPage: true });
+  await page.goBack();
+  await page.locator('[data-testid="shift-close-day-early"], [data-testid="shift-close-day"]').first().click();
+  await page.getByTestId('summary-surgery').waitFor({ timeout: 10_000 });
+  const opDay = await text(page, 'summary-surgery');
+  check(opDay.includes('Операций: 1, в срок: 1.'), `операционная, итоги дня: ${opDay.replace(/\n/g, ' · ')}`);
+  await page.waitForTimeout(1500); // лист меню «Продолжить» ещё уезжает вниз (веб)
+  await page.screenshot({ path: join(OUT, '18-surgery-summary.png'), fullPage: true });
+  // энциклопедия: операция — что лечит, где, бригада
+  await page.goto(`${base}/encyclopedia/article/tx.appendectomy`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  // подписи разделов — прописными (стиль подписей), innerText отдаёт как на экране
+  const team = (await visibleText(page, 'enc-block-team')).toLowerCase();
+  check((await visibleText(page, 'enc-article-title')) === 'Аппендэктомия' && team === 'бригада' && (await visible(page, 'enc-block-treats').count()) === 1,
+    `энциклопедия, операция: ${await visibleText(page, 'enc-article-title')} — что лечит, где, ${team}`);
+  // перфорация (часть 28б): исходы по стадии — у операции, риск по часам — у болезни
+  check((await visible(page, 'enc-block-outcomes').count()) === 1, 'энциклопедия, операция: исходы — без перфорации и с ней');
+  await page.goto(`${base}/encyclopedia/article/cond.appendicitis`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const risk = await page.locator('text=Перфорация без операции').first().isVisible().catch(() => false);
+  check(risk, 'энциклопедия, аппендицит: «Перфорация без операции: за первые 36 ч — до 2 %…»');
+
+  // кабинет УЗИ (spec 2026-09-chapter-2, часть 29): у вас пациент с аппендицитом, УЗИ сделано —
+  // результат сектором и строкой; на карте — кабинет УЗИ; в энциклопедии — обследование и кабинет
+  const usv = usSave();
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', usv.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId('shift-continue').waitFor({ timeout: 15_000 });
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId('shift-continue').click();
+  await visible(page, 'result-us').waitFor({ timeout: 10_000 });
+  await visible(page, 'result-us').scrollIntoViewIfNeeded();
+  await page.waitForTimeout(800);
+  const usBox = await visible(page, 'result-us').boundingBox();
+  const usLine = await page.locator('text=утолщённый несжимаемый червеобразный отросток').first().isVisible().catch(() => false);
+  check(usBox !== null && usBox.height > 150 && usLine, `УЗИ: результат в карте — сектором ${Math.round(usBox?.width ?? 0)} × ${Math.round(usBox?.height ?? 0)} и строкой «…утолщённый несжимаемый червеобразный отросток…»`);
+  await page.screenshot({ path: join(OUT, '18-us-result.png'), fullPage: true });
+  await page.goBack();
+  await page.getByTestId('shift-clock').waitFor({ timeout: 10_000 });
+  await page.waitForTimeout(800);
+  await page.screenshot({ path: join(OUT, '18-us-map.png') });
+  await page.goto(`${base}/encyclopedia/article/exam.us_abdomen`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const usAcc = await page.locator('text=чувствительность 76\u00a0%').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'УЗИ брюшной полости' && usAcc, `энциклопедия, УЗИ: ${await visibleText(page, 'enc-article-title')} — чувствительность 76 %, специфичность 95 %`);
+  await page.goto(`${base}/encyclopedia/article/room.ultrasound`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  check((await visibleText(page, 'enc-article-title')) === 'Кабинет УЗИ', `энциклопедия, кабинет: ${await visibleText(page, 'enc-article-title')}`);
+
+  // хирургия живота (spec 2026-09-chapter-2, часть 30): со смотровой приёмного больница принимает
+  // и хирургию — у вас больной острым холециститом; УЗИ — желчный пузырь с камнями и толстой
+  // стенкой; в выборе диагноза — колика, холецистит, панкреатит; в энциклопедии — срок операции
+  const gall = gallSave();
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', gall.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId('shift-continue').waitFor({ timeout: 15_000 });
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId('shift-continue').click();
+  await visible(page, 'result-us').waitFor({ timeout: 10_000 });
+  await visible(page, 'result-us').scrollIntoViewIfNeeded();
+  await page.waitForTimeout(800);
+  const gbBox = await visible(page, 'result-us').boundingBox();
+  const gbStones = await page.locator('text=конкременты с акустической тенью').first().isVisible().catch(() => false);
+  const gbWall = await page.locator('text=Стенка желчного пузыря утолщена').first().isVisible().catch(() => false);
+  check(gbBox !== null && gbBox.height > 150 && gbStones && gbWall,
+    `холецистит: УЗИ — сектором ${Math.round(gbBox?.width ?? 0)} × ${Math.round(gbBox?.height ?? 0)}, строки «конкременты с акустической тенью» и «стенка утолщена»`);
+  await page.screenshot({ path: join(OUT, '19-gall-us.png'), fullPage: true });
+  await visible(page, 'visit-decide').click();
+  await visible(page, 'dx-cond.cholecystitis').waitFor({ timeout: 10_000 });
+  const surgicalDx = (await Promise.all(['cond.cholecystitis', 'cond.biliary_colic', 'cond.pancreatitis'].map(id => visible(page, `dx-${id}`).count()))).every(n => n === 1);
+  check(surgicalDx && (await visible(page, 'dx-cond.cholelithiasis').count()) === 0, 'холецистит: в выборе диагноза — желчная колика, острый холецистит, острый панкреатит; камни без приступа — нет');
+  const ulcerDx = (await Promise.all(['cond.perforated_ulcer', 'cond.ulcer_bleeding', 'cond.strangulated_hernia'].map(id => visible(page, `dx-${id}`).count()))).every(n => n === 1);
+  check(ulcerDx, 'хирургия живота (0.0.49): в выборе диагноза — прободная язва, язвенное кровотечение, ущемлённая паховая грыжа');
+  check((await visible(page, 'dx-cond.adhesive_sbo').count()) === 1, 'хирургия живота (0.0.50): в выборе диагноза — спаечная кишечная непроходимость');
+  const colicDx = (await Promise.all(['cond.renal_colic', 'cond.paraproctitis'].map(id => visible(page, `dx-${id}`).count()))).every(n => n === 1);
+  check(colicDx, 'хирургия приёмного (0.0.51): в выборе диагноза — почечная колика и острый парапроктит');
+  check((await visible(page, 'dx-cond.diverticulitis').count()) === 1, 'хирургия приёмного (0.0.52): в выборе диагноза — острый дивертикулит');
+  await visible(page, 'dx-cond.cholecystitis').click();
+  await page.screenshot({ path: join(OUT, '19-gall-decision.png'), fullPage: true });
+  await visible(page, 'decision-to-plan').click();
+  await visible(page, 'decision-diagnosis').waitFor({ timeout: 5000 });
+  check((await visibleText(page, 'decision-diagnosis')).includes('Острый холецистит'), `холецистит: диагноз — ${await visibleText(page, 'decision-diagnosis')}`);
+  await page.goto(`${base}/encyclopedia/article/cond.cholecystitis`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const window72 = await page.locator('text=в первые 72\u00a0ч от начала болезни').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'Острый холецистит' && window72, `энциклопедия, холецистит: ${await visibleText(page, 'enc-article-title')} — операция в первые 72 ч от начала болезни`);
+  await page.goto(`${base}/encyclopedia/article/cond.pancreatitis`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  check((await visibleText(page, 'enc-article-title')) === 'Острый панкреатит', `энциклопедия, панкреатит: ${await visibleText(page, 'enc-article-title')}`);
+  // прободная язва (0.0.49): операция в первые 2 ч, позже суток — давняя перфорация; у ушивания —
+  // цена каждого часа ожидания
+  await page.goto(`${base}/encyclopedia/article/cond.perforated_ulcer`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const window2 = await page.locator('text=в первые 2\u00a0ч после поступления').first().isVisible().catch(() => false);
+  const after24 = await page.locator('text=Позже 24\u00a0ч от начала болезни — давняя перфорация').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'Прободная язва' && window2 && after24,
+    `энциклопедия, прободная язва: ${await visibleText(page, 'enc-article-title')} — ушивание в первые 2 ч, позже суток — давняя перфорация`);
+  await page.goto(`${base}/encyclopedia/article/tx.ulcer_suture`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const perHour = await page.locator('text=Каждый час от поступления до операции выживаемость ниже на 2,4\u00a0%.').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'Ушивание прободной язвы' && perHour, 'энциклопедия, ушивание: каждый час ожидания — выживаемость ниже на 2,4 %');
+  // спаечная непроходимость (0.0.50): без показаний к экстренной — в палате, операция не позже 72 ч;
+  // некроз — при ишемии кишки через 6 ч; у грыжи условие словами, а не «yes»
+  await page.goto(`${base}/encyclopedia/article/cond.adhesive_sbo`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const observe72 = await page.locator('text=не помогло — операция не позже 72\u00a0ч после поступления').first().isVisible().catch(() => false);
+  const necrosis = await page.locator('text=При ишемии кишки позже 6\u00a0ч от начала болезни — некроз кишки.').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'Спаечная кишечная непроходимость' && observe72 && necrosis,
+    `энциклопедия, непроходимость: ${await visibleText(page, 'enc-article-title')} — наблюдение до 72 ч, некроз при ишемии через 6 ч`);
+  await page.goto(`${base}/encyclopedia/article/cond.strangulated_hernia`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const herniaWhen = await page.locator('text=при непроходимости кишки').first().isVisible().catch(() => false);
+  const herniaYes = await page.locator('text=(yes)').count();
+  check(herniaWhen && herniaYes === 0, 'энциклопедия, ущемлённая грыжа: условие словами — «при непроходимости кишки», без «yes»');
+  // почечная колика и парапроктит (0.0.51): колика — дома, с инфекцией — перевод, беременная — в
+  // стационар; парапроктит — операция в первые 12 ч; УЗИ почек — в кабинете УЗИ
+  await page.goto(`${base}/encyclopedia/article/cond.renal_colic`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const colicTransfer = await page.locator('text=При инфекции мочевых путей — скорая, перевод в центр.').first().isVisible().catch(() => false);
+  const colicPregnancy = await page.locator('text=Если есть «Беременность» — в стационаре.').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'Почечная колика' && colicTransfer && colicPregnancy && (await page.locator('text=(yes)').count()) === 0,
+    `энциклопедия, почечная колика: ${await visibleText(page, 'enc-article-title')} — с инфекцией перевод, беременная — в стационар`);
+  await page.goto(`${base}/encyclopedia/article/cond.paraproctitis`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const drainage12 = await page.locator('text=Операция — вскрытие и дренирование парапроктита: в первые 12\u00a0ч после поступления.').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'Острый парапроктит' && drainage12, 'энциклопедия, парапроктит: вскрытие и дренирование в первые 12 ч');
+  await page.goto(`${base}/encyclopedia/article/exam.us_kidney`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const usRoom = await page.locator('text=Кабинет УЗИ').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'УЗИ почек и мочевых путей' && usRoom, 'энциклопедия, УЗИ почек: делают в кабинете УЗИ');
+  // дивертикулит (0.0.52): где лечить — по форме, неосложнённый проходит сам; у операции — фамилия с большой буквы
+  await page.goto(`${base}/encyclopedia/article/cond.diverticulitis`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const bigAbscess = await page.locator('text=При абсцессе больше 3\u00a0см — скорая, перевод в центр.').first().isVisible().catch(() => false);
+  const selfHeals = await page.locator('text=При неосложнённом — обычно проходит само.').first().isVisible().catch(() => false);
+  const hartmann = await page.locator('text=Операция — резекция по Гартману: в первые 2\u00a0ч после поступления.').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'Острый дивертикулит' && bigAbscess && selfHeals && hartmann,
+    `энциклопедия, дивертикулит: ${await visibleText(page, 'enc-article-title')} — большой абсцесс переводят, неосложнённый проходит сам, резекция по Гартману в первые 2 ч`);
+
+  // энциклопедия: раздел «Шкалы», статья NEWS2 — баллы по показателям
+  await page.goto(`${base}/encyclopedia/article/score.news2`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  check((await visibleText(page, 'enc-article-title')).startsWith('NEWS2'), `энциклопедия, шкала: ${await visibleText(page, 'enc-article-title')}`);
+
   // кампания: карьера 1 → глава 1 — письма и задания; письмо наставника; смена открывается;
   // «Продолжить» в меню — карьера (spec 2026-09-campaign)
   await page.goto(base);
   await page.getByTestId('menu-campaign').click();
   await page.getByTestId('career-1').waitFor({ timeout: 10_000 });
   await page.getByTestId('career-1').click();
+  // при начале карьеры — тот же «мягкий режим», что в настройках
+  check((await page.getByTestId('career-soft').getAttribute('aria-checked')) === 'false', 'кампания: при начале карьеры — «Мягкий режим», выключен');
   await page.getByTestId('career-begin').click();
   await page.getByTestId('chapter').waitFor({ timeout: 10_000 });
   check((await text(page, 'chapter')).startsWith('Глава 1. Участок') && (await page.locator('[data-testid^="mission-"]').count()) === 5,

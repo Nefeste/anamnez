@@ -5,7 +5,7 @@
 // аппарату и результатов ждёт на скамье; принятый и не дождавшийся уходят к выходу. Как люди
 // идут между местами, решает карта (src/render/map); что человек делает — подпись под картой.
 import { db } from '@/content';
-import type { ContentDb, Exam } from '@/content/types';
+import type { ContentDb, Exam, Id } from '@/content/types';
 import { fnv1a } from '@/engine/core/hash';
 import { type Cell, type ClinicLayout, clinicLayout, type StaffRole } from '@/engine/hospital/clinic';
 import type { ShiftPatient, ShiftState } from '@/engine/shift/types';
@@ -19,7 +19,7 @@ export type Figure = 'doctor' | 'nurse' | 'staff' | 'patient' | 'patientYellow' 
 export type Where = { cell: Cell } | { seat: true } | { bench: true };
 
 /** Помещение, где обследование делают с пациентом: анализы — забор в процедурной. */
-export type ExamRoom = 'xray' | 'ecg' | 'lab';
+export type ExamRoom = 'xray' | 'ecg' | 'lab' | 'ultrasound';
 
 /** Что человек делает: карта по этому ведёт его, подпись под картой — рассказывает. */
 export type Doing =
@@ -34,8 +34,12 @@ export type Doing =
   | { kind: 'results'; readyAt: number }
   | { kind: 'leaving' }
   | { kind: 'left' }
-  /** лежит в палате своей больницы; `days` — сутки в стационаре (spec 2026-09-chapter-2, часть 26) */
-  | { kind: 'ward'; days: number };
+  /** лежит в палате своей больницы; `days` — сутки в стационаре (spec 2026-09-chapter-2, часть 26); `op` — ждёт этой операции (часть 28) */
+  | { kind: 'ward'; days: number; op?: Id }
+  /** на операционном столе: идёт операция `tx` до `end` — время смены (часть 28) */
+  | { kind: 'surgery'; tx: Id; end: number }
+  /** привезла скорая (часть 27): ждёт сортировки, ждёт врача, на каталке у входа — мест нет, у вас на осмотре */
+  | { kind: 'ambulance'; state: 'unsorted' | 'waiting' | 'door' | 'withYou' };
 
 export interface Placement {
   id: string;
@@ -69,6 +73,10 @@ const STAFF_FIGURE: Record<StaffRole, Figure> = {
   ecgNurse: 'nurse',
   radiographer: 'staff',
   radiologist: 'staff',
+  surgeon: 'doctor',
+  anesthetist: 'doctor',
+  orNurse: 'nurse',
+  sonographer: 'doctor',
 };
 
 function figureOf(p: ShiftPatient): Figure {
@@ -83,11 +91,12 @@ function lookOfPatient(p: ShiftPatient): Look {
   return patientFigure(lookOf(fnv1a(`${seed}:portrait`), sex, age), p.triage === 'red' ? 2 : p.triage === 'yellow' ? 1 : 0);
 }
 
-const EXAM_ROOM: Record<string, ExamRoom> = { 'room.xray': 'xray', 'room.ecg': 'ecg', 'room.lab': 'lab' };
+const EXAM_ROOM: Record<string, ExamRoom> = { 'room.xray': 'xray', 'room.ecg': 'ecg', 'room.lab': 'lab', 'room.ultrasound': 'ultrasound' };
 
 /** Где обследование делают с пациентом; анализы — забор в процедурной. Нет помещения — в кабинете. */
 function examCell(layout: ClinicLayout, room: ExamRoom): Cell {
-  return room === 'xray' ? layout.spots.xray : room === 'ecg' ? layout.spots.ecg : layout.spots.procedure;
+  if (room === 'lab') return layout.spots.procedure;
+  return layout.spots[room];
 }
 
 /**
@@ -123,7 +132,14 @@ export function placements(db: ContentDb, layout: ClinicLayout, s: ShiftState): 
   for (const p of Object.values(s.patients)) {
     const figure = figureOf(p);
     const look = lookOfPatient(p);
-    if (p.status === 'inRoom' && p.by) {
+    if (p.kind === 'ambulance' && (p.status === 'waiting' || p.status === 'inRoom')) {
+      // скорая (spec 2026-09-chapter-2, часть 27): на месте в смотровой приёмного, мест нет — на
+      // каталке у входа; смотрят его там же, в кабинет он не идёт
+      const bay = p.bay ? layout.beds[p.bay.room]?.[p.bay.bed] : undefined;
+      const state = p.status === 'inRoom' ? 'withYou' : !p.sorted ? 'unsorted' : bay ? 'waiting' : 'door';
+      const callable = p.status === 'waiting' && p.sorted === true && s.current === undefined;
+      out.push({ id: p.id, figure, look, where: bay ? { cell: bay } : exit, doing: { kind: 'ambulance', state }, callable });
+    } else if (p.status === 'inRoom' && p.by) {
       // у нанятого врача — в его кабинете (spec 2026-09-hired-doctors)
       const room = s.staff?.find(m => m.id === p.by)?.room;
       out.push({ id: p.id, figure, look, where: { cell: (room && layout.offices[room]) || layout.spots.office }, doing: { kind: 'office', by: p.by } });
@@ -145,9 +161,15 @@ export function placements(db: ContentDb, layout: ClinicLayout, s: ShiftState): 
     } else if (p.status === 'done' && p.closed && s.t - p.closed.at < LEAVING) {
       out.push({ id: p.id, figure, look, where: exit, doing: { kind: 'leaving' }, leaving: true });
     } else if (p.status === 'admitted' && p.stay) {
-      // лежит на своей койке; палату снесли — на карте его нет, пока не выпишут
+      // идёт операция — на операционном столе (часть 28); иначе лежит на своей койке; палату
+      // снесли — на карте его нет, пока не выпишут
+      const op = p.stay.op;
+      const table = op && !op.done && op.start !== undefined && op.start <= s.t && op.room ? layout.tables?.[op.room] : undefined;
       const bed = layout.beds[p.stay.room]?.[p.stay.bed];
-      if (bed) out.push({ id: p.id, figure, look, where: { cell: bed }, doing: { kind: 'ward', days: Math.max(0, s.day - p.stay.since) } });
+      if (table && op) out.push({ id: p.id, figure, look, where: { cell: table }, doing: { kind: 'surgery', tx: op.tx, end: op.end ?? s.t } });
+      else if (bed) {
+        out.push({ id: p.id, figure, look, where: { cell: bed }, doing: { kind: 'ward', days: Math.max(0, s.day - p.stay.since), ...(op && !op.done ? { op: op.tx } : {}) } });
+      }
     } else if (p.status === 'left' && s.t - (p.queuedT + p.patience) < LEAVING) {
       // не дождался: ушёл, когда кончилось терпение (engine.ts, событие patience)
       out.push({ id: p.id, figure, look, where: exit, doing: { kind: 'left' }, leaving: true });

@@ -76,17 +76,77 @@ export interface Tactics {
 export interface Treatment {
   id: Id;
   name: Text;
-  kind: 'drug' | 'regimen' | 'procedure';
+  kind: 'drug' | 'regimen' | 'procedure' | 'surgery';
   class?: string;
   route?: 'oral' | 'inhaled' | 'nasal' | 'iv' | 'im';
   cost: number;
   /** cure — действует на причину: к выздоровлению с вероятностью p за days дней */
-  effects: { on: Id; kind: 'cure' | 'relieve'; p: P; days: [number, number] }[];
+  effects: Effect[];
   /** reaction — вероятность вреда, если назначить при этом противопоказании */
   contraindications: { id: Id; level: 'relative' | 'absolute'; reaction: P }[];
+  /** операция (spec 2026-09-chapter-2, часть 28): помещение, бригада, аппараты — все сразу, минуты, осложнений при среднем навыке хирурга */
+  surgery?: Surgery;
   texts: { hint: Text };
   sources: Source[];
   review: Review;
+}
+
+/**
+ * Действие лечения на состояние. `when` (часть 30в) — только при таких значениях скрытых параметров
+ * болезни: неоперативное лечение непроходимости помогает, если нет ишемии кишки.
+ */
+export interface Effect {
+  on: Id;
+  kind: 'cure' | 'relieve';
+  p: P;
+  days: [number, number];
+  when?: Record<string, string[]>;
+}
+
+export interface Surgery {
+  room: Id;
+  team: Id[];
+  equipment: Id[];
+  minutes: number;
+  complications: P;
+  /** умерли в стационаре после операции (spec 2026-09-chapter-2, часть 28б) */
+  death?: P;
+  /** в осложнённой стадии болезни на момент разреза — свои доли */
+  complicated?: { complications: P; death?: P };
+  /** каждый полный час от поступления до разреза выживаемость ниже на столько (часть 30б, Buck 2013) */
+  delay?: P;
+}
+
+/**
+ * Осложнённая стадия (часть 28б): без действенного лечения наступает по часам от начала болезни —
+ * по риску (за первые `early.hours` часов с долей `early.p`, дальше — `later.p` за каждые
+ * `later.every` часов) или по сроку `after` (часть 30б).
+ */
+export interface Complication {
+  name: Text;
+  /** по риску: за первые `early.hours` часов — `early.p`, дальше `later.p` за каждые `later.every` */
+  early?: { hours: number; p: P };
+  later?: { every: number; p: P };
+  /** по сроку: наступает наверняка через столько часов от начала болезни (часть 30б) */
+  after?: number;
+  /** стадия бывает только при таких значениях скрытых параметров (часть 30в: некроз — при ишемии кишки) */
+  when?: Record<string, string[]>;
+  /** срок стационара после операции в этой стадии, сутки */
+  stay?: [number, number];
+}
+
+/**
+ * Операция болезни (часть 28): какая и за сколько часов, чтобы не поздно. С частью 30в — срок
+ * `observe`, если экстренной операции не нужно и лечат в палате, и свой стационар после операции.
+ */
+export interface ConditionSurgery {
+  tx: Id;
+  window: number;
+  from?: 'onset';
+  /** нужды в экстренной операции нет, лечат в палате: не помогло — операция не позже стольких часов от поступления */
+  observe?: number;
+  /** стационар после операции, сутки от суток операции */
+  stay?: [number, number];
 }
 
 export interface Stage {
@@ -133,10 +193,17 @@ export interface Condition {
   redFlags?: Id[];
   /** проходит само, без лечения */
   selfLimiting?: boolean;
-  /** без действенного лечения: вероятность ухудшения и на какой день */
-  untreated?: { p: P; days: [number, number] };
+  /** проходит само только при этих значениях скрытого параметра (часть 30д: неосложнённый дивертикулит) */
+  selfLimitingWhen?: Record<string, string[]>;
+  /** без действенного лечения: вероятность ухудшения и на какой день; `when` — при каких значениях параметра (часть 30д) */
+  untreated?: { p: P; days: [number, number]; when?: Record<string, string[]> };
   /** в стационаре при действенном лечении: через сколько суток можно выписывать */
   stay?: [number, number];
+  /** лечат операцией (часть 28): какой и за сколько часов от поступления, чтобы не поздно */
+  /** срок `window` часов — от поступления или, с `from: 'onset'`, от начала болезни (часть 30) */
+  surgery?: ConditionSurgery;
+  /** осложнённая стадия (часть 28б): перфорация аппендикса */
+  complication?: Complication;
   /** тактика; есть у всех, с чем приходят (валидатор) */
   treatment?: Tactics;
   texts: { summary: Text };
@@ -231,7 +298,7 @@ export type Season = 'winter' | 'spring' | 'summer' | 'autumn';
 // --- каталог больницы (spec 2026-09-own-hospital) ------------------------------------------
 
 export type Cell = [number, number];
-export type ObjectKind = 'bed' | 'chair' | 'desk' | 'couch' | 'cabinet' | 'machine' | 'plant' | 'sink' | 'bench' | 'xray' | 'table' | 'ecg' | 'analyzer';
+export type ObjectKind = 'bed' | 'chair' | 'desk' | 'couch' | 'cabinet' | 'machine' | 'plant' | 'sink' | 'bench' | 'xray' | 'table' | 'ecg' | 'analyzer' | 'or_table' | 'anesthesia' | 'us';
 export type RoomSizeId = 'S' | 'M' | 'L';
 
 /**
@@ -256,7 +323,7 @@ export interface RoomSize {
   patient?: Cell;
   /** стулья зоны ожидания — места в очереди */
   seats: number;
-  /** койки палаты — места лежащих */
+  /** койки палаты — места лежащих; у смотровой приёмного — места для пациентов скорой */
   beds: number;
   /** мест для нанятых врачей — ординаторская */
   places: number;
@@ -272,6 +339,10 @@ export interface RoomType {
   needsEquipment: boolean;
   seats: boolean;
   beds: boolean;
+  /** смотровая приёмного: койки — места для пациентов скорой (spec 2026-09-chapter-2, часть 27) */
+  emergency: boolean;
+  /** работает — в больницу приходят и больные этих отделений: приёмное — хирургию (часть 30) */
+  admits?: Id[];
   sizes: RoomSize[];
   /** производное: какие аппараты ставят сюда и какие обследования здесь делают или берут материал */
   equipment: Id[];
@@ -285,8 +356,10 @@ export interface Equipment {
   name: Text;
   gen: Text;
   room: Id;
-  sprite: 'ecg' | 'analyzer' | 'xray';
+  sprite: 'ecg' | 'analyzer' | 'xray' | 'or_table' | 'anesthesia' | 'us';
   upgradeOf?: Id;
+  /** своё место в помещении — номер из `slots`; занято — первое свободное */
+  slot?: number;
   price: number;
   upkeep: number;
   /** шанс поломки за день работы, в долях 1/10 000; поломок в 0.2.0 нет */
@@ -312,6 +385,8 @@ export interface StaffRole {
   stands?: Id;
   /** без места в этом помещении не работает (терапевту нужна ординаторская) */
   needs?: Id;
+  /** описывает снимки своего помещения: от навыка — точность (рентгенолог, врач УЗД) */
+  reads?: true;
   /** производное: где работает */
   rooms: Id[];
   texts: { hint: Text };
@@ -351,6 +426,8 @@ export interface Economy {
     speed: [number, number, number, number, number];
     /** рентгенолог по навыку 1–5: поправка чувствительности и специфичности снимка, п. п. */
     reading: [number, number][];
+    /** хирург по навыку 1–5: доля осложнений после операции, % от записанной у операции (spec 2026-09-chapter-2, часть 28) */
+    surgery: [number, number, number, number, number];
     /** отработанных дней на ступень навыка */
     growthDays: number;
     /** вес «без черты» */
@@ -375,6 +452,8 @@ export interface Economy {
     oms: Record<'minor' | 'moderate' | 'serious' | 'critical', number>;
     /** случай стационара по тяжести диагноза — при выписке */
     omsWard: Record<'minor' | 'moderate' | 'serious' | 'critical', number>;
+    /** случай стационара с операцией — прибавка за операцию */
+    omsOperation: number;
     omsQuality: Record<'A' | 'B' | 'C' | 'D', number>;
     omsUnconfirmed: number;
     /** показанные обследования, % цены в базе */
@@ -392,6 +471,8 @@ export interface Economy {
   interest: number;
   /** стационар: койко-день, ₽; доля тарифа за прерванный случай (перевод, выписка раньше срока), % */
   ward: { bedDay: number; interrupted: number };
+  /** скорая: машин за смену; вес болезни по тяжести; доля тяжёлых, % (часть 27) */
+  ambulance: { perDay: [number, number]; weight: Record<'minor' | 'moderate' | 'serious' | 'critical', number>; severe: number };
   /** репутация 0–100: начало, на сколько % вечером сдвигается к оценке дня, поправки оценки */
   reputation: {
     start: number; pull: number;
@@ -483,6 +564,23 @@ export type Achievement = { id: Id; order: number; category: AchievementCategory
   | { kind: 'chapter'; chapter: Id }
 );
 
+/**
+ * Шкала раннего предупреждения по витальным (NEWS2, spec 2026-09-chapter-2, часть 27): баллы по
+ * значению признака — [от, до, баллы], `null` — без границы; дышит кислородом и спутанность —
+ * отдельные строки; уровни ответа.
+ */
+export interface Score {
+  id: Id;
+  name: Text;
+  params: { f: Id; points: [number | null, number | null, number][] }[];
+  oxygen: number;
+  confusion: number;
+  levels: { medium: number; single: number; high: number };
+  texts: { summary: Text; hint: Text };
+  sources: Source[];
+  review: Review;
+}
+
 export interface ContentDb {
   contentVersion: number;
   hash: string;
@@ -500,6 +598,8 @@ export interface ContentDb {
   chapters: Record<Id, Chapter>;
   tips: Record<Id, Tip>;
   achievements: Record<Id, Achievement>;
+  /** шкалы по витальным: NEWS2 (часть 27) */
+  scores: Record<Id, Score>;
   /** производное: какие обследования проверяют признак */
   revealedBy: Record<Id, Id[]>;
 }

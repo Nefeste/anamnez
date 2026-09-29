@@ -13,7 +13,7 @@ import type { StaffMember } from '../hospital/staff';
 import type { DoctorPhase } from '../med/policy';
 import type { Grade, ScoreNote } from '../med/score';
 import type { Observation, Patient } from '../med/types';
-import type { Stay, StayResult } from './ward';
+import type { Bed, Stay, StayResult } from './ward';
 
 export const SHIFT_SCHEMA_VERSION = 1;
 
@@ -46,7 +46,8 @@ export type PatientStatus = 'coming' | 'waiting' | 'inRoom' | 'away' | 'done' | 
 /** Практика, песочница, кампания и «Смена» — один день в выбранной больнице (spec 2026-09-campaign, часть 14). */
 export type Mode = 'shift' | 'sandbox' | 'campaign' | 'single';
 
-export type VisitKind = 'appointment' | 'walkIn' | 'return';
+/** ambulance — привезла скорая (spec 2026-09-chapter-2, часть 27) */
+export type VisitKind = 'appointment' | 'walkIn' | 'return' | 'ambulance';
 export type ReturnReason = 'worse' | 'reaction' | 'unchanged';
 
 /** Результаты одного обследования; step — номер действия врача, за которое они пришли. */
@@ -109,6 +110,18 @@ export interface ShiftPatient {
   phase?: DoctorPhase;
   /** лежит в палате своей больницы: койка, план, как идёт болезнь (часть 26) */
   stay?: Stay;
+  /** привезла скорая (часть 27): место в смотровой приёмного; нет — ждёт у входа */
+  bay?: Bed;
+  /** скорая: врач отсортировал по листу передачи (цвет — `triage`) */
+  sorted?: boolean;
+  /** скорая: как отсортировала бы медсестра по шкале NEWS2 и красным флагам — для сверки; `flag` — признак, что поднял цвет выше баллов */
+  scale?: { triage: Triage; news2: number; flag?: Id };
+  /**
+   * отделения, с какими больница его приняла (spec 2026-09-chapter-2, часть 30): работала
+   * смотровая приёмного — и хирургия; из их болезней вывод, выбор диагноза и разбор, даже если
+   * смотровую потом закрыли. Нет — одно отделение смены
+   */
+  departments?: Id[];
 }
 
 export interface ClosedCase {
@@ -142,6 +155,8 @@ export type ShiftEvent =
   | { kind: 'colleague'; id: string }
   /** нанятый врач дописал карту и свободен — зовёт следующего */
   | { kind: 'free'; by: string }
+  /** операция кончилась (spec 2026-09-chapter-2, часть 28): исход и следующий в очереди операционной */
+  | { kind: 'opEnd'; id: string }
   | { kind: 'shiftEnd' };
 
 export type Command =
@@ -172,13 +187,21 @@ export type Command =
   /** обход (spec 2026-09-chapter-2, часть 26): выписать, перевести, сменить лечение лежащего */
   | { kind: 'discharge'; id: string }
   | { kind: 'transfer'; id: string }
-  | { kind: 'replan'; id: string; treatments: Id[] };
+  | { kind: 'replan'; id: string; treatments: Id[] }
+  /** скорая (часть 27): врач сортирует привезённого по листу передачи */
+  | { kind: 'sort'; id: string; triage: Triage }
+  /** обход (часть 28): лежащего — в операционную, операцией его диагноза */
+  | { kind: 'operate'; id: string }
+  /** «мягкий режим» из настроек (часть 28б): вместо смерти — перевод в тяжёлом состоянии */
+  | { kind: 'soft'; on: boolean };
 
 /** Что случилось — для интерфейса: звук, автопауза, сводка «за это время». */
 export type Notice =
   | { kind: 'arrived'; id: string; triage: Triage }
   | { kind: 'resultsReady'; id: string }
   | { kind: 'left'; id: string }
+  /** привезла скорая (часть 27): звук и автопауза, как у «красного» */
+  | { kind: 'ambulance'; id: string }
   | { kind: 'shiftEnd' };
 
 export interface DaySummary {
@@ -206,6 +229,26 @@ export interface DaySummary {
   colleagues?: Record<string, ColleagueDay>;
   /** стационар за день (часть 26): поступили, выписаны (из них рано), переведены, лежат вечером; суток и обычных сроков у выписанных */
   ward?: WardDay;
+  /** скорая за день (часть 27): привезли, отсортировали, из них недооценили и переоценили по шкале */
+  ambulance?: AmbulanceDay;
+  /** операционная за день (часть 28): операций, из них в срок `window` и позже; осложнений после операции */
+  surgery?: SurgeryDay;
+}
+
+export interface SurgeryDay {
+  done: number;
+  onTime: number;
+  late: number;
+  complications: number;
+  /** на момент разреза — осложнённая стадия, перфорация (часть 28б) */
+  complicated?: number;
+}
+
+export interface AmbulanceDay {
+  arrived: number;
+  sorted: number;
+  under: number;
+  over: number;
 }
 
 export interface WardDay {
@@ -216,6 +259,8 @@ export interface WardDay {
   lying: number;
   stayDays: number;
   stayNorm: number;
+  /** умерли в стационаре (часть 28б); в «мягком режиме» их переводят — это `transferred` */
+  died?: number;
 }
 
 /** Приёмы нанятого врача за день (spec 2026-09-hired-doctors). */
@@ -252,6 +297,8 @@ export interface ShiftState {
     department: Id;
     /** сложность (03-game-design.md §14); нет — «Врач»: так играли до 0.0.16 */
     difficulty?: Difficulty;
+    /** «мягкий режим» (spec 2026-09-chapter-2, часть 28б): вместо смерти — перевод в тяжёлом состоянии */
+    soft?: boolean;
   };
   t: number;
   day: number;

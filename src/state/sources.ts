@@ -19,8 +19,8 @@ export function sourceLine(s: Source): string {
 
 export function sourceGroups(db: ContentDb): SourceGroup[] {
   const byKind = new Map<Source['kind'], Set<string>>();
-  // источники есть у болезней, обследований, лечения и факторов риска; у признаков — через их болезни
-  const tables: Record<string, { sources: Source[] }>[] = [db.conditions, db.exams, db.treatments, db.risks];
+  // источники есть у болезней, обследований, лечения, факторов риска и шкал; у признаков — через их болезни
+  const tables: Record<string, { sources: Source[] }>[] = [db.conditions, db.exams, db.treatments, db.risks, db.scores];
   for (const table of tables) {
     for (const entry of Object.values(table)) {
       for (const s of entry.sources) {

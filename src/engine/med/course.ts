@@ -6,14 +6,14 @@
 // (ADR 0004): одинаковый исход на телефоне и в тестах.
 import type { ContentDb, Id } from '../../content/types';
 import { P_ONE, type Rng } from '../core/rng';
-import { type Plan, type PlanEval, primaryOf, SETTING_ORDER } from './plan';
+import { curesOf, type Plan, type PlanEval, primaryOf, selfLimits, SETTING_ORDER, untreatedOf } from './plan';
 import type { Patient } from './types';
 
 /** Сколько дней после приёма модель следит за пациентом, отпущенным домой. */
 export const OBSERVE_DAYS = 7;
 
-/** `admitted` — лёг в свою палату: чем кончится, скажет выписка (spec 2026-09-chapter-2, часть 26). */
-export type OutcomeKind = 'recovered' | 'improved' | 'unchanged' | 'worse' | 'reaction' | 'transferred' | 'admitted';
+/** `admitted` — лёг в свою палату (часть 26) или в операционную, затем в палату (часть 28): чем кончится, скажет выписка. */
+export type OutcomeKind = 'recovered' | 'improved' | 'unchanged' | 'worse' | 'reaction' | 'transferred' | 'admitted' | 'died';
 
 export interface Outcome {
   kind: OutcomeKind;
@@ -25,6 +25,8 @@ export interface Outcome {
   cured: boolean;
   /** что вызвало реакцию: назначение и противопоказание к нему */
   reaction?: { tx: Id; by: Id };
+  /** переведён в тяжёлом состоянии — «мягкий режим» вместо смерти (spec 2026-09-chapter-2, часть 28б) */
+  severe?: true;
 }
 
 /** 1 − Π(1 − pᵢ) в долях 1/10 000, целыми. */
@@ -35,7 +37,7 @@ function anyOf(ps: readonly number[]): number {
 }
 
 export function observe(db: ContentDb, patient: Patient, plan: Plan, ev: PlanEval, rng: Rng): Outcome {
-  if (plan.setting === 'admit') return { kind: 'admitted', day: 0, cured: ev.effective };
+  if (plan.setting === 'admit' || plan.setting === 'surgery') return { kind: 'admitted', day: 0, cured: ev.effective };
   if (plan.setting !== 'home') return { kind: 'transferred', day: 0, cured: false };
   const primary = primaryOf(patient);
   const cond = db.conditions[primary.id];
@@ -49,7 +51,7 @@ export function observe(db: ContentDb, patient: Patient, plan: Plan, ev: PlanEva
   }
 
   // 2. Лечение причины. Дома то, что надо лечить в стационаре, помогает вдвое реже.
-  const cures = plan.treatments.flatMap(tx => db.treatments[tx]?.effects.filter(e => e.on === primary.id && e.kind === 'cure') ?? []);
+  const cures = curesOf(db, primary, plan.treatments);
   const underTreated = SETTING_ORDER[ev.setting.recommended] > SETTING_ORDER.home;
   const pCure = anyOf(cures.map(e => (underTreated ? Math.floor(e.p / 2) : e.p)));
   if (cures.length > 0 && rng.fork('cure').chance(pCure)) {
@@ -60,11 +62,13 @@ export function observe(db: ContentDb, patient: Patient, plan: Plan, ev: PlanEva
   }
 
   // 3. Без действенного лечения: ухудшение по записи состояния, иначе — как пойдёт болезнь.
-  if (cond.untreated && rng.fork('worse').chance(cond.untreated.p)) {
-    const day = Math.min(OBSERVE_DAYS, rng.fork('worse-day').range(cond.untreated.days[0], cond.untreated.days[1]));
+  // И то и другое может зависеть от скрытого параметра (часть 30д: форма дивертикулита).
+  const untreated = untreatedOf(db, primary);
+  if (untreated && rng.fork('worse').chance(untreated.p)) {
+    const day = Math.min(OBSERVE_DAYS, rng.fork('worse-day').range(untreated.days[0], untreated.days[1]));
     return { kind: 'worse', day, returns: { day, reason: 'worse' }, cured: false };
   }
-  if (cond.selfLimiting) {
+  if (selfLimits(db, primary)) {
     // проходит к концу последней стадии, считая от дня болезни на приёме
     const end = cond.stages[cond.stages.length - 1].days[1];
     const left = Math.max(1, end - primary.day);

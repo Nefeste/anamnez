@@ -10,11 +10,16 @@ checks:
   - { f: hx.asthma, sens: 95, spec: 99 }
   - { f: hx.hypertension, sens: 95, spec: 99 }
   - { f: hx.diabetes, sens: 95, spec: 99 }
+  - { f: hx.gallstones, sens: 95, spec: 99 }
+  - { f: hx.ulcer, sens: 95, spec: 99 }
+  - { f: hx.hernia, sens: 95, spec: 99 }
+  - { f: hx.abdominal_surgery, sens: 95, spec: 99 }
+  - { f: hx.kidney_stones, sens: 95, spec: 99 }
 texts:
   hint:
     ru: "Хронические болезни меняют картину: у человека с ХОБЛ или астмой одышка может быть обострением, а не новой болезнью."
   summary:
-    ru: "Какие болезни уже известны, чем лечится постоянно."
+    ru: "Какие болезни уже известны, какие были операции, чем лечится постоянно."
 sources:
   - { kind: textbook, title: "Пропедевтика внутренних болезней: расспрос больного", note: "точность расспроса — игровая оценка, не из литературы" }
 review: draft

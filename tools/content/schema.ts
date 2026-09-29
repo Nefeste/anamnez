@@ -48,14 +48,15 @@ const attrSpec = z.union([
 const link = z.strictObject({
   f: z.string(),
   band: probability,
+  /** точная частота — откуда она: сверено с источником (без пояснения — предупреждение сборки) */
+  note: z.string().min(10).optional(),
   stages: z.array(z.string()).optional(),
   when: z.record(z.string(), z.array(z.string())).optional(),
   attrs: z.record(z.string(), attrSpec).optional(),
 });
 const riskMultiplier = z.strictObject({ id: z.string(), x: z.number().positive() });
 const txId = z.string().regex(/^tx\.[a-z0-9_]+$/);
-/** Где лечить: дома, направить в стационар, вызвать скорую (перевод). */
-/** что нужно пациенту; `admit` — только выбор врача, в базе его нет */
+/** Где лечить — что нужно пациенту; `admit` («в палату») — только выбор врача, в базе его нет. */
 export const SETTINGS = ['home', 'ward', 'ambulance', 'surgery', 'transfer'] as const;
 const setting = z.enum(SETTINGS);
 const season = z.strictObject({ winter: z.number(), spring: z.number(), summer: z.number(), autumn: z.number() });
@@ -89,10 +90,13 @@ export const conditionSchema = z.strictObject({
     stages: z.array(z.strictObject({ id: z.string(), days: z.tuple([z.number(), z.number()]), needs: z.literal('treatment').optional() })).min(1),
     /** в какие дни болезни обычно обращаются */
     presentation: z.tuple([z.number().int().min(0), z.number().int().min(0)]).optional(),
-    /** проходит само: без лечения — выздоровление к концу стадий */
-    selfLimiting: z.boolean().optional(),
-    /** без действенного лечения: с какой вероятностью и на какой день становится хуже */
-    untreated: z.strictObject({ band: probability, days: z.tuple([z.number().int().min(0), z.number().int().min(0)]) }).optional(),
+    /**
+     * проходит само: без лечения — выздоровление к концу стадий; `{ when }` — только при этих
+     * значениях скрытого параметра (часть 30д: неосложнённый дивертикулит — да, абсцесс — нет)
+     */
+    selfLimiting: z.union([z.boolean(), z.strictObject({ when: z.record(z.string(), z.array(z.string())) })]).optional(),
+    /** без действенного лечения: с какой вероятностью и на какой день становится хуже; `when` — при каких значениях параметра */
+    untreated: z.strictObject({ band: probability, days: z.tuple([z.number().int().min(0), z.number().int().min(0)]), when: z.record(z.string(), z.array(z.string())).optional() }).optional(),
     /** в стационаре при действенном лечении: через сколько суток можно выписывать (spec 2026-09-chapter-2, часть 26) */
     stay: z.tuple([z.number().int().min(1), z.number().int().min(1)]).optional(),
   }),
@@ -116,7 +120,42 @@ export const conditionSchema = z.strictObject({
       risks: z.array(z.strictObject({ id: z.string().regex(/^risk\.[a-z0-9_]+$/), setting })).optional(),
     }),
   }).optional(),
-  findings: z.array(link).min(3),
+  /**
+   * лечат операцией (spec 2026-09-chapter-2, часть 28): какой — операция вида `surgery`, — и за
+   * сколько часов от поступления её сделать, чтобы не было поздно, — по рекомендации
+   */
+  surgery: z.strictObject({
+    tx: txId, window: z.number().int().min(1).max(240),
+    /** срок — от начала болезни, а не от поступления: ранняя холецистэктомия — в первые 72 ч болезни (часть 30) */
+    from: z.enum(['arrival', 'onset']).optional(),
+    /**
+     * срок, если экстренной операции не нужно и лечат в палате (часть 30в): неоперативное лечение
+     * не помогло — операция не позже стольких часов от поступления
+     */
+    observe: z.number().int().min(1).max(240).optional(),
+    /** стационар после операции, сутки от суток операции — если он дольше, чем без неё (часть 30в) */
+    stay: z.tuple([z.number().int().min(1), z.number().int().min(1)]).optional(),
+  }).optional(),
+  /**
+   * осложнённая стадия (часть 28б): без действенного лечения наступает по часам от начала
+   * болезни — за первые `early.hours` часов с долей `early.p`, дальше — с долей `later.p` за
+   * каждые `later.every` часов (перфорация аппендикса); после операции в этой стадии — свой срок
+   * стационара, сутки
+   */
+  complication: z.strictObject({
+    name: text,
+    early: z.strictObject({ hours: z.number().int().min(1).max(240), p: probability }).optional(),
+    later: z.strictObject({ every: z.number().int().min(1).max(240), p: probability }).optional(),
+    /** наступает наверняка через столько часов от начала болезни (часть 30б: прободная язва позже 24 ч — Boey) */
+    after: z.number().int().min(1).max(240).optional(),
+    /** стадия бывает только при таком значении скрытого параметра (часть 30в: некроз — при ишемии кишки) */
+    when: z.record(z.string(), z.array(z.string())).optional(),
+    stay: z.tuple([z.number().int().min(1), z.number().int().min(1)]).optional(),
+  }).refine(x => (x.after !== undefined) !== (x.early !== undefined && x.later !== undefined) && (x.early === undefined) === (x.later === undefined), {
+    message: 'осложнённая стадия — либо по риску (early и later), либо по сроку (after)',
+  }).optional(),
+  /** у того, с чем приходят, — не меньше трёх (валидатор); у хронического фона хватит одного */
+  findings: z.array(link).min(1),
   confirm: z.union([z.array(z.string()).min(1), z.literal('clinical')]),
   redFlags: z.array(z.string()).optional(),
   texts: z.strictObject({ summary: text }),
@@ -185,7 +224,7 @@ export const examSchema = z.strictObject({
 export const treatmentSchema = z.strictObject({
   id: txId,
   name: text,
-  kind: z.enum(['drug', 'regimen', 'procedure']),
+  kind: z.enum(['drug', 'regimen', 'procedure', 'surgery']),
   /** класс для аллергий и статистики: antibiotic.penicillin, antibiotic.macrolide… */
   class: z.string().regex(/^[a-z_]+(\.[a-z_]+)*$/).optional(),
   route: z.enum(['oral', 'inhaled', 'nasal', 'iv', 'im']).optional(),
@@ -196,6 +235,8 @@ export const treatmentSchema = z.strictObject({
     kind: z.enum(['cure', 'relieve']),
     band: probability,
     days: z.tuple([z.number().int().min(0), z.number().int().min(0)]),
+    /** действует, только если у болезни такое значение скрытого параметра (часть 30в: без ишемии кишки) */
+    when: z.record(z.string(), z.array(z.string())).optional(),
   })).default([]),
   /** противопоказание — фактор риска (аллергия) или состояние; reaction — вероятность вреда, если назначить */
   contraindications: z.array(z.strictObject({
@@ -203,6 +244,23 @@ export const treatmentSchema = z.strictObject({
     level: z.enum(['relative', 'absolute']),
     reaction: probability,
   })).default([]),
+  /**
+   * операция (часть 28): в каком помещении, какая бригада — по человеку на должность, какие
+   * аппараты — все сразу, сколько минут идёт; осложнений после неё при среднем навыке хирурга
+   */
+  surgery: z.strictObject({
+    room: roomId,
+    team: z.array(roleId).min(1),
+    equipment: z.array(eqId).min(1),
+    minutes: z.number().int().min(5).max(600),
+    complications: probability,
+    /** умерли в стационаре после операции (часть 28б) */
+    death: probability.optional(),
+    /** в осложнённой стадии болезни на момент разреза: свои осложнения и смерть */
+    complicated: z.strictObject({ complications: probability, death: probability.optional() }).optional(),
+    /** каждый полный час от поступления до разреза выживаемость ниже на столько (часть 30б: прободная язва — Buck 2013) */
+    delay: probability.optional(),
+  }).optional(),
   texts: z.strictObject({ hint }),
   sources: z.array(source).min(1),
   review,
@@ -223,7 +281,7 @@ export const riskSchema = z.strictObject({
 // Помещения, аппараты и должности — игровые предметы: цены и размеры — баланс игры. Что
 // каким аппаратом делают — медицинский факт, он записан в записях обследований с источниками.
 
-export const OBJECT_KINDS = ['bed', 'chair', 'desk', 'couch', 'cabinet', 'machine', 'plant', 'sink', 'bench', 'xray', 'table', 'ecg', 'analyzer'] as const;
+export const OBJECT_KINDS = ['bed', 'chair', 'desk', 'couch', 'cabinet', 'machine', 'plant', 'sink', 'bench', 'xray', 'table', 'ecg', 'analyzer', 'or_table', 'anesthesia', 'us'] as const;
 const cellSrc = z.tuple([z.number().int().min(0), z.number().int().min(0)]);
 /** «нет лаборатории», «нет лаборанта» — родительный падеж для причин «не работает» */
 const gen = text;
@@ -265,6 +323,10 @@ export const roomSchema = z.strictObject({
   seats: z.boolean().default(false),
   /** койки — места лежащих пациентов (палата, spec 2026-09-chapter-2, часть 26) */
   beds: z.boolean().default(false),
+  /** смотровая приёмного: койки — места для пациентов скорой (часть 27) */
+  emergency: z.boolean().default(false),
+  /** работает — в больницу приходят и больные этих отделений: приёмное — хирургию (часть 30) */
+  admits: z.array(z.string().regex(/^dept\.[a-z0-9_]+$/)).min(1).optional(),
   sizes: z.array(roomSize).min(1),
   texts: z.strictObject({ hint }),
 });
@@ -275,9 +337,11 @@ export const equipmentSchema = z.strictObject({
   gen,
   room: roomId,
   /** как выглядит на карте: у каждого вида аппарата свой рисунок (spec 2026-09-living-map) */
-  sprite: z.enum(['ecg', 'analyzer', 'xray']),
+  sprite: z.enum(['ecg', 'analyzer', 'xray', 'or_table', 'anesthesia', 'us']),
   /** улучшение другого аппарата: цифровой рентген — плёночного */
   upgradeOf: eqId.optional(),
+  /** своё место в помещении — номер из `slots` (стол операционной — под пациентом); занято — первое свободное */
+  slot: z.number().int().min(0).optional(),
   /** цена и обслуживание в день, ₽ */
   price: z.number().int().min(0),
   upkeep: z.number().int().min(0),
@@ -302,6 +366,8 @@ export const roleSchema = z.strictObject({
   stands: roleId.optional(),
   /** без места в этом помещении не работает — терапевту нужна ординаторская */
   needs: roomId.optional(),
+  /** описывает снимки своего помещения — от навыка точность (рентгенолог, врач УЗД, часть 29) */
+  reads: z.boolean().optional(),
   texts: z.strictObject({ hint }),
 });
 
@@ -359,6 +425,8 @@ export const economySchema = z.strictObject({
     skills: z.tuple([int, int, int, int, int]),
     speed: z.tuple([int, int, int, int, int]),
     reading: z.tuple([pp, pp, pp, pp, pp]),
+    /** хирург по навыку 1–5: доля осложнений после операции, % от записанной у операции (часть 28) */
+    surgery: z.tuple([int, int, int, int, int]),
     growthDays: z.number().int().min(1),
     noTrait: int,
     traits: z.strictObject({
@@ -376,6 +444,8 @@ export const economySchema = z.strictObject({
     oms: z.strictObject({ minor: int, moderate: int, serious: int, critical: int }),
     /** случай стационара: по тяжести диагноза, при выписке (spec 2026-09-chapter-2, часть 26) */
     omsWard: z.strictObject({ minor: int, moderate: int, serious: int, critical: int }),
+    /** случай стационара с операцией — прибавка к тарифу за операцию (часть 28) */
+    omsOperation: int,
     omsQuality: z.strictObject({ A: pct, B: pct, C: pct, D: pct }),
     omsUnconfirmed: pct,
     omsExam: int,
@@ -392,6 +462,15 @@ export const economySchema = z.strictObject({
   interest: int,
   /** стационар: койко-день — питание и расходники лежащего, ₽; доля тарифа за прерванный случай, % */
   ward: z.strictObject({ bedDay: int, interrupted: pct }),
+  /**
+   * скорая (spec 2026-09-chapter-2, часть 27): машин за смену, если работает смотровая приёмного;
+   * вес болезни по тяжести (с распространённостью) и доля тяжёлых среди тех, у кого тяжесть есть, %
+   */
+  ambulance: z.strictObject({
+    perDay: z.tuple([int, int]),
+    weight: z.strictObject({ minor: int, moderate: int, serious: int, critical: int }),
+    severe: pct,
+  }),
   /** репутация: начало, шаг к оценке дня, %; поправки оценки за ожидание и санузел */
   reputation: z.strictObject({
     start: pct, pull: z.number().int().min(1).max(100),
@@ -504,6 +583,27 @@ export const achievementSchema = z.discriminatedUnion('kind', [
   z.strictObject({ ...achievementBase, kind: z.literal('chapter'), chapter: z.string().regex(/^chapter\.[a-z0-9_]+$/) }),
 ]);
 
+/**
+ * Шкала раннего предупреждения по витальным (NEWS2, spec 2026-09-chapter-2, часть 27): баллы по
+ * измеренному значению признака — [от, до, баллы], `null` — без границы; отдельные строки — дышит
+ * кислородом и спутанность; уровни ответа — средний с `medium` баллов или `single` по одному
+ * параметру, высокий — с `high`.
+ */
+export const scoreSchema = z.strictObject({
+  id: z.string().regex(/^score\.[a-z0-9_]+$/),
+  name: text,
+  params: z.array(z.strictObject({
+    f: z.string(),
+    points: z.array(z.tuple([z.number().nullable(), z.number().nullable(), z.number().int().min(0).max(3)])).min(2),
+  })).min(1),
+  oxygen: z.number().int().min(0).max(3),
+  confusion: z.number().int().min(0).max(3),
+  levels: z.strictObject({ medium: z.number().int().min(1), single: z.number().int().min(1), high: z.number().int().min(1) }),
+  texts: z.strictObject({ summary: text, hint }),
+  sources: z.array(source).min(1),
+  review,
+});
+
 export const versionSchema = z.strictObject({ contentVersion: z.number().int().min(1) });
 
 export type ConditionSrc = z.infer<typeof conditionSchema>;
@@ -520,5 +620,6 @@ export type CharacterSrc = z.infer<typeof characterSchema>;
 export type ChapterSrc = z.infer<typeof chapterSchema>;
 export type TipSrc = z.infer<typeof tipSchema>;
 export type AchievementSrc = z.infer<typeof achievementSchema>;
+export type ScoreSrc = z.infer<typeof scoreSchema>;
 export type LinkSrc = z.infer<typeof link>;
 export type ProbabilitySrc = z.infer<typeof probability>;

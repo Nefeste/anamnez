@@ -1,5 +1,5 @@
 // П5 · Снимки, ЭКГ и портреты кодом; КТ и МРТ головы — с 0.0.34, УЗИ — с 0.0.35
-// (spec 2026-09-ct-mri-ultrasound).
+// (spec 2026-09-ct-mri-ultrasound), обзорный снимок живота — с 0.0.49 (spec 2026-09-chapter-2).
 // Рисунков на экране больше 16 — все `still`: в вебе холст с живым контекстом WebGL их не вместит.
 import { useWindowDimensions, View } from 'react-native';
 import { T } from '@/i18n';
@@ -8,7 +8,8 @@ import { HeadSlice } from '@/render/HeadSlice';
 import { Portrait } from '@/render/Portrait';
 import { UsSector } from '@/render/UsSector';
 import { Xray } from '@/render/Xray';
-import { HEAD_CASES, US_CASES } from '@/state/imagingCases';
+import { XrayAbdomen } from '@/render/XrayAbdomen';
+import { ABDOMEN_CASES, HEAD_CASES, US_CASES } from '@/state/imagingCases';
 import { Card, H, P, Screen } from '@/ui/components';
 
 const PEOPLE: { seed: number; sex: 'm' | 'f'; age: number }[] = [
@@ -34,6 +35,16 @@ export default function ImagingSpike() {
           <Xray width={half} seed={2} findings={{ infiltrate: { side: 'right', density: 0.8 } }} still />
           <Xray width={half} seed={3} findings={{ infiltrate: { side: 'left', density: 0.5 } }} still />
         </View>
+      </Card>
+      <Card testID="abdomen">
+        <H>{T.spikes.imaging.abdomen.title}</H>
+        {ABDOMEN_CASES.map(k => (
+          <View key={k.key} testID={k.key} style={{ gap: 4 }}>
+            <XrayAbdomen width={w} findings={k.findings} seed={k.seed} still />
+            <P muted>{k.label}</P>
+          </View>
+        ))}
+        <P muted>{T.spikes.imaging.abdomen.note}</P>
       </Card>
       {(['ct', 'mri'] as const).map(mode => (
         <Card key={mode} testID={`head-${mode}`}>

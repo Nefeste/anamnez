@@ -16,6 +16,13 @@ effects:
   - { on: cond.migraine, kind: cure, band: often, days: [0, 1] }
   - { on: cond.tension_headache, kind: cure, band: usually, days: [0, 1] }
   - { on: cond.low_back_pain, kind: relieve, band: often, days: [0, 3] }
+  # желчная колика: НПВП — первая линия, до разрешения симптомов (877_1, раздел 3.2)
+  - { on: cond.biliary_colic, kind: cure, band: usually, days: [0, 1] }
+  - { on: cond.pancreatitis, kind: relieve, band: often, days: [0, 2] }
+  # почечная колика: НПВП — первая линия, обезболивают лучше опиоидов (587_2, раздел 3.1.1); с
+  # инфекцией за камнем нужно неотложное дренирование почки (587_2, раздел 3.2) — одно обезболивание
+  # не лечит
+  - { on: cond.renal_colic, kind: cure, band: usually, days: [0, 1], when: { infection: [no] } }
 contraindications:
   - { id: risk.allergy_nsaid, level: absolute, reaction: often }
   - { id: risk.pregnancy, level: relative, reaction: never }
@@ -24,4 +31,6 @@ texts:
     ru: "Нестероидный противовоспалительный препарат: снимает жар и боль — в горле, в мышцах, в спине, головную. Лечит не причину, а самочувствие. Нельзя при аллергии на НПВС; при боли в груди он вреден."
 sources:
   - { kind: guideline, title: "Острые респираторные вирусные инфекции (ОРВИ) у взрослых", org: "Минздрав РФ", year: 2025, url: "https://cr.minzdrav.gov.ru/view-cr/724_2", note: "ID 724_2, опубликованы 04.08.2025, применяются; сверено с рубрикатором 28.09.2026" }
+  - { kind: guideline, title: "Желчнокаменная болезнь", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/877_1", note: "ID 877_1, опубликованы 25.12.2024, применяются; сверено с рубрикатором 29.09.2026; раздел 3.2: при приступе желчной колики — НПВП (М01А) до разрешения симптомов" }
+  - { kind: guideline, title: "Почечная колика", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/587_2", note: "ID 587_2, опубликованы 09.12.2024, применяются; сверено с рубрикатором 29.09.2026; раздел 3.1.1: НПВП (M01A), в том числе ибупрофен, — первая линия обезболивания при почечной колике, эффективнее опиоидов; сначала купируют боль" }
 review: draft

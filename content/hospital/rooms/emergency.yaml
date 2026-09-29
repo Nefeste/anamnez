@@ -1,0 +1,47 @@
+id: room.emergency
+name: { ru: "Смотровая приёмного" }
+gen: { ru: "смотровой приёмного" }
+staff: [role.nurse]
+emergency: true
+# приёмное принимает всех: работает смотровая — приходят и хирургические больные (часть 30)
+admits: [dept.surgery]
+sizes:
+  - id: S
+    w: 7
+    h: 6
+    cost: 26000
+    upkeep: 180
+    door: { x: 3, width: 2 }
+    objects:
+      - [bed, 2, 2]
+      - [cabinet, 4, 2]
+      - [sink, 5, 2]
+    staff: { role.nurse: [4, 3] }
+  - id: M
+    w: 9
+    h: 6
+    cost: 38000
+    upkeep: 260
+    door: { x: 4, width: 2 }
+    objects:
+      - [bed, 1, 2]
+      - [cabinet, 3, 2]
+      - [bed, 5, 2]
+      - [sink, 7, 2]
+    staff: { role.nurse: [4, 3] }
+  - id: L
+    w: 11
+    h: 6
+    cost: 50000
+    upkeep: 340
+    door: { x: 5, width: 2 }
+    objects:
+      - [bed, 1, 2]
+      - [cabinet, 3, 2]
+      - [bed, 5, 2]
+      - [cabinet, 7, 2]
+      - [bed, 8, 2]
+      - [sink, 9, 3]
+    staff: { role.nurse: [4, 3] }
+texts:
+  hint: { ru: "Сюда скорая привозит пациентов: на каталке сразу в смотровую, мимо регистратуры и очереди. Сортирует привезённых врач — по листу передачи фельдшера. Мест столько, сколько коек; все заняты — привезённый ждёт на каталке у входа." }

@@ -10,9 +10,9 @@ import { useSyncExternalStore } from 'react';
 import { db } from '@/content';
 import type { Id, Season, Setting } from '@/content/types';
 import { complaintObservations } from '@/engine/med/exams';
-import { evaluatePlan } from '@/engine/med/plan';
+import { evaluatePlan, primaryOf } from '@/engine/med/plan';
 import type { Grade } from '@/engine/med/score';
-import { complaintText } from '@/engine/med/text';
+import { complaintText, observationText } from '@/engine/med/text';
 import { build, type BuildCommand, type BuildError, type HospitalState, type Plan, planOf } from '@/engine/hospital/build';
 import { type Block, doctorRoom, examWhere, openBlocks, type Problem, problemsOf, standInOf, workingRooms } from '@/engine/hospital/requirements';
 import { type ClinicLayout, cropPlan, layoutOf } from '@/engine/hospital/clinic';
@@ -20,12 +20,15 @@ import { memberAt, type StaffMember, staffingOf } from '@/engine/hospital/staff'
 import { missionProgress } from '@/engine/campaign/campaign';
 import { levelOf } from '@/engine/economy/economy';
 import {
-  apply, current, freeBeds, type HospitalCtx, hospitalCtx, inpatientsOf, newCampaign, newSandbox, newShift, newSingle, observationsOf, reviewFor, SANDBOX_VENUE, wardBeds,
+  apply, atDoorOf, current, freeBeds, type HospitalCtx, hospitalCtx, inpatientsOf, newCampaign, newSandbox, newShift, newSingle, observationsOf, type OrBlock,
+  orBlock, orQueueOf, reviewFor, SANDBOX_VENUE, wardBeds,
 } from '@/engine/shift/engine';
+import { operationFor } from '@/engine/shift/surgery';
 import {
   type Command, DAY, type Difficulty, type Mode, type Notice, SHIFT_END, SHIFT_SCHEMA_VERSION, type ShiftPatient, type ShiftState, type Triage,
 } from '@/engine/shift/types';
 import { T } from '@/i18n';
+import { lowerFirst } from '@/i18n/case';
 import {
   type Arrival, type Decision, decisionOf, hhmm, makeCaseView, outcomeText, patientName, type SettingOption, treatmentGroupsFor, type VisitView,
 } from './caseView';
@@ -35,7 +38,7 @@ import { type RoomSign, roomSigns } from './roomSigns';
 import { achievementsBy, archivedCase, caseKey, type DayRecord, profile, recordCases, recordDay, recordSingle } from './profile';
 import { dateText } from './profileView';
 import { SINGLE_CATEGORIES, type SingleCategory, singleResult } from './single';
-import { blockText, type CashView, cashView, examBlockText, levelText, paymentText, personName, statusText } from './sandboxView';
+import { blockText, type CashView, cashView, examBlockText, levelText, paymentText, personName, problemText, statusText } from './sandboxView';
 import { loadSlot, type RawStore, saveSlot } from './saves';
 import { settings } from './settings';
 import { momentKey, momentOf, type TipMoment, type TipScreen, tipFor } from './tips';
@@ -65,6 +68,8 @@ export interface QueueRow {
   complaint: string;
   waits: string;
   badges: string[];
+  /** привезла скорая: смотрят в смотровой приёмного, в кабинет не идёт (часть 27) */
+  ambulance?: boolean;
 }
 
 /** Кого коснулись на карте: кто это и что делает. */
@@ -129,6 +134,10 @@ export interface SummaryView {
   single?: SingleView;
   /** стационар за день (spec 2026-09-chapter-2, часть 26): поступили, выписаны, лежат; сроки у выписанных */
   wardLines?: string[];
+  /** скорая за день (часть 27): привезли, отсортировали, сверка со шкалой */
+  ambulanceLines?: string[];
+  /** операционная за день (часть 28): операций, в срок и позже, осложнения */
+  surgeryLines?: string[];
 }
 
 /** Итог «Смены»: оценки по категориям, общая, строки, лучший в этой больнице. */
@@ -198,6 +207,8 @@ export interface ShiftView {
   colleagues: { id: string; name: string; hint: string }[];
   /** сколько лежит в палатах своей больницы — кнопка «Обход» (spec 2026-09-chapter-2, часть 26) */
   inpatients: number;
+  /** привезённые скорой, что ждут сортировки врачом (часть 27) */
+  ambulance: AmbulanceRow[];
 }
 
 interface Session {
@@ -491,6 +502,9 @@ export function forgetShift() {
 // --- часы -----------------------------------------------------------------------------
 
 function run(sess: Session, cmd: Command): Notice[] {
+  // «мягкий режим» из настроек (часть 28б) — в состояние смены раньше команды: ночью по нему решают
+  const soft = settings().softMode;
+  if ((sess.s.meta.soft ?? false) !== soft) apply(db, sess.s, { kind: 'soft', on: soft });
   const notices = apply(db, sess.s, cmd);
   record(sess, notices);
   if (sess.s.t - sess.savedT >= SAVE_EVERY) save();
@@ -503,7 +517,9 @@ function dayStart(s: ShiftState) {
 
 function allDone(s: ShiftState) {
   return s.t >= dayStart(s) + SHIFT_END && s.queue.length === 0 && !s.current
-    && !Object.values(s.patients).some(p => p.status === 'away' || p.status === 'coming' || (p.by !== undefined && (p.status === 'inRoom' || p.status === 'waiting')));
+    && !Object.values(s.patients).some(p => p.status === 'away' || p.status === 'coming' || (p.by !== undefined && (p.status === 'inRoom' || p.status === 'waiting'))
+      // привезённый скорой ждёт сортировки — в очереди его ещё нет (часть 27)
+      || (p.kind === 'ambulance' && p.status === 'waiting' && !p.sorted));
 }
 
 /**
@@ -515,9 +531,10 @@ export function tick(ms: number = TICK_MS): Notice[] {
   if (!sess || sess.paused || !sess.s.dayOpen || sess.s.current || allDone(sess.s)) return [];
   const notices = run(sess, { kind: 'advance', seconds: Math.round((ms / 1000) * sess.speed * 60) });
   const { pauseOnRed, pauseOnResults } = settings();
-  const red = pauseOnRed ? notices.find(n => n.kind === 'arrived' && n.triage === 'red') : undefined;
+  const red = pauseOnRed ? notices.find(n => (n.kind === 'arrived' && n.triage === 'red') || n.kind === 'ambulance') : undefined;
   const back = pauseOnResults ? notices.find(n => n.kind === 'resultsReady' && sess.s.patients[n.id].status === 'waiting') : undefined;
-  if (red && red.kind === 'arrived') pause(sess, T.shift.pause.red(nameOf(sess.s.patients[red.id])));
+  if (red && red.kind === 'ambulance') pause(sess, T.shift.pause.ambulance(nameOf(sess.s.patients[red.id])));
+  else if (red && red.kind === 'arrived') pause(sess, T.shift.pause.red(nameOf(sess.s.patients[red.id])));
   else if (back && back.kind === 'resultsReady') pause(sess, T.shift.pause.results(nameOf(sess.s.patients[back.id])));
   changed();
   return notices;
@@ -539,11 +556,13 @@ const SKIP_MAX = 4 * 3600;
 export function skipIdle(): Notice[] {
   const sess = session;
   if (!sess || !sess.s.dayOpen || sess.s.current || sess.s.queue.length > 0 || allDone(sess.s)) return [];
+  // привезённого скорой ждёт сортировка — мимо него часы не проматываем (часть 27)
+  if (Object.values(sess.s.patients).some(p => p.kind === 'ambulance' && p.status === 'waiting' && !p.sorted)) return [];
   const out: Notice[] = [];
   for (let spent = 0; spent < SKIP_MAX && !allDone(sess.s); spent += 60) {
     const notices = run(sess, { kind: 'advance', seconds: 60 });
     out.push(...notices);
-    if (sess.s.queue.length > 0 || notices.some(n => n.kind === 'shiftEnd')) break;
+    if (sess.s.queue.length > 0 || notices.some(n => n.kind === 'shiftEnd' || n.kind === 'ambulance')) break;
   }
   sess.paused = false;
   sess.pauseReason = undefined;
@@ -590,7 +609,7 @@ function doctor(cmd: Command, justDone?: Id) {
   if (!sess || !p) return;
   const notices = run(sess, cmd);
   sess.meanwhile = meanwhileOf(sess.s, p, notices, justDone);
-  sess.urgent = notices.some(n => n.kind === 'arrived' && n.triage === 'red');
+  sess.urgent = notices.some(n => (n.kind === 'arrived' && n.triage === 'red') || n.kind === 'ambulance');
   changed();
 }
 
@@ -680,7 +699,7 @@ export function takeOver(id: string): boolean {
 /** Нанятый врач словами: «терапевт Иванова Елена»; уволен — просто «врач». */
 function doctorOfCase(s: ShiftState, by: string): string {
   const m = s.staff?.find(x => x.id === by);
-  return m ? T.shift.colleagueCase.doctor(db.roles[m.role]?.name.ru.toLowerCase() ?? '', personName(m.sex, m.seed)) : T.shift.colleagueCase.someone;
+  return m ? T.shift.colleagueCase.doctor(lowerFirst(db.roles[m.role]?.name.ru ?? ''), personName(m.sex, m.seed)) : T.shift.colleagueCase.someone;
 }
 
 /** Кто вёл закрытый приём — для экрана итога: глагол по полу врача; уволен — без имени. */
@@ -699,6 +718,8 @@ export function closeDay() {
   const sess = session;
   if (!sess || !sess.s.dayOpen) return;
   run(sess, { kind: 'closeDay' });
+  // ночью умерший после операции (часть 28б) — в архиве профиля его приём с исходом
+  recordCases(closedCases(sess.s));
   recordDay(dayRecord(sess.s));
   // «Смена»: лучший результат в этой больнице — в профиль
   const r = sess.s.meta.mode === 'single' ? singleResult(sess.s) : undefined;
@@ -895,7 +916,7 @@ function sandboxLayout(s: ShiftState): ClinicLayout {
   return l;
 }
 
-// обследования, которых в своей больнице не сделать, — и почему
+// обследования, которых в этой больнице не сделать, — и почему: в своей и в амбулатории практики
 const blocked = new WeakMap<HospitalCtx, Record<Id, string>>();
 
 function unavailableOf(s: ShiftState): Record<Id, string> {
@@ -1166,6 +1187,7 @@ function record(sess: Session, notices: Notice[]) {
     if (n.kind === 'arrived' && p) item(n.triage === 'red' ? 'red' : 'arrived', n.triage === 'red' ? T.shift.notice.red(nameOf(p), complaintOf(p)) : T.shift.notice.arrived(nameOf(p), female(p)));
     else if (n.kind === 'resultsReady' && p && p.status === 'waiting') item('results', T.shift.notice.results(nameOf(p), female(p)));
     else if (n.kind === 'left' && p) item('left', T.shift.notice.left(nameOf(p), female(p)));
+    else if (n.kind === 'ambulance' && p) item('red', T.shift.notice.ambulance(nameOf(p), complaintOf(p)));
     else if (n.kind === 'shiftEnd') item('end', T.shift.notice.end);
   }
   sess.log.length = Math.min(sess.log.length, LOG_SIZE);
@@ -1178,6 +1200,7 @@ function record(sess: Session, notices: Notice[]) {
 function meanwhileOf(s: ShiftState, p: ShiftPatient, notices: Notice[], justDone?: Id): string[] {
   const out: string[] = [];
   const arrived = notices.filter((n): n is Extract<Notice, { kind: 'arrived' }> => n.kind === 'arrived');
+  for (const n of notices) if (n.kind === 'ambulance') out.push(T.shift.notice.ambulance(nameOf(s.patients[n.id]), complaintOf(s.patients[n.id])));
   for (const n of arrived) if (n.triage === 'red') out.push(T.shift.notice.red(nameOf(s.patients[n.id]), complaintOf(s.patients[n.id])));
   for (const r of p.results) if (r.step === p.step && r.exam !== justDone) out.push(T.spikes.patient.ready(db.exams[r.exam].name.ru));
   const others = arrived.filter(n => n.triage !== 'red').length;
@@ -1199,6 +1222,7 @@ const closedDay = (p: ShiftPatient) => Math.floor(p.closed!.at / DAY) + 1;
 function row(s: ShiftState, p: ShiftPatient): QueueRow {
   const badges: string[] = [];
   if (p.kind === 'return') badges.push(T.shift.badge.return);
+  else if (p.kind === 'ambulance') badges.push(T.shift.badge.ambulance);
   else badges.push(p.kind === 'appointment' ? T.shift.badge.appointment : T.shift.badge.walkIn);
   if (p.payer) badges.push(T.sandbox.payers[p.payer]);
   if (p.step > 0) badges.push(T.shift.badge.results);
@@ -1210,6 +1234,7 @@ function row(s: ShiftState, p: ShiftPatient): QueueRow {
     complaint: complaintOf(p),
     waits: T.shift.waits(Math.max(0, Math.floor((s.t - p.arriveT) / 60))),
     badges,
+    ...(p.kind === 'ambulance' ? { ambulance: true } : {}),
   };
 }
 
@@ -1223,16 +1248,21 @@ function summaryOf(s: ShiftState): SummaryView | undefined {
   const colleagues = Object.entries(h.colleagues ?? {}).sort(([a], [b]) => (a < b ? -1 : 1)).map(([id, c]) => {
     const m = s.staff?.find(x => x.id === id);
     return {
-      id, title: m ? T.shift.summary.colleague(personName(m.sex, m.seed), db.roles[m.role]?.name.ru.toLowerCase() ?? '') : T.shift.summary.colleagueGone,
+      id, title: m ? T.shift.summary.colleague(personName(m.sex, m.seed), lowerFirst(db.roles[m.role]?.name.ru ?? '')) : T.shift.summary.colleagueGone,
       line: T.shift.summary.colleagueLine(c.seen, c.correct, c.partly, c.wrong, c.grades, c.taken ?? 0),
       // его приёмы — к разбору, как ваши (часть 19)
       cases: all.filter(p => p.closed?.by === id && closedDay(p) === h.day).sort((a, b) => a.closed!.at - b.closed!.at).map(caseRow),
     };
   });
+  // умер в стационаре или переведён в тяжёлом состоянии этой ночью (часть 28б) — той же спокойной строкой
+  const endedTonight = (p: ShiftPatient) => {
+    const c = p.closed?.stay;
+    return c !== undefined && p.stay !== undefined && (c.end === 'died' || p.closed!.outcome.severe === true) && p.stay.since + c.days === h.day;
+  };
   const news = all
-    .filter(p => p.closed && p.closed.plan.setting === 'home' && closedDay(p) + p.closed.outcome.day === h.day)
+    .filter(p => p.closed && ((p.closed.plan.setting === 'home' && closedDay(p) + p.closed.outcome.day === h.day) || endedTonight(p)))
     .sort((a, b) => a.closed!.at - b.closed!.at)
-    .map(p => ({ id: p.id, text: T.shift.news(nameOf(p), closedDay(p), outcomeText(p.closed!.outcome, 'home', female(p))) }));
+    .map(p => ({ id: p.id, text: T.shift.news(nameOf(p), closedDay(p), outcomeText(p.closed!.outcome, p.closed!.plan.setting, female(p))) }));
   return {
     ...h,
     grades: { ...h.grades },
@@ -1252,7 +1282,27 @@ function summaryOf(s: ShiftState): SummaryView | undefined {
     achievements: achievementNames(dayKey(s, h.day)),
     ...(s.meta.mode === 'single' ? { single: singleView(s) } : {}),
     ...(h.ward ? { wardLines: wardLines(h.ward) } : {}),
+    ...(h.ambulance && h.ambulance.arrived > 0 ? { ambulanceLines: ambulanceLines(h.ambulance) } : {}),
+    ...(h.surgery && h.surgery.done > 0 ? { surgeryLines: surgeryLines(h.surgery) } : {}),
   };
+}
+
+/** Операционная за день — строками итогов: операций и в срок ли, осложнения. */
+function surgeryLines(x: NonNullable<ShiftState['summary']['surgery']>): string[] {
+  const t = T.shift.summary.surgery;
+  const out = [t.line(x.done, x.onTime, x.late)];
+  if ((x.complicated ?? 0) > 0) out.push(t.complicated(x.complicated!));
+  if (x.complications > 0) out.push(t.complications(x.complications));
+  return out;
+}
+
+/** Скорая за день — строками итогов: привезли, отсортировали, сколько совпало со шкалой. */
+function ambulanceLines(a: NonNullable<ShiftState['summary']['ambulance']>): string[] {
+  const t = T.shift.summary.ambulance;
+  const out = [t.line(a.arrived, a.sorted)];
+  if (a.sorted > 0) out.push(t.check(a.sorted - a.under - a.over, a.under, a.over));
+  if (a.arrived > a.sorted) out.push(t.unsorted(a.arrived - a.sorted));
+  return out;
 }
 
 /** Стационар за день — строками итогов: сколько поступило, выписано (из них рано), переведено, лежит; сроки. */
@@ -1260,13 +1310,14 @@ function wardLines(w: NonNullable<ShiftState['summary']['ward']>): string[] {
   const t = T.shift.summary.ward;
   const out = [t.moves(w.admitted, w.discharged, w.transferred, w.lying)];
   if (w.early > 0) out.push(t.early(w.early));
+  if ((w.died ?? 0) > 0) out.push(t.died(w.died!));
   if (w.discharged > 0) out.push(t.stay(Math.round((w.stayDays / w.discharged) * 10) / 10, Math.round((w.stayNorm / w.discharged) * 10) / 10));
   return out;
 }
 
 const EMPTY: Omit<ShiftView, 'version' | 'status' | 'mode'> = {
   difficulty: 'student', day: 0, clock: '', dayOpen: false, afterHours: false, allDone: false, speed: 1, paused: false,
-  queue: [], away: [], log: [], counts: { seen: 0, left: 0, waiting: 0, unseen: 0 }, restored: false, people: [], who: {}, colleagues: [], signs: [], inpatients: 0,
+  queue: [], away: [], log: [], counts: { seen: 0, left: 0, waiting: 0, unseen: 0 }, restored: false, people: [], who: {}, colleagues: [], signs: [], inpatients: 0, ambulance: [],
 };
 
 function buildShiftView(): ShiftView {
@@ -1305,6 +1356,7 @@ function buildShiftView(): ShiftView {
     signs: roomSigns(layout ?? CLINIC, s, s.hospital ? understaffed(s) : undefined),
     colleagues: colleagueRows(s),
     inpatients: inpatientsOf(s).length,
+    ambulance: ambulanceRows(s),
     ...(s.hospital ? { rooms: roomsOf(s) } : {}),
     ...(layout ? { layout } : {}),
   };
@@ -1446,7 +1498,11 @@ function doingText(s: ShiftState, p: ShiftPatient, d: Doing): string {
     case 'left':
       return t.left(female(p));
     case 'ward':
-      return t.ward(d.days);
+      return d.op ? t.waitingOp(db.treatments[d.op]?.name.ru ?? d.op) : t.ward(d.days);
+    case 'surgery':
+      return t.onTable(db.treatments[d.tx]?.name.ru ?? d.tx, hhmm(minuteOfDay(d.end)));
+    case 'ambulance':
+      return t.ambulance[d.state];
     case 'staff':
       return '';
   }
@@ -1467,6 +1523,13 @@ export interface RoundCard {
   vitals: { label: string; values: string }[];
   treatments: string;
   treatmentIds: Id[];
+  /** операция (spec 2026-09-chapter-2, часть 28): ждёт, идёт до…, после операции */
+  op?: string;
+  /** «В операционную» — у диагноза есть операция, а её ещё не было; нельзя — почему */
+  operate?: { hint: string; disabled?: boolean };
+  /** на столе — ни выписать, ни перевести; ждёт операции — только перевести */
+  canDischarge: boolean;
+  canTransfer: boolean;
 }
 
 const fmtVital = (f: Id, v: number) => {
@@ -1483,6 +1546,8 @@ export function roundsView(): RoundCard[] {
   const s = sess.s;
   const t = T.shift.ward;
   const student = s.meta.difficulty === 'student';
+  const hasOr = s.hospital !== undefined && hospitalCtx(db, s).plan.rooms.some(r => r.type === 'room.or');
+  const queue = orQueueOf(s).map(p => p.id);
   return inpatientsOf(s).map(p => {
     const stay = p.stay!;
     const days = daysIn(stay, s.day);
@@ -1499,6 +1564,14 @@ export function roundsView(): RoundCard[] {
       return [{ label: t.vital[f] ?? f, values: `${series.map(v => fmtVital(f, v!)).join(' → ')}\u00a0${spec.unit}` }];
     });
     const dx = p.closed?.diagnosis;
+    const op = stay.op;
+    const opName = op ? (db.treatments[op.tx]?.name.ru ?? op.tx) : '';
+    const stage = op?.complicated ? db.conditions[primaryOf(p.patient).id]?.complication?.name.ru : undefined;
+    const opLine = !op ? undefined
+      : op.done ? `${t.opDone(opName)}${stage ? ` · ${t.opStage(stage)}` : ''}${op.complication ? ` · ${t.opComplication}` : ''}`
+        : op.start !== undefined ? t.opOn(opName, hhmm(minuteOfDay(op.end ?? op.start))) : t.opWaiting(opName, queue.indexOf(p.id) + 1);
+    const dxOp = !op && dx && hasOr ? operationFor(db, dx) : undefined;
+    const block = dxOp ? orBlock(db, s, dxOp) : null;
     return {
       id: p.id,
       title: `${nameOf(p)}, ${T.spikes.patient.years(p.patient.age)}`,
@@ -1511,7 +1584,12 @@ export function roundsView(): RoundCard[] {
       ...(student && state === 'ready' ? { readyHint: t.readyHint } : {}),
       vitals,
       treatments: stay.plan.treatments.length > 0 ? stay.plan.treatments.map(tx => db.treatments[tx]?.name.ru ?? tx).join(', ') : t.noTreatment,
-      treatmentIds: [...stay.plan.treatments],
+      // операцию меняют «В операционную», а не сменой лечения
+      treatmentIds: stay.plan.treatments.filter(tx => db.treatments[tx]?.kind !== 'surgery'),
+      ...(opLine ? { op: opLine } : {}),
+      ...(dxOp ? { operate: block ? { hint: orBlockText(block), disabled: true } : { hint: db.treatments[dxOp].name.ru } } : {}),
+      canDischarge: !op || op.done === true,
+      canTransfer: !op || op.done === true || op.start === undefined,
     };
   });
 }
@@ -1543,7 +1621,60 @@ function wardAct(cmd: Command) {
   changed();
 }
 
+// --- скорая (spec 2026-09-chapter-2, часть 27) -------------------------------------------------
+
+/** Лист передачи фельдшера: повод, что он измерил; на «Студенте» — баллы NEWS2 и тревожный признак, что поднял цвет. */
+export interface HandoverView {
+  reason: string;
+  measured: string[];
+  news2?: string;
+  flag?: string;
+}
+
+/** Привезённый скорой, что ждёт сортировки: кто, повод, где лежит, лист передачи. */
+export interface AmbulanceRow {
+  id: string;
+  name: string;
+  line: string;
+  handover: HandoverView;
+}
+
+function ambulanceRows(s: ShiftState): AmbulanceRow[] {
+  const t = T.shift.ambulance;
+  const door = new Set(atDoorOf(s).map(p => p.id));
+  return Object.values(s.patients)
+    .filter(p => p.kind === 'ambulance' && p.status === 'waiting' && !p.sorted)
+    .sort((a, b) => a.arriveT - b.arriveT || (a.id < b.id ? -1 : 1))
+    .map(p => {
+      const paramedic = p.results.find(r => r.exam === 'exam.vitals');
+      const student = s.meta.difficulty === 'student' && p.scale !== undefined;
+      const flag = student && p.scale?.flag ? db.findings[p.scale.flag]?.name.ru : undefined;
+      return {
+        id: p.id,
+        name: `${nameOf(p)}, ${T.spikes.patient.years(p.patient.age)}`,
+        line: `${t.reason(complaintOf(p))} · ${door.has(p.id) ? t.door : t.bay}`,
+        handover: {
+          reason: t.sheetReason(complaintOf(p)),
+          measured: (paramedic?.obs ?? []).filter(o => o.value !== undefined).map(o => observationText(db, o, p.patient.sex, p.patient.seed)),
+          ...(student && p.scale ? { news2: t.news2(p.scale.news2) } : {}),
+          ...(flag && p.scale ? { flag: t.flag(flag, p.scale.triage) } : {}),
+        },
+      };
+    });
+}
+
+/** Отсортировать привезённого скорой: цвет — место в очереди. */
+export function sortAmbulance(id: string, triage: Triage) {
+  const sess = session;
+  if (!sess || !sess.s.dayOpen) return;
+  run(sess, { kind: 'sort', id, triage });
+  save();
+  changed();
+}
+
 export const dischargePatient = (id: string) => wardAct({ kind: 'discharge', id });
+/** С обхода — в операционную (часть 28). */
+export const operatePatient = (id: string) => wardAct({ kind: 'operate', id });
 export const transferPatient = (id: string) => wardAct({ kind: 'transfer', id });
 export const replanPatient = (id: string, treatments: Id[]) => wardAct({ kind: 'replan', id, treatments });
 
@@ -1607,24 +1738,44 @@ export function archiveCaseView(key: string): VisitView | undefined {
     draft: p.draft,
     decision: decisionFor(r, p, arrived, known),
     difficulty: 'doctor',
+    ...(p.departments ? { departments: p.departments } : {}),
   });
 }
 
 /**
  * Где лечить в больнице со своей палатой (spec 2026-09-chapter-2, часть 26): домой, в палату
- * (сколько коек свободно; нет свободных — нельзя), направить в другую больницу, скорая.
+ * (сколько коек свободно; нет свободных — нельзя), направить в другую больницу, скорая. Есть
+ * операционная (часть 28) — и «В операционную»: какая операция — по диагнозу, нельзя — почему.
  */
-function settingOptions(s: ShiftState): SettingOption[] {
+function settingOptions(s: ShiftState, diagnosis?: Id): SettingOption[] {
   const all = wardBeds(db, s).length;
   const free = freeBeds(db, s).length;
   const t = T.shift.ward;
   const setting = T.spikes.patient.setting;
+  const hasOr = hospitalCtx(db, s).plan.rooms.some(r => r.type === 'room.or');
   return [
     { key: 'home', title: setting.home },
     { key: 'admit', title: t.admit, hint: free > 0 ? t.freeBeds(free, all) : t.noBeds, disabled: free === 0 },
+    ...(hasOr ? [orOption(s, diagnosis, free, all)] : []),
     { key: 'ward', title: t.refer },
     { key: 'ambulance', title: setting.ambulance },
   ];
+}
+
+/** «В операционную»: операция диагноза и свободные койки; нельзя — почему (часть 28). */
+function orOption(s: ShiftState, diagnosis: Id | undefined, free: number, all: number): SettingOption {
+  const t = T.shift.ward;
+  const op = diagnosis ? operationFor(db, diagnosis) : undefined;
+  const block = op ? orBlock(db, s, op) : null;
+  const why = !diagnosis ? t.noDiagnosis : !op ? t.noOperation : block ? orBlockText(block) : free === 0 ? t.noBeds : undefined;
+  return why ? { key: 'surgery', title: t.operate, hint: why, disabled: true } : { key: 'surgery', title: t.operate, hint: t.opHint(db.treatments[op!].name.ru, free, all) };
+}
+
+function orBlockText(b: OrBlock): string {
+  const t = T.shift.ward;
+  if (b.kind === 'noEquipment') return t.noOpEquipment(db.equipment[b.equipment]?.gen.ru ?? b.equipment);
+  if (b.kind === 'down') return t.orDown(problemText(db, b.problem));
+  return t.orDown(T.sandbox.problem.noEquipment);
 }
 
 function buildCaseView(): VisitView | undefined {
@@ -1657,8 +1808,11 @@ function buildCaseView(): VisitView | undefined {
     canSendAway: p.status === 'inRoom' && p.pending.length > 0,
     returnNote: p.returnReason && prev?.closed ? T.shift.returnNote(p.returnReason, closedDay(prev), female(p)) : undefined,
     difficulty: s.meta.difficulty ?? 'doctor',
-    ...(s.hospital ? { unavailable: unavailableOf(s) } : {}),
-    ...(wardBeds(db, s).length > 0 ? { settings: settingOptions(s) } : {}),
+    // и в практике: кабинета УЗИ в амбулатории нет (часть 29)
+    unavailable: unavailableOf(s),
+    // с какими отделениями его приняли (часть 30): с приёмным — и хирургия
+    ...(p.departments ? { departments: p.departments } : {}),
+    ...(wardBeds(db, s).length > 0 ? { settings: settingOptions(s, p.draft.diagnosis) } : {}),
     ...(p.payer ? { payerNote: T.sandbox.payerNote[p.payer] } : {}),
     ...(p.paid && p.closed ? { payment: paymentText(db, p.payer ?? 'oms', p.paid, p.closed) } : {}),
     ...(p.closed ? { achievements: achievementNames(caseKey(s.meta.seed, p.id)) } : {}),

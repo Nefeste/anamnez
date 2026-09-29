@@ -1,7 +1,9 @@
 // Сектор УЗИ (ADR 0013, spec 2026-09-ct-mri-ultrasound, часть 21): геометрия — чистые функции
 // в долях кадра, рисунок — sector.ts. Кадр квадратный; датчик — сверху, выпуклый, как для
 // живота: лучи расходятся веером от мнимой вершины над кадром, поэтому сверху — широкая дуга.
-// Глубина — вниз. Два вида: печень с желчным пузырём и почка под печенью.
+// Глубина — вниз. Четыре вида: печень с желчным пузырём, почка под печенью, правая подвздошная
+// область с петлями кишки — там ищут червеобразный отросток (spec 2026-09-chapter-2, часть 29), и
+// левая подвздошная область с сигмовидной кишкой вдоль — там ищут воспалённый дивертикул (часть 30д).
 //
 // Рисовальщик болезней не знает: светлые точки с тенью, расширенная тёмная середина почки и
 // полоса жидкости заданы параметрами. Что они значат, запишут признаки базы по источникам.
@@ -10,13 +12,25 @@ import { Rng } from '@/engine/core/rng';
 export type Pt = [number, number];
 
 export interface UsFindings {
-  view: 'gallbladder' | 'kidney';
+  view: 'gallbladder' | 'kidney' | 'appendix' | 'colon';
   /** светлые точки у нижней стенки пузыря, за каждой — тень: сколько (0–5) и насколько крупные (0–1) */
   foci?: { count: number; size: number };
   /** 0–1: тёмная середина почки — лоханка с чашечками — расширена */
   pelvis?: number;
   /** 0–1: тёмная полоса жидкости у органа — толщина */
   fluid?: number;
+  /** 0–1: стенка желчного пузыря утолщена — яркая, с тёмной полоской отёка посередине («двойной контур», часть 30) */
+  wall?: number;
+  /**
+   * 0–1: в поперечнике виден отросток — «мишень»: слоистая стенка вокруг тёмной середины, вокруг —
+   * светлый отёчный жир. 0 — отростка не видно, как обычно у здорового
+   */
+  appendix?: number;
+  /**
+   * 0–1: сигмовидная кишка (часть 30д): стенка утолщена, от неё отходит воспалённый дивертикул с
+   * яркой серединой и тенью, вокруг — светлый отёчный жир. 0 — кишка как у здорового
+   */
+  diverticulum?: number;
 }
 
 /** Сектор: мнимая вершина над кадром, полураствор (радианы от вертикали), радиус дуги датчика и конца. */
@@ -69,6 +83,8 @@ export interface UsGeometry {
   liverBottom?: Pt[];
   /** жёлчный пузырь: полость и стенка — один контур */
   gallbladder?: Pt[];
+  /** утолщённая стенка пузыря: наружный контур и середина стенки — полоска отёка */
+  gbWall?: [Pt[], Pt[]];
   /** светлые точки и тень за каждой — по лучам от вершины до конца сектора */
   foci: { c: Pt; r: number; shadow: Pt[] }[];
   /** усиление за пузырём — светлее по лучам под ним */
@@ -82,6 +98,18 @@ export interface UsGeometry {
   pelvisParts?: Pt[][];
   /** полоса жидкости у органа */
   fluid?: Pt[];
+  /** подвздошная область: петли кишки — стенка и яркий газ сверху, под газом — грязная тень */
+  loops?: { wall: Pt[]; gas: Pt[]; shadow: Pt[] }[];
+  /** подвздошные артерия и вена — тёмные круги в глубине */
+  vessels?: { c: Pt; r: number }[];
+  /** отросток в поперечнике: кольца снаружи внутрь — серозная оболочка, мышечный слой, подслизистый, просвет */
+  target?: Pt[][];
+  /** светлый отёчный жир вокруг отростка или дивертикула */
+  halo?: Pt[];
+  /** сигмовидная кишка вдоль (часть 30д): наружный контур стенки, подслизистый слой, просвет, газ на ближней стенке просвета и тень под ним */
+  colon?: { wall: Pt[]; submucosa: Pt[]; lumen: Pt[]; gas: Pt[]; shadow: Pt[] };
+  /** воспалённый дивертикул: стенка — тёмное кольцо, середина — яркая (каловый камень, газ), за ней — тень */
+  diverticulum?: { wall: Pt[]; core: { c: Pt; r: number }; shadow: Pt[] };
 }
 
 /** Тень за точкой: лучи от вершины через края точки — от точки до конца сектора. */
@@ -128,14 +156,99 @@ export function usGeometry(f: UsFindings, seed: number): UsGeometry {
     const enhancement: Pt[] = [ray(aMin + 0.02, far - 0.02), ray(aMin + 0.02, R1), ray(aMax - 0.02, R1), ray(aMax - 0.02, far - 0.02)];
     const fluid = clamp01(f.fluid);
     const out: UsGeometry = { ...base, gallbladder: gb, foci, enhancement };
+    const thick = clamp01(f.wall);
+    // стенка утолщена: наружный контур шире полости, посередине стенки — тёмная полоска отёка
+    const k = 1.1 + 0.16 * thick;
+    const around = (m: number) => gb.map(p => [c[0] + (p[0] - c[0]) * m, c[1] + (p[1] - c[1]) * m] as Pt);
+    if (thick > 0) out.gbWall = [around(k), around((1 + k) / 2)];
     if (fluid > 0) {
-      // тёмная полоса вдоль нижней стенки пузыря, снаружи
+      // тёмная полоса вдоль нижней стенки пузыря, снаружи (снаружи утолщённой стенки, если она есть)
+      const lower0 = thick > 0 ? around(k).filter(p => polar(p).r > polar(c).r).sort((p, q) => polar(p).a - polar(q).a) : lower;
       const w = 0.006 + 0.03 * fluid;
-      const band = lower.map(p => {
+      const band = lower0.map(p => {
         const q = polar(p);
         return [ray(q.a, q.r + 0.004), ray(q.a, q.r + 0.004 + w)] as const;
       });
       out.fluid = [...band.map(b => b[0]), ...band.map(b => b[1]).reverse()];
+    }
+    return out;
+  }
+
+  if (f.view === 'appendix') {
+    // петли кишки справа, слева и в глубине: овал стенки, газ — яркая дуга у ближней к датчику стенки
+    const loops: NonNullable<UsGeometry['loops']> = [];
+    for (const [a, d, rx, ry, rot] of [[-0.25, 0.34, 0.1, 0.05, 0.3], [0.27, 0.4, 0.09, 0.05, -0.35], [-0.08, 0.74, 0.14, 0.055, 0.05]] as const) {
+      const c = at(a, d);
+      const ph = u() * 6.28;
+      const wall = ellipse(c, rx, ry, rot, 56, t => 1 + 0.06 * Math.sin(3 * t + ph));
+      const near = wall.filter(p => polar(p).r < polar(c).r).sort((p, q) => polar(p).a - polar(q).a);
+      const gas = near.slice(Math.floor(near.length * 0.2), Math.ceil(near.length * 0.8));
+      const pa = polar(gas[0]), pb = polar(gas[gas.length - 1]);
+      loops.push({ wall, gas, shadow: [ray(pa.a, pa.r + 0.01), ray(pa.a, R1), ray(pb.a, R1), ray(pb.a, pb.r + 0.01)] });
+    }
+    const vessels = [{ c: at(0.13, 0.86), r: 0.028 }, { c: at(0.22, 0.88), r: 0.038 }];
+    const out: UsGeometry = { ...base, loops, vessels };
+    const t = clamp01(f.appendix);
+    if (t > 0) {
+      // «мишень» посередине сектора: наружный радиус растёт с толщиной, слои — доли радиуса
+      const c = at(0.02, 0.5);
+      const R = 0.03 + 0.045 * t;
+      const ph = u() * 6.28;
+      const ring = (k: number) => ellipse(c, R * k, R * k * 0.92, 0.2, 48, x => 1 + 0.03 * Math.sin(2 * x + ph));
+      out.target = [ring(1), ring(0.9), ring(0.62), ring(0.34)];
+      out.halo = ellipse(c, R * (1.7 + 0.5 * t), R * (1.45 + 0.4 * t), 0.2, 48, x => 1 + 0.08 * Math.sin(3 * x + ph));
+      const fluid = clamp01(f.fluid);
+      if (fluid > 0) {
+        // тёмный серп жидкости под отростком — дальше от датчика
+        const far = ellipse(c, R * (1.25 + 0.6 * fluid), R * (1.1 + 0.5 * fluid), 0.2, 48).filter(p => polar(p).r > polar(c).r + R * 0.4);
+        const inner = far.map(p => {
+          const q = polar(p);
+          return ray(q.a, q.r - 0.008 - 0.02 * fluid);
+        });
+        out.fluid = [...far, ...inner.reverse()];
+      }
+    }
+    return out;
+  }
+
+  if (f.view === 'colon') {
+    // левая подвздошная область: сигмовидная кишка вдоль, через весь сектор, чуть изогнута; над ней
+    // сбоку и в глубине — петли тонкой кишки, в глубине — подвздошные сосуды
+    const t = clamp01(f.diverticulum);
+    const ph = u() * 6.28;
+    const n = 40;
+    // просвет спавшийся, с газом; стенка у здорового тонкая, при воспалении — толстая
+    const hL = 0.012, w = 0.012 + 0.022 * t;
+    const mid = (a: number) => 0.44 + 0.04 * Math.sin(2.4 * a + ph);
+    const angles = Array.from({ length: n + 1 }, (_, i) => -HALF - 0.04 + ((2 * HALF + 0.08) * i) / n);
+    const edge = (off: number) => angles.map(a => at(a, mid(a) + off));
+    const band = (h: number): Pt[] => [...edge(-h), ...edge(h).reverse()];
+    const near = edge(-hL);
+    const gas = near.slice(Math.floor(n * 0.2), Math.ceil(n * 0.75));
+    const pa = polar(gas[0]), pb = polar(gas[gas.length - 1]);
+    const shadow: Pt[] = [...gas.map(p => { const q = polar(p); return ray(q.a, q.r + 0.006); }), ray(pb.a, R1), ray(pa.a, R1)];
+    const colon = { wall: band(hL + w), submucosa: band(hL + w * 0.45), lumen: band(hL), gas, shadow };
+    const loops: NonNullable<UsGeometry['loops']> = [];
+    for (const [a, d, rx, ry, rot] of [[0.27, 0.27, 0.08, 0.04, -0.3], [-0.12, 0.76, 0.13, 0.05, 0.1]] as const) {
+      const c = at(a, d);
+      const lp = u() * 6.28;
+      const wall = ellipse(c, rx, ry, rot, 56, x => 1 + 0.06 * Math.sin(3 * x + lp));
+      const top = wall.filter(p => polar(p).r < polar(c).r).sort((p, q) => polar(p).a - polar(q).a);
+      const lg = top.slice(Math.floor(top.length * 0.2), Math.ceil(top.length * 0.8));
+      const qa = polar(lg[0]), qb = polar(lg[lg.length - 1]);
+      loops.push({ wall, gas: lg, shadow: [ray(qa.a, qa.r + 0.01), ray(qa.a, R1), ray(qb.a, R1), ray(qb.a, qb.r + 0.01)] });
+    }
+    const vessels = [{ c: at(-0.12, 0.84), r: 0.028 }, { c: at(-0.21, 0.86), r: 0.036 }];
+    const out: UsGeometry = { ...base, colon, loops, vessels };
+    if (t > 0) {
+      // дивертикул — на ближней к датчику стороне кишки, выпячивается из стенки наружу
+      const a0 = -0.02;
+      const rD = 0.028 + 0.018 * t;
+      const c = at(a0, mid(a0) - hL - w - rD * 0.55);
+      const dp = u() * 6.28;
+      const core = { c, r: rD * 0.4 };
+      out.diverticulum = { wall: ellipse(c, rD, rD * 0.9, 0, 32, x => 1 + 0.05 * Math.sin(3 * x + dp)), core, shadow: shadowOf(core.c, core.r) };
+      out.halo = ellipse(at(a0, mid(a0) - hL - w - rD * 0.3), 0.12 + 0.06 * t, 0.07 + 0.03 * t, 0, 48, x => 1 + 0.07 * Math.sin(3 * x + dp));
     }
     return out;
   }

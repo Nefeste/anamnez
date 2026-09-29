@@ -15,6 +15,19 @@ course:
     - { id: late, days: [1, 3] }
   presentation: [0, 1]
   untreated: { band: usually, days: [1, 3] }
+  # после аппендэктомии в стационаре 1–4 дня (325_2, раздел 3.3)
+  stay: [1, 4]
+# операция — аппендэктомия; при неосложнённом её можно отложить до 24 ч от поступления, дольше —
+# хуже исходы (325_2, раздел 3.2; WSES 2020, утверждение 3.2)
+surgery: { tx: tx.appendectomy, window: 24 }
+# перфорация без операции: за первые 36 ч от начала боли — не больше 2 %, дальше — 5 % за каждые
+# 12 ч (Bickell 2006); после операции с перфорацией стационар дольше — в среднем 4 дня против 1,7
+# без неё (Masoomi 2011), разброс 3–5 — игровая оценка
+complication:
+  name: { ru: "перфорация" }
+  early: { hours: 36, p: { pct: 2 } }
+  later: { every: 12, p: { pct: 5 } }
+  stay: [3, 5]
 findings:
   - { f: sym.abdominal_pain, band: usually }
   - { f: sym.rlq_pain, band: usually }
@@ -33,6 +46,9 @@ findings:
   - { f: sign.peritoneal_signs, band: often }
   - { f: lab.wbc_high, band: usually }
   - { f: lab.crp_high, band: often }
+  - f: img.us_appendicitis
+    band: { pct: 100 }
+    note: "воспалён отросток у каждого больного; найдёт ли его УЗИ — чувствительность обследования (WSES 2020: 76 % у больных с подтверждённым аппендицитом)"
 confirm: clinical
 redFlags: [sign.peritoneal_signs]
 treatment:
@@ -50,7 +66,9 @@ pearls:
   - ru: "Обезболивание не «смазывает картину» — это миф; опасно другое: отпустить домой с «отравлением»."
 simplified: "Шкала Альварадо, УЗИ и КТ — позже; в поликлинике задача — заподозрить и отправить к хирургу."
 sources:
-  - { kind: guideline, title: "Острый аппендицит у взрослых", org: "Минздрав РФ", year: 2023, url: "https://cr.minzdrav.gov.ru/view-cr/325_2", note: "ID 325_2, опубликованы 24.11.2023, применяются; сверено с рубрикатором 28.09.2026; частоты — черновик" }
-  - { kind: guideline, title: "Di Saverio S et al. Diagnosis and treatment of acute appendicitis: 2020 update of the WSES Jerusalem guidelines. World J Emerg Surg 2020;15:27" }
+  - { kind: guideline, title: "Острый аппендицит у взрослых", org: "Минздрав РФ", year: 2023, url: "https://cr.minzdrav.gov.ru/view-cr/325_2", note: "ID 325_2, опубликованы 24.11.2023, применяются; сверено с рубрикатором 28.09.2026; частоты — черновик; срок операции и стационара — разделы 3.2 и 3.3" }
+  - { kind: guideline, title: "Di Saverio S et al. Diagnosis and treatment of acute appendicitis: 2020 update of the WSES Jerusalem guidelines. World J Emerg Surg 2020;15:27", url: "https://pubmed.ncbi.nlm.nih.gov/32295644/", note: "PMC7386163: отсрочка аппендэктомии до 24 ч от поступления не повышает риск осложнённого аппендицита, позже — хуже исходы (утверждение 3.2)" }
   - { kind: paper, title: "Wagner JM, McKinney WP, Carpenter JL. Does this patient have appendicitis? JAMA 1996;276(19):1589–1594" }
+  - { kind: paper, title: "Bickell NA, Aufses AH Jr, Rojas M, Bodian C. How time affects the risk of rupture in appendicitis. J Am Coll Surg 2006;202(3):401–406", url: "https://pubmed.ncbi.nlm.nih.gov/16500243/", note: "PMID 16500243, сверено 28.09.2026: риск перфорации — не больше 2 %, пока нелеченым симптомам меньше 36 ч, дальше — 5 % за каждые следующие 12 ч" }
+  - { kind: paper, title: "Masoomi H et al. Comparison of outcomes of laparoscopic versus open appendectomy in adults: data from the Nationwide Inpatient Sample (NIS), 2006–2008. J Gastrointest Surg 2011;15(12):2226–2231", url: "https://pubmed.ncbi.nlm.nih.gov/21725700/", note: "PMID 21725700, сверено 28.09.2026: после лапароскопической аппендэктомии — в среднем 1,7 дня в стационаре без перфорации и 4,0 с перфорацией" }
 review: draft

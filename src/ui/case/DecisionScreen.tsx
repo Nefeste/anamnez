@@ -5,7 +5,7 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { Text } from '../text';
 import { T } from '@/i18n';
-import { conditionTerm, diagnosisGroups, type TermInfo, treatmentTerm, type VisitView } from '@/state/caseView';
+import { conditionTerm, type TermInfo, treatmentTerm, type VisitView } from '@/state/caseView';
 import { Button, Card, Chip, Chips, H, P, Screen } from '@/ui/components';
 import { TermSheet } from '@/ui/TermSheet';
 import { makeStyles, space } from '@/ui/theme';
@@ -65,7 +65,7 @@ export function DecisionScreen({ view: v, actions }: { view: VisitView; actions:
               </Chips>
             </Card>
           )}
-          {diagnosisGroups().map(g => (
+          {v.diagnoses.map(g => (
             <Card key={g.key}>
               <Text style={styles.label}>{g.title}</Text>
               {g.items.map(c => (

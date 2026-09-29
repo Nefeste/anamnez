@@ -3,15 +3,16 @@
 // Здесь только вид: разделы, статьи, поиск; экраны — src/app/encyclopedia. База приходит
 // параметром, как у движка: тесты подставляют ту же собранную базу.
 import {
-  type Condition, type ContentDb, type Equipment, type Exam, type Finding, type Id, type Link, type P, type Risk, type RoomType, type StaffRole, SYSTEMS, type Tactics,
-  type Tip, type Treatment,
+  type Condition, type ContentDb, type Equipment, type Exam, type Finding, type Id, type Link, type P, type Risk, type RoomType, type Score, type StaffRole, SYSTEMS,
+  type Tactics, type Tip, type Treatment,
 } from '@/content/types';
+import { formatNumber } from '@/engine/med/text';
 import { T } from '@/i18n';
 import { TX_GROUP_ORDER, txGroupOfClass } from './caseView';
 import { sourceLine } from './sources';
 
-export type Section = 'conditions' | 'findings' | 'exams' | 'treatments' | 'risks' | 'hospital' | 'tips';
-export const SECTIONS: Section[] = ['conditions', 'findings', 'exams', 'treatments', 'risks', 'hospital', 'tips'];
+export type Section = 'conditions' | 'findings' | 'exams' | 'treatments' | 'risks' | 'scores' | 'hospital' | 'tips';
+export const SECTIONS: Section[] = ['conditions', 'findings', 'exams', 'treatments', 'risks', 'scores', 'hospital', 'tips'];
 
 /** Ссылка на статью; `note` — пометка рядом: частота, «в 2 раза чаще», точность. */
 export interface Ref {
@@ -64,6 +65,9 @@ const BANDS = [
 export type Band = (typeof BANDS)[number][0];
 
 /** Ближайшая полоса: число из источника (6000) называется словом соседней полосы. */
+/** Доля 1/10 000 — процентами с десятичной запятой: 413 → «4,13», 3 → «0,03». */
+const pct = (p: P) => String(p / 100).replace('.', ',');
+
 export function bandOf(p: P): Band {
   let best: (typeof BANDS)[number] = BANDS[0];
   for (const b of BANDS) if (Math.abs(b[1] - p) < Math.abs(best[1] - p)) best = b;
@@ -76,13 +80,14 @@ export function sectionOf(db: ContentDb, id: Id): Section | undefined {
   if (db.exams[id]) return 'exams';
   if (db.treatments[id]) return 'treatments';
   if (db.risks[id]) return 'risks';
+  if (db.scores[id]) return 'scores';
   if (db.rooms[id] || db.equipment[id] || db.roles[id]) return 'hospital';
   if (db.tips[id]) return 'tips';
   return undefined;
 }
 
 function nameOf(db: ContentDb, id: Id): string {
-  return (db.conditions[id] ?? db.findings[id] ?? db.exams[id] ?? db.treatments[id] ?? db.risks[id] ?? db.rooms[id] ?? db.equipment[id] ?? db.roles[id] ?? db.tips[id])?.name.ru ?? id;
+  return (db.conditions[id] ?? db.findings[id] ?? db.exams[id] ?? db.treatments[id] ?? db.risks[id] ?? db.scores[id] ?? db.rooms[id] ?? db.equipment[id] ?? db.roles[id] ?? db.tips[id])?.name.ru ?? id;
 }
 
 const ref = (db: ContentDb, id: Id, note?: string): Ref => (note ? { id, title: nameOf(db, id), note } : { id, title: nameOf(db, id) });
@@ -99,11 +104,16 @@ function strongest(links: readonly Link[]): Link[] {
   return [...best.values()];
 }
 
-/** Условие связи словами: «при тяжёлом течении», «с подъёмом ST». */
-function whenNote(when: Link['when']): string | undefined {
+/**
+ * Условие по скрытому параметру словами: «при тяжёлом течении», «при ишемии кишки». Подпись —
+ * по паре «параметр:значение», иначе по значению (тяжесть одна у многих болезней); без подписи
+ * значение не показываем — «yes» в статье хуже, чем ничего.
+ */
+export function whenText(when: Record<string, string[]> | undefined): string | undefined {
   if (!when) return undefined;
-  const words = Object.values(when).flat().map(v => T.encyclopedia.when[v] ?? v);
-  return words.length > 0 ? words.join(', ') : undefined;
+  const words = Object.entries(when).flatMap(([name, values]) => values.map(v => T.encyclopedia.when[`${name}:${v}`] ?? T.encyclopedia.when[v])).filter((w): w is string => w !== undefined);
+  // несколько значений (часть 30д): «при инфильтрате, абсцессе и перитоните» — «при» один раз
+  return words.length <= 1 ? words[0] : T.encyclopedia.whenList(words);
 }
 
 /** Ряды «почти всегда / обычно / … / не бывает»; внутри ряда — по алфавиту. */
@@ -172,13 +182,20 @@ const TACTICS: { key: keyof Omit<Tactics, 'setting'>; label: 'firstLine' | 'plan
   { key: 'harmful', label: 'harmful', forLabel: 'harmfulFor' },
 ];
 
-function whereLines(db: ContentDb, t: Tactics): string[] {
+function whereLines(db: ContentDb, c: Condition, t: Tactics): string[] {
   const e = T.encyclopedia;
   const s = t.setting;
   const lines = [e.whereDefault(e.setting[s.default])];
-  for (const [value, set] of Object.entries(s.param?.map ?? {})) if (set !== s.default) lines.push(e.whereIf(e.when[value] ?? value, e.setting[set]));
+  for (const [value, set] of Object.entries(s.param?.map ?? {})) if (set !== s.default) lines.push(e.whereIf(whenText({ [s.param!.name]: [value] }) ?? value, e.setting[set]));
   if (s.redFlag && s.redFlag !== s.default) lines.push(e.whereRedFlag(e.setting[s.redFlag]));
   for (const r of s.risks ?? []) if (r.setting !== s.default) lines.push(e.whereRisk(nameOf(db, r.id), e.setting[r.setting]));
+  // операция и срок стационара (spec 2026-09-chapter-2, части 26 и 28), после осложнённой стадии — свой (28б)
+  if (c.surgery) lines.push(e.whereSurgery(nameOf(db, c.surgery.tx), c.surgery.window, c.surgery.from === 'onset'));
+  // без показаний к экстренной операции — наблюдение в палате, не помогло — операция в срок (часть 30в)
+  if (c.surgery?.observe !== undefined) lines.push(e.whereObserve(c.surgery.observe));
+  if (c.stay) lines.push(e.whereStay(c.stay[0], c.stay[1]));
+  if (c.surgery?.stay) lines.push(e.whereStayOperated(c.surgery.stay[0], c.surgery.stay[1]));
+  if (c.complication?.stay) lines.push(e.whereStayComplicated(c.complication.name.ru, c.complication.stay[0], c.complication.stay[1]));
   return lines;
 }
 
@@ -202,7 +219,7 @@ function whoLines(c: Condition): string[] {
 function conditionArticle(db: ContentDb, c: Condition): Article {
   const e = T.encyclopedia;
   const blocks: Block[] = [{ key: 'what', title: e.what, text: [c.texts.summary.ru] }];
-  blocks.push({ key: 'signs', title: e.signs, rows: byBand(db, strongest(c.findings).map(l => ({ id: l.f, p: l.p, note: whenNote(l.when) }))) });
+  blocks.push({ key: 'signs', title: e.signs, rows: byBand(db, strongest(c.findings).map(l => ({ id: l.f, p: l.p, note: whenText(l.when) }))) });
 
   const who = whoLines(c);
   const whoRows: Row[] = [];
@@ -220,13 +237,18 @@ function conditionArticle(db: ContentDb, c: Condition): Article {
   const t = c.treatment;
   if (t) {
     const rows = TACTICS.map(k => ({ label: e[k.label], refs: (t[k.key] ?? []).map(id => ref(db, id)) })).filter(r => r.refs.length > 0);
+    if (c.surgery) rows.unshift({ label: e.surgeryRow, refs: [ref(db, c.surgery.tx)] });
     blocks.push({ key: 'treatment', title: e.treatment, rows });
-    blocks.push({ key: 'where', title: e.whereTitle, text: whereLines(db, t) });
+    blocks.push({ key: 'where', title: e.whereTitle, text: whereLines(db, c, t) });
   }
 
   const course: string[] = [];
-  if (c.selfLimiting) course.push(e.selfLimiting);
-  if (c.untreated && c.untreated.p > 0) course.push(e.untreated(e.band[bandOf(c.untreated.p)], c.untreated.days[0], c.untreated.days[1]));
+  // течение может зависеть от скрытого параметра (часть 30д): «при неосложнённом — проходит само»
+  if (c.selfLimiting) course.push(c.selfLimitingWhen ? e.selfLimitingIf(whenText(c.selfLimitingWhen) ?? '') : e.selfLimiting);
+  if (c.untreated && c.untreated.p > 0) course.push(e.untreated(e.band[bandOf(c.untreated.p)], c.untreated.days[0], c.untreated.days[1], whenText(c.untreated.when)));
+  const x = c.complication;
+  if (x?.after !== undefined) course.push(e.complicationAfter(x.name.ru, x.after, whenText(x.when)));
+  else if (x?.early && x.later) course.push(e.complicationRisk(x.name.ru, x.early.hours, pct(x.early.p), x.later.every, pct(x.later.p)));
   if (course.length > 0) blocks.push({ key: 'course', title: e.course, text: course });
 
   if (c.redFlags?.length) blocks.push({ key: 'redFlags', title: e.redFlags, text: [e.redFlagsNote], refs: c.redFlags.map(id => ref(db, id)) });
@@ -246,7 +268,7 @@ function findingArticle(db: ContentDb, f: Finding): Article {
 
   const inConditions = Object.values(db.conditions).flatMap(c => {
     const l = strongest(c.findings.filter(x => x.f === f.id))[0];
-    return l ? [{ id: c.id, p: l.p, note: whenNote(l.when) }] : [];
+    return l ? [{ id: c.id, p: l.p, note: whenText(l.when) }] : [];
   });
   const rows = byBand(db, inConditions);
   const risks = Object.values(db.risks).filter(r => r.findings.some(l => l.f === f.id)).map(r => ref(db, r.id)).sort(byTitle);
@@ -299,10 +321,26 @@ function treatmentArticle(db: ContentDb, x: Treatment): Article {
   if (x.contraindications.length > 0) {
     blocks.push({ key: 'contraindications', title: e.contraindications, refs: x.contraindications.map(k => ref(db, k.id, e.level[k.level])) });
   }
+  // операция (часть 28): что ею лечат и в какой срок, где делают и какая бригада
+  const op = x.surgery;
+  if (op) {
+    const treats = conditions.filter(c => c.surgery?.tx === x.id).map(c => ref(db, c.id, e.opWindow(c.surgery!.window, c.surgery!.from === 'onset', c.surgery!.observe))).sort(byTitle);
+    if (treats.length > 0) blocks.push({ key: 'treats', title: e.opTreats, refs: treats });
+    blocks.push({ key: 'where', title: e.whereDone, refs: [ref(db, op.room), ...op.equipment.map(id => ref(db, id))] });
+    blocks.push({ key: 'team', title: e.opTeam, refs: op.team.map(id => ref(db, id)) });
+    // исходы по стадии болезни (часть 28б): осложнения и смерть в стационаре
+    const stage = conditions.find(c => c.surgery?.tx === x.id && c.complication)?.complication?.name.ru;
+    const k = op.complicated;
+    const out = [e.opComplications(pct(op.complications), k && pct(k.complications), stage)];
+    if (op.death !== undefined) out.push(e.opDeaths(pct(op.death), k?.death !== undefined ? pct(k.death) : undefined, stage));
+    if (op.delay !== undefined) out.push(e.opDelay(pct(op.delay)));
+    blocks.push({ key: 'outcomes', title: e.opOutcomes, text: out });
+  }
   blocks.push(sources(db, x));
 
   const kind = x.kind === 'drug' ? T.spikes.decision.txGroup[txGroupOfClass(x.class)] : e.txKind[x.kind];
-  return { id: x.id, section: 'treatments', title: x.name.ru, subtitle: [kind, T.common.rub(x.cost)].join(' · '), blocks };
+  const subtitle = op ? [kind, e.minutes(op.minutes), T.common.rub(x.cost)] : [kind, T.common.rub(x.cost)];
+  return { id: x.id, section: 'treatments', title: x.name.ru, subtitle: subtitle.join(' · '), blocks };
 }
 
 function riskArticle(db: ContentDb, r: Risk): Article {
@@ -323,22 +361,51 @@ function riskArticle(db: ContentDb, r: Risk): Article {
   return { id: r.id, section: 'risks', title: r.name.ru, subtitle: e.riskKind, blocks };
 }
 
+// --- шкалы (spec 2026-09-chapter-2, часть 27) --------------------------------------------
+
+/** Шкала по витальным: что это, баллы по показателям, что значит сумма, по каким признакам, источники. */
+function scoreArticle(db: ContentDb, x: Score): Article {
+  const e = T.encyclopedia;
+  const num = (f: Id, v: number) => formatNumber(v, db.findings[f]?.value?.decimals ?? 0);
+  const lines = x.params.map(par => {
+    const unit = db.findings[par.f]?.value?.unit ?? '';
+    const bands = par.points.map(([lo, hi, pts]) => {
+      const range = lo === null ? e.scoreUpTo(num(par.f, hi ?? 0)) : hi === null ? e.scoreFrom(num(par.f, lo)) : `${num(par.f, lo)}–${num(par.f, hi)}`;
+      return `${range} — ${pts}`;
+    });
+    return `${T.shift.ward.vital[par.f] ?? nameOf(db, par.f)}, ${unit}: ${bands.join('; ')}`;
+  });
+  const blocks: Block[] = [
+    { key: 'what', title: e.what, text: [x.texts.summary.ru] },
+    { key: 'points', title: e.scorePoints, text: [...lines, e.scoreOxygen(x.oxygen), e.scoreConfusion(x.confusion)] },
+    { key: 'levels', title: e.scoreLevels, text: [e.scoreLevelsText(x.levels.medium, x.levels.single, x.levels.high)] },
+    { key: 'uses', title: e.scoreUses, refs: x.params.map(p => ref(db, p.f)) },
+    sources(db, x),
+  ];
+  return { id: x.id, section: 'scores', title: x.name.ru, subtitle: e.scoreKind, blocks };
+}
+
 // --- больница: помещения, аппараты, должности (spec 2026-09-own-hospital) ----------------
 
 function roomArticle(db: ContentDb, r: RoomType): Article {
   const e = T.encyclopedia;
   const rub = T.common.rub;
   const blocks: Block[] = [{ key: 'what', title: e.what, text: [r.texts.hint.ru] }];
-  if (r.exams.length > 0) blocks.push({ key: 'doneHere', title: e.doneHere, refs: r.exams.map(id => ref(db, id)).sort(byTitle) });
+  // операции (spec 2026-09-chapter-2, часть 28) — тоже «что здесь делают»; их аппараты нужны все сразу
+  const ops = Object.values(db.treatments).filter(t => t.surgery?.room === r.id);
+  const done = [...r.exams.map(id => ref(db, id)), ...ops.map(t => ref(db, t.id, e.minutes(t.surgery!.minutes)))].sort(byTitle);
+  if (done.length > 0) blocks.push({ key: 'doneHere', title: e.doneHere, refs: done });
   if (r.collects.length > 0) blocks.push({ key: 'collectsFor', title: e.collectsFor, refs: r.collects.map(id => ref(db, id)).sort(byTitle) });
   const rows: Row[] = [];
   if (r.staff.length > 0) rows.push({ label: e.needPeople, refs: r.staff.map(id => ref(db, id)) });
-  if (r.equipment.length > 0) rows.push({ label: r.needsEquipment ? e.needMachine : e.machines, refs: r.equipment.map(id => ref(db, id, rub(db.equipment[id].price))) });
+  const allAtOnce = ops.length > 0 && r.equipment.every(id => ops.some(t => t.surgery!.equipment.includes(id)));
+  const label = allAtOnce ? e.needMachines : r.needsEquipment ? e.needMachine : e.machines;
+  if (r.equipment.length > 0) rows.push({ label, refs: r.equipment.map(id => ref(db, id, rub(db.equipment[id].price))) });
   if (rows.length > 0) blocks.push({ key: 'needs', title: e.needs, rows });
   blocks.push({
     key: 'sizes',
     title: e.sizes,
-    text: r.sizes.map(z => e.sizeLine(z.id, z.w, z.h, rub(z.cost), rub(z.upkeep), z.seats, z.beds)),
+    text: r.sizes.map(z => e.sizeLine(z.id, z.w, z.h, rub(z.cost), rub(z.upkeep), z.seats, r.beds ? z.beds : 0, r.emergency ? z.beds : 0)),
     note: e.sizeNote,
   });
   const from = Math.min(...r.sizes.map(z => z.cost));
@@ -349,7 +416,10 @@ function equipmentArticle(db: ContentDb, x: Equipment): Article {
   const e = T.encyclopedia;
   const rub = T.common.rub;
   const blocks: Block[] = [{ key: 'what', title: e.what, text: [x.texts.hint.ru] }];
-  if (x.exams.length > 0) blocks.push({ key: 'examsBy', title: e.examsBy, refs: x.exams.map(id => ref(db, id)).sort(byTitle) });
+  // аппаратом делают обследования или операции (операционный стол — часть 28)
+  const ops = Object.values(db.treatments).filter(t => t.surgery?.equipment.includes(x.id)).map(t => ref(db, t.id));
+  const by = [...x.exams.map(id => ref(db, id)), ...ops].sort(byTitle);
+  if (by.length > 0) blocks.push({ key: 'examsBy', title: e.examsBy, refs: by });
   blocks.push({ key: 'standsIn', title: e.standsIn, refs: [ref(db, x.room)] });
   if (x.upgradeOf) blocks.push({ key: 'upgrades', title: e.upgrades, refs: [ref(db, x.upgradeOf)] });
   const better = Object.values(db.equipment).filter(y => y.upgradeOf === x.id).map(y => ref(db, y.id, rub(y.price)));
@@ -396,6 +466,7 @@ export function article(db: ContentDb, id: Id): Article | undefined {
   if (db.exams[id]) return examArticle(db, db.exams[id]);
   if (db.treatments[id]) return treatmentArticle(db, db.treatments[id]);
   if (db.risks[id]) return riskArticle(db, db.risks[id]);
+  if (db.scores[id]) return scoreArticle(db, db.scores[id]);
   if (db.rooms[id]) return roomArticle(db, db.rooms[id]);
   if (db.equipment[id]) return equipmentArticle(db, db.equipment[id]);
   if (db.roles[id]) return roleArticle(db, db.roles[id]);
@@ -416,6 +487,7 @@ const EXAM_GROUPS: { key: 'ask' | 'examine' | 'lab' | 'imaging'; kinds: Exam['ki
 function table(db: ContentDb, section: Section): { id: Id; name: { ru: string } }[] {
   if (section === 'hospital') return [...Object.values(db.rooms), ...Object.values(db.equipment), ...Object.values(db.roles)];
   if (section === 'tips') return Object.values(db.tips);
+  if (section === 'scores') return Object.values(db.scores);
   const t = { conditions: db.conditions, findings: db.findings, exams: db.exams, treatments: db.treatments, risks: db.risks }[section];
   return Object.values(t);
 }
@@ -445,6 +517,8 @@ export function sectionView(db: ContentDb, section: Section): SectionView {
       { key: 'equipment', title: e.hospitalGroup.equipment, items: refs(Object.values(db.equipment)) },
       { key: 'roles', title: e.hospitalGroup.roles, items: refs(Object.values(db.roles)) },
     ];
+  } else if (section === 'scores') {
+    groups = [{ key: 'scores', title: e.sections.scores, items: refs(Object.values(db.scores)) }];
   } else if (section === 'tips') {
     // в том порядке, в каком наставник подсказывает
     groups = [{ key: 'tips', title: e.tipKind, items: Object.values(db.tips).map(x => ({ id: x.id, title: x.name.ru })) }];

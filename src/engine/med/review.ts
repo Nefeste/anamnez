@@ -4,7 +4,7 @@
 import type { ContentDb, Id } from '../../content/types';
 import type { Rng } from '../core/rng';
 import { complaintObservations } from './exams';
-import { knownFacts, posterior } from './infer';
+import { contextOf, posterior } from './infer';
 import { examCost, runDoctor } from './policy';
 import type { Observation, Patient } from './types';
 
@@ -30,10 +30,7 @@ export function buildReview(
   candidates: readonly Id[], exams: readonly Id[], rng: Rng,
 ): ReviewData {
   const truth = patient.truth.conditions[0].id;
-  const beliefsOf = (obs: readonly Observation[]) => {
-    const known = knownFacts(db, obs);
-    return posterior(db, candidates, obs, { sex: patient.sex, age: patient.age, season: patient.season, knownRisks: known.risks, knownConditions: known.conditions });
-  };
+  const beliefsOf = (obs: readonly Observation[]) => posterior(db, candidates, obs, contextOf(db, patient, obs));
   const p = (b: { id: Id; p: number }[], id: Id) => b.find(x => x.id === id)?.p ?? 0;
 
   const obs: Observation[] = complaintObservations(patient);

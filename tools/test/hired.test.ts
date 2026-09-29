@@ -227,7 +227,8 @@ describe('забрать себе (часть 19)', () => {
   });
 
   test('вы заняты — он в вашей очереди по времени прихода; ушедший на обследования вернётся к вам', () => {
-    const busy = withBusyColleague(9, 'inRoom', true);
+    // зерно, при котором забранный — «зелёный» и позже пришли «зелёные» (с 0.0.48 — новые признаки хирургии)
+    const busy = withBusyColleague(12, 'inRoom', true);
     const mine = busy.s.current!;
     expect(mine).toBeDefined();
     apply(db, busy.s, { kind: 'takeOver', id: busy.p.id });

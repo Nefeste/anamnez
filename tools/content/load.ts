@@ -14,7 +14,7 @@ import { findBrand } from './brands';
 import {
   BANDS, type ChapterSrc, chapterSchema, type CharacterSrc, characterSchema, type ConditionSrc, conditionSchema, type EconomySrc, economySchema, type EquipmentSrc, equipmentSchema, type ExamSrc, examSchema, type FindingSrc, findingSchema,
   type LinkSrc, PREVALENCE, type PresetSrc, presetSchema, type ProbabilitySrc, type RiskSrc, type RoleSrc, riskSchema, roleSchema, type RoomSrc, roomSchema,
-  type TipSrc, tipSchema, type TreatmentSrc, treatmentSchema, versionSchema, type AchievementSrc, achievementSchema,
+  type TipSrc, tipSchema, type TreatmentSrc, treatmentSchema, versionSchema, type AchievementSrc, achievementSchema, type ScoreSrc, scoreSchema,
 } from './schema';
 
 export const CONTENT_DIR = join(import.meta.dir, '../../content');
@@ -23,16 +23,17 @@ export const CONTENT_DIR = join(import.meta.dir, '../../content');
 export const NO_ECONOMY: ContentDb['economy'] = {
   corridor: { cost: 0, upkeep: 0 }, refund: 0,
   staff: {
-    candidates: [0, 0], skills: [1, 1, 1, 1, 1], speed: [100, 100, 100, 100, 100], reading: [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]], growthDays: 1, noTrait: 1,
+    candidates: [0, 0], skills: [1, 1, 1, 1, 1], speed: [100, 100, 100, 100, 100], reading: [[0, 0], [0, 0], [0, 0], [0, 0], [0, 0]], surgery: [100, 100, 100, 100, 100], growthDays: 1, noTrait: 1,
     traits: { careful: { weight: 0 }, fast: { weight: 0 }, novice: { weight: 0 }, experienced: { weight: 0 } },
     doctor: { threshold: [90, 90, 90, 90, 90], minGain: [20, 20, 20, 20, 20], forget: [0, 0, 0, 0, 0] },
   },
-  tariffs: { oms: { minor: 0, moderate: 0, serious: 0, critical: 0 }, omsWard: { minor: 0, moderate: 0, serious: 0, critical: 0 }, omsQuality: { A: 0, B: 0, C: 0, D: 0 }, omsUnconfirmed: 0, omsExam: 0, dms: { visit: 0, price: 0 }, self: { visit: 0, price: 0 } },
+  tariffs: { oms: { minor: 0, moderate: 0, serious: 0, critical: 0 }, omsWard: { minor: 0, moderate: 0, serious: 0, critical: 0 }, omsOperation: 0, omsQuality: { A: 0, B: 0, C: 0, D: 0 }, omsUnconfirmed: 0, omsExam: 0, dms: { visit: 0, price: 0 }, self: { visit: 0, price: 0 } },
   level: { base: 100, rooms: {} },
   payers: { dms: [0, 0, 0], self: [0, 0, 0] },
   consumables: { ask: 0, physical: 0, bedside: 0, lab: 0, rapid: 0, functional: 0, imaging: 0 },
   interest: 0,
   ward: { bedDay: 0, interrupted: 0 },
+  ambulance: { perDay: [0, 0], weight: { minor: 0, moderate: 0, serious: 0, critical: 0 }, severe: 0 },
   reputation: { start: 50, pull: 1, waitShort: 0, waitShortMin: 0, waitLong: 0, waitLongMin: 0, noToilet: 0 },
   flow: 0,
   sandbox: { plot: [8, 8], entrance: [0, 1], corridor: [], budgets: { modest: 0, normal: 0, generous: 0 }, clinicShare: 0 },
@@ -85,6 +86,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   const chapters: Record<string, ChapterSrc> = {};
   const tips: Record<string, TipSrc> = {};
   const achievements: Record<string, AchievementSrc> = {};
+  const scores: Record<string, ScoreSrc> = {};
   let economy: EconomySrc | undefined;
   let contentVersion = 0;
 
@@ -160,8 +162,11 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     } else if (top === 'achievements') {
       const a = check(achievementSchema);
       if (a) { expectId(a.id, 'ach'); put(achievements, a); }
+    } else if (top === 'scores') {
+      const x = check(scoreSchema);
+      if (x) { expectId(x.id, 'score'); put(scores, x); }
     } else {
-      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/economy.yaml, campaign/characters, campaign/chapters, campaign/tips, achievements)`);
+      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/economy.yaml, campaign/characters, campaign/chapters, campaign/tips, achievements, scores)`);
     }
   }
   if (!contentVersion) errors.push('version.yaml: нет contentVersion');
@@ -169,6 +174,13 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
 
   // --- ссылки ---
   const hasF = (id: string) => id in findings;
+  /** условие по скрытому параметру болезни (часть 30в): параметр объявлен, значения — из его списка */
+  const checkWhen = (owner: string, what: string, when: Record<string, string[]> | undefined, params?: Record<string, Record<string, number>>) => {
+    for (const [param, values] of Object.entries(when ?? {})) {
+      if (!params?.[param]) errors.push(`${owner}: ${what} — условие по необъявленному параметру ${param}`);
+      else for (const v of values) if (!(v in params[param])) errors.push(`${owner}: ${what} — у параметра ${param} нет значения ${v}`);
+    }
+  };
   const checkLinks = (owner: string, links: LinkSrc[], params?: Record<string, Record<string, number>>, stages?: string[]) => {
     for (const l of links) {
       if (!hasF(l.f)) { errors.push(`${owner}: признак ${l.f} не найден`); continue; }
@@ -187,7 +199,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
         else for (const v of values) if (!(v in params[param])) errors.push(`${owner}: у параметра ${param} нет значения ${v}`);
       }
       for (const s of l.stages ?? []) if (stages && !stages.includes(s)) errors.push(`${owner}: стадия ${s} не объявлена`);
-      if (typeof l.band !== 'string') warnings.push(`${owner}: точная частота ${l.f} = ${l.band.pct} % — проверьте, что источник её называет`);
+      if (typeof l.band !== 'string' && !l.note) warnings.push(`${owner}: точная частота ${l.f} = ${l.band.pct} % — проверьте, что источник её называет, и запишите откуда (note)`);
+      if (typeof l.band === 'string' && l.note) errors.push(`${owner}: у ${l.f} пояснение (note) — только у точной частоты`);
     }
   };
   for (const c of Object.values(conditions)) {
@@ -227,10 +240,53 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       for (const id of [...t.notIndicated, ...t.harmful]) if (cures(id)) errors.push(`${owner}: ${id} действует на причину, а в тактике — «не показано» или «вредно»`);
       if (c.presenting && !c.course.selfLimiting && t.setting.default === 'home' && !t.firstLine.some(cures)) errors.push(`${owner}: само не проходит, а первая линия не действует на причину`);
     }
+    // с чем приходят — узнаётся по нескольким признакам; хроническому фону хватит одного (часть 30)
+    if (c.presenting && c.findings.length < 3) errors.push(`${owner}: у болезни, с которой приходят, меньше трёх признаков`);
+    // операция (spec 2026-09-chapter-2, часть 28): вида «операция» и действует на причину
+    if (c.surgery) {
+      const op = treatments[c.surgery.tx];
+      if (!op) errors.push(`${owner}: операция ${c.surgery.tx} не найдена`);
+      else if (op.kind !== 'surgery') errors.push(`${owner}: ${c.surgery.tx} — не операция (kind: surgery)`);
+      else if (!op.effects.some(e => e.on === owner && e.kind === 'cure')) errors.push(`${owner}: операция ${c.surgery.tx} не действует на причину`);
+      // осложнённая стадия (часть 28б): у операции — свои доли для неё
+      else if (c.complication && !op.surgery?.complicated) errors.push(`${owner}: у болезни есть осложнённая стадия, а у операции ${c.surgery.tx} нет долей для неё (complicated)`);
+      // срок после наблюдения в палате (часть 30в) — у того, что лечат и без операции, и дольше экстренного
+      const x = c.surgery;
+      if (x.observe !== undefined && x.observe <= x.window) errors.push(`${owner}: срок после наблюдения (observe) должен быть больше срока экстренной операции`);
+      if (x.observe !== undefined && x.from === 'onset') errors.push(`${owner}: срок после наблюдения (observe) считается от поступления, а срок операции — от начала болезни`);
+      if (x.stay && x.stay[0] > x.stay[1]) errors.push(`${owner}: срок стационара после операции — от большего к меньшему`);
+    }
+    if (c.complication) {
+      const x = c.complication;
+      if ((x.early && prob(x.early.p) >= 10000) || (x.later && prob(x.later.p) >= 10000)) errors.push(`${owner}: доля осложнённой стадии за отрезок должна быть меньше 100 %`);
+      if (x.stay && x.stay[0] > x.stay[1]) errors.push(`${owner}: срок стационара в осложнённой стадии — от большего к меньшему`);
+      checkWhen(owner, 'осложнённая стадия', x.when, c.params);
+    }
     if (!c.course.selfLimiting && c.presenting && !c.course.untreated) warnings.push(`${owner}: не проходит само, но не сказано, что будет без лечения`);
+    // течение по скрытому параметру (часть 30д): параметр объявлен, значения — из его списка
+    if (typeof c.course.selfLimiting === 'object') checkWhen(owner, 'проходит само', c.course.selfLimiting.when, c.params);
+    checkWhen(owner, 'без лечения', c.course.untreated?.when, c.params);
   }
   for (const t of Object.values(treatments)) {
-    for (const e of t.effects) if (!(e.on in conditions)) errors.push(`${t.id}: действует на неизвестное состояние ${e.on}`);
+    for (const e of t.effects) {
+      if (!(e.on in conditions)) errors.push(`${t.id}: действует на неизвестное состояние ${e.on}`);
+      else checkWhen(t.id, `действие на ${e.on}`, e.when, conditions[e.on].params);
+    }
+    // операция: помещение, бригада из его штата и аппараты из этого помещения
+    if ((t.kind === 'surgery') !== (t.surgery !== undefined)) errors.push(`${t.id}: у операции (kind: surgery) должен быть блок surgery, и только у неё`);
+    if (t.surgery) {
+      const room = rooms[t.surgery.room];
+      if (!room) errors.push(`${t.id}: помещение ${t.surgery.room} не найдено`);
+      for (const r of t.surgery.team) {
+        if (!roles[r]) errors.push(`${t.id}: должность ${r} не найдена`);
+        else if (room && !room.staff.includes(r)) errors.push(`${t.id}: ${r} — не из штата ${t.surgery.room}`);
+      }
+      for (const id of t.surgery.equipment) {
+        if (!equipment[id]) errors.push(`${t.id}: аппарат ${id} не найден`);
+        else if (equipment[id].room !== t.surgery.room) errors.push(`${t.id}: аппарат ${id} стоит в ${equipment[id].room}, а операция — в ${t.surgery.room}`);
+      }
+      if (room && room.sizes.some(z => z.slots.length < t.surgery!.equipment.length)) errors.push(`${t.id}: в ${t.surgery.room} не у всех размеров хватит мест под аппараты операции`);
+    }
     for (const k of t.contraindications) if (!(k.id in risks) && !(k.id in conditions)) errors.push(`${t.id}: противопоказание ${k.id} не найдено`);
   }
   for (const r of Object.values(risks)) checkLinks(r.id, r.findings);
@@ -245,8 +301,24 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (!revealedBy[f]) errors.push(`${f}: ни одно обследование его не открывает`);
     else revealedBy[f].sort();
   }
+  // шкалы по витальным: признак с числом, полосы подряд без щелей и перекрытий, края открыты
+  for (const x of Object.values(scores)) {
+    for (const par of x.params) {
+      const spec = findings[par.f]?.value;
+      if (!spec) { errors.push(`${x.id}: признак ${par.f} не найден или без числового значения`); continue; }
+      const step = 10 ** -spec.decimals;
+      const [first, last] = [par.points[0], par.points[par.points.length - 1]];
+      if (first[0] !== null || last[1] !== null) errors.push(`${x.id}: ${par.f} — первая полоса без нижней границы, последняя — без верхней`);
+      par.points.forEach(([lo, hi], i) => {
+        if (lo !== null && hi !== null && lo > hi) errors.push(`${x.id}: ${par.f} — полоса ${lo}–${hi} наоборот`);
+        const next = par.points[i + 1];
+        if (next && (hi === null || next[0] === null || Math.abs(next[0] - hi - step) > step / 2)) errors.push(`${x.id}: ${par.f} — после ${hi} следующая полоса должна начинаться с ${hi === null ? '?' : Number((hi + step).toFixed(spec.decimals))}`);
+      });
+    }
+    if (!(x.levels.medium < x.levels.high)) errors.push(`${x.id}: средний уровень ответа должен быть ниже высокого`);
+  }
   checkWho({ conditions, findings, exams, risks }, errors);
-  checkHospital({ rooms, equipment, roles, exams, conditions }, errors);
+  checkHospital({ rooms, equipment, roles, exams, conditions, treatments }, errors);
 
   // --- сборка ---
   const rects = (list: [number, number, number, number][]): Cell[] =>
@@ -257,6 +329,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     chapters: Object.fromEntries(Object.values(chapters).sort((a, b) => a.order - b.order).map(c => [c.id, c])),
     tips: Object.fromEntries(Object.values(tips).sort((a, b) => a.order - b.order).map(t => [t.id, t])),
     achievements: Object.fromEntries(Object.values(achievements).sort((a, b) => a.order - b.order).map(a => [a.id, a])),
+    scores: Object.fromEntries(Object.values(scores).sort((a, b) => (a.id < b.id ? -1 : 1)).map(x => [x.id, x])),
     economy: economy
       ? { ...economy, sandbox: { ...economy.sandbox, corridor: rects(economy.sandbox.corridor) } }
       : NO_ECONOMY,
@@ -284,9 +357,35 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (c.params) out.params = c.params;
     if (c.course.presentation) out.presentation = c.course.presentation;
     if (c.redFlags) out.redFlags = c.redFlags;
-    if (c.course.selfLimiting) out.selfLimiting = true;
-    if (c.course.untreated) out.untreated = { p: prob(c.course.untreated.band), days: c.course.untreated.days };
+    if (c.course.selfLimiting) {
+      out.selfLimiting = true;
+      if (typeof c.course.selfLimiting === 'object') out.selfLimitingWhen = c.course.selfLimiting.when;
+    }
+    if (c.course.untreated) {
+      const u = c.course.untreated;
+      out.untreated = { p: prob(u.band), days: u.days, ...(u.when ? { when: u.when } : {}) };
+    }
     if (c.course.stay) out.stay = c.course.stay;
+    if (c.surgery) {
+      const x = c.surgery;
+      out.surgery = {
+        tx: x.tx, window: x.window,
+        ...(x.from === 'onset' ? { from: 'onset' as const } : {}),
+        ...(x.observe !== undefined ? { observe: x.observe } : {}),
+        ...(x.stay ? { stay: x.stay } : {}),
+      };
+    }
+    if (c.complication) {
+      const x = c.complication;
+      out.complication = {
+        name: x.name,
+        ...(x.early ? { early: { hours: x.early.hours, p: prob(x.early.p) } } : {}),
+        ...(x.later ? { later: { every: x.later.every, p: prob(x.later.p) } } : {}),
+        ...(x.after !== undefined ? { after: x.after } : {}),
+        ...(x.when ? { when: x.when } : {}),
+        ...(x.stay ? { stay: x.stay } : {}),
+      };
+    }
     if (c.treatment) out.treatment = c.treatment;
     if (c.pearls) out.pearls = c.pearls;
     db.conditions[c.id] = out;
@@ -324,25 +423,35 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   for (const t of Object.values(treatments).sort((a, b) => (a.id < b.id ? -1 : 1))) {
     const out: Treatment = {
       id: t.id, name: t.name, kind: t.kind, cost: t.cost,
-      effects: t.effects.map(e => ({ on: e.on, kind: e.kind, p: prob(e.band), days: e.days })),
+      effects: t.effects.map(e => ({ on: e.on, kind: e.kind, p: prob(e.band), days: e.days, ...(e.when ? { when: e.when } : {}) })),
       contraindications: t.contraindications.map(k => ({ id: k.id, level: k.level, reaction: prob(k.reaction) })),
       texts: t.texts, sources: t.sources, review: t.review,
     };
     if (t.class) out.class = t.class;
     if (t.route) out.route = t.route;
+    if (t.surgery) {
+      const x = t.surgery;
+      out.surgery = {
+        room: x.room, team: x.team, equipment: x.equipment, minutes: x.minutes, complications: prob(x.complications),
+        ...(x.death ? { death: prob(x.death) } : {}),
+        ...(x.complicated ? { complicated: { complications: prob(x.complicated.complications), ...(x.complicated.death ? { death: prob(x.complicated.death) } : {}) } } : {}),
+        ...(x.delay ? { delay: prob(x.delay) } : {}),
+      };
+    }
     db.treatments[t.id] = out;
   }
   const sortedIds = (xs: string[]) => [...xs].sort();
   const examIds = Object.keys(exams).sort();
   for (const r of Object.values(rooms).sort((a, b) => (a.id < b.id ? -1 : 1))) {
     const out: RoomType = {
-      id: r.id, name: r.name, gen: r.gen, staff: r.staff, needsEquipment: r.needsEquipment, seats: r.seats, beds: r.beds,
+      id: r.id, name: r.name, gen: r.gen, staff: r.staff, needsEquipment: r.needsEquipment, seats: r.seats, beds: r.beds, emergency: r.emergency,
+      ...(r.admits ? { admits: r.admits } : {}),
       sizes: r.sizes.map(z => ({
         id: z.id, w: z.w, h: z.h, cost: z.cost, upkeep: z.upkeep, door: { x: z.door.x, width: z.door.width },
         objects: z.objects.map(([kind, x, y]) => ({ kind, x, y })), slots: z.slots, staff: z.staff,
         ...(z.patient ? { patient: z.patient } : {}),
         seats: r.seats ? z.objects.filter(([kind]) => kind === 'chair').length : 0,
-        beds: r.beds ? z.objects.filter(([kind]) => kind === 'bed').length : 0,
+        beds: r.beds || r.emergency ? z.objects.filter(([kind]) => kind === 'bed').length : 0,
         places: z.places,
       })),
       equipment: sortedIds(Object.values(equipment).filter(e => e.room === r.id).map(e => e.id)),
@@ -359,12 +468,13 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       exams: examIds.filter(id => exams[id].equipment?.includes(e.id)), texts: e.texts,
     };
     if (e.upgradeOf) out.upgradeOf = e.upgradeOf;
+    if (e.slot !== undefined) out.slot = e.slot;
     db.equipment[e.id] = out;
   }
   for (const r of Object.values(roles).sort((a, b) => (a.id < b.id ? -1 : 1))) {
     const out: StaffRole = {
       id: r.id, name: r.name, gen: r.gen, hire: r.hire, salary: r.salary,
-      ...(r.stands ? { stands: r.stands } : {}), ...(r.needs ? { needs: r.needs } : {}),
+      ...(r.stands ? { stands: r.stands } : {}), ...(r.needs ? { needs: r.needs } : {}), ...(r.reads ? { reads: true as const } : {}),
       // встающий на чужое место работает там же, где та должность
       rooms: Object.keys(rooms).sort().filter(id => rooms[id].staff.includes(r.stands ?? r.id)), texts: r.texts,
     };
@@ -382,6 +492,20 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     checkPresets(db, errors);
     checkCampaign(db, errors);
     checkAchievements(db, errors);
+    // скорая везёт болезнь отделения (engine.ts, ambulancePatient): раз смотровую приёмного
+    // можно построить, у каждого отделения должно быть кого везти — иначе день не начнётся
+    if (Object.values(db.rooms).some(r => r.emergency)) {
+      const conditions = Object.values(db.conditions);
+      const departments = new Set([...conditions.map(x => x.department), ...Object.values(db.chapters).map(ch => ch.department), ...Object.values(db.rooms).flatMap(r => r.admits ?? [])]);
+      for (const d of departments) {
+        const carried = conditions.some(x => x.department === d && x.presenting && !x.checkup && x.treatment && x.weight > 0 && db.economy.ambulance.weight[x.severity] > 0);
+        if (!carried) errors.push(`${d}: скорой некого везти — нет болезни отделения с тяжестью, которую везут (hospital/economy.yaml, ambulance.weight)`);
+      }
+    }
+    // помещение принимает отделение (часть 30): у отделения есть с чем прийти
+    for (const r of Object.values(db.rooms)) {
+      for (const d of r.admits ?? []) if (!Object.values(db.conditions).some(x => x.presenting && x.department === d)) errors.push(`${r.id}: принимает ${d}, а болезней этого отделения в базе нет`);
+    }
     // готовая амбулатория помещается на участок песочницы, вход песочницы — в краю
     const sb = db.economy.sandbox;
     for (const p of Object.values(db.presets)) {
@@ -545,7 +669,7 @@ function checkWho(c: {
  */
 function checkHospital(c: {
   rooms: Record<string, RoomSrc>; equipment: Record<string, EquipmentSrc>; roles: Record<string, RoleSrc>;
-  exams: Record<string, ExamSrc>; conditions: Record<string, ConditionSrc>;
+  exams: Record<string, ExamSrc>; conditions: Record<string, ConditionSrc>; treatments: Record<string, TreatmentSrc>;
 }, errors: string[]) {
   const { rooms, equipment, roles, exams } = c;
   const exList = Object.values(exams);
@@ -602,13 +726,18 @@ function checkHospital(c: {
       else if (visited.has(r.id)) errors.push(`${at}: сюда приходят пациенты, а места для пациента нет`);
       if (r.seats && !z.objects.some(([kind]) => kind === 'chair')) errors.push(`${at}: зона ожидания без стульев`);
       if (r.beds && !z.objects.some(([kind]) => kind === 'bed')) errors.push(`${at}: палата без коек`);
+      if (r.emergency && !z.objects.some(([kind]) => kind === 'bed')) errors.push(`${at}: смотровая приёмного без мест для скорой`);
+      if (r.beds && r.emergency) errors.push(`${at}: помещение — или палата, или смотровая приёмного`);
     }
   }
   for (const e of Object.values(equipment)) {
     if (!rooms[e.room]) errors.push(`${e.id}: помещение ${e.room} не найдено`);
     else if (rooms[e.room].sizes.some(z => z.slots.length === 0)) errors.push(`${e.id}: в ${e.room} не у всех размеров есть место под аппарат`);
     if (e.upgradeOf && equipment[e.upgradeOf]?.room !== e.room) errors.push(`${e.id}: улучшает ${e.upgradeOf} — такого аппарата в том же помещении нет`);
-    if (!exList.some(x => x.equipment?.includes(e.id))) errors.push(`${e.id}: ни одно обследование им не делают`);
+    if (e.slot !== undefined && rooms[e.room]?.sizes.some(z => e.slot! >= z.slots.length)) errors.push(`${e.id}: места ${e.slot} под аппарат нет у всех размеров ${e.room}`);
+    // аппаратом делают обследование или операцию (операционный стол, наркозный аппарат — часть 28)
+    const used = exList.some(x => x.equipment?.includes(e.id)) || Object.values(c.treatments).some(t => t.surgery?.equipment.includes(e.id));
+    if (!used) errors.push(`${e.id}: ни одно обследование и ни одна операция им не делают`);
   }
   for (const r of Object.values(roles)) {
     if (r.salary[0] > r.salary[1]) errors.push(`${r.id}: зарплата при навыке 1 больше, чем при навыке 5`);
@@ -617,6 +746,13 @@ function checkHospital(c: {
     if (r.needs && !rooms[r.needs]) errors.push(`${r.id}: нужна ${r.needs} — такого помещения нет`);
     else if (r.needs && !rooms[r.needs].sizes.every(z => z.places > 0)) errors.push(`${r.id}: нужна ${r.needs}, а мест для врачей в ней нет`);
     if (!Object.values(rooms).some(x => x.staff.includes(r.stands ?? r.id))) errors.push(`${r.id}: ни одно помещение в нём не нуждается`);
+    // описывает снимки (часть 29): там, где он работает, снимки делают
+    if (r.reads && !Object.values(rooms).some(x => x.staff.includes(r.id) && exList.some(e => e.room === x.id && e.kind === 'imaging'))) errors.push(`${r.id}: описывает снимки, а там, где он работает, снимков не делают`);
+  }
+  // снимок помещения описывает один человек — от его навыка точность
+  for (const x of Object.values(rooms)) {
+    const readers = x.staff.filter(id => roles[id]?.reads);
+    if (readers.length > 1) errors.push(`${x.id}: снимки описывают сразу ${readers.join(' и ')} — должен один`);
   }
   // подтверждающее обследование должно быть достижимо: помещение и аппарат есть в каталоге
   for (const cond of Object.values(c.conditions)) {

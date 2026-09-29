@@ -1,4 +1,5 @@
 import { pluralRu } from '../plural';
+import { lowerFirst } from '../case';
 
 const decimal = (x: number) => String(x).replace('.', ',');
 
@@ -15,6 +16,7 @@ export const encyclopedia = {
     exams: 'Обследования',
     treatments: 'Лечение',
     risks: 'Факторы риска',
+    scores: 'Шкалы',
     hospital: 'Больница',
     tips: 'Подсказки',
   },
@@ -23,7 +25,7 @@ export const encyclopedia = {
   findingKind: { sym: 'Жалоба', hx: 'Анамнез', sign: 'Находка при осмотре', vital: 'Показатель', lab: 'Анализ', img: 'Снимок', ecg: 'ЭКГ' },
   examGroup: { ask: 'Расспрос', examine: 'Осмотр', lab: 'Анализы и экспресс-тесты', imaging: 'Снимки и функциональные' },
   examKind: { ask: 'Расспрос', physical: 'Осмотр', bedside: 'У постели', lab: 'Анализ', rapid: 'Экспресс-тест', functional: 'Функциональное', imaging: 'Снимок' },
-  txKind: { drug: 'Лекарство', regimen: 'Режим и советы', procedure: 'Процедура' },
+  txKind: { drug: 'Лекарство', regimen: 'Режим и советы', procedure: 'Процедура', surgery: 'Операция' },
   severity: { minor: 'лёгкое', moderate: 'средней тяжести', serious: 'серьёзное', critical: 'угрожает жизни' },
   band: {
     always: 'Почти всегда',
@@ -40,7 +42,27 @@ export const encyclopedia = {
     mild: 'при лёгком течении',
     stemi: 'при инфаркте с подъёмом ST',
     nste: 'при ОКС без подъёма ST',
+    // скрытые параметры «есть / нет» — по паре «параметр:значение» (части 30б и 30в)
+    'obstruction:yes': 'при непроходимости кишки',
+    'ischemia:yes': 'при ишемии кишки',
+    'ischemia:no': 'без ишемии кишки',
+    // почечная колика и парапроктит (часть 30г)
+    'infection:yes': 'при инфекции мочевых путей',
+    'infection:no': 'без инфекции',
+    'depth:superficial': 'при подкожном и подслизистом',
+    'depth:deep': 'при глубоком',
+    // дивертикулит (часть 30д)
+    'form:uncomplicated': 'при неосложнённом',
+    'form:infiltrate': 'при инфильтрате',
+    'form:abscess_small': 'при абсцессе до 3\u00a0см',
+    'form:abscess_large': 'при абсцессе больше 3\u00a0см',
+    'form:peritonitis': 'при перитоните',
   } as Record<string, string>,
+  /** несколько условий одной фразой (часть 30д): «при» — один раз, последнее — через «и» */
+  whenList: (words: string[]) => {
+    const rest = words.slice(1).map(w => w.replace(/^при /, ''));
+    return `${[words[0], ...rest.slice(0, -1)].join(', ')} и ${rest[rest.length - 1]}`;
+  },
   icd: (code: string) => `МКБ-10: ${code}`,
 
   // статья болезни — разделы в порядке 05-content.md §4
@@ -73,9 +95,37 @@ export const encyclopedia = {
   whereIf: (when: string, s: string) => `${when[0].toUpperCase()}${when.slice(1)} — ${s}.`,
   whereRedFlag: (s: string) => `При красных флагах — ${s}.`,
   whereRisk: (risk: string, s: string) => `Если есть «${risk}» — ${s}.`,
+  // операция и срок стационара (spec 2026-09-chapter-2, части 26 и 28)
+  whereSurgery: (op: string, hours: number, onset = false) => `Операция — ${lowerFirst(op)}: в первые ${hours}\u00a0ч ${onset ? 'от начала болезни' : 'после поступления'}.`,
+  whereStay: (lo: number, hi: number) => `В стационаре обычно ${lo === hi ? lo : `${lo}–${hi}`}\u00a0${pluralRu(hi, 'день', 'дня', 'дней')}.`,
+  // наблюдение в палате и стационар после операции (часть 30в)
+  whereObserve: (hours: number) => `Без показаний к экстренной операции — лечение в палате; не помогло — операция не позже ${hours}\u00a0ч после поступления.`,
+  whereStayOperated: (lo: number, hi: number) => `После операции — ${lo === hi ? lo : `${lo}–${hi}`}\u00a0${pluralRu(hi, 'день', 'дня', 'дней')}.`,
+  // осложнённая стадия (часть 28б): риск по часам без операции, срок после неё, исходы операции
+  whereStayComplicated: (name: string, lo: number, hi: number) => `После операции, если была ${name}, — ${lo === hi ? lo : `${lo}–${hi}`}\u00a0${pluralRu(hi, 'день', 'дня', 'дней')}.`,
+  complicationRisk: (name: string, hours: number, early: string, every: number, later: string) =>
+    `${name[0].toUpperCase()}${name.slice(1)} без операции: за первые ${hours}\u00a0ч — до ${early}\u00a0%, дальше — ${later}\u00a0% за каждые ${every}\u00a0ч.`,
+  // по сроку (часть 30б): прободная язва позже суток — поздняя госпитализация
+  complicationAfter: (name: string, hours: number, when?: string) =>
+    `${when ? `${when[0].toUpperCase()}${when.slice(1)} позже` : 'Позже'} ${hours}\u00a0ч от начала болезни — ${name}.`,
+  // каждый час до операции (часть 30б, Buck 2013)
+  opDelay: (pctHour: string) => `Каждый час от поступления до операции выживаемость ниже на ${pctHour}\u00a0%.`,
+  opOutcomes: 'Исходы',
+  opComplications: (plain: string, complicated?: string, name?: string) =>
+    `Осложнения после операции — ${plain}\u00a0%${complicated && name ? `; если была ${name}, — ${complicated}\u00a0%` : ''}.`,
+  opDeaths: (plain: string, complicated?: string, name?: string) =>
+    `Умирают в стационаре — ${plain}\u00a0%${complicated && name ? `; если была ${name}, — ${complicated}\u00a0%` : ''}.`,
+  surgeryRow: 'Операция',
+  opTreats: 'Чем лечат и в какой срок',
+  opWindow: (hours: number, onset = false, observe?: number) =>
+    `в первые ${hours}\u00a0ч ${onset ? 'от начала болезни' : 'после поступления'}${observe !== undefined ? `; после наблюдения — до ${observe}\u00a0ч` : ''}`,
+  opTeam: 'Бригада',
   course: 'Без лечения',
   selfLimiting: 'Обычно проходит само.',
-  untreated: (band: string, from: number, to: number) => `Без действенного лечения ${band.toLowerCase()} становится хуже — на ${from}–${to}-й день.`,
+  // по скрытому параметру (часть 30д): «При неосложнённом — обычно проходит само.»
+  selfLimitingIf: (when: string) => `${when[0].toUpperCase()}${when.slice(1)} — обычно проходит само.`,
+  untreated: (band: string, from: number, to: number, when?: string) =>
+    `${when ? `${when[0].toUpperCase()}${when.slice(1)} без` : 'Без'} действенного лечения ${band.toLowerCase()} становится хуже — на ${from}–${to}-й день.`,
   redFlags: 'Красные флаги',
   redFlagsNote: 'Признаки опасного течения: с ними тактика другая.',
   pearls: 'Что запомнить',
@@ -107,6 +157,17 @@ export const encyclopedia = {
 
   // фактор риска
   riskKind: 'Фактор риска',
+  // шкалы (часть 27)
+  scoreKind: 'Шкала',
+  scorePoints: 'Баллы',
+  scoreUpTo: (v: string) => `${v} и меньше`,
+  scoreFrom: (v: string) => `${v} и больше`,
+  scoreOxygen: (n: number) => `Дышит кислородом — ${n}`,
+  scoreConfusion: (n: number) => `Спутанность, ответ только на голос или боль, нет ответа — ${n}`,
+  scoreLevels: 'Что значит сумма',
+  scoreLevelsText: (medium: number, single: number, high: number) =>
+    `0–${medium - 1} — низкий риск; ${medium}–${high - 1} — средний: срочно к врачу, как и при ${single} по одному показателю; ${high} и больше — высокий: экстренно.`,
+  scoreUses: 'По каким признакам',
   shows: 'Как проявляется',
   raises: 'Чаще бывают',
   limits: 'Мешает лечению',
@@ -122,10 +183,11 @@ export const encyclopedia = {
   needs: 'Что нужно, чтобы работало',
   needPeople: 'Люди',
   needMachine: 'Аппарат — хотя бы один',
+  needMachines: 'Аппараты — все сразу',
   machines: 'Аппараты',
   sizes: 'Размеры и цена',
-  sizeLine: (id: string, w: number, h: number, cost: string, upkeep: string, seats: number, beds = 0) =>
-    `${id} — ${w}\u00a0×\u00a0${h}\u00a0м, ${cost}, содержание ${upkeep} в\u00a0день${seats > 0 ? `, ${seats}\u00a0${pluralRu(seats, 'место', 'места', 'мест')}` : ''}${beds > 0 ? `, ${beds}\u00a0${pluralRu(beds, 'койка', 'койки', 'коек')}` : ''}.`,
+  sizeLine: (id: string, w: number, h: number, cost: string, upkeep: string, seats: number, beds = 0, bays = 0) =>
+    `${id} — ${w}\u00a0×\u00a0${h}\u00a0м, ${cost}, содержание ${upkeep} в\u00a0день${seats > 0 ? `, ${seats}\u00a0${pluralRu(seats, 'место', 'места', 'мест')}` : ''}${beds > 0 ? `, ${beds}\u00a0${pluralRu(beds, 'койка', 'койки', 'коек')}` : ''}${bays > 0 ? `, ${bays}\u00a0${pluralRu(bays, 'место', 'места', 'мест')} для скорой` : ''}.`,
   sizeNote: 'Размер — вместе со стенами; соседние помещения делят стену.',
   equipmentKind: 'Аппарат',
   examsBy: 'Что им делают',

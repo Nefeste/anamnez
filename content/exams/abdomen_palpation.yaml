@@ -8,9 +8,14 @@ checks:
   - { f: sign.rlq_tenderness, sens: 85, spec: 90 }
   - { f: sign.epigastric_tenderness, sens: 75, spec: 88 }
   - { f: sign.suprapubic_tenderness, sens: 70, spec: 92 }
+  - { f: sign.ruq_tenderness, sens: 85, spec: 90 }
+  - { f: sign.murphy, sens: 85, spec: 95 }
+  - { f: sign.board_abdomen, sens: 90, spec: 96 }
+  - { f: sign.llq_tenderness, sens: 85, spec: 90 }
+  - { f: sign.llq_mass, sens: 80, spec: 97 }
 texts:
   hint:
-    ru: "Где болит при надавливании: над лобком — мочевой пузырь, под ложечкой — желудок, справа внизу — аппендикс."
+    ru: "Где болит при надавливании: над лобком — мочевой пузырь, под ложечкой — желудок, справа под рёбрами — желчный пузырь, справа внизу — аппендикс, слева внизу — сигмовидная кишка."
   summary:
     ru: "Поверхностная и глубокая пальпация живота по областям."
 sources:

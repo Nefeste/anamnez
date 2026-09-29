@@ -1,0 +1,17 @@
+id: lab.alp_high
+name: { ru: "Щелочная фосфатаза выше нормы" }
+leak: { pct: 2 }
+value:
+  unit: "Ед/л"
+  ref: [40, 130]
+  present: [135, 600]
+  absent: [40, 130]
+  decimals: 0
+texts:
+  hint:
+    ru: "Фермент, которого в крови становится больше, когда нарушен отток желчи."
+  present:
+    - ru: "Щелочная фосфатаза {value} {unit}"
+  absent:
+    - ru: "Щелочная фосфатаза {value} {unit}"
+review: draft

@@ -3,6 +3,7 @@
 import { T } from '@/i18n';
 import type { HeadFindings } from '@/render/ct/geometry';
 import type { UsFindings } from '@/render/us/geometry';
+import type { AbdomenFindings } from '@/render/xray/abdomenGeometry';
 
 export interface HeadCase {
   key: string;
@@ -36,7 +37,29 @@ const u = T.spikes.imaging.us;
 export const US_CASES: UsCase[] = [
   { key: 'us-gb', findings: { view: 'gallbladder' }, seed: 1, label: u.gb },
   { key: 'us-gb-foci', findings: { view: 'gallbladder', foci: { count: 3, size: 0.5 } }, seed: 2, label: u.gbFoci },
+  { key: 'us-gb-wall', findings: { view: 'gallbladder', foci: { count: 3, size: 0.6 }, wall: 0.8, fluid: 0.4 }, seed: 9, label: u.gallbladderWall },
   { key: 'us-kidney', findings: { view: 'kidney' }, seed: 3, label: u.kidney },
   { key: 'us-kidney-pelvis', findings: { view: 'kidney', pelvis: 0.7 }, seed: 4, label: u.kidneyPelvis },
   { key: 'us-kidney-fluid', findings: { view: 'kidney', fluid: 0.6 }, seed: 5, label: u.kidneyFluid },
+  { key: 'us-appendix', findings: { view: 'appendix' }, seed: 6, label: u.appendix },
+  { key: 'us-appendix-target', findings: { view: 'appendix', appendix: 0.8 }, seed: 7, label: u.appendixTarget },
+  { key: 'us-appendix-fluid', findings: { view: 'appendix', appendix: 0.9, fluid: 0.6 }, seed: 8, label: u.appendixFluid },
+  { key: 'us-colon', findings: { view: 'colon' }, seed: 10, label: u.colon },
+  { key: 'us-colon-diverticulum', findings: { view: 'colon', diverticulum: 0.8 }, seed: 11, label: u.colonDiverticulum },
+];
+
+export interface AbdomenCase {
+  key: string;
+  findings: AbdomenFindings;
+  seed: number;
+  label: string;
+}
+
+const a = T.spikes.imaging.abdomen;
+
+/** Обзорный снимок живота стоя (часть 30б): норма, свободный газ, непроходимость тонкой кишки. */
+export const ABDOMEN_CASES: AbdomenCase[] = [
+  { key: 'abd-normal', findings: {}, seed: 1, label: a.normal },
+  { key: 'abd-free-gas', findings: { freeGas: 0.8 }, seed: 2, label: a.freeGas },
+  { key: 'abd-levels', findings: { levels: 0.8 }, seed: 3, label: a.levels },
 ];

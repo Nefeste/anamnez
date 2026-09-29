@@ -47,10 +47,11 @@ export type WardClose = 'full' | 'interrupted' | 'unindicated';
  * без показаний не оплачивает, как экспертиза. Лишние дни ничего не приносят: их цена —
  * койко-дни в расходах.
  */
-export function wardIncome(db: ContentDb, diagnosis: Id, defensibility: Grade, close: WardClose): number {
+export function wardIncome(db: ContentDb, diagnosis: Id, defensibility: Grade, close: WardClose, operated = false): number {
   if (close === 'unindicated') return 0;
   const t = db.economy.tariffs;
-  const full = t.omsWard[db.conditions[diagnosis]?.severity ?? 'minor'];
+  // с операцией — прибавка за неё, как КСГ хирургического случая (spec 2026-09-chapter-2, часть 28)
+  const full = t.omsWard[db.conditions[diagnosis]?.severity ?? 'minor'] + (operated ? t.omsOperation : 0);
   const share = close === 'interrupted' ? db.economy.ward.interrupted : 100;
   return Math.round((full * t.omsQuality[defensibility] * share) / 10000);
 }

@@ -1,0 +1,28 @@
+id: tx.adhesiolysis
+name: { ru: "Рассечение спаек" }
+kind: surgery
+class: surgery.abdominal
+# расходники операции, ₽ — игровое число
+cost: 12000
+# рассекают только спайки, вызвавшие непроходимость; нежизнеспособную кишку удаляют (327_3,
+# раздел 3.2). Срок выздоровления — в стационаре после операции, см. surgery.stay болезни
+effects:
+  - { on: cond.adhesive_sbo, kind: cure, band: { pct: 100 }, days: [6, 10] }
+# осложнения в стационаре после операции — 22,2 % (BMC Surg 2026); умирают после рассечения спаек
+# 2,2 %, после резекции кишки — 5,9 % (Нью-Йорк, 58 976 больных, Surg Innov 2024); долю осложнений
+# после резекции источник отдельно не называет — та же; длительность — игровая оценка
+surgery:
+  room: room.or
+  team: [role.surgeon, role.anesthetist, role.or_nurse]
+  equipment: [eq.or_table, eq.anesthesia]
+  minutes: 90
+  complications: { pct: 22.2 }
+  death: { pct: 2.2 }
+  complicated: { complications: { pct: 22.2 }, death: { pct: 5.9 } }
+texts:
+  hint: { ru: "Хирург находит спайку, пережавшую кишку, и рассекает её — через проколы у стабильного больного или через разрез. Все спайки не трогают, только виноватые. Омертвевший участок кишки удаляют и сшивают концы. Показания — ишемия кишки, перитонит или непроходимость, которая не прошла за 72 часа лечения в палате." }
+sources:
+  - { kind: guideline, title: "Острая неопухолевая кишечная непроходимость", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/327_3", note: "ID 327_3, опубликованы 06.12.2024, применяются; сверено с рубрикатором 29.09.2026; раздел 3.2: лапаротомия или лапароскопия, рассекают только спайки, вызвавшие непроходимость, нежизнеспособную кишку резецируют; антибиотик за 30 минут до разреза; критерий качества 5: при ишемии — экстренная операция, без явных признаков ишемии — неоперативное лечение до 72 часов" }
+  - { kind: paper, title: "Symer MM, Zheng X, Pua BB, Sedrakyan A, Milsom JW. Contemporary Assessment of Adhesiolysis and Resection for Adhesive Small Bowel Obstruction in the State of New York. Surg Innov 2024;31(3):245–255", url: "https://pubmed.ncbi.nlm.nih.gov/38498843/", note: "PMID 38498843, сверено 29.09.2026: 58 976 больных спаечной непроходимостью, 84,8 % — без операции; умерли в стационаре после рассечения спаек 2,2 %, после резекции кишки 5,9 %; операция через 3 суток и позже — чаще резекция (ОШ 1,78)" }
+  - { kind: paper, title: "Buniatov T et al. Postoperative morbidity following surgery for mechanical adhesive small bowel obstruction: prevalence, risk factors and clinical outcomes. BMC Surg 2026;26(1):254", url: "https://pubmed.ncbi.nlm.nih.gov/41882640/", note: "PMID 41882640, сверено 29.09.2026: осложнения в стационаре после операции — 22,2 %, больше всего — парез кишки, заживление раны, сердце и лёгкие; смертность 2,1 %" }
+review: draft

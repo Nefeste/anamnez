@@ -1,0 +1,27 @@
+id: tx.hernia_repair
+name: { ru: "Грыжесечение с пластикой" }
+kind: surgery
+class: surgery.abdominal
+# расходники операции, ₽ — игровое число
+cost: 8000
+# операция устраняет ущемление и закрывает грыжевые ворота; после экстренной пластики по
+# Лихтенштейну в стационаре 3,8 ± 2,1 дня (Lohsiriwat 2007) — от 2 до 6
+effects:
+  - { on: cond.strangulated_hernia, kind: cure, band: { pct: 100 }, days: [2, 6] }
+# экстренно, в возможно короткий срок от поступления (684_2, раздел 3.2); осложнения после
+# экстренной пластики сеткой — 17,5 % (Bessa 2015); летальность при ущемлённой паховой грыже —
+# 1,73 % (684_2, раздел 1.3, РФ 2022); длительность — игровая оценка
+surgery:
+  room: room.or
+  team: [role.surgeon, role.anesthetist, role.or_nurse]
+  equipment: [eq.or_table, eq.anesthesia]
+  minutes: 60
+  complications: { pct: 17.5 }
+  death: { pct: 1.73 }
+texts:
+  hint: { ru: "Хирург рассекает грыжевые ворота, освобождает ущемлённую кишку или сальник, проверяет, живы ли они, и закрывает ворота — сеткой или своими тканями. Оперируют экстренно: ущемлённая кишка может омертветь за несколько часов. За полчаса до операции — антибиотик для профилактики." }
+sources:
+  - { kind: guideline, title: "Паховая и бедренная грыжа", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/684_2", note: "ID 684_2, опубликованы 18.10.2024, применяются; сверено с рубрикатором 29.09.2026; раздел 1.3: с ущемлённой паховой грыжей в 2022 г. госпитализировано более 24 тыс., летальность 1,73 %; раздел 3.2: экстренная операция в возможно короткий срок от поступления, антибиотикопрофилактика за 30 минут до операции" }
+  - { kind: paper, title: "Bessa SS, Abdel-fattah MR, Al-Sayes IA, Korayem IT. Results of prosthetic mesh repair in the emergency management of the acutely incarcerated and/or strangulated groin hernias: a 10-year study. Hernia 2015;19(6):909–914", url: "https://pubmed.ncbi.nlm.nih.gov/25731947/", note: "PMID 25731947, сверено 29.09.2026: 234 больных; осложнения — 17,5 %, резекция нежизнеспособной кишки — 13,7 %, умерли 2,1 %" }
+  - { kind: paper, title: "Lohsiriwat V et al. Surgical outcomes of Lichtenstein tension-free hernioplasty for acutely incarcerated inguinal hernia. Surg Today 2007;37(3):212–214", url: "https://pubmed.ncbi.nlm.nih.gov/17342359/", note: "PMID 17342359, сверено 29.09.2026: 24 больных; в стационаре 3,8 ± 2,1 дня (от 2 до 12)" }
+review: draft

@@ -17,7 +17,25 @@ export interface InferContext {
   /** что известно о пациенте наверняка: факторы риска и хронические болезни, о которых он сказал */
   knownRisks: Id[];
   knownConditions: Id[];
+  /** чего о нём не знают — хронические болезни и факторы риска с их долей (`unknownsOf`) */
+  unknowns: Unknowns;
 }
+
+/**
+ * Неизвестное о пациенте (spec 2026-09-chapter-2, часть 30): хронические болезни и факторы
+ * риска, о которых он не сказал, — каждый с долей у такого человека. Камни в желчном пузыре
+ * есть у каждого восьмого: найденные на УЗИ, они довод за колику, только если сравнить их с
+ * этой долей; у пьющего панкреатит в 18 раз чаще — и, пока врач не спросил, в среднем по доле
+ * пьющих.
+ */
+export interface Unknowns {
+  /** доля у такого человека: пол, возраст, известные факторы риска и ответы «нет» о себе */
+  share: ReadonlyMap<Id, number>;
+  /** кто из них вызывает признак и с какой вероятностью (вопросы о себе — нет: их учла доля) */
+  causes: ReadonlyMap<Id, readonly { id: Id; p: number }[]>;
+}
+
+export const NO_UNKNOWNS: Unknowns = { share: new Map(), causes: new Map() };
 
 export interface Belief {
   id: Id;
@@ -45,18 +63,129 @@ function causeProbability(links: Link[], f: Id, cond?: Condition): number {
   return 1 - miss;
 }
 
-/** P(признак есть | набор состояний и факторов риска) — noisy-OR с фоном. */
-export function findingProbability(db: ContentDb, f: Id, conditions: readonly Id[], risks: readonly Id[]): number {
-  let miss = 1 - (db.findings[f]?.leak ?? 0) / P_ONE;
+/** То же по таблице: связи записи не меняются, а вывод спрашивает о них на каждом признаке каждого кандидата. */
+const causeTables = new WeakMap<readonly Link[], Map<Id, number>>();
+
+function causeOf(links: Link[], f: Id, cond?: Condition): number {
+  let table = causeTables.get(links);
+  if (!table) {
+    table = new Map();
+    for (const l of links) if (!table.has(l.f)) table.set(l.f, causeProbability(links, l.f, cond));
+    causeTables.set(links, table);
+  }
+  return table.get(f) ?? 0;
+}
+
+/**
+ * P(признак есть | набор состояний и факторов риска) — noisy-OR с фоном. `unknown` — P(признака
+ * нет) от того, чего о пациенте не знают (`unknownMiss`); нет — только известное.
+ */
+export function findingProbability(db: ContentDb, f: Id, conditions: readonly Id[], risks: readonly Id[], unknown = 1): number {
+  let miss = (1 - (db.findings[f]?.leak ?? 0) / P_ONE) * unknown;
   for (const id of conditions) {
     const c = db.conditions[id];
-    if (c) miss *= 1 - causeProbability(c.findings, f, c);
+    if (c) miss *= 1 - causeOf(c.findings, f, c);
   }
   for (const id of risks) {
     const r = db.risks[id];
-    if (r) miss *= 1 - causeProbability(r.findings, f);
+    if (r) miss *= 1 - causeOf(r.findings, f);
   }
   return 1 - miss;
+}
+
+/**
+ * Доли неизвестного у кандидата: то, без чего он не бывает, в наборе наверняка (0 — не фон);
+ * фактор риска с множителем у кандидата — чаще: P(фактор | кандидат) = p·x / (p·x + 1 − p).
+ */
+export function sharesFor(db: ContentDb, id: Id, ctx: InferContext): ReadonlyMap<Id, number> {
+  let byDb = sharesCache.get(db);
+  if (!byDb) sharesCache.set(db, (byDb = new WeakMap()));
+  let cache = byDb.get(ctx.unknowns);
+  if (!cache) byDb.set(ctx.unknowns, (cache = new Map()));
+  let out = cache.get(id);
+  if (!out) cache.set(id, (out = candidateShares(db, id, ctx)));
+  return out;
+}
+
+/**
+ * Доли кандидата считаются один раз на базу и на то, что известно о пациенте: польза
+ * обследований спрашивает их часто. Пустое неизвестное (`NO_UNKNOWNS`) одно на все базы — поэтому
+ * ключ и по базе.
+ */
+const sharesCache = new WeakMap<ContentDb, WeakMap<Unknowns, Map<Id, ReadonlyMap<Id, number>>>>();
+
+function candidateShares(db: ContentDb, id: Id, ctx: InferContext): Map<Id, number> {
+  const c = db.conditions[id];
+  const out = new Map<Id, number>();
+  for (const r of c?.requires ?? []) out.set(r, 0);
+  for (const r of c?.risks ?? []) {
+    const p = ctx.unknowns.share.get(r.id);
+    if (p !== undefined && !out.has(r.id)) out.set(r.id, (p * r.x) / (p * r.x + 1 - p));
+  }
+  return out;
+}
+
+/** P(признака нет) от неизвестного — с долями этого кандидата (`sharesFor`). */
+export function unknownMiss(ctx: InferContext, f: Id, shares: ReadonlyMap<Id, number>): number {
+  let miss = 1;
+  for (const u of ctx.unknowns.causes.get(f) ?? []) miss *= 1 - (shares.get(u.id) ?? ctx.unknowns.share.get(u.id) ?? 0) * u.p;
+  return miss;
+}
+
+/** Всё, что вывод знает о пациенте: пол, возраст, сезон, что он сказал о себе, и доли того, чего не сказал. */
+export function contextOf(db: ContentDb, patient: { sex: Sex; age: number; season: Season }, observations: readonly Observation[]): InferContext {
+  const known = knownFacts(db, observations);
+  const base = { sex: patient.sex, age: patient.age, season: patient.season, knownRisks: known.risks, knownConditions: known.conditions };
+  return { ...base, unknowns: unknownsOf(db, observations, base) };
+}
+
+/**
+ * Неизвестные хронические болезни и факторы риска: доля у такого человека — как при рождении
+ * пациента (пол, возраст, факторы риска: известные — множителем, неизвестные — в среднем), —
+ * поправленная его ответами о себе: «о камнях не знает» — реже, чем у всех. Вопросы о себе
+ * входят в долю, а не в фон признаков.
+ */
+export function unknownsOf(db: ContentDb, observations: readonly Observation[], ctx: Omit<InferContext, 'unknowns'>): Unknowns {
+  const grouped = byFinding(observations);
+  const share = new Map<Id, number>();
+  const causes = new Map<Id, { id: Id; p: number }[]>();
+  const add = (id: Id, p: number, links: Link[], cond?: Condition) => {
+    if (p <= 0) return;
+    let q = p;
+    for (const f of new Set(links.map(l => l.f))) {
+      const cause = causeOf(links, f, cond);
+      const obs = grouped.get(f);
+      if (f.startsWith('hx.')) {
+        if (!obs) continue;
+        const leak = (db.findings[f]?.leak ?? 0) / P_ONE;
+        const yes = observationsLikelihood(db, obs, 1 - (1 - leak) * (1 - cause));
+        const no = observationsLikelihood(db, obs, leak);
+        q = (q * yes) / (q * yes + (1 - q) * no);
+      } else {
+        const list = causes.get(f);
+        if (list) list.push({ id, p: cause });
+        else causes.set(f, [{ id, p: cause }]);
+      }
+    }
+    share.set(id, q);
+  };
+  for (const id of Object.keys(db.risks).sort()) {
+    const r = db.risks[id];
+    if (ctx.knownRisks.includes(id) || ctx.age < (r.ageMin ?? 18) || ctx.age > (r.ageMax ?? 200)) continue;
+    add(id, r.p[ctx.sex] / P_ONE, r.findings);
+  }
+  for (const id of Object.keys(db.conditions).sort()) {
+    const c = db.conditions[id];
+    if (!c.chronic || ctx.knownConditions.includes(id) || ctx.age < (c.chronic.ageMin ?? c.age.min)) continue;
+    // известный фактор риска — множителем (как при рождении пациента), неизвестный — в среднем по его доле
+    let p = chronicChance(c, ctx.knownRisks) / P_ONE;
+    for (const r of c.chronic.risks ?? []) {
+      const q = share.get(r.id);
+      if (q !== undefined) p *= 1 - q + q * r.x;
+    }
+    add(id, Math.min(p, 0.95), c.findings, c);
+  }
+  return { share, causes };
 }
 
 /** Чувствительность и специфичность, с которыми наблюдение получено. Жалоба — без ошибок. */
@@ -67,12 +196,22 @@ function accuracy(db: ContentDb, o: Observation): { sens: number; spec: number }
 }
 
 /**
- * Правдоподобие всех наблюдений одного признака. Ошибки обследований независимы только
- * при известной правде о признаке, поэтому скрытое «есть/нет» суммируется один раз на
- * признак: иначе два совпавших ответа об одном признаке считались бы двумя уликами.
+ * Правдоподобие всех наблюдений одного признака, если он есть с вероятностью `p`. Ошибки
+ * обследований независимы только при известной правде о признаке, поэтому скрытое «есть/нет»
+ * суммируется один раз на признак: иначе два совпавших ответа об одном признаке считались бы
+ * двумя уликами.
  */
-function findingLikelihood(db: ContentDb, f: Id, obs: readonly Observation[], conditions: readonly Id[], risks: readonly Id[]): number {
-  const p = findingProbability(db, f, conditions, risks);
+function observationsLikelihood(db: ContentDb, obs: readonly Observation[], p: number): number {
+  return mix(evidenceOf(db, obs), p);
+}
+
+/** Наблюдения одного признака: насколько они вероятны, если он есть и если его нет, — от кандидата не зависит. */
+interface Evidence {
+  ifPresent: number;
+  ifAbsent: number;
+}
+
+function evidenceOf(db: ContentDb, obs: readonly Observation[]): Evidence {
   let ifPresent = 1;
   let ifAbsent = 1;
   for (const o of obs) {
@@ -80,8 +219,10 @@ function findingLikelihood(db: ContentDb, f: Id, obs: readonly Observation[], co
     ifPresent *= o.shown ? sens : 1 - sens;
     ifAbsent *= o.shown ? 1 - spec : spec;
   }
-  return p * ifPresent + (1 - p) * ifAbsent;
+  return { ifPresent, ifAbsent };
 }
+
+const mix = (e: Evidence, p: number) => p * e.ifPresent + (1 - p) * e.ifAbsent;
 
 function byFinding(observations: readonly Observation[]): Map<Id, Observation[]> {
   const m = new Map<Id, Observation[]>();
@@ -93,19 +234,20 @@ function byFinding(observations: readonly Observation[]): Map<Id, Observation[]>
   return m;
 }
 
-/** Априорный вес кандидата с учётом того, что о пациенте известно. */
+/** Априорный вес кандидата с учётом того, что о пациенте известно и с какой долей — неизвестное. */
 export function priorWeight(db: ContentDb, id: Id, ctx: InferContext): number {
   const c = db.conditions[id];
-  // Требуемые хронические болезни, о которых неизвестно, считаем «возможными» с их
-  // вероятностью у этого человека (упрощение среза: без учёта отрицательного ответа).
   const assumed = [...ctx.knownConditions, ...(c.requires ?? [])];
   let w = presentingWeight(c, { sex: ctx.sex, age: ctx.age, season: ctx.season, risks: ctx.knownRisks, chronic: assumed });
-  for (const req of c.requires ?? []) {
-    if (!ctx.knownConditions.includes(req)) w *= chronicChance(db.conditions[req], ctx.knownRisks) / P_ONE;
-  }
+  const share = (x: Id) => ctx.unknowns.share.get(x) ?? 0;
+  // требуемая хроническая болезнь, о которой не знают, — с её долей у этого человека
+  for (const req of c.requires ?? []) if (!ctx.knownConditions.includes(req)) w *= share(req);
   // «впервые выявленная» бывает только у тех, у кого этого ещё нет
-  for (const ex of c.excludes ?? []) {
-    if (!ctx.knownConditions.includes(ex) && ctx.age >= (db.conditions[ex].chronic?.ageMin ?? 0)) w *= 1 - chronicChance(db.conditions[ex], ctx.knownRisks) / P_ONE;
+  for (const ex of c.excludes ?? []) if (!ctx.knownConditions.includes(ex)) w *= 1 - share(ex);
+  // множитель риска, о котором не знают, — в среднем по его доле (часть 30)
+  for (const r of c.risks ?? []) {
+    if (ctx.knownRisks.includes(r.id) || assumed.includes(r.id)) continue;
+    w *= 1 - share(r.id) + share(r.id) * r.x;
   }
   return w;
 }
@@ -115,13 +257,14 @@ export function priorWeight(db: ContentDb, id: Id, ctx: InferContext): number {
  * известные сопутствующие (`docs/04-medical-model.md` §10).
  */
 export function posterior(db: ContentDb, candidates: readonly Id[], observations: readonly Observation[], ctx: InferContext): Belief[] {
-  const grouped = byFinding(observations);
+  const grouped = [...byFinding(observations)].map(([f, obs]) => ({ f, e: evidenceOf(db, obs) }));
   const scored = candidates.map(id => {
     const set = [id, ...(db.conditions[id].requires ?? []), ...ctx.knownConditions];
+    const shares = sharesFor(db, id, ctx);
     let w = priorWeight(db, id, ctx);
-    for (const [f, obs] of grouped) {
+    for (const { f, e } of grouped) {
       if (w === 0) break;
-      w *= findingLikelihood(db, f, obs, set, ctx.knownRisks);
+      w *= mix(e, findingProbability(db, f, set, ctx.knownRisks, unknownMiss(ctx, f, shares)));
     }
     return { id, p: w };
   });
@@ -143,15 +286,16 @@ export function entropy(beliefs: readonly Belief[]): number {
 export function expectedGain(db: ContentDb, examId: Id, beliefs: readonly Belief[], ctx: InferContext, observed: ReadonlySet<Id>): number {
   const exam = db.exams[examId];
   const h0 = entropy(beliefs);
+  const shares = beliefs.map(b => sharesFor(db, b.id, ctx));
   let gain = 0;
   for (const check of exam.checks) {
     if (observed.has(check.f)) continue;
     const sens = check.sens / P_ONE;
     const spec = check.spec / P_ONE;
     // P(«есть» | кандидат) для каждого кандидата
-    const yes = beliefs.map(b => {
+    const yes = beliefs.map((b, i) => {
       const set = [b.id, ...(db.conditions[b.id].requires ?? []), ...ctx.knownConditions];
-      const p = findingProbability(db, check.f, set, ctx.knownRisks);
+      const p = findingProbability(db, check.f, set, ctx.knownRisks, unknownMiss(ctx, check.f, shares[i]));
       return sens * p + (1 - spec) * (1 - p);
     });
     let pYes = 0;

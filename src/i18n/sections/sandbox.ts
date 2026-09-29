@@ -1,4 +1,5 @@
 import { pluralRu } from '../plural';
+import { lowerFirst } from '../case';
 
 // Песочница — своя больница (spec 2026-09-own-hospital): начало, вечер между сменами, стройка.
 export const sandbox = {
@@ -56,7 +57,7 @@ export const sandbox = {
   lookHint: 'Коснитесь помещения — что в нём и чего не хватает.',
   why: {
     outside: 'За краем участка',
-    room: (name: string) => `Мешает: ${name.toLowerCase()}`,
+    room: (name: string) => `Мешает: ${lowerFirst(name)}`,
     corridor: 'Мешает коридор',
     entrance: 'Здесь вход',
     money: (rub: string) => `Не хватает ${rub}`,
@@ -86,11 +87,11 @@ export const sandbox = {
   sell: (rub: string) => `Продать · ${rub}`,
   eqLine: (price: string, upkeep: string) => `${price} · обслуживание ${upkeep} в день`,
   demolish: (rub: string) => `Снести · вернётся ${rub}`,
-  demolishTitle: (name: string) => `Снести: ${name.toLowerCase()}?`,
+  demolishTitle: (name: string) => `Снести: ${lowerFirst(name)}?`,
   demolishText: 'Вернётся половина цены помещения и аппаратов. Отменить можно, пока открыт экран стройки.',
   examBlock: {
     none: (gen: string) => `нет ${gen}`,
-    down: (name: string, why: string) => `${name.toLowerCase()} не работает: ${why}`,
+    down: (name: string, why: string) => `${lowerFirst(name)} не работает: ${why}`,
   },
 
   // персонал
@@ -107,7 +108,7 @@ export const sandbox = {
   salaries: (rub: string) => `Зарплаты за смену: ${rub}`,
   person: (role: string, skill: number, trait?: string) => `${role} · навык ${skill}${trait ? ` · ${trait}` : ''}`,
   perShift: (rub: string) => `${rub} за смену`,
-  worksIn: (room: string) => `работает: ${room.toLowerCase()}`,
+  worksIn: (room: string) => `работает: ${lowerFirst(room)}`,
   hireHint: 'нанять',
   postFreeTitle: 'Свободные места',
   here: 'работает здесь',
@@ -118,7 +119,7 @@ export const sandbox = {
   fire: 'Уволить',
   fireTitle: (name: string) => `Уволить: ${name}?`,
   fireText: 'Человек уйдёт сразу. Найти другого можно среди кандидатов — они новые каждый вечер.',
-  post: (room: string, role: string) => `${room} — ${role.toLowerCase()}`,
+  post: (room: string, role: string) => `${room} — ${lowerFirst(role)}`,
   postFree: 'место свободно',
   postWho: (role: string, name: string, skill: number, trait?: string) => `${role}: ${name} · навык ${skill}${trait ? ` · ${trait}` : ''}`,
   traits: { careful: 'аккуратный', fast: 'быстрый', novice: 'новичок', experienced: 'опытный' },
