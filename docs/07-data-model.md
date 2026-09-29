@@ -65,6 +65,8 @@ interface Condition {
     chronic?: boolean;                  // бывает сопутствующим
   };
   params?: Record<string, Record<string, number>>;       // скрытые параметры: значение → вес
+  derived?: Record<string, Id>;         // с 0.2.1: параметр — вывод правила решения (rule.*) на настоящих
+                                        // признаках и возрасте, no/yes; веса в params — для вывода врача
   course: {
     stages: { id: string; days: [number, number]; needs?: 'treatment' }[];
     presentation?: [number, number];    // в какие дни болезни обычно обращаются
@@ -178,6 +180,7 @@ interface Exam {
   discomfort: 0 | 1 | 2 | 3; radiation?: 'none' | 'low' | 'medium' | 'high';
   routine?: boolean;                             // спрашивают каждого (анамнез жизни)
   sex?: 'm' | 'f'; ageMin?: number; ageMax?: number;  // кому делают: о беременности — женщинам 12–50
+  complaints?: Id[];                     // с 0.2.1: только с этими жалобами — о травме головы при травме головы
   contraindications?: { id: Id; level: 'relative' | 'absolute' }[];   // позже: рентген при беременности
   checks: { f: Id; sens: P; spec: P }[];         // какие признаки проверяет и как точно
   modifiers?: { by: Id; sens?: number; spec?: number }[];  // ожирение, навык, уровень аппарата
@@ -423,6 +426,16 @@ interface Patient {
   `taken`, сколько его пациентов вы забрали. Приём с `from` — ваш: в прежних строках итогов,
   в профиле и оценке «Смены».
 
+- С 0.2.1 — сотрясение головного мозга (часть 32г-1): у болезни — `derived` (производный
+  параметр: показана ли КТ — вывод правила на настоящих признаках и возрасте, считается после
+  признаков); у правила решения — `minor { any, count }` (дополнительные признаки), `age { main?,
+  minor? }` (возраст как основной и дополнительный признак), `requires` (к кому применимо) и
+  тексты `na` («не применяют») и `exam` (обследования нет в игре, `exams` тогда пуст); у
+  обследования — `complaints` (делают только пришедшим с одной из этих жалоб: расспрос о травме
+  головы — при травме головы; `examFits` берёт жалобы пациента, у вида карты они — в `portrait`). Вывод,
+  план и шаг разумного врача берут возраст пациента (`likelyParams`, `paramBeliefs`, `paramGain`,
+  `choosePlan`). Схема сохранения прежняя: производный параметр лежит в `params` болезни пациента,
+  как и остальные.
 - С 0.2.0 — закрытая травма груди (часть 32в): у картинки `xray` в `ResultImage` — ещё
   `pneumothorax { side, size, tension? }`, `effusion { side, massive?, air? }` и
   `ribFractures { side, ribs }`; у панели снимка костей — `zoom { k, dx, dy }` (масштаб и сдвиг

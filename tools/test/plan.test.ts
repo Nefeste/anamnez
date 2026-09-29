@@ -70,12 +70,12 @@ describe('тактика и место лечения', () => {
   });
 
   test('типичное назначение: одно из равных, замена при известном противопоказании', () => {
-    expect(choosePlan(db, 'cond.cystitis', []).treatments).toEqual(['tx.fosfomycin']);
-    expect(choosePlan(db, 'cond.hypertension_new', []).treatments).toEqual(['tx.ace_inhibitor', 'tx.ccb', 'tx.lifestyle']);
+    expect(choosePlan(db, 'cond.cystitis', [], 40).treatments).toEqual(['tx.fosfomycin']);
+    expect(choosePlan(db, 'cond.hypertension_new', [], 40).treatments).toEqual(['tx.ace_inhibitor', 'tx.ccb', 'tx.lifestyle']);
     const pregnant: Observation[] = [{ f: 'hx.pregnancy', shown: true, exam: 'exam.ask_pregnancy' }];
-    expect(choosePlan(db, 'cond.hypertension_new', pregnant).treatments).toEqual(['tx.ccb', 'tx.lifestyle']);
-    expect(choosePlan(db, 'cond.pyelonephritis', pregnant)).toEqual({ treatments: ['tx.cephalosporin_oral'], setting: 'ward' });
-    expect(choosePlan(db, 'cond.appendicitis', [])).toEqual({ treatments: [], setting: 'ambulance' });
+    expect(choosePlan(db, 'cond.hypertension_new', pregnant, 30).treatments).toEqual(['tx.ccb', 'tx.lifestyle']);
+    expect(choosePlan(db, 'cond.pyelonephritis', pregnant, 30)).toEqual({ treatments: ['tx.cephalosporin_oral'], setting: 'ward' });
+    expect(choosePlan(db, 'cond.appendicitis', [], 40)).toEqual({ treatments: [], setting: 'ambulance' });
   });
 
   function base(plan: Plan, patient: Patient): CaseInput {
@@ -124,7 +124,7 @@ describe('противопоказания', () => {
 
   test('при известной аллергии замена на макролид — лечение A', () => {
     const obs = [...complaintObservations(allergic), told('hx.allergy_penicillin', true)];
-    expect(choosePlan(db, 'cond.pneumonia_cap', obs).treatments).toEqual(['tx.macrolide']);
+    expect(choosePlan(db, 'cond.pneumonia_cap', obs, 40).treatments).toEqual(['tx.macrolide']);
     const ev = evaluatePlan(db, allergic, { treatments: ['tx.macrolide'], setting: 'home' }, obs);
     expect(ev.firstLineBlocked).toBe(true);
     expect(scoreCase(input({ plan: ev })).treatment).toBe('A');

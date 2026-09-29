@@ -11,6 +11,7 @@ import { type Belief, contextOf, knownFacts, posterior } from '@/engine/med/infe
 import type { PlanEval } from '@/engine/med/plan';
 import type { ReviewData } from '@/engine/med/review';
 import type { CaseScore, Grade, ScoreNote } from '@/engine/med/score';
+import { checkRule, knownOf } from '@/engine/med/rules';
 import { complaintText, observationText } from '@/engine/med/text';
 import type { Observation, Patient } from '@/engine/med/types';
 import type { Difficulty } from '@/engine/shift/types';
@@ -114,7 +115,8 @@ export interface VisitView {
   version: number;
   title: string;
   /** для портрета: пол и возраст видны врачу, ключ портрета — не зерно генерации */
-  portrait: { key: number; sex: 'm' | 'f'; age: number };
+  /** кто пациент; жалобы — кому какой расспрос (часть 32г: о травме головы — при травме головы) */
+  portrait: { key: number; sex: 'm' | 'f'; age: number; complaints: Id[] };
   clock: string;
   minutesSpent: number;
   money: number;
@@ -439,16 +441,23 @@ const HINTS = 5;
 /**
  * Правила решения к жалобе пациента (часть 32): есть признак правила — что оно велит («Снимок
  * нужен: …»); проверили все и ни одного — «перелом маловероятен»; иначе — что осталось проверить.
+ * С части 32г — и дополнительные признаки, возраст и «правило не применяется».
  */
 function rulesOf(p: Patient, obs: readonly Observation[]): VisitView['rules'] {
   const t = T.spikes.patient;
-  const names = (ids: Id[]) => ids.map(f => lowerFirst(db.findings[f].name.ru)).join(', ');
+  const names = (ids: Id[]) => ids.map(f => lowerFirst(db.findings[f].name.ru));
+  const known = knownOf(obs);
   return Object.values(db.rules)
     .filter(r => r.complaints.some(f => p.complaints.includes(f)) && p.age >= (r.ageMin ?? 0))
     .map(r => {
-      const found = r.any.filter(f => obs.some(o => o.f === f && o.shown));
-      const left = r.any.filter(f => !obs.some(o => o.f === f));
-      const text = found.length > 0 ? t.ruleYes(r.texts.yes.ru, names(found)) : left.length === 0 ? r.texts.no.ru : t.ruleCheck(names(left));
+      const x = checkRule(r, p.age, known);
+      const main = [...names(x.main), ...(x.ageMain && r.age?.main !== undefined ? [t.ruleAgeOver(r.age.main)] : [])];
+      const minor = [...names(x.minor), ...(x.ageMinor && r.age?.minor ? [t.ruleAgeRange(r.age.minor[0], r.age.minor[1])] : [])];
+      const why = main.length > 0 ? main.join(', ') : t.ruleMinor(minor.join(', '));
+      const text =
+        x.verdict === 'yes' ? t.ruleYes(r.texts.yes.ru, why)
+        : x.verdict === 'no' ? (x.applies === false ? r.texts.na?.ru ?? r.texts.no.ru : r.texts.no.ru)
+        : t.ruleCheck(names(x.left).join(', '));
       return { id: r.id, name: r.name.ru, text };
     });
 }
@@ -469,7 +478,7 @@ export function makeCaseView(c: CaseInput): VisitView {
   return {
     version: c.version,
     title: `${patientName(p)}, ${T.spikes.patient.years(p.age)}, ${p.sex === 'm' ? T.spikes.patient.male : T.spikes.patient.female}`,
-    portrait: { key: fnv1a(`${p.seed}:portrait`), sex: p.sex, age: p.age },
+    portrait: { key: fnv1a(`${p.seed}:portrait`), sex: p.sex, age: p.age, complaints: p.complaints },
     clock: hhmm(c.clock),
     minutesSpent: c.minutesSpent,
     money: c.money,
@@ -589,10 +598,10 @@ export function noteText(n: ScoreNote): string {
 }
 
 /**
- * Обследования по разделам действий карты пациента — те, что ему подходят по полу и возрасту:
- * о месячных и беременности мужчину не спрашивают.
+ * Обследования по разделам действий карты пациента — те, что ему подходят по полу, возрасту и
+ * жалобе: о месячных и беременности мужчину не спрашивают, о травме головы — без травмы головы.
  */
-export function examsByAction(patient: { sex: 'm' | 'f'; age: number }): Record<'ask' | 'examine' | 'order', Id[]> {
+export function examsByAction(patient: Pick<Patient, 'sex' | 'age' | 'complaints'>): Record<'ask' | 'examine' | 'order', Id[]> {
   // по названию; в «Спросить» сначала расспрос о жалобах по системам, потом анамнез жизни
   const byName = (a: Id, b: Id) => (db.exams[a].name.ru < db.exams[b].name.ru ? -1 : 1);
   const history = (id: Id) => (db.exams[id].checks.every(c => c.f.startsWith('hx.')) ? 1 : 0);

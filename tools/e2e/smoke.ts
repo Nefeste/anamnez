@@ -1375,6 +1375,17 @@ try {
   const three = await page.locator('text=При переломе трёх и более рёбер — в стационаре.').first().isVisible().catch(() => false);
   check((await visibleText(page, 'enc-article-title')) === 'Перелом рёбер' && three,
     `энциклопедия, перелом рёбер: ${await visibleText(page, 'enc-article-title')} — «при переломе трёх и более рёбер — в стационаре»`);
+  // травма головы (0.2.1): правило КТ с дополнительными признаками; место — по показаниям к КТ
+  await page.goto(`${base}/encyclopedia/article/rule.ct_head`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const twoMinor = await page.locator('text=Или не меньше двух из этих').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'КТ при лёгкой черепно-мозговой травме' && twoMinor,
+    `энциклопедия, правило КТ: ${await visibleText(page, 'enc-article-title')} — «или не меньше двух из этих»`);
+  await page.goto(`${base}/encyclopedia/article/cond.concussion`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const ctTransfer = await page.locator('text=При показаниях к КТ — скорая, перевод в центр.').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'Сотрясение головного мозга' && ctTransfer,
+    `энциклопедия, сотрясение: ${await visibleText(page, 'enc-article-title')} — «при показаниях к КТ — скорая, перевод в центр»`);
 
   // кампания: карьера 1 → глава 1 — письма и задания; письмо наставника; смена открывается;
   // «Продолжить» в меню — карьера (spec 2026-09-campaign)

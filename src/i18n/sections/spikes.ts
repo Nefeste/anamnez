@@ -87,6 +87,10 @@ export const spikes = {
     rules: 'Правила решения (уровень «Студент»)',
     ruleYes: (yes: string, found: string) => `${yes}: ${found}`,
     ruleCheck: (left: string) => `Проверьте: ${left}`,
+    // часть 32г: возраст как признак правила и дополнительные признаки
+    ruleAgeOver: (years: number) => `возраст старше ${years}\u00a0лет`,
+    ruleAgeRange: (from: number, to: number) => `возраст ${from}–${to}\u00a0лет`,
+    ruleMinor: (list: string) => `${list} — дополнительные признаки`,
     outOf10: (n: number) => `${n} из 10`,
     similar: (n: number) => `у ${n} из 10 похожих пациентов`,
     correct: 'Верно',

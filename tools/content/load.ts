@@ -214,6 +214,18 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   for (const c of Object.values(conditions)) {
     const owner = c.id;
     checkLinks(owner, c.findings, c.params, c.course.stages.map(s => s.id));
+    // производные параметры (часть 32г): значения «no» и «yes», правило есть, а признаки от
+    // параметра не зависят — он сам считается по признакам
+    for (const [name, ruleId] of Object.entries(c.derived ?? {})) {
+      const p = c.params?.[name];
+      if (!p) errors.push(`${owner}: производный параметр ${name} не объявлен в params — нужны доли для вывода`);
+      else if (Object.keys(p).sort().join() !== 'no,yes') errors.push(`${owner}: у производного параметра ${name} значения — no и yes`);
+      if (!rules[ruleId]) errors.push(`${owner}: правило ${ruleId} параметра ${name} не найдено`);
+      for (const l of c.findings) {
+        if (l.when?.[name]) errors.push(`${owner}: признак ${l.f} зависит от производного параметра ${name}, а тот — от признаков`);
+        if (Object.values(l.attrs ?? {}).includes(`$${name}`)) errors.push(`${owner}: атрибут признака ${l.f} — из производного параметра ${name}, а тот — от признаков`);
+      }
+    }
     for (const r of c.epidemiology.risks ?? []) if (!(r.id in risks) && !(r.id in conditions)) errors.push(`${owner}: фактор ${r.id} не найден`);
     for (const r of c.epidemiology.chronic?.risks ?? []) if (!(r.id in risks)) errors.push(`${owner}: фактор ${r.id} не найден`);
     for (const r of c.epidemiology.requires ?? []) if (!conditions[r]?.epidemiology.chronic) errors.push(`${owner}: требуемое ${r} не найдено или не хроническое`);
@@ -368,11 +380,24 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     }
     if (!(x.levels.medium < x.levels.high)) errors.push(`${x.id}: средний уровень ответа должен быть ниже высокого`);
   }
+  // обследование только при жалобе (часть 32г): жалоба — признак с текстом жалобы
+  for (const x of Object.values(exams)) for (const f of x.complaints ?? []) if (!findings[f]?.texts.complaint) errors.push(`${x.id}: жалоба ${f} не найдена или без текста жалобы`);
   // правила решения (часть 32): жалобы — признаки с жалобой, признаки и обследования есть, и
   // обследование правила открывает хоть один признак болезней, о которых оно
   for (const x of Object.values(rules)) {
     for (const f of x.complaints) if (!findings[f]?.texts.complaint) errors.push(`${x.id}: жалоба ${f} не найдена или без текста жалобы`);
     for (const f of x.any) if (!hasF(f)) errors.push(`${x.id}: признак ${f} не найден`);
+    // часть 32г: дополнительные признаки, возраст и круг применимости
+    for (const f of [...(x.minor?.any ?? []), ...(x.requires ?? [])]) if (!hasF(f)) errors.push(`${x.id}: признак ${f} не найден`);
+    for (const f of x.minor?.any ?? []) if (x.any.includes(f)) errors.push(`${x.id}: ${f} — и основной, и дополнительный признак`);
+    if (x.minor && x.minor.count > x.minor.any.length + (x.age?.minor ? 1 : 0)) errors.push(`${x.id}: дополнительных признаков меньше, чем их нужно (${x.minor.count})`);
+    if (x.age?.minor && !(x.age.minor[0] < x.age.minor[1])) errors.push(`${x.id}: возраст дополнительного признака — от меньшего к большему`);
+    if (x.age?.minor && !x.minor) errors.push(`${x.id}: возраст как дополнительный признак без дополнительных признаков`);
+    if (x.age?.main !== undefined && x.age.minor && x.age.main < x.age.minor[1]) errors.push(`${x.id}: основной возраст (старше ${x.age.main}) пересекается с дополнительным`);
+    if (x.requires && !x.texts.na) errors.push(`${x.id}: у правила с кругом применимости нужен текст «не применяется» (texts.na)`);
+    if (!x.requires && x.texts.na) errors.push(`${x.id}: текст «не применяется» без круга применимости (requires)`);
+    if (x.exams.length === 0 && !x.texts.exam) errors.push(`${x.id}: обследования правила в игре нет — нужен текст о нём (texts.exam)`);
+    if (x.exams.length > 0 && x.texts.exam) errors.push(`${x.id}: текст об обследовании (texts.exam) — только если его в игре нет`);
     for (const id of x.about) if (!conditions[id]?.presenting) errors.push(`${x.id}: болезнь ${id} не найдена или с ней не приходят`);
     for (const id of x.exams) {
       if (!exams[id]) { errors.push(`${x.id}: обследование ${id} не найдено`); continue; }
@@ -419,6 +444,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (e.excludes) out.excludes = e.excludes;
     if (e.chronic) out.chronic = { p: prob(e.chronic.band), ...(e.chronic.ageMin ? { ageMin: e.chronic.ageMin } : {}), ...(e.chronic.risks ? { risks: e.chronic.risks } : {}) };
     if (c.params) out.params = c.params;
+    if (c.derived) out.derived = c.derived;
     if (c.course.presentation) out.presentation = c.course.presentation;
     if (c.redFlags) out.redFlags = c.redFlags;
     if (c.course.selfLimiting) {
@@ -478,6 +504,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (e.sex) out.sex = e.sex;
     if (e.ageMin !== undefined) out.ageMin = e.ageMin;
     if (e.ageMax !== undefined) out.ageMax = e.ageMax;
+    if (e.complaints) out.complaints = e.complaints;
     db.exams[e.id] = out;
   }
   for (const r of Object.values(risks).sort((a, b) => (a.id < b.id ? -1 : 1))) {

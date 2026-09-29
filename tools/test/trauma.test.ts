@@ -135,25 +135,25 @@ describe('тактика по скрытому параметру', () => {
 describe('скрытый параметр по тому, что видно', () => {
   const W = 'exam.xray_wrist';
   test('без снимка — самое частое значение; снимок со смещением — смещение; с признаками нестабильности — нестабильный', () => {
-    expect(likelyParams(db, RADIUS, [])).toMatchObject({ displacement: 'none' });
+    expect(likelyParams(db, RADIUS, [], 40)).toMatchObject({ displacement: 'none' });
     const displaced = [xr(W, 'img.xr_radius_fracture', true), xr(W, 'img.xr_radius_displaced', true), xr(W, 'img.xr_radius_unstable', false)];
-    expect(likelyParams(db, RADIUS, displaced).displacement).toBe('displaced');
+    expect(likelyParams(db, RADIUS, displaced, 40).displacement).toBe('displaced');
     const unstable = [xr(W, 'img.xr_radius_fracture', true), xr(W, 'img.xr_radius_displaced', true), xr(W, 'img.xr_radius_unstable', true)];
-    expect(likelyParams(db, RADIUS, unstable).displacement).toBe('unstable');
-    const sum = paramBeliefs(db, RADIUS, 'displacement', displaced).reduce((a, b) => a + b.p, 0);
+    expect(likelyParams(db, RADIUS, unstable, 40).displacement).toBe('unstable');
+    const sum = paramBeliefs(db, RADIUS, 'displacement', displaced, 40).reduce((a, b) => a + b.p, 0);
     expect(sum).toBeCloseTo(1, 9);
     // деформация говорит о смещении, но не о том, стабилен ли перелом
-    const deformity = paramBeliefs(db, RADIUS, 'displacement', [{ f: 'sign.wrist_deformity', shown: true, exam: 'exam.wrist_exam' }]);
+    const deformity = paramBeliefs(db, RADIUS, 'displacement', [{ f: 'sign.wrist_deformity', shown: true, exam: 'exam.wrist_exam' }], 40);
     expect(deformity.find(b => b.value === 'none')!.p).toBeLessThan(0.05);
     expect(Math.max(...deformity.map(b => b.p))).toBeLessThan(0.9);
   });
 
   test('план по снимку: смещение — репозиция дома; нестабильный — операция в своей операционной или скорая', () => {
     const displaced = [xr(W, 'img.xr_radius_fracture', true), xr(W, 'img.xr_radius_displaced', true), xr(W, 'img.xr_radius_unstable', false)];
-    expect(choosePlan(db, RADIUS, displaced)).toEqual({ treatments: ['tx.closed_reduction', 'tx.ibuprofen'], setting: 'home' });
+    expect(choosePlan(db, RADIUS, displaced, 40)).toEqual({ treatments: ['tx.closed_reduction', 'tx.ibuprofen'], setting: 'home' });
     const unstable = [xr(W, 'img.xr_radius_fracture', true), xr(W, 'img.xr_radius_displaced', true), xr(W, 'img.xr_radius_unstable', true)];
-    expect(choosePlan(db, RADIUS, unstable, { ward: true, or: true })).toEqual({ treatments: ['tx.cast_splint', 'tx.ibuprofen'], setting: 'surgery' });
-    expect(choosePlan(db, RADIUS, unstable).setting).toBe('ambulance');
+    expect(choosePlan(db, RADIUS, unstable, 40, { ward: true, or: true })).toEqual({ treatments: ['tx.cast_splint', 'tx.ibuprofen'], setting: 'surgery' });
+    expect(choosePlan(db, RADIUS, unstable, 40).setting).toBe('ambulance');
   });
 });
 
