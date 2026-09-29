@@ -1339,6 +1339,18 @@ try {
   const unstableOp = await page.locator('text=При нестабильном переломе — операция.').first().isVisible().catch(() => false);
   check((await visibleText(page, 'enc-article-title')) === 'Перелом дистального отдела лучевой кости' && byShift && unstableOp,
     `энциклопедия, перелом лучевой: ${await visibleText(page, 'enc-article-title')} — репозиция при смещении, нестабильный — операция`);
+  // травма (0.0.55): операция по смещению — у шейки бедра; правило для стопы
+  await page.goto(`${base}/encyclopedia/article/cond.femoral_neck_fracture`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const hipWindow = await page.locator('text=Операция — эндопротезирование тазобедренного сустава: в первые 48 ч после поступления.').first().isVisible().catch(() => false);
+  const hipScrews = await page.locator('text=Без смещения — остеосинтез шейки бедра винтами.').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'Перелом шейки бедра' && hipWindow && hipScrews,
+    `энциклопедия, перелом шейки бедра: ${await visibleText(page, 'enc-article-title')} — эндопротез в первые 48 ч, без смещения — винты`);
+  await page.goto(`${base}/encyclopedia/article/rule.ottawa_foot`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const footSnap = await page.locator('text=Снимок стопы нужен').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'Оттавские правила для стопы' && footSnap,
+    `энциклопедия, правило для стопы: ${await visibleText(page, 'enc-article-title')} — «снимок стопы нужен»`);
 
   // кампания: карьера 1 → глава 1 — письма и задания; письмо наставника; смена открывается;
   // «Продолжить» в меню — карьера (spec 2026-09-campaign)

@@ -4,9 +4,14 @@ kind: ask
 time: { procedure: 2 }
 cost: 0
 discomfort: 0
+# жалоба травмы — факт: без травмы о падении не расскажут, ложной она не бывает (spec 100); с
+# пятью жалобами ложные 3 % давали у каждого седьмого без травмы «травму» — часть 32б
 checks:
-  - { f: sym.wrist_pain, sens: 95, spec: 97 }
-  - { f: sym.ankle_pain, sens: 95, spec: 97 }
+  - { f: sym.wrist_pain, sens: 95, spec: 100 }
+  - { f: sym.ankle_pain, sens: 95, spec: 100 }
+  - { f: sym.foot_pain, sens: 95, spec: 100 }
+  - { f: sym.hip_pain, sens: 95, spec: 100 }
+  - { f: sym.shoulder_pain, sens: 95, spec: 100 }
   - { f: sym.immediate_dysfunction, sens: 85, spec: 85 }
 texts:
   hint:

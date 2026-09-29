@@ -29,6 +29,12 @@ effects:
   - { on: cond.ankle_fracture, kind: relieve, band: usually, days: [0, 1] }
   - { on: cond.ankle_sprain, kind: relieve, band: usually, days: [0, 1] }
   - { on: cond.wrist_contusion, kind: relieve, band: usually, days: [0, 1] }
+  - { on: cond.mt5_fracture, kind: relieve, band: usually, days: [0, 1] }
+  - { on: cond.foot_contusion, kind: relieve, band: usually, days: [0, 1] }
+  - { on: cond.femoral_neck_fracture, kind: relieve, band: usually, days: [0, 1] }
+  - { on: cond.hip_contusion, kind: relieve, band: usually, days: [0, 1] }
+  - { on: cond.clavicle_fracture, kind: relieve, band: usually, days: [0, 1] }
+  - { on: cond.shoulder_contusion, kind: relieve, band: usually, days: [0, 1] }
 contraindications:
   - { id: risk.allergy_nsaid, level: absolute, reaction: often }
   - { id: risk.pregnancy, level: relative, reaction: never }

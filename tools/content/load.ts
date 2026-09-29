@@ -239,6 +239,16 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
         else for (const v of Object.keys(p)) if (!t.setting.param.map[v]) errors.push(`${owner}: для ${t.setting.param.name}=${v} не сказано, где лечить`);
       }
       if (t.setting.redFlag && !c.redFlags?.length) errors.push(`${owner}: место при красном флаге задано, а красных флагов нет`);
+      // ещё места, которые не ошибка (часть 32б): при этих значениях место не то же, что главное
+      for (const [i, x] of (t.setting.also ?? []).entries()) {
+        const what = `ещё место №${i + 1}`;
+        if (Object.keys(x.when).length === 0) errors.push(`${owner}: ${what} — без условия`);
+        checkWhen(owner, what, x.when, c.params);
+        const main = t.setting.param && Object.keys(x.when).length === 1 && x.when[t.setting.param.name]
+          ? x.when[t.setting.param.name].map(v => t.setting.param!.map[v])
+          : [];
+        for (const s of x.settings) if (main.includes(s)) errors.push(`${owner}: ${what} — ${s} и так место при этих значениях`);
+      }
       for (const r of t.setting.risks ?? []) if (!(r.id in risks)) errors.push(`${owner}: место лечения зависит от неизвестного фактора ${r.id}`);
       if (t.setting.default === 'home' && t.firstLine.length === 0) errors.push(`${owner}: лечат дома, а первой линии нет`);
       for (const id of t.plan ?? []) if (![...t.firstLine, ...t.acceptable, ...t.supportive].includes(id)) errors.push(`${owner}: в типичном назначении ${id} — не из первой линии, допустимых или облегчающих`);
@@ -283,6 +293,19 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       if (x.window === undefined && (x.from !== undefined || c.complication)) errors.push(`${owner}: срок от начала болезни и осложнённая стадия — только со сроком операции (window)`);
       if (x.observe !== undefined && x.from === 'onset') errors.push(`${owner}: срок после наблюдения (observe) считается от поступления, а срок операции — от начала болезни`);
       if (x.stay && x.stay[0] > x.stay[1]) errors.push(`${owner}: срок стационара после операции — от большего к меньшему`);
+      // операция по скрытому параметру (часть 32б): своя операция, вида «операция», при этих
+      // значениях действует на причину
+      for (const [i, b] of (x.byParam ?? []).entries()) {
+        const what = `операция по параметру №${i + 1}`;
+        if (Object.keys(b.when).length === 0) errors.push(`${owner}: ${what} — без условия`);
+        checkWhen(owner, what, b.when, c.params);
+        const alt = treatments[b.tx];
+        if (!alt) errors.push(`${owner}: ${what} — операция ${b.tx} не найдена`);
+        else if (alt.kind !== 'surgery') errors.push(`${owner}: ${what} — ${b.tx} не операция (kind: surgery)`);
+        else if (!alt.effects.some(e => e.on === owner && e.kind === 'cure' && overlaps(e.when, b.when))) errors.push(`${owner}: ${what} — ${b.tx} при этих значениях не действует на причину`);
+        else if (c.complication && !alt.surgery?.complicated) errors.push(`${owner}: ${what} — у болезни есть осложнённая стадия, а у операции ${b.tx} нет долей для неё (complicated)`);
+        if (b.tx === x.tx) errors.push(`${owner}: ${what} — та же операция, что и без условия`);
+      }
     }
     if (c.complication) {
       const x = c.complication;
@@ -411,6 +434,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       const x = c.surgery;
       out.surgery = {
         tx: x.tx,
+        ...(x.byParam ? { byParam: x.byParam } : {}),
         ...(x.window !== undefined ? { window: x.window } : {}),
         ...(x.from === 'onset' ? { from: 'onset' as const } : {}),
         ...(x.observe !== undefined ? { observe: x.observe } : {}),

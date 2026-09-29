@@ -367,6 +367,28 @@ const BONE_EXAMS: Record<Id, { view: BoneFindings['view']; fractures: [Id, BoneF
       ['img.xr_ankle_unstable', [{ site: 'fibula', displacement: 0.8 }, { site: 'medial_malleolus', displacement: 0.8 }]],
     ],
   },
+  // часть 32б: основание пятой плюсневой, шейка бедра, ключица — смещение как в прототипах части 31
+  'exam.xray_foot': {
+    view: 'foot',
+    fractures: [
+      ['img.xr_mt5_fracture', [{ site: 'mt5', displacement: 0 }]],
+      ['img.xr_mt5_displaced', [{ site: 'mt5', displacement: 0.6 }]],
+    ],
+  },
+  'exam.xray_hip': {
+    view: 'hip',
+    fractures: [
+      ['img.xr_femoral_neck_fracture', [{ site: 'femoral_neck', displacement: 0 }]],
+      ['img.xr_femoral_neck_displaced', [{ site: 'femoral_neck', displacement: 0.9 }]],
+    ],
+  },
+  'exam.xray_clavicle': {
+    view: 'clavicle',
+    fractures: [
+      ['img.xr_clavicle_fracture', [{ site: 'clavicle', displacement: 0 }]],
+      ['img.xr_clavicle_displaced', [{ site: 'clavicle', displacement: 0.9 }]],
+    ],
+  },
 };
 
 /** «Студенту» — до пяти гипотез с частотой (03-game-design.md §14). */

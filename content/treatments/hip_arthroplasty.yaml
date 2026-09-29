@@ -1,0 +1,25 @@
+id: tx.hip_arthroplasty
+name: { ru: "Эндопротезирование тазобедренного сустава" }
+kind: surgery
+class: surgery.bone
+# эндопротез и расходники, ₽ — игровое число
+cost: 60000
+effects:
+  - { on: cond.femoral_neck_fracture, kind: cure, band: { pct: 100 }, days: [5, 10] }
+# 72 минуты — медиана длительности у переломов со смещением (Authen 2018); осложнения — делирий, в
+# среднем у 17 % (980_1, раздел 3.8.4); смертность за 30 дней — 10 % (Larsen 2026)
+surgery:
+  room: room.or
+  team: [role.surgeon, role.anesthetist, role.or_nurse]
+  equipment: [eq.or_table, eq.anesthesia]
+  minutes: 72
+  complications: { pct: 17 }
+  death: { pct: 10 }
+texts:
+  hint:
+    ru: "Сломанную шейку и головку бедра заменяют протезом: однополюсным — только головку, тотальным — и вертлужную впадину. Так оперируют перелом со смещением у пожилых: наступать на ногу можно сразу."
+sources:
+  - { kind: guideline, title: "Переломы проксимального отдела бедренной кости", org: "Минздрав РФ", year: 2025, url: "https://cr.minzdrav.gov.ru/view-cr/980_1", note: "ID 980_1, опубликованы 10.12.2025, применяются; сверено с рубрикатором 29.09.2026; раздел 3.6.3: Garden III–IV у пациентов старше 60 лет — эндопротезирование (УУР B, УДД 1); тотальное — при самостоятельной ходьбе и без выраженных когнитивных нарушений, гемиэндопротез — в старческом возрасте; только в дневное время подготовленными бригадами; после эндопротезирования — полная нагрузка сразу; раздел 3.8.4: делирий — в среднем 17 %" }
+  - { kind: paper, title: "Authen AL, Dybvik E, Furnes O, Gjertsen JE. Surgeon's experience level and risk of reoperation after hip fracture surgery: an observational study on 30,945 patients in the Norwegian Hip Fracture Register 2011–2015. Acta Orthop 2018;89(5):496–502", url: "https://pubmed.ncbi.nlm.nih.gov/29860911/", note: "PMID 29860911, PMC6202762, сверено 29.09.2026: перелом шейки без смещения (Garden 1–2) — 4 220, со смещением (Garden 3–4) — 13 098; длительность операции — 32 и 72 минуты" }
+  - { kind: paper, title: "Larsen P, Jensen ST, Elsoe R. Femoral neck fracture increases 30-day mortality 16-fold and elevates mortality risk for up to 4 years: a matched cohort study of 3,246 patients. Eur Geriatr Med 2026;17(3):1429–1435", url: "https://pubmed.ncbi.nlm.nih.gov/41903040/", note: "PMID 41903040, PMC13309505, сверено 29.09.2026: 3 246 больных с переломом шейки бедра, средний возраст 77,9 года, женщин 64 %; смертность за 30 дней — 10 %, за год — 23,4 %" }
+review: draft

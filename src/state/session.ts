@@ -20,10 +20,9 @@ import { memberAt, type StaffMember, staffingOf } from '@/engine/hospital/staff'
 import { missionProgress } from '@/engine/campaign/campaign';
 import { levelOf } from '@/engine/economy/economy';
 import {
-  apply, atDoorOf, current, freeBeds, type HospitalCtx, hospitalCtx, inpatientsOf, newCampaign, newSandbox, newShift, newSingle, observationsOf, type OrBlock,
-  orBlock, orQueueOf, reviewFor, SANDBOX_VENUE, wardBeds,
+  apply, atDoorOf, current, freeBeds, type HospitalCtx, hospitalCtx, inpatientsOf, newCampaign, newSandbox, newShift, newSingle, observationsOf, operationOf,
+  type OrBlock, orBlock, orQueueOf, reviewFor, SANDBOX_VENUE, wardBeds,
 } from '@/engine/shift/engine';
-import { operationFor } from '@/engine/shift/surgery';
 import {
   type Command, DAY, type Difficulty, type Mode, type Notice, SHIFT_END, SHIFT_SCHEMA_VERSION, type ShiftPatient, type ShiftState, type Triage,
 } from '@/engine/shift/types';
@@ -1570,7 +1569,7 @@ export function roundsView(): RoundCard[] {
     const opLine = !op ? undefined
       : op.done ? `${t.opDone(opName)}${stage ? ` · ${t.opStage(stage)}` : ''}${op.complication ? ` · ${t.opComplication}` : ''}`
         : op.start !== undefined ? t.opOn(opName, hhmm(minuteOfDay(op.end ?? op.start))) : t.opWaiting(opName, queue.indexOf(p.id) + 1);
-    const dxOp = !op && dx && hasOr ? operationFor(db, dx) : undefined;
+    const dxOp = !op && dx && hasOr ? operationOf(db, p, dx) : undefined;
     const block = dxOp ? orBlock(db, s, dxOp) : null;
     return {
       id: p.id,
@@ -1747,7 +1746,8 @@ export function archiveCaseView(key: string): VisitView | undefined {
  * (сколько коек свободно; нет свободных — нельзя), направить в другую больницу, скорая. Есть
  * операционная (часть 28) — и «В операционную»: какая операция — по диагнозу, нельзя — почему.
  */
-function settingOptions(s: ShiftState, diagnosis?: Id): SettingOption[] {
+function settingOptions(s: ShiftState, p: ShiftPatient): SettingOption[] {
+  const diagnosis = p.draft.diagnosis;
   const all = wardBeds(db, s).length;
   const free = freeBeds(db, s).length;
   const t = T.shift.ward;
@@ -1756,16 +1756,16 @@ function settingOptions(s: ShiftState, diagnosis?: Id): SettingOption[] {
   return [
     { key: 'home', title: setting.home },
     { key: 'admit', title: t.admit, hint: free > 0 ? t.freeBeds(free, all) : t.noBeds, disabled: free === 0 },
-    ...(hasOr ? [orOption(s, diagnosis, free, all)] : []),
+    ...(hasOr ? [orOption(s, p, diagnosis, free, all)] : []),
     { key: 'ward', title: t.refer },
     { key: 'ambulance', title: setting.ambulance },
   ];
 }
 
-/** «В операционную»: операция диагноза и свободные койки; нельзя — почему (часть 28). */
-function orOption(s: ShiftState, diagnosis: Id | undefined, free: number, all: number): SettingOption {
+/** «В операционную»: операция диагноза — по тому, что видно (часть 32б), — и свободные койки; нельзя — почему (часть 28). */
+function orOption(s: ShiftState, p: ShiftPatient, diagnosis: Id | undefined, free: number, all: number): SettingOption {
   const t = T.shift.ward;
-  const op = diagnosis ? operationFor(db, diagnosis) : undefined;
+  const op = diagnosis ? operationOf(db, p, diagnosis) : undefined;
   const block = op ? orBlock(db, s, op) : null;
   const why = !diagnosis ? t.noDiagnosis : !op ? t.noOperation : block ? orBlockText(block) : free === 0 ? t.noBeds : undefined;
   return why ? { key: 'surgery', title: t.operate, hint: why, disabled: true } : { key: 'surgery', title: t.operate, hint: t.opHint(db.treatments[op!].name.ru, free, all) };
@@ -1812,7 +1812,7 @@ function buildCaseView(): VisitView | undefined {
     unavailable: unavailableOf(s),
     // с какими отделениями его приняли (часть 30): с приёмным — и хирургия
     ...(p.departments ? { departments: p.departments } : {}),
-    ...(wardBeds(db, s).length > 0 ? { settings: settingOptions(s, p.draft.diagnosis) } : {}),
+    ...(wardBeds(db, s).length > 0 ? { settings: settingOptions(s, p) } : {}),
     ...(p.payer ? { payerNote: T.sandbox.payerNote[p.payer] } : {}),
     ...(p.paid && p.closed ? { payment: paymentText(db, p.payer ?? 'oms', p.paid, p.closed) } : {}),
     ...(p.closed ? { achievements: achievementNames(caseKey(s.meta.seed, p.id)) } : {}),

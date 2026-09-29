@@ -6,8 +6,10 @@ import {
   type Condition, type ContentDb, type Equipment, type Exam, type Finding, type Id, type Link, type P, type Risk, type RoomType, type Rule, type Score, type StaffRole, SYSTEMS,
   type Tactics, type Tip, type Treatment,
 } from '@/content/types';
+import { surgeriesOf } from '@/engine/med/plan';
 import { formatNumber } from '@/engine/med/text';
 import { T } from '@/i18n';
+import { lowerFirst } from '@/i18n/case';
 import { TX_GROUP_ORDER, txGroupOfClass } from './caseView';
 import { sourceLine } from './sources';
 
@@ -191,6 +193,18 @@ function whereLines(db: ContentDb, c: Condition, t: Tactics): string[] {
   for (const r of s.risks ?? []) if (r.setting !== s.default) lines.push(e.whereRisk(nameOf(db, r.id), e.setting[r.setting]));
   // операция и срок стационара (spec 2026-09-chapter-2, части 26 и 28), после осложнённой стадии — свой (28б)
   if (c.surgery) lines.push(e.whereSurgery(nameOf(db, c.surgery.tx), c.surgery.window, c.surgery.from === 'onset'));
+  // операция по скрытому параметру (часть 32б): «Без смещения — остеосинтез шейки бедра винтами.»
+  for (const b of c.surgery?.byParam ?? []) {
+    const when = whenText(b.when);
+    if (when) lines.push(e.whereIf(when, lowerFirst(nameOf(db, b.tx))));
+  }
+  // ещё места, которые не ошибка (часть 32б), — пока место не подняли красный флаг или риск
+  const flags = !!s.redFlag && (c.redFlags?.length ?? 0) > 0;
+  const risks = (s.risks?.length ?? 0) > 0;
+  for (const a of s.also ?? []) {
+    const when = whenText(a.when);
+    if (when) lines.push(e.whereAlso(when, a.settings.map(x => e.setting[x]).join(', '), flags, risks));
+  }
   // без показаний к экстренной операции — наблюдение в палате, не помогло — операция в срок (часть 30в)
   if (c.surgery?.observe !== undefined) lines.push(e.whereObserve(c.surgery.observe));
   if (c.stay) lines.push(e.whereStay(c.stay[0], c.stay[1]));
@@ -242,6 +256,11 @@ function conditionArticle(db: ContentDb, c: Condition): Article {
   if (t) {
     const rows = TACTICS.map(k => ({ label: e[k.label], refs: (t[k.key] ?? []).map(id => ref(db, id)) })).filter(r => r.refs.length > 0);
     if (c.surgery) rows.unshift({ label: e.surgeryRow, refs: [ref(db, c.surgery.tx)] });
+    // операция по скрытому параметру (часть 32б): «Операция, без смещения — остеосинтез винтами»
+    for (const [i, b] of (c.surgery?.byParam ?? []).entries()) {
+      const when = whenText(b.when);
+      if (when) rows.splice(1 + i, 0, { label: e.byParamRow(e.surgeryRow, when), refs: [ref(db, b.tx)] });
+    }
     // тактика по скрытому параметру (часть 32): «Первая линия, со смещением — …»
     for (const b of t.byParam ?? []) {
       const when = whenText(b.when);
@@ -341,12 +360,12 @@ function treatmentArticle(db: ContentDb, x: Treatment): Article {
   // операция (часть 28): что ею лечат и в какой срок, где делают и какая бригада
   const op = x.surgery;
   if (op) {
-    const treats = conditions.filter(c => c.surgery?.tx === x.id).map(c => ref(db, c.id, c.surgery!.window !== undefined ? e.opWindow(c.surgery!.window, c.surgery!.from === 'onset', c.surgery!.observe) : undefined)).sort(byTitle);
+    const treats = conditions.filter(c => surgeriesOf(db, c.id).includes(x.id)).map(c => ref(db, c.id, c.surgery!.window !== undefined ? e.opWindow(c.surgery!.window, c.surgery!.from === 'onset', c.surgery!.observe) : undefined)).sort(byTitle);
     if (treats.length > 0) blocks.push({ key: 'treats', title: e.opTreats, refs: treats });
     blocks.push({ key: 'where', title: e.whereDone, refs: [ref(db, op.room), ...op.equipment.map(id => ref(db, id))] });
     blocks.push({ key: 'team', title: e.opTeam, refs: op.team.map(id => ref(db, id)) });
     // исходы по стадии болезни (часть 28б): осложнения и смерть в стационаре
-    const stage = conditions.find(c => c.surgery?.tx === x.id && c.complication)?.complication?.name.ru;
+    const stage = conditions.find(c => surgeriesOf(db, c.id).includes(x.id) && c.complication)?.complication?.name.ru;
     const k = op.complicated;
     const out = [e.opComplications(pct(op.complications), k && pct(k.complications), stage)];
     if (op.death !== undefined) out.push(e.opDeaths(pct(op.death), k?.death !== undefined ? pct(k.death) : undefined, stage));

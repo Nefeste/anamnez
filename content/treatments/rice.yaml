@@ -9,6 +9,9 @@ effects:
   # игровая оценка
   - { on: cond.ankle_sprain, kind: cure, band: usually, days: [7, 21] }
   - { on: cond.wrist_contusion, kind: cure, band: usually, days: [7, 21] }
+  - { on: cond.foot_contusion, kind: cure, band: usually, days: [7, 21] }
+  - { on: cond.hip_contusion, kind: cure, band: usually, days: [7, 21] }
+  - { on: cond.shoulder_contusion, kind: cure, band: usually, days: [7, 21] }
 texts:
   hint:
     ru: "Первые 3–5 дней беречь конечность, первые сутки прикладывать холод по 15 минут каждый час, наложить эластичный бинт и держать ногу или руку повыше. Так лечат ушибы и растяжения связок."

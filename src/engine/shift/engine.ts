@@ -18,9 +18,9 @@ import { RNG_VERSION, Rng } from '../core/rng';
 import { observe } from '../med/course';
 import { complaintObservations, type ExamSkill, examFits, NORMAL_SKILL, runExam } from '../med/exams';
 import { generatePatient, typicalPatient } from '../med/generate';
-import { contextOf, posterior } from '../med/infer';
+import { contextOf, likelyParams, posterior } from '../med/infer';
 import { scaleTriage } from '../med/news2';
-import { choiceFor, evaluatePlan, primaryOf, recommendedSetting, selfLimits, settingFit, type Venue } from '../med/plan';
+import { alsoSettings, choiceFor, evaluatePlan, primaryOf, recommendedSetting, selfLimits, settingFit, surgeriesOf, type Venue } from '../med/plan';
 import { examCost, indicated, nextStep } from '../med/policy';
 import { buildReview, type ReviewData } from '../med/review';
 import { scoreCase } from '../med/score';
@@ -278,7 +278,7 @@ export function apply(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
       if (p && db.conditions[cmd.id]?.presenting && (p.departments ?? [s.meta.department]).includes(db.conditions[cmd.id].department)) {
         p.draft.diagnosis = cmd.id;
         // у нового диагноза операции здесь нет — в палату, а нет койки — скорая (часть 28)
-        if (p.draft.setting === 'surgery' && !canOperate(db, s, cmd.id)) p.draft.setting = freeBeds(db, s).length > 0 ? 'admit' : 'ambulance';
+        if (p.draft.setting === 'surgery' && !canOperate(db, s, cmd.id, p)) p.draft.setting = freeBeds(db, s).length > 0 ? 'admit' : 'ambulance';
       }
       return [];
     }
@@ -294,7 +294,7 @@ export function apply(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
       const p = current(s);
       // в свою палату — только если есть свободная койка (часть 26); в операционную — если у
       // диагноза есть операция, операционная её делает и после неё есть койка (часть 28)
-      const ok = cmd.setting === 'admit' ? freeBeds(db, s).length > 0 : cmd.setting === 'surgery' ? canOperate(db, s, p?.draft.diagnosis) : true;
+      const ok = cmd.setting === 'admit' ? freeBeds(db, s).length > 0 : cmd.setting === 'surgery' ? canOperate(db, s, p?.draft.diagnosis, p) : true;
       if (p && ok) p.draft.setting = cmd.setting;
       return [];
     }
@@ -731,7 +731,7 @@ function closePatient(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase
   // последнюю койку успели занять — направить в стационар другой больницы (часть 26); оперировать
   // этот диагноз здесь нечем или некому — вызвать скорую, как из амбулатории (часть 28)
   if (p.draft.setting === 'admit' && freeBeds(db, s).length === 0) p.draft.setting = 'ward';
-  if (p.draft.setting === 'surgery' && !canOperate(db, s, p.draft.diagnosis)) p.draft.setting = 'ambulance';
+  if (p.draft.setting === 'surgery' && !canOperate(db, s, p.draft.diagnosis, p)) p.draft.setting = 'ambulance';
   const closed = closeCase(db, s, p);
   if (p.by) closed.by = p.by;
   if (p.from) closed.from = p.from;
@@ -823,8 +823,8 @@ function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
   const candidates = candidatesOf(db, p.departments ?? s.meta.department);
   const beliefs = posterior(db, candidates, obs, contextOf(db, patient, obs));
   const confidence = beliefs.find(b => b.id === dx)?.p ?? 0;
-  // в операционную — операцией поставленного диагноза (часть 28)
-  const op = p.draft.setting === 'surgery' ? operationFor(db, dx) : undefined;
+  // в операционную — операцией поставленного диагноза (часть 28): по тому, что видно на снимке (часть 32б)
+  const op = p.draft.setting === 'surgery' ? operationFor(db, dx, likelyParams(db, dx, obs)) : undefined;
   const plan = { treatments: op ? [...new Set([...p.draft.treatments, op])].sort() : [...p.draft.treatments], setting: p.draft.setting };
   const ev = evaluatePlan(db, patient, plan, obs);
   const outcome = observe(db, patient, plan, ev, branch(s, `outcome:${p.id}`));
@@ -836,7 +836,7 @@ function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
     plan: ev, outcome, selfLimiting: selfLimits(db, primaryOf(patient)),
     redFlags: (cond.redFlags ?? []).filter(f => present.has(f)).map(f => ({ f, seen: obs.some(o => o.f === f && o.shown) })),
     // что было правильно выбрать здесь: со своей палатой — положить в неё, со своей операционной — оперировать
-    should: choiceFor(recommendedSetting(db, patient), venueOf(db, s, plan.setting === 'admit' || plan.setting === 'surgery', operationFor(db, truth) ?? null)),
+    should: choiceFor(recommendedSetting(db, patient), venueOf(db, s, plan.setting === 'admit' || plan.setting === 'surgery', operationFor(db, truth, primaryOf(patient).params) ?? null)),
   });
   const { notes, ...grades } = score;
   return { at: s.t, diagnosis: dx, verdict, confidence, plan, outcome, grades, notes, rationalCost: review.rational.cost, rationalMoney: review.rational.money };
@@ -965,7 +965,8 @@ function admit(db: ContentDb, s: ShiftState, p: ShiftPatient) {
   if (!bed) return;
   const plan = { treatments: [...closed.plan.treatments], setting: closed.plan.setting };
   const ev = evaluatePlan(db, p.patient, plan, observationsOf(p));
-  const op = plan.setting === 'surgery' ? operationFor(db, closed.diagnosis) : undefined;
+  // операция — та, что выбрали при закрытии (часть 32б: по снимку)
+  const op = plan.setting === 'surgery' ? (plan.treatments.find(tx => db.treatments[tx]?.kind === 'surgery') ?? operationOf(db, p, closed.diagnosis)) : undefined;
   p.stay = {
     ...bed, since: s.day, plan, planFrom: 0, replans: 0, ...wardCourse(db, p.patient, plan, ev, branch(s, `ward:${p.id}:0`)),
     ...(op ? { op: { tx: op, queued: s.t } } : {}),
@@ -1009,8 +1010,13 @@ export function orBlock(db: ContentDb, s: ShiftState, op?: Id): OrBlock | null {
 }
 
 /** Можно ли с этим диагнозом в операционную: у него есть операция, операционная её делает, после неё есть койка. */
-function canOperate(db: ContentDb, s: ShiftState, diagnosis: Id | undefined): boolean {
-  const op = diagnosis ? operationFor(db, diagnosis) : undefined;
+/** Операция диагноза для этого пациента (часть 32б): по самому вероятному значению скрытого параметра из того, что видно. */
+export function operationOf(db: ContentDb, p: ShiftPatient, diagnosis: Id): Id | undefined {
+  return operationFor(db, diagnosis, likelyParams(db, diagnosis, observationsOf(p)));
+}
+
+function canOperate(db: ContentDb, s: ShiftState, diagnosis: Id | undefined, p?: ShiftPatient): boolean {
+  const op = !diagnosis ? undefined : p ? operationOf(db, p, diagnosis) : operationFor(db, diagnosis);
   return op !== undefined && orBlock(db, s, op) === null && freeBeds(db, s).length > 0;
 }
 
@@ -1068,7 +1074,8 @@ function finishOperation(db: ContentDb, s: ShiftState, p: ShiftPatient | undefin
   // после операции — свой срок стационара от суток операции: в осложнённой стадии (часть 28б) и у
   // того, что лечат и без операции, — после рассечения спаек дольше, чем без него (часть 30в)
   const after = db.conditions[truth]?.surgery;
-  const own = after?.tx === op.tx ? after.stay : undefined;
+  // своя операция болезни — и по параметру (часть 32б: винты при переломе шейки бедра без смещения)
+  const own = after && surgeriesOf(db, truth).includes(op.tx) ? after.stay : undefined;
   const norm = complicated ? (db.conditions[truth]?.complication?.stay ?? own) : own;
   if (norm && stay.readyAfter !== undefined) stay.readyAfter = daysIn(stay, s.day) + branch(s, `surgery:${p.id}:stay`).range(norm[0], norm[1]);
   if (complicated) {
@@ -1147,7 +1154,7 @@ function nightOperations(db: ContentDb, s: ShiftState) {
 function operate(db: ContentDb, s: ShiftState, id: string): Notice[] {
   const p = s.patients[id];
   if (!s.dayOpen || !p || p.status !== 'admitted' || !p.stay || p.stay.op || !p.closed) return [];
-  const op = operationFor(db, p.closed.diagnosis);
+  const op = operationOf(db, p, p.closed.diagnosis);
   if (!op || orBlock(db, s, op) !== null) return [];
   const stay = p.stay;
   const from = daysIn(stay, s.day);
@@ -1218,7 +1225,7 @@ function closeStay(db: ContentDb, s: ShiftState, p: ShiftPatient, end: StayEnd, 
   p.status = 'done';
   if (s.economy) {
     const chosen = stay.plan.setting === 'surgery' ? 'surgery' : 'admit';
-    const close: WardClose = settingFit(recommendedSetting(db, p.patient), chosen) === 'over' ? 'unindicated' : end === 'discharged' || end === 'died' ? 'full' : 'interrupted';
+    const close: WardClose = settingFit(recommendedSetting(db, p.patient), chosen, alsoSettings(db, p.patient)) === 'over' ? 'unindicated' : end === 'discharged' || end === 'died' ? 'full' : 'interrupted';
     const ledger = ledgerOf(s);
     ledger.ward ??= { cases: 0, income: 0, interrupted: 0, unindicated: 0 };
     ledger.ward.cases++;

@@ -8,7 +8,7 @@ import type { ContentDb, Id } from '../../content/types';
 import { log2 } from '../core/math';
 import { P_ONE, Rng } from '../core/rng';
 import type { StaffMember } from '../hospital/staff';
-import { primaryOf, whenHolds } from '../med/plan';
+import { primaryOf, surgeryFor, whenHolds } from '../med/plan';
 import type { Patient } from '../med/types';
 
 /** Операция лежащего: какая, когда решили, где и когда шла, чем кончилась. */
@@ -32,8 +32,11 @@ export interface Operation {
 /** На сколько суток дольше стационар после осложнения — игровая оценка: сроков источники не дают. */
 export const COMPLICATION_DAYS: [number, number] = [2, 4];
 
-/** Операция, которой лечат это состояние; нет — не оперируют. */
-export const operationFor = (db: ContentDb, condition: Id): Id | undefined => db.conditions[condition]?.surgery?.tx;
+/**
+ * Операция, которой лечат это состояние; нет — не оперируют. `params` — скрытые параметры (часть
+ * 32б): у перелома шейки бедра со смещением — эндопротез, без смещения — винты.
+ */
+export const operationFor = (db: ContentDb, condition: Id, params?: Record<string, string>): Id | undefined => surgeryFor(db, condition, params);
 
 /**
  * Доля осложнений после операции у этого хирурга, 1/10 000: запись операции — своя для

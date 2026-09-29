@@ -10,7 +10,10 @@ export const BRANDS = [
   'вентолин', 'пульмикорт', 'симбикорт', 'конкор', 'престариум', 'лозап', 'валидол', 'корвалол',
 ];
 
+// Начало слова — не просмотром назад: с ним сборка базы на треть дольше (каждый файл проверяется целиком).
+const BRAND_RE = new RegExp(`(?:^|[^\\p{L}])(${BRANDS.join('|')})`, 'iu');
+
 /** Первое торговое название в тексте или null. */
 export function findBrand(text: string): string | null {
-  return new RegExp(`(?<!\\p{L})(${BRANDS.join('|')})`, 'iu').exec(text)?.[0] ?? null;
+  return BRAND_RE.exec(text)?.[1] ?? null;
 }

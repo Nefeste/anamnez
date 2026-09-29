@@ -1,0 +1,97 @@
+id: cond.clavicle_fracture
+name: { ru: "Перелом ключицы" }
+icd10: S42.0
+department: dept.trauma
+system: bones
+kind: injury
+severity: moderate
+epidemiology:
+  # переломы ключицы — около 2,6–4 % всех переломов у взрослых, средняя треть — до 69 % (853_1,
+  # раздел 1.3); доля среди пришедших с травмой — игровая оценка
+  prevalence: uncommon
+  # самая большая группа — мужчины 15–24 лет, 21 % переломов ключицы (Kihlström 2017); средний
+  # возраст — 43 года (Herteleer 2018); распределение по возрасту — игровая оценка
+  age: { min: 18, peak: [18, 45] }
+  # в средней трети мужчин — 74 % (Kihlström 2017, табл. 2: 1 168 из 1 584)
+  sex: { m: 1, f: 0.35 }
+params:
+  # средняя треть: без смещения и с угловым (2A) — 540, со смещением (2B) — 1 044 из 1 584
+  # (Kihlström 2017, табл. 2): 34 и 66 %
+  displacement: { none: 34, displaced: 66 }
+  # левая — 61 % (Postacchini 2002)
+  side: { left: 61, right: 39 }
+course:
+  # иммобилизация — 3–6 недель (853_1, раздел 4)
+  stages:
+    - { id: acute, days: [0, 42] }
+  presentation: [0, 2]
+  # без иммобилизации — боль и смещение отломков: на какой день хуже — игровая оценка
+  untreated: { band: sometimes, days: [3, 14] }
+  stay: [1, 2]
+# операция — при смещении больше ширины кости (853_1, прил. Б1) и по абсолютным показаниям (раздел
+# 3.2); срока операции нет; стационар после операции — 1–3 суток, игровая оценка
+surgery: { tx: tx.clavicle_plate, stay: [1, 3] }
+findings:
+  # боль, отёк, деформация, смещение на ощупь, симптом «клавиши», крепитация, ограничение движений,
+  # натяжение кожи при значительном смещении (853_1, раздел 1.6); частот нет — полосы игровые
+  - f: sym.shoulder_pain
+    band: { pct: 100 }
+    attrs: { side: $side }
+    note: "с этой жалобой приходят все: без неё травмы нет — жалоба травмы, а не признак с частотой"
+  - { f: sign.clavicle_tenderness, band: always }
+  - { f: sign.shoulder_motion_pain, band: usually }
+  - { f: sign.clavicle_deformity, band: usually, when: { displacement: [displaced] } }
+  - { f: sign.clavicle_deformity, band: rarely, when: { displacement: [none] } }
+  - { f: sign.clavicle_crepitus, band: often, when: { displacement: [displaced] } }
+  - { f: sign.clavicle_skin_tenting, band: rarely, when: { displacement: [displaced] } }
+  - { f: sym.immediate_dysfunction, band: usually }
+  - f: img.xr_clavicle_fracture
+    band: { pct: 100 }
+    attrs: { side: $side }
+    note: "перелом есть у каждого; увидит ли его снимок — чувствительность обследования (игровая оценка)"
+  - f: img.xr_clavicle_displaced
+    band: { pct: 100 }
+    when: { displacement: [displaced] }
+    note: "смещение больше ширины кости есть у каждого со смещённым переломом; увидит ли его снимок — чувствительность обследования"
+confirm: [exam.xray_clavicle]
+redFlags: [sign.clavicle_skin_tenting]
+treatment:
+  # без смещения — косыночная повязка или Дезо (853_1, раздел 3.1); обезболивание — мультимодальное:
+  # НПВП, парацетамол (УУР A, УДД 2)
+  firstLine: [tx.arm_sling]
+  supportive: [tx.ibuprofen, tx.paracetamol]
+  plan: [tx.arm_sling, tx.ibuprofen]
+  byParam:
+    # операция при переломе без смещения — больше нужного
+    - when: { displacement: [none] }
+      acceptable: [tx.clavicle_plate]
+    # со смещением — показания к операции (прил. Б1), но изолированный — относительное показание
+    # (раздел 3.2): повязка не ошибка, срастается у большинства (несращение — 10–23 %)
+    - when: { displacement: [displaced] }
+      acceptable: [tx.arm_sling]
+  # без смещения — амбулаторно; со смещением — операция, но повязка дома тоже можно; угроза
+  # перфорации кожи — операция и экстренная госпитализация (853_1, разделы 3.2 и 6)
+  setting:
+    default: home
+    param: { name: displacement, map: { none: home, displaced: surgery } }
+    redFlag: surgery
+    also:
+      - { when: { displacement: [displaced] }, settings: [home] }
+texts:
+  summary:
+    ru: >-
+      Перелом ключицы, чаще в средней трети, — после падения на плечо, обычно у молодых мужчин.
+      Боль, отёк, деформация над ключицей, отломок пружинит под пальцами; рукой двигать больно.
+      Без смещения — косыночная повязка на 3–6 недель. Смещение больше ширины кости — показание к
+      операции пластиной, но изолированный перелом срастается и в повязке; кожа натянута над
+      отломком — оперируют экстренно.
+pearls:
+  - ru: "После падения на плечо ощупайте ключицу по всей длине и посмотрите кожу: натянутая бледная кожа над отломком — угроза открытого перелома."
+  - ru: "Восьмиобразная повязка не лучше косынки, а носить её тяжелее."
+simplified: "Переломов наружного и внутреннего концов ключицы, открытых переломов, повреждения сосудов и нервов в игре нет. Оперирует хирург — травматолога-ортопеда в штате нет."
+sources:
+  - { kind: guideline, title: "Переломы ключицы и лопатки", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/853_1", note: "ID 853_1, опубликованы 18.12.2024, применяются; сверено с рубрикатором 29.09.2026; раздел 1.3: 2,6–4 % всех переломов у взрослых, средняя треть — до 69 %; раздел 1.6: клиника; раздел 2.4: снимок в переднезадней проекции всем; раздел 3.1: без смещения — косыночная повязка, Дезо; раздел 3.2: показания к операции, изолированный перелом со смещением — относительное показание, пластина — УУР A, УДД 1, несращение без операции 10–23 %, после — 1–2 %; раздел 6: экстренная госпитализация при угрозе перфорации кожи; прил. Б1: смещение больше ширины диафиза — показания к хирургическому лечению; частоты признаков не даны — полосы игровые" }
+  - { kind: paper, title: "Kihlström C, Möller M, Lönn K, Wolf O. Clavicle fractures: epidemiology, classification and treatment of 2 422 fractures in the Swedish Fracture Register; an observational study. BMC Musculoskelet Disord 2017;18(1):82", url: "https://pubmed.ncbi.nlm.nih.gov/28202071/", note: "PMID 28202071, PMC5312264, сверено 29.09.2026: 2 422 перелома; мужчин — 68 %, самая большая группа — мужчины 15–24 лет (21 %); средняя треть — 1 584 (65,4 %), из них без смещения и с угловым (2A) — 540, со смещением (2B) — 1 044, мужчин — 1 168; оперированы в первые 30 дней — 17 %, пластиной — 94 %" }
+  - { kind: paper, title: "Postacchini F, Gumina S, De Santis P, Albo F. Epidemiology of clavicle fractures. J Shoulder Elbow Surg 2002;11(5):452–456", url: "https://pubmed.ncbi.nlm.nih.gov/12378163/", note: "PMID 12378163, сверено 29.09.2026: 535 переломов; мужчин — 68 %, левая сторона — 61 %; средняя треть — 81 %, со смещением — 48 % из них" }
+  - { kind: paper, title: "Herteleer M, Winckelmans T, Hoekstra H, Nijs S. Epidemiology of clavicle fractures in a level 1 trauma center in Belgium. Eur J Trauma Emerg Surg 2018;44(5):717–726", url: "https://pubmed.ncbi.nlm.nih.gov/29027569/", note: "PMID 29027569, сверено 29.09.2026: 667 больных; средний возраст — 43 ± 17,7 года; чаще всего — падение с велосипеда, 35,3 %" }
+review: draft
