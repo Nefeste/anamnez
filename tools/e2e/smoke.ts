@@ -608,6 +608,17 @@ try {
     await page.getByTestId(id).screenshot({ path: join(OUT, `06-${id}.png`) });
   }
 
+  // П7: рентген костей кодом (spec 2026-09-chapter-2, часть 31): у каждого вида — норма и переломы
+  await page.goto(`${base}/spikes/bones`);
+  await page.waitForTimeout(2500);
+  const bones = await drawn('[data-testid^="bone-"] canvas');
+  check(bones.length === 16 && bones.every(Boolean), `П7: рентген костей нарисован — ${bones.filter(Boolean).length} из 16 (смотреть 06-bones-*.png)`);
+  for (const view of ['wrist', 'ankle', 'foot', 'hip', 'clavicle', 'ribs']) {
+    await page.getByTestId(`bones-${view}`).scrollIntoViewIfNeeded();
+    await page.waitForTimeout(300);
+    await page.getByTestId(`bones-${view}`).screenshot({ path: join(OUT, `06-bones-${view}.png`) });
+  }
+
   // П6: сохранение с копией и откат
   await page.goto(`${base}/spikes/save`);
   await page.getByTestId('save-save').click();
@@ -1316,6 +1327,18 @@ try {
   await page.goto(`${base}/encyclopedia/article/score.news2`);
   await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
   check((await visibleText(page, 'enc-article-title')).startsWith('NEWS2'), `энциклопедия, шкала: ${await visibleText(page, 'enc-article-title')}`);
+  // травма (0.0.54): правило решения — в «Шкалах и правилах»; у перелома — тактика по смещению
+  await page.goto(`${base}/encyclopedia/article/rule.ottawa_ankle`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const snapNeeded = await page.locator('text=Снимок нужен').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'Оттавские правила для голеностопа' && snapNeeded,
+    `энциклопедия, правило: ${await visibleText(page, 'enc-article-title')} — «снимок нужен»`);
+  await page.goto(`${base}/encyclopedia/article/cond.distal_radius_fracture`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const byShift = await page.locator('text=Первая линия, при смещении').first().isVisible().catch(() => false);
+  const unstableOp = await page.locator('text=При нестабильном переломе — операция.').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'Перелом дистального отдела лучевой кости' && byShift && unstableOp,
+    `энциклопедия, перелом лучевой: ${await visibleText(page, 'enc-article-title')} — репозиция при смещении, нестабильный — операция`);
 
   // кампания: карьера 1 → глава 1 — письма и задания; письмо наставника; смена открывается;
   // «Продолжить» в меню — карьера (spec 2026-09-campaign)

@@ -1,0 +1,25 @@
+id: tx.cast_splint
+name: { ru: "Гипсовая лонгета" }
+kind: procedure
+class: immobilization.cast
+# гипс и работа, ₽ — игровое число
+cost: 600
+effects:
+  # перелом без смещения срастается в лонгете за 5–7 недель (846_1, раздел 3.1); вторичное смещение
+  # потребовало операции у 9,1 % леченных без операции (Rundgren 2020) — доля для всех без операции
+  - { on: cond.distal_radius_fracture, kind: cure, band: { pct: 90.9 }, days: [35, 49], when: { displacement: [none] } }
+  # стабильный перелом лодыжек — консервативно, иммобилизация до 6–8 недель (855_1, раздел 3.1);
+  # доля неудач консервативного лечения в тексте не дана — игровая оценка
+  - { on: cond.ankle_fracture, kind: cure, band: always, days: [42, 56], when: { stability: [stable] } }
+  # при ушибе и растяжении — короткая иммобилизация облегчает, но не нужна всем (832_2, раздел 4)
+  - { on: cond.ankle_sprain, kind: relieve, band: often, days: [1, 5] }
+  - { on: cond.wrist_contusion, kind: relieve, band: often, days: [1, 5] }
+texts:
+  hint:
+    ru: "Гипсовая повязка на половину окружности конечности, закреплённая бинтом: держит отломки на месте, пока кость срастается. Перелом лучевой кости без смещения — 5–7 недель, стабильный перелом лодыжки — 6–8 недель."
+sources:
+  - { kind: guideline, title: "Переломы дистального отдела костей предплечья", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/846_1", note: "ID 846_1, опубликованы 18.12.2024, применяются; сверено с рубрикатором 29.09.2026; раздел 3.1: при переломе без смещения — консервативное лечение, чаще всего гипсовая лонгета, около 5–7 недель" }
+  - { kind: guideline, title: "Переломы лодыжек", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/855_1", note: "ID 855_1, опубликованы 19.12.2024, применяются; сверено с рубрикатором 29.09.2026; раздел 3.1: консервативно — изолированный перелом лодыжки без смещения, стабильный перелом; иммобилизация обычно до 6–8 недель после травмы" }
+  - { kind: guideline, title: "Закрытые повреждения мягких тканей конечностей", org: "Минздрав РФ", year: 2026, url: "https://cr.minzdrav.gov.ru/view-cr/832_2", note: "ID 832_2, опубликованы 13.01.2026, применяются; сверено с рубрикатором 29.09.2026; раздел 4: при ушибе — иммобилизация на 3–5 дней; давящая повязка при необходимости заменяется на гипсовую лонгету или ортез" }
+  - { kind: paper, title: "Rundgren J, Bojan A, Mellstrand Navarro C, Enocson A. Epidemiology, classification, treatment and mortality of distal radius fractures in adults: an observational study of 23,394 fractures from the national Swedish fracture register. BMC Musculoskelet Disord 2020;21:88", url: "https://pubmed.ncbi.nlm.nih.gov/32035488/", note: "PMID 32035488, PMC7007648, сверено 29.09.2026: без операции лечили 74 %; вторичная операция — у 9,1 % из них, в среднем через 11,2 дня" }
+review: draft

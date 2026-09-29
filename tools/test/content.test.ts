@@ -214,12 +214,35 @@ describe('каталог больницы', () => {
   });
 
   test('помещение принимает отделение без болезней; у болезни, с которой приходят, меньше трёх признаков (часть 30)', () => {
-    const empty = broken(d => edit(d, 'hospital/rooms/emergency.yaml', 'admits: [dept.surgery]', 'admits: [dept.cardiology]'));
+    const empty = broken(d => edit(d, 'hospital/rooms/emergency.yaml', 'admits: [dept.surgery, dept.trauma]', 'admits: [dept.surgery, dept.cardiology]'));
     expect(empty.some(e => e.includes('room.emergency: принимает dept.cardiology, а болезней этого отделения в базе нет'))).toBe(true);
     // хроническому фону — камням в пузыре — двух признаков хватает, с ними не приходят
     const few = broken(d => edit(d, 'conditions/surgery/cholelithiasis.yaml', 'presenting: false\n', ''));
     expect(few.some(e => e.includes('cond.cholelithiasis') && e.includes('меньше трёх признаков'))).toBe(true);
     expect(buildDb().db.conditions['cond.cholelithiasis'].findings).toHaveLength(2);
+  });
+
+  test('тактика по параметру (часть 32): условие по объявленному параметру, лечения есть и не повторяются, назначение — из показанного, без операции, причину не «не показано»', () => {
+    const R = 'conditions/trauma/distal_radius_fracture.yaml';
+    const has = (errors: string[], text: string) => errors.some(e => e.includes(text));
+    expect(has(broken(d => edit(d, R, '    - when: { displacement: [displaced] }\n', '    - when: { shift: [displaced] }\n')), 'cond.distal_radius_fracture: тактика по параметру №2 — условие по необъявленному параметру shift')).toBe(true);
+    expect(has(broken(d => edit(d, R, '    - when: { displacement: [displaced] }\n', '    - when: { displacement: [bent] }\n')), 'тактика по параметру №2 — у параметра displacement нет значения bent')).toBe(true);
+    expect(has(broken(d => edit(d, R, '      firstLine: [tx.closed_reduction]\n', '      firstLine: [tx.traction]\n')), 'тактика по параметру №2 — лечение tx.traction не найдено')).toBe(true);
+    expect(has(broken(d => edit(d, R, '      acceptable: [tx.radius_plate]\n      supportive: [tx.cast_splint]\n', '      acceptable: [tx.radius_plate, tx.cast_splint]\n      supportive: [tx.cast_splint]\n')), 'тактика по параметру №2 — лечение tx.cast_splint стоит в двух списках')).toBe(true);
+    expect(has(broken(d => edit(d, R, '      plan: [tx.closed_reduction, tx.ibuprofen]\n', '      plan: [tx.closed_reduction, tx.rice]\n')), 'тактика по параметру №2 — в типичном назначении tx.rice — не из первой линии')).toBe(true);
+    expect(has(broken(d => edit(d, R, '      plan: [tx.closed_reduction, tx.ibuprofen]\n', '      plan: [tx.radius_plate, tx.ibuprofen]\n')), 'тактика по параметру №2 — операцию tx.radius_plate выбирают «В операционную»')).toBe(true);
+    expect(has(broken(d => edit(d, R, '    - when: { displacement: [none] }\n      acceptable: [tx.radius_plate]\n', '    - when: { displacement: [none] }\n      acceptable: [tx.radius_plate]\n      notIndicated: [tx.cast_splint]\n')), 'тактика по параметру №1 — tx.cast_splint при этих значениях действует на причину')).toBe(true);
+    // срока операции нет — тогда нет и срока от начала болезни
+    expect(has(broken(d => edit(d, R, 'surgery: { tx: tx.radius_plate, stay: [1, 3] }', 'surgery: { tx: tx.radius_plate, from: onset, stay: [1, 3] }')), 'срок от начала болезни и осложнённая стадия — только со сроком операции (window)')).toBe(true);
+  });
+
+  test('правило решения (часть 32): жалоба с текстом жалобы, признаки, болезни и обследование, которое проверяет их признаки', () => {
+    const O = 'rules/ottawa_ankle.yaml';
+    const has = (errors: string[], text: string) => errors.some(e => e.includes(text));
+    expect(has(broken(d => edit(d, O, 'complaints: [sym.ankle_pain]', 'complaints: [sign.ankle_swelling]')), 'rule.ottawa_ankle: жалоба sign.ankle_swelling не найдена или без текста жалобы')).toBe(true);
+    expect(has(broken(d => edit(d, O, 'any: [sign.malleolus_tenderness, sign.no_weight_bearing]', 'any: [sign.malleolus_pain]')), 'rule.ottawa_ankle: признак sign.malleolus_pain не найден')).toBe(true);
+    expect(has(broken(d => edit(d, O, 'about: [cond.ankle_fracture, cond.ankle_sprain]', 'about: [cond.ankle_break]')), 'rule.ottawa_ankle: болезнь cond.ankle_break не найдена')).toBe(true);
+    expect(has(broken(d => edit(d, O, 'exams: [exam.xray_ankle]', 'exams: [exam.xray_wrist]')), 'rule.ottawa_ankle: exam.xray_wrist не проверяет ни одного признака cond.ankle_fracture, cond.ankle_sprain')).toBe(true);
   });
 
   test('смотровая приёмного без мест для скорой; шкала с щелью между полосами или с чужим признаком', () => {
@@ -325,8 +348,8 @@ describe('достижения', () => {
     expect(room.some(e => e.includes('ach.lab: помещение room.laboratory не найдено'))).toBe(true);
     const chapter = broken(d => edit(d, 'achievements/district.yaml', 'chapter: chapter.district', 'chapter: chapter.city'));
     expect(chapter.some(e => e.includes('ach.district: глава chapter.city не найдена'))).toBe(true);
-    const dept = broken(d => edit(d, 'achievements/therapy.yaml', 'department: dept.therapy', 'department: dept.trauma'));
-    expect(dept.some(e => e.includes('ach.therapy: в отделении dept.trauma нет болезней'))).toBe(true);
+    const dept = broken(d => edit(d, 'achievements/therapy.yaml', 'department: dept.therapy', 'department: dept.cardiology'));
+    expect(dept.some(e => e.includes('ach.therapy: в отделении dept.cardiology нет болезней'))).toBe(true);
     const order = broken(d => edit(d, 'achievements/month.yaml', 'order: 5', 'order: 4'));
     expect(order.some(e => e.includes('порядок 4 уже у другого достижения'))).toBe(true);
     const kind = broken(d => edit(d, 'achievements/month.yaml', 'kind: days', 'kind: streakDays'));

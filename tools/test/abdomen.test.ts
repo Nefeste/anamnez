@@ -23,6 +23,8 @@ import { memoryStore, saveSlot } from '../../src/state/saves';
 import { forgetShift, loadShift, SANDBOX_SLOT, setStore, shiftCaseView } from '../../src/state/session';
 
 const BOTH = ['dept.therapy', 'dept.surgery'];
+/** смотровая приёмного принимает и хирургию, и травму (часть 32) */
+const ED = [...BOTH, 'dept.trauma'];
 const SURGICAL = ['cond.adhesive_sbo', 'cond.biliary_colic', 'cond.cholecystitis', 'cond.diverticulitis', 'cond.pancreatitis', 'cond.paraproctitis', 'cond.perforated_ulcer', 'cond.renal_colic', 'cond.strangulated_hernia', 'cond.ulcer_bleeding'];
 const OP = 'tx.cholecystectomy';
 
@@ -93,20 +95,20 @@ describe('отделения больницы: с приёмным — и хир
     expect(departmentsOf(db, plain)).toEqual(['dept.therapy']);
 
     const { s, nurse } = withEmergency();
-    expect(departmentsOf(db, s)).toEqual(BOTH);
+    expect(departmentsOf(db, s)).toEqual(ED);
     expect(candidatesOf(db, BOTH)).toEqual(expect.arrayContaining(SURGICAL));
     expect(candidatesOf(db, 'dept.therapy').some(id => SURGICAL.includes(id))).toBe(false);
     apply(db, s, { kind: 'nextDay' });
     const today = Object.values(s.patients);
     expect(today.length).toBeGreaterThan(0);
-    for (const p of today) expect(p.departments).toEqual(BOTH);
+    for (const p of today) expect(p.departments).toEqual(ED);
     // вечером медсестру вернули в кабинет ЭКГ — смотровая не работает: завтра одна терапия, а
     // принятые сегодня помнят хирургию — их разбор по тем же болезням
     apply(db, s, { kind: 'closeDay' });
     apply(db, s, { kind: 'assign', id: nurse, room: 'r7' });
     expect(departmentsOf(db, s)).toEqual(['dept.therapy']);
     apply(db, s, { kind: 'nextDay' });
-    for (const p of today) expect(p.departments).toEqual(BOTH);
+    for (const p of today) expect(p.departments).toEqual(ED);
     const tomorrow = Object.values(s.patients).filter(p => !today.includes(p) && !p.returnOf);
     expect(tomorrow.length).toBeGreaterThan(0);
     for (const p of tomorrow) expect(p.departments).toBeUndefined();
@@ -247,7 +249,7 @@ describe('скорая везёт человека, а не болезнь', () 
     }
     expect(brought.length).toBeGreaterThan(20);
     for (const p of brought) {
-      expect(p.departments).toEqual(BOTH);
+      expect(p.departments).toEqual(ED);
       expect(p.payer).toBe('oms');
     }
     expect(brought.some(p => SURGICAL.includes(primary(p.patient)))).toBe(true);
@@ -406,6 +408,6 @@ describe('экраны', () => {
     const record = { key: 'k', seed: 1, department: 'dept.therapy', day: 1, patient: p };
     const bad = { ...record, key: 'b', patient: { ...p, departments: 'dept.surgery' } };
     const out = sanitizeProfile({ archive: [record, bad] }).archive;
-    expect(out.map(r => r.patient.departments)).toEqual([BOTH, undefined]);
+    expect(out.map(r => r.patient.departments)).toEqual([ED, undefined]);
   });
 });

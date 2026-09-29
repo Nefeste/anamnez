@@ -1,7 +1,7 @@
 // План лечения и его проверка (`docs/04-medical-model.md` §8). План оценивается по правде:
 // роль каждого назначения при настоящем основном заболевании, где на самом деле надо
 // лечить и какие противопоказания нарушены — и знал ли о них врач.
-import type { ContentDb, Effect, Id, Setting } from '../../content/types';
+import type { ContentDb, Effect, Id, Setting, Tactics } from '../../content/types';
 import { knownFacts } from './infer';
 import type { ActiveCondition, Observation, Patient } from './types';
 
@@ -116,12 +116,31 @@ export function untreatedOf(db: ContentDb, condition: Pick<ActiveCondition, 'id'
   return u && whenHolds(u.when, condition.params) ? u : undefined;
 }
 
-export function txRole(db: ContentDb, condId: Id, tx: Id): TxRole {
+/**
+ * Роль назначения при состоянии. `params` — скрытые параметры болезни у этого больного (часть 32):
+ * тактика по ним сильнее общей — у перелома со смещением репозиция — первая линия.
+ */
+export function txRole(db: ContentDb, condId: Id, tx: Id, params?: Record<string, string>): TxRole {
+  const t = db.conditions[condId]?.treatment;
+  const x = params && t?.byParam?.find(b => whenHolds(b.when, params) && ROLES.some(role => b[role].includes(tx)));
+  if (x) return ROLES.find(role => x[role].includes(tx))!;
   // своя операция болезни — первая линия (часть 28); в тактике её нет: до приезда скорой её не сделать
   if (db.conditions[condId]?.surgery?.tx === tx) return 'firstLine';
-  const t = db.conditions[condId]?.treatment;
   if (!t) return 'notIndicated';
   return ROLES.find(role => t[role].includes(tx)) ?? 'notIndicated';
+}
+
+/**
+ * Тактика при таких значениях скрытых параметров (часть 32): роли из подошедших записей `byParam`
+ * поверх общих списков; типичное назначение — их или общее. Без параметров — общая тактика.
+ */
+export function tacticsFor(t: Tactics, params: Record<string, string> = {}): Tactics {
+  const over = (t.byParam ?? []).filter(b => whenHolds(b.when, params));
+  if (over.length === 0) return t;
+  const named = new Set(over.flatMap(b => ROLES.flatMap(role => b[role])));
+  const lists = Object.fromEntries(ROLES.map(role => [role, [...new Set([...over.flatMap(b => b[role]), ...t[role].filter(id => !named.has(id))])]])) as Record<TxRole, Id[]>;
+  const plan = over.find(b => b.plan)?.plan ?? t.plan?.filter(id => lists.firstLine.includes(id) || lists.acceptable.includes(id) || lists.supportive.includes(id));
+  return { ...lists, setting: t.setting, ...(plan && plan.length > 0 ? { plan } : {}) };
 }
 
 /** Где на самом деле надо лечить: место по умолчанию, по тяжести случая, при красном флаге. */
@@ -173,17 +192,20 @@ export function evaluatePlan(db: ContentDb, patient: Patient, plan: Plan, observ
     }
   }
   const effective = curesOf(db, primaryOf(patient), plan.treatments).length > 0;
-  const tactics = db.conditions[primary].treatment;
+  const params = primaryOf(patient).params;
+  const base = db.conditions[primary].treatment;
+  const tactics = base && tacticsFor(base, params);
   const firstLineBlocked = (tactics?.firstLine ?? [])
     .some(tx => db.treatments[tx]?.contraindications.some(k => knownIds.has(k.id)));
   return {
     primary,
-    roles: plan.treatments.map(tx => ({ tx, role: txRole(db, primary, tx) })),
+    roles: plan.treatments.map(tx => ({ tx, role: txRole(db, primary, tx, params) })),
     setting: { chosen: plan.setting, recommended: recommendedSetting(db, patient) },
     violations,
     effective,
     unaskedRisk: unaskedRisk.sort(),
     firstLineBlocked,
-    preHospital: tactics && tactics.setting.default !== 'home' ? tactics.firstLine : [],
+    // до приезда скорой операцию не сделать
+    preHospital: tactics && tactics.setting.default !== 'home' ? tactics.firstLine.filter(tx => db.treatments[tx]?.kind !== 'surgery') : [],
   };
 }

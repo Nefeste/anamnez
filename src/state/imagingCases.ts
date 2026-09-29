@@ -4,6 +4,7 @@ import { T } from '@/i18n';
 import type { HeadFindings } from '@/render/ct/geometry';
 import type { UsFindings } from '@/render/us/geometry';
 import type { AbdomenFindings } from '@/render/xray/abdomenGeometry';
+import type { BoneFindings } from '@/render/xray/boneGeometry';
 
 export interface HeadCase {
   key: string;
@@ -62,4 +63,33 @@ export const ABDOMEN_CASES: AbdomenCase[] = [
   { key: 'abd-normal', findings: {}, seed: 1, label: a.normal },
   { key: 'abd-free-gas', findings: { freeGas: 0.8 }, seed: 2, label: a.freeGas },
   { key: 'abd-levels', findings: { levels: 0.8 }, seed: 3, label: a.levels },
+];
+
+export interface BoneCase {
+  key: string;
+  findings: BoneFindings;
+  seed: number;
+  label: string;
+}
+
+const b = T.spikes.bones;
+
+/** Рентген костей (часть 31): у каждого вида — норма и переломы без смещения и со смещением. */
+export const BONE_CASES: BoneCase[] = [
+  { key: 'bone-wrist', findings: { view: 'wrist' }, seed: 1, label: b.wrist },
+  { key: 'bone-wrist-line', findings: { view: 'wrist', fractures: [{ site: 'radius' }] }, seed: 2, label: b.wristLine },
+  { key: 'bone-wrist-displaced', findings: { view: 'wrist', fractures: [{ site: 'radius', displacement: 0.8 }, { site: 'ulnar_styloid' }] }, seed: 3, label: b.wristDisplaced },
+  { key: 'bone-ankle', findings: { view: 'ankle' }, seed: 4, label: b.ankle },
+  { key: 'bone-ankle-fibula', findings: { view: 'ankle', fractures: [{ site: 'fibula' }] }, seed: 5, label: b.ankleFibula },
+  { key: 'bone-ankle-bimalleolar', findings: { view: 'ankle', fractures: [{ site: 'fibula', displacement: 0.9 }, { site: 'medial_malleolus', displacement: 0.9 }] }, seed: 6, label: b.ankleBimalleolar },
+  { key: 'bone-foot', findings: { view: 'foot' }, seed: 7, label: b.foot },
+  { key: 'bone-foot-mt5', findings: { view: 'foot', fractures: [{ site: 'mt5', displacement: 0.6 }] }, seed: 8, label: b.footMt5 },
+  { key: 'bone-foot-mt3', findings: { view: 'foot', fractures: [{ site: 'mt3', displacement: 0.9 }] }, seed: 9, label: b.footMt3 },
+  { key: 'bone-hip', findings: { view: 'hip' }, seed: 10, label: b.hip },
+  { key: 'bone-hip-line', findings: { view: 'hip', fractures: [{ site: 'femoral_neck' }] }, seed: 11, label: b.hipLine },
+  { key: 'bone-hip-displaced', findings: { view: 'hip', fractures: [{ site: 'femoral_neck', displacement: 0.9 }] }, seed: 12, label: b.hipDisplaced },
+  { key: 'bone-clavicle', findings: { view: 'clavicle' }, seed: 13, label: b.clavicle },
+  { key: 'bone-clavicle-displaced', findings: { view: 'clavicle', fractures: [{ site: 'clavicle', displacement: 0.9 }] }, seed: 14, label: b.clavicleDisplaced },
+  { key: 'bone-ribs', findings: { view: 'ribs' }, seed: 15, label: b.ribs },
+  { key: 'bone-ribs-broken', findings: { view: 'ribs', fractures: [{ site: 'rib', rib: 6, displacement: 0.9 }, { site: 'rib', rib: 7 }] }, seed: 16, label: b.ribsBroken },
 ];

@@ -34,6 +34,7 @@ export default function SettingsScreen() {
     { href: '/spikes/patient', title: t.patient, hint: t.patientHint, id: 'patient' },
     { href: '/spikes/imaging', title: t.imaging, hint: t.imagingHint, id: 'imaging' },
     { href: '/spikes/save', title: t.save, hint: t.saveHint, id: 'save' },
+    { href: '/spikes/bones', title: t.bones, hint: t.bonesHint, id: 'bones' },
   ];
   const setVolume = (k: Level) => {
     updateSettings({ sound: VOLUMES[Number(k)] });

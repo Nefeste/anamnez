@@ -16,7 +16,7 @@ export const encyclopedia = {
     exams: 'Обследования',
     treatments: 'Лечение',
     risks: 'Факторы риска',
-    scores: 'Шкалы',
+    scores: 'Шкалы и правила',
     hospital: 'Больница',
     tips: 'Подсказки',
   },
@@ -57,6 +57,12 @@ export const encyclopedia = {
     'form:abscess_small': 'при абсцессе до 3\u00a0см',
     'form:abscess_large': 'при абсцессе больше 3\u00a0см',
     'form:peritonitis': 'при перитоните',
+    // переломы (часть 32): смещение отломков и стабильность
+    'displacement:none': 'без смещения',
+    'displacement:displaced': 'при смещении',
+    'displacement:unstable': 'при нестабильном переломе',
+    'stability:stable': 'при стабильном переломе',
+    'stability:unstable': 'при нестабильном переломе',
   } as Record<string, string>,
   /** несколько условий одной фразой (часть 30д): «при» — один раз, последнее — через «и» */
   whenList: (words: string[]) => {
@@ -96,7 +102,9 @@ export const encyclopedia = {
   whereRedFlag: (s: string) => `При красных флагах — ${s}.`,
   whereRisk: (risk: string, s: string) => `Если есть «${risk}» — ${s}.`,
   // операция и срок стационара (spec 2026-09-chapter-2, части 26 и 28)
-  whereSurgery: (op: string, hours: number, onset = false) => `Операция — ${lowerFirst(op)}: в первые ${hours}\u00a0ч ${onset ? 'от начала болезни' : 'после поступления'}.`,
+  // срока нет (часть 32: закрытый перелом) — без срока
+  whereSurgery: (op: string, hours: number | undefined, onset = false) =>
+    hours === undefined ? `Операция — ${lowerFirst(op)}.` : `Операция — ${lowerFirst(op)}: в первые ${hours}\u00a0ч ${onset ? 'от начала болезни' : 'после поступления'}.`,
   whereStay: (lo: number, hi: number) => `В стационаре обычно ${lo === hi ? lo : `${lo}–${hi}`}\u00a0${pluralRu(hi, 'день', 'дня', 'дней')}.`,
   // наблюдение в палате и стационар после операции (часть 30в)
   whereObserve: (hours: number) => `Без показаний к экстренной операции — лечение в палате; не помогло — операция не позже ${hours}\u00a0ч после поступления.`,
@@ -159,6 +167,20 @@ export const encyclopedia = {
   riskKind: 'Фактор риска',
   // шкалы (часть 27)
   scoreKind: 'Шкала',
+  scoreGroup: 'Шкалы',
+  // правила решения (spec 2026-09-chapter-2, часть 32): оттавские правила
+  ruleGroup: 'Правила',
+  ruleKind: 'Правило решения',
+  ruleWhen: 'Когда применяют',
+  ruleAge: (years: number) => `Проверено у тех, кому ${years}\u00a0лет и больше.`,
+  ruleAny: 'Если есть хоть один признак',
+  ruleNone: 'Если проверили все и ни одного нет',
+  ruleExams: 'Какое обследование',
+  ruleAbout: 'При каких болезнях',
+  rulesFor: 'Правила решения',
+  inRules: 'В правилах решения',
+  // тактика по скрытому параметру (часть 32): «Первая линия, со смещением»
+  byParamRow: (role: string, when: string) => `${role}, ${when}`,
   scorePoints: 'Баллы',
   scoreUpTo: (v: string) => `${v} и меньше`,
   scoreFrom: (v: string) => `${v} и больше`,

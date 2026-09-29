@@ -1,0 +1,25 @@
+id: tx.radius_plate
+name: { ru: "Остеосинтез лучевой кости пластиной" }
+kind: surgery
+class: surgery.bone
+# пластина, винты и расходники, ₽ — игровое число
+cost: 25000
+# пластина держит отломки сама — внешняя иммобилизация не нужна (846_1, прил. В); выписка — через
+# срок стационара после операции
+effects:
+  - { on: cond.distal_radius_fracture, kind: cure, band: { pct: 100 }, days: [1, 3] }
+# в игре оперирует хирург — травматолога-ортопеда в штате нет; 90 минут — игровая оценка;
+# осложнения — 30,8 %, серьёзные — 12,4 % (Nwosu 2023): в игре — серьёзные
+surgery:
+  room: room.or
+  team: [role.surgeon, role.anesthetist, role.or_nurse]
+  equipment: [eq.or_table, eq.anesthesia]
+  minutes: 90
+  complications: { pct: 12.4 }
+texts:
+  hint:
+    ru: "Открытая репозиция и фиксация отломков лучевой кости пластиной с винтами, чаще из ладонного доступа. Нужна, когда перелом нестабилен и в гипсе его не удержать; гипс после неё обычно не нужен."
+sources:
+  - { kind: guideline, title: "Переломы дистального отдела костей предплечья", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/846_1", note: "ID 846_1, опубликованы 18.12.2024, применяются; сверено с рубрикатором 29.09.2026; раздел 3.2: операция — если после репозиции сохраняется смещение (укорочение более 3 мм, наклон к тылу более 10 градусов, ступенька более 2 мм), при открытых, нестабильных и других переломах; накостный остеосинтез, чаще из ладонного доступа; раздел 6: при плане операции — госпитализация; срок операции при закрытом переломе не назван" }
+  - { kind: review, title: "Nwosu C, Rodriguez K, Zeng S, Klifto KM, Klifto CS, Ruch DS. Complications Following Volar Locking Plate Fixation of Distal Radius Fractures in Adults: A Systematic Review of Randomized Control Trials. J Hand Surg Am 2023;48(9):861–874", url: "https://pubmed.ncbi.nlm.nih.gov/37552141/", note: "PMID 37552141, сверено 29.09.2026: 35 РКИ, 1419 больных; осложнения — 30,8 %, серьёзные — 12,4 %; чаще всего — со стороны срединного нерва (7,1 %) и удаление пластины (6,8 %)" }
+review: draft

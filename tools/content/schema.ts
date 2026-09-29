@@ -110,6 +110,20 @@ export const conditionSchema = z.strictObject({
     harmful: z.array(txId).default([]),
     /** типичное назначение целиком, если первая линия — выбор из равных (цистит: одно из двух) */
     plan: z.array(txId).min(1).optional(),
+    /**
+     * тактика по скрытому параметру (spec 2026-09-chapter-2, часть 32): при таких значениях у
+     * названных здесь лечений — эта роль, у остальных — из общих списков; своё типичное назначение
+     * (перелом со смещением — репозиция, без смещения — лонгета)
+     */
+    byParam: z.array(z.strictObject({
+      when: z.record(z.string(), z.array(z.string()).min(1)),
+      firstLine: z.array(txId).default([]),
+      acceptable: z.array(txId).default([]),
+      supportive: z.array(txId).default([]),
+      notIndicated: z.array(txId).default([]),
+      harmful: z.array(txId).default([]),
+      plan: z.array(txId).min(1).optional(),
+    })).min(1).optional(),
     setting: z.strictObject({
       default: setting,
       /** уточнение по скрытому параметру случая: значение → место */
@@ -125,7 +139,8 @@ export const conditionSchema = z.strictObject({
    * сколько часов от поступления её сделать, чтобы не было поздно, — по рекомендации
    */
   surgery: z.strictObject({
-    tx: txId, window: z.number().int().min(1).max(240),
+    /** срок нет — в рекомендации его нет: закрытый нестабильный перелом оперируют в эту госпитализацию (часть 32) */
+    tx: txId, window: z.number().int().min(1).max(240).optional(),
     /** срок — от начала болезни, а не от поступления: ранняя холецистэктомия — в первые 72 ч болезни (часть 30) */
     from: z.enum(['arrival', 'onset']).optional(),
     /**
@@ -604,6 +619,26 @@ export const scoreSchema = z.strictObject({
   review,
 });
 
+/**
+ * Правило решения (spec 2026-09-chapter-2, часть 32): оттавские правила — при жалобе `complaints`
+ * обследования `exams` нужны, если есть хоть один признак из `any`; проверили все — и ни одного,
+ * перелом маловероятен. Правило проверено у тех, кому не меньше `ageMin` лет.
+ */
+export const ruleSchema = z.strictObject({
+  id: z.string().regex(/^rule\.[a-z0-9_]+$/),
+  name: text,
+  complaints: z.array(z.string()).min(1),
+  any: z.array(z.string()).min(1),
+  exams: z.array(z.string().regex(/^exam\.[a-z0-9_]+$/)).min(1),
+  ageMin: z.number().int().min(0).max(120).optional(),
+  /** о каких болезнях — для энциклопедии */
+  about: z.array(z.string().regex(/^cond\.[a-z0-9_]+$/)).min(1),
+  /** yes — есть признак: «Снимок нужен»; no — проверили все, признаков нет */
+  texts: z.strictObject({ summary: text, hint, yes: text, no: text }),
+  sources: z.array(source).min(1),
+  review,
+});
+
 export const versionSchema = z.strictObject({ contentVersion: z.number().int().min(1) });
 
 export type ConditionSrc = z.infer<typeof conditionSchema>;
@@ -621,5 +656,6 @@ export type ChapterSrc = z.infer<typeof chapterSchema>;
 export type TipSrc = z.infer<typeof tipSchema>;
 export type AchievementSrc = z.infer<typeof achievementSchema>;
 export type ScoreSrc = z.infer<typeof scoreSchema>;
+export type RuleSrc = z.infer<typeof ruleSchema>;
 export type LinkSrc = z.infer<typeof link>;
 export type ProbabilitySrc = z.infer<typeof probability>;

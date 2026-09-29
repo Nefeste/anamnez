@@ -310,6 +310,92 @@ export function expectedGain(db: ContentDb, examId: Id, beliefs: readonly Belief
   return Math.max(0, gain);
 }
 
+/**
+ * P(признак | болезнь, параметр `name` = `value`) — связи с этим значением, остальные параметры —
+ * в среднем по долям; плюс фон признака.
+ */
+function findingGivenParam(db: ContentDb, c: Condition, f: Id, name: string, value: string): number {
+  let miss = 1 - (db.findings[f]?.leak ?? 0) / P_ONE;
+  for (const l of c.findings) {
+    if (l.f !== f || (l.when?.[name] && !l.when[name].includes(value))) continue;
+    const others = l.when && Object.fromEntries(Object.entries(l.when).filter(([k]) => k !== name));
+    miss *= 1 - (l.p / P_ONE) * linkWeight(c, others ? { ...l, when: others } : l);
+  }
+  return 1 - miss;
+}
+
+/** Признаки болезни, связи которых зависят от параметра, — только они различают его значения. */
+const tellingOf = (c: Condition, name: string): Id[] => [...new Set(c.findings.filter(l => l.when?.[name]).map(l => l.f))];
+
+/**
+ * Скрытый параметр болезни по тому, что видно (spec 2026-09-chapter-2, часть 32): вероятность
+ * каждого значения при этом диагнозе — его доля, умноженная на правдоподобие наблюдений тех
+ * признаков, чьи связи от параметра зависят (смещение на снимке); остальные признаки значений не
+ * различают. Порядок — как объявлены.
+ */
+export function paramBeliefs(db: ContentDb, condId: Id, name: string, observations: readonly Observation[]): { value: string; p: number }[] {
+  const c = db.conditions[condId];
+  const dist = c?.params?.[name];
+  if (!dist) return [];
+  const grouped = byFinding(observations);
+  const telling = tellingOf(c, name).filter(f => grouped.has(f));
+  const weighted = Object.entries(dist).map(([value, share]) => {
+    let w = share;
+    for (const f of telling) w *= mix(evidenceOf(db, grouped.get(f)!), findingGivenParam(db, c, f, name, value));
+    return { value, p: w };
+  });
+  const total = weighted.reduce((a, b) => a + b.p, 0);
+  return weighted.map(x => ({ value: x.value, p: total > 0 ? x.p / total : 0 }));
+}
+
+/**
+ * Самое вероятное значение каждого скрытого параметра болезни (часть 32); ничего такого не видно —
+ * самое частое, при равенстве — объявленное раньше.
+ */
+export function likelyParams(db: ContentDb, condId: Id, observations: readonly Observation[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const name of Object.keys(db.conditions[condId]?.params ?? {})) {
+    let best: { value: string; p: number } | undefined;
+    for (const b of paramBeliefs(db, condId, name, observations)) if (!best || b.p > best.p) best = b;
+    if (best) out[name] = best.value;
+  }
+  return out;
+}
+
+/**
+ * Польза обследования для скрытого параметра, биты (часть 32): насколько оно в среднем уточнит
+ * значение при этом диагнозе — сумма по проверяемым признакам, как у `expectedGain`.
+ */
+export function paramGain(db: ContentDb, condId: Id, name: string, examId: Id, observations: readonly Observation[]): number {
+  const c = db.conditions[condId];
+  const exam = db.exams[examId];
+  if (!c || !exam) return 0;
+  const beliefs = paramBeliefs(db, condId, name, observations);
+  if (beliefs.length < 2) return 0;
+  const observed = new Set(observations.map(o => o.f));
+  const telling = new Set(tellingOf(c, name));
+  const h0 = entropy(beliefs.map(b => ({ id: b.value, p: b.p })));
+  let gain = 0;
+  for (const check of exam.checks) {
+    if (observed.has(check.f) || !telling.has(check.f)) continue;
+    const sens = check.sens / P_ONE;
+    const spec = check.spec / P_ONE;
+    const yes = beliefs.map(b => {
+      const q = findingGivenParam(db, c, check.f, name, b.value);
+      return sens * q + (1 - spec) * (1 - q);
+    });
+    let pYes = 0;
+    beliefs.forEach((b, i) => (pYes += b.p * yes[i]));
+    const hGiven = (shown: boolean) => {
+      const norm = shown ? pYes : 1 - pYes;
+      if (norm <= 0) return 0;
+      return entropy(beliefs.map((b, i) => ({ id: b.value, p: (b.p * (shown ? yes[i] : 1 - yes[i])) / norm })));
+    };
+    gain += h0 - (pYes * hGiven(true) + (1 - pYes) * hGiven(false));
+  }
+  return Math.max(0, gain);
+}
+
 /** Что известно о пациенте наверняка — из ответов на вопросы (`hx.*`, связанных с риском или болезнью). */
 export function knownFacts(db: ContentDb, observations: readonly Observation[]): { risks: Id[]; conditions: Id[] } {
   const shownHx = new Set(observations.filter(o => o.shown && o.f.startsWith('hx.')).map(o => o.f));

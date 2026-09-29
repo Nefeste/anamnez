@@ -142,6 +142,13 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
               {v.hints.map(h => <P key={h.id} testID={`likely-${h.id}`}>{`${h.name} — ${t.similar(h.outOf10)}`}</P>)}
             </Card>
           )}
+          {/* правила решения (часть 32): оттавские — нужен ли снимок по уже проверенному */}
+          {v.rules.length > 0 && (
+            <Card>
+              <Text style={styles.label}>{t.rules}</Text>
+              {v.rules.map(r => <P key={r.id} testID={`rule-${r.id}`}>{`${r.name}. ${r.text}`}</P>)}
+            </Card>
+          )}
           {/* три действия — подписи вмещаются и на узком экране; решение — отдельным шагом внизу.
               В «Медкарте» — закладки картотеки над листом */}
           <Tabs<Tab>
