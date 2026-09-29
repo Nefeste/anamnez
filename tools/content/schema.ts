@@ -132,6 +132,11 @@ export const conditionSchema = z.strictObject({
       redFlag: setting.optional(),
       /** если у пациента есть фактор риска: пиелонефрит у беременной — в стационар */
       risks: z.array(z.strictObject({ id: z.string().regex(/^risk\.[a-z0-9_]+$/), setting })).optional(),
+      /**
+       * ещё места, которые при этих значениях не ошибка (часть 32б): изолированный перелом ключицы
+       * со смещением — показание к операции относительное (853_1), повязка дома тоже можно
+       */
+      also: z.array(z.strictObject({ when: z.record(z.string(), z.array(z.string()).min(1)), settings: z.array(setting).min(1) })).min(1).optional(),
     }),
   }).optional(),
   /**
@@ -141,6 +146,11 @@ export const conditionSchema = z.strictObject({
   surgery: z.strictObject({
     /** срок нет — в рекомендации его нет: закрытый нестабильный перелом оперируют в эту госпитализацию (часть 32) */
     tx: txId, window: z.number().int().min(1).max(240).optional(),
+    /**
+     * операция по скрытому параметру (часть 32б): при этих значениях — эта операция, иначе `tx`;
+     * перелом шейки бедра без смещения — винты, со смещением — эндопротез (980_1)
+     */
+    byParam: z.array(z.strictObject({ when: z.record(z.string(), z.array(z.string()).min(1)), tx: txId })).min(1).optional(),
     /** срок — от начала болезни, а не от поступления: ранняя холецистэктомия — в первые 72 ч болезни (часть 30) */
     from: z.enum(['arrival', 'onset']).optional(),
     /**

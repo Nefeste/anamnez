@@ -3,7 +3,7 @@
 // выполнены) → какие достижения получены. Даты и хранение — профиль (src/state/profile.ts):
 // у движка нет часов (ADR 0004).
 import type { Achievement, ContentDb, Id } from '../../content/types';
-import { primaryOf, recommendedSetting, SETTING_ORDER, settingFit, txRole } from '../med/plan';
+import { alsoSettings, primaryOf, recommendedSetting, SETTING_ORDER, settingFit, txRole } from '../med/plan';
 import type { ShiftPatient } from '../shift/types';
 
 /** Вопрос об аллергии — для «Сначала спросить». */
@@ -101,6 +101,6 @@ export function caseFacts(db: ContentDb, p: ShiftPatient): CaseFacts {
     antibiotic: antibiotics.length > 0,
     antibioticIndicated: antibiotics.length > 0 && antibiotics.every(id => ['firstLine', 'acceptable'].includes(txRole(db, primary, id, params))),
     danger,
-    caught: danger && settingFit(recommended, c.plan.setting) !== 'under',
+    caught: danger && settingFit(recommended, c.plan.setting, alsoSettings(db, p.patient)) !== 'under',
   };
 }

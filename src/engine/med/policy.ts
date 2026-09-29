@@ -153,13 +153,14 @@ function bestExam(db: ContentDb, beliefs: Belief[], ctx: Parameters<typeof expec
 }
 
 /**
- * Скрытые параметры болезни, от которых зависит лечение (часть 32): место по параметру и тактика
- * по параметру — смещение отломков, стабильность перелома.
+ * Скрытые параметры болезни, от которых зависит лечение (часть 32): место по параметру, тактика
+ * по параметру и операция по параметру (часть 32б) — смещение отломков, стабильность перелома.
  */
 export function tacticParams(db: ContentDb, condId: Id): string[] {
   const t = db.conditions[condId]?.treatment;
   if (!t) return [];
-  return [...new Set([...(t.setting.param ? [t.setting.param.name] : []), ...(t.byParam ?? []).flatMap(b => Object.keys(b.when))])].sort();
+  const byOp = (db.conditions[condId]?.surgery?.byParam ?? []).flatMap(b => Object.keys(b.when));
+  return [...new Set([...(t.setting.param ? [t.setting.param.name] : []), ...(t.byParam ?? []).flatMap(b => Object.keys(b.when)), ...byOp])].sort();
 }
 
 /**

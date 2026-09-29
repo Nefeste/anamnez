@@ -95,8 +95,8 @@ export function scoreCase(x: CaseInput): CaseScore {
   }
 
   // место лечения
-  const { chosen, recommended } = x.plan.setting;
-  const fit = settingFit(recommended, chosen);
+  const { chosen, recommended, also } = x.plan.setting;
+  const fit = settingFit(recommended, chosen, also);
   const should = x.should ?? choiceFor(recommended);
   let setting: Grade = 'A';
   if (fit === 'under') { setting = 'D'; notes.push({ code: 'setting.under', recommended: should }); }

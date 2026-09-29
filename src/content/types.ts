@@ -74,6 +74,11 @@ export interface Tactics {
     redFlag?: Setting;
     /** если у пациента есть фактор риска */
     risks?: { id: Id; setting: Setting }[];
+    /**
+     * ещё места, которые при этих значениях не ошибка (часть 32б): изолированный перелом ключицы
+     * со смещением — показание к операции относительное, повязка дома тоже можно
+     */
+    also?: { when: Record<string, string[]>; settings: Setting[] }[];
   };
 }
 
@@ -157,6 +162,8 @@ export interface Complication {
  */
 export interface ConditionSurgery {
   tx: Id;
+  /** операция по скрытому параметру (часть 32б): перелом шейки бедра без смещения — винты, со смещением — эндопротез */
+  byParam?: { when: Record<string, string[]>; tx: Id }[];
   /** нет — в рекомендации срока нет: закрытый нестабильный перелом оперируют в эту госпитализацию (часть 32) */
   window?: number;
   from?: 'onset';

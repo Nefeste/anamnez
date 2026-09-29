@@ -1,0 +1,25 @@
+id: tx.clavicle_plate
+name: { ru: "Остеосинтез ключицы пластиной" }
+kind: surgery
+class: surgery.bone
+# пластина, винты и расходники, ₽ — игровое число
+cost: 25000
+effects:
+  # несращение после операции — 1–2 % (853_1, раздел 3.2): срастается у 98–99 %, взята середина
+  - { on: cond.clavicle_fracture, kind: cure, band: { pct: 98.5 }, days: [1, 3] }
+# 60 минут — игровая оценка; осложнений в стационаре источники не дают — игровая оценка 5 %:
+# раздражение и поломка пластины (9–64 %, Wijdicks 2012) — позже, вне стационара
+surgery:
+  room: room.or
+  team: [role.surgeon, role.anesthetist, role.or_nurse]
+  equipment: [eq.or_table, eq.anesthesia]
+  minutes: 60
+  complications: { pct: 5 }
+texts:
+  hint:
+    ru: "Отломки ключицы сопоставляют и фиксируют пластиной с винтами по верхней или передней поверхности кости. Нужна при смещении отломков больше ширины кости, угрозе прокола кожи, открытом переломе."
+sources:
+  - { kind: guideline, title: "Переломы ключицы и лопатки", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/853_1", note: "ID 853_1, опубликованы 18.12.2024, применяются; сверено с рубрикатором 29.09.2026; раздел 3.2: показания — открытый перелом, угроза перфорации кожи, нейрососудистые расстройства, патологический перелом, политравма, флотирующее плечо; изолированный перелом со смещением — относительное показание; накостный остеосинтез пластиной (УУР A, УДД 1); несращение после операции — 1–2 %; прил. Б1: смещение больше ширины диафиза — показания к хирургическому лечению; срок операции не назван" }
+  - { kind: paper, title: "Kihlström C, Möller M, Lönn K, Wolf O. Clavicle fractures: epidemiology, classification and treatment of 2 422 fractures in the Swedish Fracture Register; an observational study. BMC Musculoskelet Disord 2017;18(1):82", url: "https://pubmed.ncbi.nlm.nih.gov/28202071/", note: "PMID 28202071, PMC5312264, сверено 29.09.2026: оперированы в первые 30 дней — 17 %, пластиной — 94 % из них; в средней трети — 28 из 540 переломов без смещения и 298 из 1 044 со смещением" }
+  - { kind: paper, title: "Wijdicks FJ, Van der Meijden OA, Millett PJ, Verleisdonk EJ, Houwert RM. Systematic review of the complications of plate fixation of clavicle fractures. Arch Orthop Trauma Surg 2012;132(5):617–625", url: "https://pubmed.ncbi.nlm.nih.gov/22237694/", note: "PMID 22237694, PMC3332382, сверено 29.09.2026: 11 исследований; несращение и неправильное сращение — меньше 10 %; раздражение или поломка пластины — от 9 до 64 %" }
+review: draft

@@ -1,0 +1,94 @@
+id: cond.femoral_neck_fracture
+name: { ru: "Перелом шейки бедра" }
+icd10: S72.0
+department: dept.trauma
+system: bones
+kind: injury
+severity: serious
+epidemiology:
+  # переломы шейки — 52 % переломов проксимального отдела бедра (СПб 2011, 980_1, раздел 1.3); доля
+  # среди пришедших с травмой — игровая оценка
+  prevalence: uncommon
+  # старше 70 — 71,4 % (СПб 2011, 980_1, раздел 1.3); средний возраст — 80 и 83 года у переломов
+  # без смещения и со смещением (Authen 2018); в игре — от 60 лет: пороги тактики 980_1 — 60 лет
+  age: { min: 60, peak: [75, 95] }
+  # женщин — 69 % (Authen 2018)
+  sex: { m: 0.45, f: 1 }
+params:
+  # без смещения (Garden 1–2) — 4 220, со смещением (Garden 3–4) — 13 098 (Authen 2018): 24 и 76 %
+  displacement: { none: 24, displaced: 76 }
+  # сторона — поровну, игровая оценка
+  side: { right: 1, left: 1 }
+course:
+  stages:
+    - { id: acute, days: [0, 90] }
+  presentation: [0, 1]
+  # без операции смертность за год — больше 70 % (980_1, раздел 6); на какой день хуже — игровая оценка
+  untreated: { band: usually, days: [1, 7] }
+# операция всем — не позже 48 ч после поступления, оптимально — 6–8 ч (980_1, раздел 3.6.1,
+# критерии качества 5–6); без смещения — остеосинтез, со смещением старше 60 — эндопротез (раздел
+# 3.6.3); стационар после операции — 5–10 суток, игровая оценка: 980_1 называет 7 койко-дней (2–12,
+# СПб 2014) и считает, что это мало
+surgery:
+  tx: tx.hip_arthroplasty
+  byParam:
+    - { when: { displacement: [none] }, tx: tx.hip_screws }
+  window: 48
+  stay: [5, 10]
+findings:
+  # боль в паху и верхней трети бедра, болезненная пальпация, не может поднять выпрямленную ногу,
+  # укорочение, приведение, наружная ротация (980_1, раздел 1.6); частот нет — полосы игровые;
+  # вколоченный перелом без смещения бывает почти без симптомов (раздел 2.4)
+  - f: sym.hip_pain
+    band: { pct: 100 }
+    attrs: { side: $side }
+    note: "с этой жалобой приходят все: без неё травмы нет — жалоба травмы, а не признак с частотой"
+  - { f: sign.hip_tenderness, band: usually }
+  - { f: sign.straight_leg_raise, band: always, when: { displacement: [displaced] } }
+  - { f: sign.straight_leg_raise, band: often, when: { displacement: [none] } }
+  - { f: sign.leg_shortened_rotated, band: usually, when: { displacement: [displaced] } }
+  - { f: sign.leg_shortened_rotated, band: rarely, when: { displacement: [none] } }
+  - { f: sign.no_weight_bearing, band: always, when: { displacement: [displaced] } }
+  - { f: sign.no_weight_bearing, band: often, when: { displacement: [none] } }
+  - { f: sym.immediate_dysfunction, band: usually }
+  - f: img.xr_femoral_neck_fracture
+    band: { pct: 100 }
+    attrs: { side: $side }
+    note: "перелом есть у каждого; увидит ли его снимок — чувствительность обследования (980_1: 90–98 %)"
+  - f: img.xr_femoral_neck_displaced
+    band: { pct: 100 }
+    when: { displacement: [displaced] }
+    note: "смещение есть у каждого со смещённым переломом; увидит ли его снимок — чувствительность обследования"
+confirm: [exam.xray_hip]
+treatment:
+  # обезболивание — не позже 30 минут: парацетамол (УУР B, УДД 3) или НПВП (B, 2), у пожилых НПВП —
+  # с осторожностью (C, 5), блокады нервов (A, 1) (980_1, раздел 3.5); лечит операция
+  supportive: [tx.paracetamol, tx.hip_block, tx.ibuprofen]
+  plan: [tx.paracetamol, tx.hip_block]
+  byParam:
+    # без смещения эндопротез ставят редко — 7 % (Ek 2022), операция выбора — винты
+    - when: { displacement: [none] }
+      acceptable: [tx.hip_arthroplasty]
+    # со смещением винты — моложе 60 лет или при высоком риске эндопротезирования (980_1, раздел 3.6.3)
+    - when: { displacement: [displaced] }
+      acceptable: [tx.hip_screws]
+  # всем — экстренная госпитализация и операция (980_1, раздел 6)
+  setting: { default: surgery }
+texts:
+  summary:
+    ru: >-
+      Перелом шейки бедра — внутрисуставной перелом между головкой и вертелами, чаще у пожилых
+      женщин после падения на бок. Боль в паху, не может поднять выпрямленную ногу, при смещении
+      нога укорочена и развёрнута кнаружи. Оперируют всех, не позже 48 часов после поступления:
+      без смещения — винтами, со смещением — эндопротезом.
+pearls:
+  - ru: "Пожилой человек упал и не может встать, нога развёрнута наружу — перелом шейки бедра, пока не доказано обратное."
+  - ru: "Операция в первые 48 часов снижает смертность за год; без операции за год умирают больше 70 %."
+  - ru: "Снимок пропускает часть переломов без смещения: при типичной картине и чистом снимке нужна КТ или МРТ."
+simplified: "Вертельных переломов, перелома у молодых и выбора между однополюсным и тотальным протезом в игре нет. КТ и МРТ пока нет. Оперирует хирург — травматолога-ортопеда в штате нет; обезболивание за 30 минут и снимок за 45 минут игра не отслеживает."
+sources:
+  - { kind: guideline, title: "Переломы проксимального отдела бедренной кости", org: "Минздрав РФ", year: 2025, url: "https://cr.minzdrav.gov.ru/view-cr/980_1", note: "ID 980_1, опубликованы 10.12.2025, применяются; сверено с рубрикатором 29.09.2026; раздел 1.3: переломы шейки — 52 % переломов проксимального отдела бедра, старше 70 лет — 71,4 %, женщин — 71,7 % (СПб 2011); раздел 1.6: клиника; раздел 2.4: снимок таза и сустава в первые 45 минут, чувствительность 90–98 %; раздел 3.5: обезболивание не позже 30 минут, парацетамол или НПВП, блокады нервов; раздел 3.6.1: операция не позже 48 ч после поступления; раздел 3.6.3: без смещения — остеосинтез, со смещением старше 60 — эндопротезирование; раздел 6: экстренная госпитализация всем, без операции смертность за год — больше 70 %; частоты признаков не даны — полосы игровые" }
+  - { kind: paper, title: "Authen AL, Dybvik E, Furnes O, Gjertsen JE. Surgeon's experience level and risk of reoperation after hip fracture surgery: an observational study on 30,945 patients in the Norwegian Hip Fracture Register 2011–2015. Acta Orthop 2018;89(5):496–502", url: "https://pubmed.ncbi.nlm.nih.gov/29860911/", note: "PMID 29860911, PMC6202762, сверено 29.09.2026: перелом шейки без смещения (Garden 1–2) — 4 220, со смещением (Garden 3–4) — 13 098; средний возраст — 80 и 83 года; женщин — 69 %" }
+  - { kind: paper, title: "Larsen P, Jensen ST, Elsoe R. Femoral neck fracture increases 30-day mortality 16-fold and elevates mortality risk for up to 4 years: a matched cohort study of 3,246 patients. Eur Geriatr Med 2026;17(3):1429–1435", url: "https://pubmed.ncbi.nlm.nih.gov/41903040/", note: "PMID 41903040, PMC13309505, сверено 29.09.2026: 3 246 больных; смертность за 30 дней — 10 %, за год — 23,4 %" }
+  - { kind: paper, title: "Ek S, Al-Ani H, Greve K, Modig K, Hedström M. Internal fixation or hip replacement for undisplaced femoral neck fractures? Pre-fracture health differences reflect survival and functional outcome. Acta Orthop 2022;93:643–651", url: "https://pubmed.ncbi.nlm.nih.gov/35819453/", note: "PMID 35819453, PMC9275487, сверено 29.09.2026: 7 758 больных 70 лет и старше с переломом шейки без смещения; остеосинтез — 93 %, однополюсный эндопротез — 5 %, тотальный — 2 %" }
+review: draft

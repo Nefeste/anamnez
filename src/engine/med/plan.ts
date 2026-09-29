@@ -31,9 +31,13 @@ const COVERS: Record<Setting, readonly Setting[]> = {
   transfer: ['ambulance', 'surgery', 'transfer'],
 };
 
-/** Подходит ли выбор к тому, что нужно пациенту: да, меньше нужного, больше нужного. */
-export function settingFit(need: Setting, chosen: Setting): 'ok' | 'under' | 'over' {
-  if (COVERS[chosen].includes(need)) return 'ok';
+/**
+ * Подходит ли выбор к тому, что нужно пациенту: да, меньше нужного, больше нужного. `also` — ещё
+ * места, которые у этого больного не ошибка (часть 32б): перелом ключицы со смещением — операция
+ * или повязка дома.
+ */
+export function settingFit(need: Setting, chosen: Setting, also: readonly Setting[] = []): 'ok' | 'under' | 'over' {
+  if (COVERS[chosen].includes(need) || also.some(s => COVERS[chosen].includes(s))) return 'ok';
   return SETTING_ORDER[chosen] < SETTING_ORDER[need] ? 'under' : 'over';
 }
 
@@ -71,7 +75,8 @@ export interface Violation {
 export interface PlanEval {
   primary: Id;
   roles: { tx: Id; role: TxRole }[];
-  setting: { chosen: Setting; recommended: Setting };
+  /** `also` — ещё места, которые у этого больного не ошибка (часть 32б) */
+  setting: { chosen: Setting; recommended: Setting; also?: Setting[] };
   /** противопоказания, которые у пациента на самом деле есть */
   violations: Violation[];
   /** есть ли в плане лечение, действующее на причину основного состояния */
@@ -124,10 +129,43 @@ export function txRole(db: ContentDb, condId: Id, tx: Id, params?: Record<string
   const t = db.conditions[condId]?.treatment;
   const x = params && t?.byParam?.find(b => whenHolds(b.when, params) && ROLES.some(role => b[role].includes(tx)));
   if (x) return ROLES.find(role => x[role].includes(tx))!;
-  // своя операция болезни — первая линия (часть 28); в тактике её нет: до приезда скорой её не сделать
-  if (db.conditions[condId]?.surgery?.tx === tx) return 'firstLine';
+  // своя операция болезни — первая линия (часть 28); в тактике её нет: до приезда скорой её не сделать.
+  // Операция по параметру (часть 32б) — своя при этих значениях; без значений — любая из своих
+  const s = db.conditions[condId]?.surgery;
+  if (s && (params ? surgeryFor(db, condId, params) === tx : s.tx === tx || s.byParam?.some(b => b.tx === tx) === true)) return 'firstLine';
   if (!t) return 'notIndicated';
   return ROLES.find(role => t[role].includes(tx)) ?? 'notIndicated';
+}
+
+/**
+ * Операция, которой лечат это состояние при таких значениях скрытых параметров (часть 32б): у
+ * перелома шейки бедра без смещения — винты, со смещением — эндопротез; нет записи — не оперируют.
+ */
+export function surgeryFor(db: ContentDb, condId: Id, params: Record<string, string> = {}): Id | undefined {
+  const s = db.conditions[condId]?.surgery;
+  return s?.byParam?.find(b => whenHolds(b.when, params))?.tx ?? s?.tx;
+}
+
+/** Все операции состояния — главная и по параметру (часть 32б). */
+export function surgeriesOf(db: ContentDb, condId: Id): Id[] {
+  const s = db.conditions[condId]?.surgery;
+  return s ? [...new Set([s.tx, ...(s.byParam ?? []).map(b => b.tx)])] : [];
+}
+
+/**
+ * Ещё места, которые у этого больного не ошибка, — по правде о его скрытых параметрах (часть 32б).
+ * Послабление — только к месту по параметру: красный флаг или фактор риска из правила места его
+ * отменяют (кожа натянута над отломком ключицы — только операция, `853_1`, раздел 6).
+ */
+export function alsoSettings(db: ContentDb, patient: Patient): Setting[] {
+  const primary = primaryOf(patient);
+  const cond = db.conditions[primary.id];
+  const rule = cond?.treatment?.setting;
+  if (!rule?.also) return [];
+  const has = new Set(patient.truth.findings.map(f => f.f));
+  if (rule.redFlag && (cond.redFlags ?? []).some(f => has.has(f))) return [];
+  if ((rule.risks ?? []).some(r => patient.truth.risks.includes(r.id))) return [];
+  return [...new Set(rule.also.filter(a => whenHolds(a.when, primary.params)).flatMap(a => a.settings))];
 }
 
 /**
@@ -195,12 +233,13 @@ export function evaluatePlan(db: ContentDb, patient: Patient, plan: Plan, observ
   const params = primaryOf(patient).params;
   const base = db.conditions[primary].treatment;
   const tactics = base && tacticsFor(base, params);
+  const also = alsoSettings(db, patient);
   const firstLineBlocked = (tactics?.firstLine ?? [])
     .some(tx => db.treatments[tx]?.contraindications.some(k => knownIds.has(k.id)));
   return {
     primary,
     roles: plan.treatments.map(tx => ({ tx, role: txRole(db, primary, tx, params) })),
-    setting: { chosen: plan.setting, recommended: recommendedSetting(db, patient) },
+    setting: { chosen: plan.setting, recommended: recommendedSetting(db, patient), ...(also.length > 0 ? { also } : {}) },
     violations,
     effective,
     unaskedRisk: unaskedRisk.sort(),

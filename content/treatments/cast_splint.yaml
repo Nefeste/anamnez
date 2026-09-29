@@ -12,8 +12,12 @@ effects:
   # доля неудач консервативного лечения в тексте не дана — игровая оценка
   - { on: cond.ankle_fracture, kind: cure, band: always, days: [42, 56], when: { stability: [stable] } }
   # при ушибе и растяжении — короткая иммобилизация облегчает, но не нужна всем (832_2, раздел 4)
+  # основание пятой плюсневой без значительного смещения — гипс так же, как обувь с жёсткой
+  # подошвой, 4–6 недель (856_1, раздел 3.1); несращение — 2,7–3,8 % (Pettersen 2022)
+  - { on: cond.mt5_fracture, kind: cure, band: { pct: 97 }, days: [28, 42], when: { displacement: [none] } }
   - { on: cond.ankle_sprain, kind: relieve, band: often, days: [1, 5] }
   - { on: cond.wrist_contusion, kind: relieve, band: often, days: [1, 5] }
+  - { on: cond.foot_contusion, kind: relieve, band: often, days: [1, 5] }
 texts:
   hint:
     ru: "Гипсовая повязка на половину окружности конечности, закреплённая бинтом: держит отломки на месте, пока кость срастается. Перелом лучевой кости без смещения — 5–7 недель, стабильный перелом лодыжки — 6–8 недель."
@@ -21,5 +25,7 @@ sources:
   - { kind: guideline, title: "Переломы дистального отдела костей предплечья", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/846_1", note: "ID 846_1, опубликованы 18.12.2024, применяются; сверено с рубрикатором 29.09.2026; раздел 3.1: при переломе без смещения — консервативное лечение, чаще всего гипсовая лонгета, около 5–7 недель" }
   - { kind: guideline, title: "Переломы лодыжек", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/855_1", note: "ID 855_1, опубликованы 19.12.2024, применяются; сверено с рубрикатором 29.09.2026; раздел 3.1: консервативно — изолированный перелом лодыжки без смещения, стабильный перелом; иммобилизация обычно до 6–8 недель после травмы" }
   - { kind: guideline, title: "Закрытые повреждения мягких тканей конечностей", org: "Минздрав РФ", year: 2026, url: "https://cr.minzdrav.gov.ru/view-cr/832_2", note: "ID 832_2, опубликованы 13.01.2026, применяются; сверено с рубрикатором 29.09.2026; раздел 4: при ушибе — иммобилизация на 3–5 дней; давящая повязка при необходимости заменяется на гипсовую лонгету или ортез" }
+  - { kind: guideline, title: "Переломы костей стопы (кроме переломов пяточной кости)", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/856_1", note: "ID 856_1, опубликованы 19.12.2024, применяются; сверено с рубрикатором 29.09.2026; раздел 3.1: переломы плюсневых костей без смещения и с допустимым смещением — обувь с жёсткой подошвой, ортопедическая обувь или гипсовая иммобилизация в течение 4–6 недель" }
+  - { kind: paper, title: "Pettersen PM, Radojicic N, Grün W, Andresen TKM, Molund M. Proximal Fifth Metatarsal Fractures: A Retrospective Study of 834 Fractures With a Minimum Follow-up of 5 Years. Foot Ankle Int 2022;43(5):602–608", url: "https://pubmed.ncbi.nlm.nih.gov/35125016/", note: "PMID 35125016, сверено 29.09.2026: без операции — 94,4 % из 834 переломов основания пятой плюсневой; несращение или переход к операции — 2,7–3,8 % по зонам" }
   - { kind: paper, title: "Rundgren J, Bojan A, Mellstrand Navarro C, Enocson A. Epidemiology, classification, treatment and mortality of distal radius fractures in adults: an observational study of 23,394 fractures from the national Swedish fracture register. BMC Musculoskelet Disord 2020;21:88", url: "https://pubmed.ncbi.nlm.nih.gov/32035488/", note: "PMID 32035488, PMC7007648, сверено 29.09.2026: без операции лечили 74 %; вторичная операция — у 9,1 % из них, в среднем через 11,2 дня" }
 review: draft

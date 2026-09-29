@@ -1,0 +1,30 @@
+id: tx.hip_screws
+name: { ru: "Остеосинтез шейки бедра винтами" }
+kind: surgery
+class: surgery.bone
+# винты и расходники, ₽ — игровое число
+cost: 20000
+effects:
+  # без смещения — остеосинтез: вторичное смещение или несращение — 4,3 % (Conn 2004); со
+  # смещением у пожилых — осложнения 34,4–50 %, повторные операции — 30–43 % (980_1, раздел
+  # 3.6.3): без повторной операции — 57–70 %, взята середина, 63,5 %
+  - { on: cond.femoral_neck_fracture, kind: cure, band: { pct: 95.7 }, days: [5, 10], when: { displacement: [none] } }
+  - { on: cond.femoral_neck_fracture, kind: cure, band: { pct: 63.5 }, days: [5, 10], when: { displacement: [displaced] } }
+# 32 минуты — медиана длительности у переломов без смещения (Authen 2018); осложнения — делирий, в
+# среднем у 17 % (980_1, раздел 3.8.4); смертность за 30 дней — 10 % (Larsen 2026)
+surgery:
+  room: room.or
+  team: [role.surgeon, role.anesthetist, role.or_nurse]
+  equipment: [eq.or_table, eq.anesthesia]
+  minutes: 32
+  complications: { pct: 17 }
+  death: { pct: 10 }
+texts:
+  hint:
+    ru: "Отломки шейки бедра фиксируют параллельными винтами через кожные проколы, голова бедра остаётся своя. Так оперируют перелом без смещения: встать с опорой можно на следующий день."
+sources:
+  - { kind: guideline, title: "Переломы проксимального отдела бедренной кости", org: "Минздрав РФ", year: 2025, url: "https://cr.minzdrav.gov.ru/view-cr/980_1", note: "ID 980_1, опубликованы 10.12.2025, применяются; сверено с рубрикатором 29.09.2026; раздел 3.6.3: Garden I–II — остеосинтез (УУР B, УДД 3) из-за высокого (31 %) риска вторичных смещений; Garden III–IV — остеосинтез у моложе 60 лет; у пожилых после остеосинтеза со смещением — осложнения 34,4–50 %, повторные операции 30–43 %; раздел 3.8.4: делирий — в среднем 17 %; раздел 3.6.1: операция не позже 48 ч после поступления" }
+  - { kind: paper, title: "Conn KS, Parker MJ. Undisplaced intracapsular hip fractures: results of internal fixation in 375 patients. Clin Orthop Relat Res 2004;(421):249–254", url: "https://pubmed.ncbi.nlm.nih.gov/15123955/", note: "PMID 15123955, сверено 29.09.2026: 375 больных с внутрисуставным переломом без смещения, остеосинтез; несращение — 6,4 %, некроз головки — 4,0 %; по сводке литературы вторичное смещение или несращение — 4,3 %, при лечении без операции — 19,6 %" }
+  - { kind: paper, title: "Authen AL, Dybvik E, Furnes O, Gjertsen JE. Surgeon's experience level and risk of reoperation after hip fracture surgery: an observational study on 30,945 patients in the Norwegian Hip Fracture Register 2011–2015. Acta Orthop 2018;89(5):496–502", url: "https://pubmed.ncbi.nlm.nih.gov/29860911/", note: "PMID 29860911, PMC6202762, сверено 29.09.2026: перелом шейки без смещения (Garden 1–2) — 4 220, со смещением (Garden 3–4) — 13 098; длительность операции — 32 и 72 минуты" }
+  - { kind: paper, title: "Larsen P, Jensen ST, Elsoe R. Femoral neck fracture increases 30-day mortality 16-fold and elevates mortality risk for up to 4 years: a matched cohort study of 3,246 patients. Eur Geriatr Med 2026;17(3):1429–1435", url: "https://pubmed.ncbi.nlm.nih.gov/41903040/", note: "PMID 41903040, PMC13309505, сверено 29.09.2026: 3 246 больных с переломом шейки бедра, средний возраст 77,9 года, женщин 64 %; смертность за 30 дней — 10 %, за год — 23,4 %" }
+review: draft

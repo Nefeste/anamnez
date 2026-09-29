@@ -1,11 +1,16 @@
 // Валидатор базы (`docs/05-content.md` §6): ловит битые ссылки и нарушения правил,
 // а не только опечатки схемы. Проверяется на испорченной копии базы.
-import { describe, expect, test } from 'bun:test';
+import { describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { txRole } from '../../src/engine/med/plan';
+import { findBrand } from '../content/brands';
 import { buildDb, CONTENT_DIR } from '../content/load';
+
+// Каждая испорченная копия собирается целиком (около 0,5 с), а в тесте их бывает до девяти:
+// пяти секунд по умолчанию на медленной машине не хватает.
+setDefaultTimeout(30_000);
 
 function broken(mutate: (dir: string) => void): string[] {
   const dir = mkdtempSync(join(tmpdir(), 'anamnez-content-'));
@@ -56,6 +61,16 @@ describe('валидатор базы', () => {
     expect(noSex.some(e => e.startsWith('exam.ask_pregnancy') && e.includes('только у женщин'))).toBe(true);
     const narrow = broken(d => edit(d, 'exams/ask_pregnancy.yaml', 'ageMax: 50', 'ageMax: 40'));
     expect(narrow.some(e => e.startsWith('exam.ask_pregnancy') && e.includes('до 50 лет'))).toBe(true);
+  });
+
+  test('торговое название лекарства — ошибка (ADR 0012): с начала слова, в любом регистре и падеже', () => {
+    expect(findBrand('Аспирин')).toBe('Аспирин');
+    expect(findBrand('после Нурофена')).toBe('Нурофен');
+    expect(findBrand('(но-шпа)')).toBe('но-шп');
+    // внутри слова — не название: в «утренние» есть «ренни»
+    expect(findBrand('утренние часы')).toBeNull();
+    const errors = broken(d => edit(d, 'treatments/ibuprofen.yaml', 'name: { ru: "Ибупрофен" }', 'name: { ru: "Ибупрофен (Нурофен)" }'));
+    expect(errors).toContain('treatments/ibuprofen.yaml: торговое название «Нурофен» — только МНН или группа (ADR 0012)');
   });
 
   test('опечатка в имени поля — ошибка, а не молча пропущенное поле', () => {
@@ -234,6 +249,21 @@ describe('каталог больницы', () => {
     expect(has(broken(d => edit(d, R, '    - when: { displacement: [none] }\n      acceptable: [tx.radius_plate]\n', '    - when: { displacement: [none] }\n      acceptable: [tx.radius_plate]\n      notIndicated: [tx.cast_splint]\n')), 'тактика по параметру №1 — tx.cast_splint при этих значениях действует на причину')).toBe(true);
     // срока операции нет — тогда нет и срока от начала болезни
     expect(has(broken(d => edit(d, R, 'surgery: { tx: tx.radius_plate, stay: [1, 3] }', 'surgery: { tx: tx.radius_plate, from: onset, stay: [1, 3] }')), 'срок от начала болезни и осложнённая стадия — только со сроком операции (window)')).toBe(true);
+  });
+
+  test('операция и место по параметру (часть 32б): своя операция, вида «операция», действует на причину; ещё место — не то же, что главное', () => {
+    const H = 'conditions/trauma/femoral_neck_fracture.yaml';
+    const K = 'conditions/trauma/clavicle_fracture.yaml';
+    const has = (errors: string[], text: string) => errors.some(e => e.includes(text));
+    const op = '    - { when: { displacement: [none] }, tx: tx.hip_screws }\n';
+    expect(has(broken(d => edit(d, H, op, '    - { when: { shift: [none] }, tx: tx.hip_screws }\n')), 'cond.femoral_neck_fracture: операция по параметру №1 — условие по необъявленному параметру shift')).toBe(true);
+    expect(has(broken(d => edit(d, H, op, '    - { when: { displacement: [none] }, tx: tx.hip_nail }\n')), 'операция по параметру №1 — операция tx.hip_nail не найдена')).toBe(true);
+    expect(has(broken(d => edit(d, H, op, '    - { when: { displacement: [none] }, tx: tx.cast_splint }\n')), 'операция по параметру №1 — tx.cast_splint не операция')).toBe(true);
+    expect(has(broken(d => edit(d, H, op, '    - { when: { displacement: [none] }, tx: tx.radius_plate }\n')), 'операция по параметру №1 — tx.radius_plate при этих значениях не действует на причину')).toBe(true);
+    expect(has(broken(d => edit(d, H, op, '    - { when: { displacement: [none] }, tx: tx.hip_arthroplasty }\n')), 'операция по параметру №1 — та же операция, что и без условия')).toBe(true);
+    const also = '      - { when: { displacement: [displaced] }, settings: [home] }\n';
+    expect(has(broken(d => edit(d, K, also, '      - { when: { displacement: [displaced] }, settings: [surgery] }\n')), 'cond.clavicle_fracture: ещё место №1 — surgery и так место при этих значениях')).toBe(true);
+    expect(has(broken(d => edit(d, K, also, '      - { when: { displacement: [bent] }, settings: [home] }\n')), 'ещё место №1 — у параметра displacement нет значения bent')).toBe(true);
   });
 
   test('правило решения (часть 32): жалоба с текстом жалобы, признаки, болезни и обследование, которое проверяет их признаки', () => {

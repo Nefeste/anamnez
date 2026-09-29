@@ -23,6 +23,12 @@ effects:
   - { on: cond.ankle_fracture, kind: relieve, band: often, days: [0, 1] }
   - { on: cond.ankle_sprain, kind: relieve, band: often, days: [0, 1] }
   - { on: cond.wrist_contusion, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.mt5_fracture, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.foot_contusion, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.femoral_neck_fracture, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.hip_contusion, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.clavicle_fracture, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.shoulder_contusion, kind: relieve, band: often, days: [0, 1] }
 texts:
   hint:
     ru: "Снижает температуру и боль. Лечит не причину болезни, а самочувствие: после него температура нормальная, а пневмония — нет."
