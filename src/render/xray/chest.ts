@@ -3,35 +3,17 @@
 // Снимок — сумма теней: воздух чёрный, мягкие ткани серые, кость светлая. Поэтому
 // кости и сосуды накладываются режимом Screen (перекрытия светлеют, как на плёнке), а
 // сердце и средостение — одним силуэтом, который снизу сливается с тенью живота. Правая
-// сторона пациента — слева на снимке. Координаты — доли ширины (x) и высоты (y).
+// сторона пациента — слева на снимке. Координаты — доли ширины (x) и высоты (y); геометрия —
+// в chestGeometry.ts: контур полей, рёбра, а с травмой груди (часть 32в) — воздух и кровь в
+// плевральной полости, смещение средостения, перелом ребра.
 import { BlendMode, BlurStyle, ClipOp, PaintStyle, Skia, type SkPaint, type SkPath, type SkPicture, StrokeCap, TileMode } from '@shopify/react-native-skia';
 import { Rng } from '@/engine/core/rng';
+import {
+  bezier, collapsedLung, domeY, type FilmSide as Side, filmSide, fluidTop, hemithorax, lungScale, mediastinalShift, mirror, type Pt,
+  ribBack, ribFractureAt, ribFront, ribLayout, XRAY_ASPECT, type XrayFindings,
+} from './chestGeometry';
 
-export interface XrayFindings {
-  /** инфильтрат: сторона пациента и насколько плотный (0–1) */
-  infiltrate?: { side: 'right' | 'left' | 'both'; density: number };
-  /** эмфизема: низкие плоские купола, узкое «капельное» сердце, лёгкие прозрачнее */
-  hyperinflation?: boolean;
-}
-
-export const XRAY_ASPECT = 1.1;
-
-/** Сторона на снимке: −1 — правая сторона пациента (слева), +1 — левая. */
-type Side = -1 | 1;
-type Pt = [number, number];
-
-/** Точки кубической кривой Безье. */
-function bezier(p0: Pt, p1: Pt, p2: Pt, p3: Pt, n: number): Pt[] {
-  const out: Pt[] = [];
-  for (let i = 0; i <= n; i++) {
-    const t = i / n, u = 1 - t;
-    out.push([
-      u * u * u * p0[0] + 3 * u * u * t * p1[0] + 3 * u * t * t * p2[0] + t * t * t * p3[0],
-      u * u * u * p0[1] + 3 * u * u * t * p1[1] + 3 * u * t * t * p2[1] + t * t * t * p3[1],
-    ]);
-  }
-  return out;
-}
+export { XRAY_ASPECT, type XrayFindings };
 
 export function recordChestXray(width: number, findings: XrayFindings, seed: number): SkPicture {
   const W = width;
@@ -59,8 +41,6 @@ export function recordChestXray(width: number, findings: XrayFindings, seed: num
     }
     return p;
   };
-  const mirror = (x: number, s: Side) => (s === -1 ? x : 1 - x);
-
   /**
    * Лента кости по кривой: ширина меняется от w0 к w1 (в долях ширины снимка). Возвращает
    * замкнутый контур — его заливают телом кости и обводят светлым кортикальным слоем.
@@ -129,8 +109,9 @@ export function recordChestXray(width: number, findings: XrayFindings, seed: num
 
   // 2. Живот под куполами: печень справа, селезёнка и желудок слева. Сверху граница идёт
   // под лёгкими, к боковым стенкам спускается до уровня синусов — без полосы через стенку.
-  const domeR = emph ? 0.7 : 0.625; // вершина правого купола; левый ниже на 0,03
-  const domeL = domeR + 0.03;
+  // вершины куполов: левый ниже правого; напряжённый пневмоторакс опускает купол своей стороны
+  const domeR = domeY(-1, findings);
+  const domeL = domeY(1, findings);
   const belly = Skia.Path.Make();
   belly.moveTo(X(0.02), Y(domeR + 0.2));
   belly.cubicTo(X(0.08), Y(domeR + 0.14), X(0.12), Y(domeR - 0.02), X(0.3), Y(domeR - 0.02));
@@ -154,27 +135,14 @@ export function recordChestXray(width: number, findings: XrayFindings, seed: num
 
   // 3. Лёгкие: верхушки, боковые стенки, острые синусы, купола диафрагмы. Внутренний
   // край уходит за средостение — видимую границу даст силуэт сердца.
-  const lung = (s: Side): SkPath => {
-    const dome = s === -1 ? domeR : domeL;
-    const wide = emph ? 0.012 : 0;
-    const m = (x: number) => mirror(x, s);
+  const polygon = (pts: readonly Pt[]): SkPath => {
     const p = Skia.Path.Make();
-    p.moveTo(X(m(0.47)), Y(0.13));
-    p.cubicTo(X(m(0.45)), Y(0.07), X(m(0.34)), Y(0.06), X(m(0.265)), Y(0.1));
-    p.cubicTo(X(m(0.17 - wide)), Y(0.16), X(m(0.115 - wide)), Y(0.34), X(m(0.11 - wide)), Y(0.55));
-    p.quadTo(X(m(0.108 - wide)), Y(dome + 0.05), X(m(0.12 - wide)), Y(dome + 0.125)); // синус
-    if (emph) {
-      p.cubicTo(X(m(0.18)), Y(dome + 0.04), X(m(0.3)), Y(dome), X(m(0.4)), Y(dome + 0.01));
-    } else {
-      p.cubicTo(X(m(0.16)), Y(dome + 0.06), X(m(0.23)), Y(dome), X(m(0.31)), Y(dome));
-      p.quadTo(X(m(0.4)), Y(dome + 0.003), X(m(0.48)), Y(dome + 0.07));
-    }
-    p.lineTo(X(m(0.49)), Y(dome + 0.08));
-    p.lineTo(X(m(0.49)), Y(0.3));
+    p.moveTo(X(pts[0][0]), Y(pts[0][1]));
+    for (const q of pts.slice(1)) p.lineTo(X(q[0]), Y(q[1]));
     p.close();
     return p;
   };
-  const lungs = { [-1]: lung(-1), [1]: lung(1) } as Record<Side, SkPath>;
+  const lungs = { [-1]: polygon(hemithorax(-1, findings)), [1]: polygon(hemithorax(1, findings)) } as Record<Side, SkPath>;
   const both = Skia.Path.Make();
   both.addPath(lungs[-1]);
   both.addPath(lungs[1]);
@@ -252,6 +220,46 @@ export function recordChestXray(width: number, findings: XrayFindings, seed: num
       c.restore();
     }
   }
+
+  // 5б. Травма груди (часть 32в). Воздух в плевральной полости — чёрный, без сосудистого
+  // рисунка, от стенки до края спавшегося лёгкого; край — тонкая светлая линия висцеральной
+  // плевры. Кровь — однородное затенение снизу: синус и купол под ней не видны, у стенки выше;
+  // с воздухом над ней — ровный уровень.
+  const edge = collapsedLung(findings);
+  const air = findings.pneumothorax?.side ?? (findings.effusion?.air ? findings.effusion.side : undefined);
+  if (edge && air) {
+    const s = filmSide(air);
+    const inner = polygon(edge);
+    c.save();
+    c.clipPath(lungs[s], ClipOp.Intersect, true);
+    c.save();
+    c.clipPath(inner, ClipOp.Difference, true);
+    c.drawRect(Skia.XYWHRect(0, 0, W, H), paint('#040404', { alpha: 0.96 }));
+    c.restore();
+    // спавшееся лёгкое плотнее: воздуха в нём тем меньше, чем сильнее оно поджато
+    const pt = findings.pneumothorax;
+    const k = lungScale(pt?.size ?? 'small', pt?.tension === true);
+    c.drawPath(inner, paint('#7a7a7a', { alpha: 0.6 * (1 - k), blend: BlendMode.Screen, blur: 0.004 }));
+    c.drawPath(inner, paint('#9c9c9c', { alpha: 0.75, stroke: 0.0024, blur: 0.0008 }));
+    c.restore();
+  }
+  const top = fluidTop(findings);
+  if (top && findings.effusion) {
+    const s = filmSide(findings.effusion.side);
+    const fluid = Skia.Path.Make();
+    fluid.moveTo(X(top[0][0]), Y(top[0][1]));
+    for (const q of top.slice(1)) fluid.lineTo(X(q[0]), Y(q[1]));
+    fluid.lineTo(X(top[top.length - 1][0]), H);
+    fluid.lineTo(X(top[0][0]), H);
+    fluid.close();
+    c.save();
+    c.clipPath(lungs[s], ClipOp.Intersect, true);
+    const fluidPaint = paint('#909090', { alpha: 0.97, blur: findings.effusion.air ? 0.0015 : findings.effusion.massive ? 0.01 : 0.006 });
+    fluidPaint.setShader(Skia.Shader.MakeLinearGradient(
+      { x: 0, y: Y(top[0][1]) }, { x: 0, y: H }, [Skia.Color('#8a8a8a'), Skia.Color('#a2a2a2')], null, TileMode.Clamp));
+    c.drawPath(fluid, fluidPaint);
+    c.restore();
+  }
   c.restore();
 
   // корни лёгких плотнее: там крупные артерии и бронхи
@@ -264,26 +272,19 @@ export function recordChestXray(width: number, findings: XrayFindings, seed: num
   // загибается по боковой стенке; передний — от стенки косо вниз к середине и тает у
   // хряща. Ребро шире к боку, у позвоночника — уже.
   const ribs: { path: SkPath; alpha: number; fade?: [Pt, Pt] }[] = [];
-  const step = emph ? 0.064 : 0.058;
-  for (let r = 1; r <= 10; r++) {
-    const y0 = 0.105 + (r - 1) * step + jitter(0.003);
-    const reach = 0.19 + 0.2 * (1 - Math.exp(-r / 2.2)) + (emph ? 0.01 : 0) + jitter(0.004);
+  const layout = ribLayout(seed, emph);
+  layout.forEach((rib, i) => {
+    const r = i + 1;
     for (const s of [-1, 1] as Side[]) {
       const x = (d: number) => 0.5 + s * d;
-      const back = [
-        ...bezier([x(0.038), y0], [x(0.13), y0 - 0.024], [x(reach - 0.04), y0 - 0.014], [x(reach), y0 + 0.04], 18),
-        ...bezier([x(reach), y0 + 0.04], [x(reach + 0.01), y0 + 0.07], [x(reach + 0.005), y0 + 0.095], [x(reach - 0.008), y0 + 0.118], 8).slice(1),
-      ];
       // у позвоночника ребро тает: его перекрывают поперечные отростки и мышцы спины
-      ribs.push({ path: ribbon(back, 0.011, 0.02), alpha: r > 8 ? 0.22 : 0.32, fade: [[x(0.16), y0], [x(0.035), y0]] });
+      ribs.push({ path: ribbon(ribBack(s, rib), 0.011, 0.02), alpha: r > 8 ? 0.22 : 0.32, fade: [[x(0.16), rib.y0], [x(0.035), rib.y0]] });
       if (r <= 7) {
-        const a: Pt = [x(reach - 0.008), y0 + 0.118];
-        const b: Pt = [x(0.13 + r * 0.004), y0 + 0.235];
-        const front = bezier(a, [x(reach - 0.07), y0 + 0.135], [x(0.22), y0 + 0.2], b, 18);
-        ribs.push({ path: ribbon(front, 0.024, 0.02), alpha: 0.16, fade: [[x(reach - 0.1), y0 + 0.15], b] });
+        const front = ribFront(s, rib, r);
+        ribs.push({ path: ribbon(front, 0.024, 0.02), alpha: 0.16, fade: [[x(rib.reach - 0.1), rib.y0 + 0.15], front[front.length - 1]] });
       }
     }
-  }
+  });
   // ключицы: от грудины в стороны и вверх, S-образно, у грудины толще
   for (const s of [-1, 1] as Side[]) {
     const x = (d: number) => 0.5 + s * d;
@@ -298,6 +299,31 @@ export function recordChestXray(width: number, findings: XrayFindings, seed: num
   c.save();
   c.clipPath(body, ClipOp.Intersect, true);
   for (const b of ribs) bone(b.path, b.alpha, b.fade);
+  // перелом ребра (часть 32в): тёмная щель поперёк ребра в боковом отделе и ступенька —
+  // отломок сдвинут на толщину коркового слоя
+  const fr = findings.ribFractures;
+  if (fr) {
+    const s = filmSide(fr.side);
+    for (const n of fr.ribs) {
+      const rib = layout[Math.min(10, Math.max(1, Math.round(n))) - 1];
+      const { at, dir } = ribFractureAt(s, rib);
+      const len = Math.hypot(dir[0] * W, dir[1] * H) || 1;
+      const ux = (dir[0] * W) / len, uy = (dir[1] * H) / len; // вдоль ребра, в пикселях
+      const nx = -uy, ny = ux; // поперёк
+      const half = 0.0115 * W; // чуть шире ребра в этом месте
+      const cx = X(at[0]), cy = Y(at[1]);
+      const gap = Skia.Path.Make();
+      gap.moveTo(cx - nx * half, cy - ny * half);
+      gap.lineTo(cx + nx * half, cy + ny * half);
+      c.drawPath(gap, paint('#030303', { alpha: 0.95, stroke: 0.005, blur: 0.0005 }));
+      // ступенька: край наружного отломка выступает за край ребра на толщину кортикального слоя
+      const o = 0.004 * W;
+      const step = Skia.Path.Make();
+      step.moveTo(cx + ux * 0.004 * W + nx * (half - o * 0.2), cy + uy * 0.004 * W + ny * (half - o * 0.2));
+      step.lineTo(cx + ux * 0.02 * W + nx * (half - o * 0.2), cy + uy * 0.02 * W + ny * (half - o * 0.2));
+      c.drawPath(step, paint('#e0e0e0', { alpha: 0.75, blend: BlendMode.Screen, stroke: 0.0035, blur: 0.0006 }));
+    }
+  }
   c.restore();
 
   // 7. Средостение и сердце одним силуэтом: справа — верхняя полая вена и правое
@@ -323,6 +349,9 @@ export function recordChestXray(width: number, findings: XrayFindings, seed: num
   const heartPaint = paint('#909090', { alpha: 0.86, blur: 0.004 });
   heartPaint.setShader(Skia.Shader.MakeLinearGradient(
     { x: 0, y: 0 }, { x: 0, y: Y(0.76) }, [Skia.Color('#595959'), Skia.Color('#6c6c6c'), Skia.Color('#7e7e7e'), Skia.Color('#949494')], [0, 0.18, 0.55, 1], TileMode.Clamp));
+  // напряжённый пневмоторакс и массивная кровь смещают сердце и трахею в здоровую сторону
+  c.save();
+  c.translate(X(mediastinalShift(findings)), 0);
   c.drawPath(heart, heartPaint);
 
   // трахея и главные бронхи — полоса воздуха в средостении; левый бронх длиннее и положе
@@ -333,6 +362,7 @@ export function recordChestXray(width: number, findings: XrayFindings, seed: num
   airway.moveTo(X(0.499), Y(0.285));
   airway.quadTo(X(0.522), Y(0.325), X(0.572), Y(0.35));
   c.drawPath(airway, paint('#3a3a3a', { alpha: 0.75, stroke: 0.036, blur: 0.007 }));
+  c.restore();
 
   // 8. Позвонки еле видны сквозь тень сердца и средостения; ниже купола — отчётливее.
   const vertH = 0.042, gap = 0.011;

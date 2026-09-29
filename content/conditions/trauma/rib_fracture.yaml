@@ -1,0 +1,107 @@
+id: cond.rib_fracture
+name: { ru: "Перелом рёбер" }
+icd10: S22.3
+department: dept.trauma
+system: bones
+kind: injury
+severity: moderate
+epidemiology:
+  # переломы рёбер диагностируют у всех с повреждением костей грудной клетки (728_2, раздел 1.3);
+  # доля среди пришедших с травмой — игровая оценка
+  prevalence: uncommon
+  # поступившие с переломами рёбер: медиана возраста — 62 года (49–75), мужчин — 67,8 % (Peek 2022);
+  # распределение по возрасту — игровая оценка
+  age: { min: 18, peak: [45, 80] }
+  sex: { m: 1, f: 0.47 }
+params:
+  # у поступивших одно ребро — 17,9 %, два — 17,7 %, три и больше — 64,4 %, клапан — 3,9 % (Peek
+  # 2022), а одиночные неосложнённые лечат амбулаторно (728_2, раздел 6) — среди всех пришедших
+  # одно-два ребра чаще; доли — игровая оценка. Порог три ребра — показание к госпитализации
+  # (раздел 6); два (S22.4) и клапан (S22.5) — коды раздела 1.4
+  ribs: { one_two: 60, three_plus: 37, flail: 3 }
+  # сторона — поровну, игровая оценка
+  side: { right: 1, left: 1 }
+course:
+  # сращение — через 3–4 недели (728_2, раздел 7)
+  stages:
+    - { id: acute, days: [0, 28] }
+  presentation: [0, 2]
+  # прогноз при неосложнённых переломах 1–2 рёбер благоприятен (раздел 7)
+  selfLimiting: { when: { ribs: [one_two] } }
+  # три ребра и больше без обезболивания — поверхностное дыхание и пневмония (раздел 1.6); на какой
+  # день хуже — игровая оценка
+  untreated: { band: often, days: [2, 5], when: { ribs: [three_plus, flail] } }
+  # в отделении — 4,5 ± 3,4 суток (Sirmali 2003), 4,5 (Liman 2003)
+  stay: [3, 6]
+findings:
+  # боль в 100 % случаев, выраженная, сильнее при глубоком дыхании и кашле; болезненность в месте
+  # перелома, нередко крепитация и «ступенька»; симптом прерванного вдоха; боль при сдавлении
+  # грудной клетки (728_2, раздел 1.6); частот нет — полосы игровые
+  - f: sym.chest_injury_pain
+    band: { pct: 100 }
+    attrs: { side: $side }
+    note: "с этой жалобой приходят все: без неё травмы нет — жалоба травмы, а не признак с частотой"
+  - { f: sym.pleuritic_pain, band: always, attrs: { side: $side } }
+  - { f: sign.chest_wall_tenderness, band: always }
+  - { f: sign.rib_crepitus, band: often }
+  - { f: sign.interrupted_inspiration, band: usually }
+  - { f: sign.rib_compression_pain, band: usually }
+  # изолированная подкожная эмфизема — 2,2 % переломов (Sirmali 2003)
+  - { f: sign.subcutaneous_emphysema, band: very_rarely }
+  - { f: sym.dyspnea, band: rarely, when: { ribs: [one_two] } }
+  - { f: sym.dyspnea, band: often, when: { ribs: [three_plus] } }
+  - { f: sym.dyspnea, band: always, when: { ribs: [flail] } }
+  - { f: vital.tachypnea, band: sometimes, when: { ribs: [three_plus] } }
+  - { f: vital.tachypnea, band: usually, when: { ribs: [flail] } }
+  - { f: vital.spo2_low, band: rarely, when: { ribs: [three_plus] } }
+  - { f: vital.spo2_low, band: usually, when: { ribs: [flail] } }
+  - { f: vital.tachycardia, band: often, when: { ribs: [flail] } }
+  - { f: sign.breath_sounds_diminished, band: sometimes, when: { ribs: [three_plus, flail] }, attrs: { side: $side } }
+  # реберный клапан — парадоксальное движение участка грудной стенки (раздел 1.1)
+  - { f: sign.paradoxical_breathing, band: always, when: { ribs: [flail] } }
+  - f: img.xr_rib_fracture
+    band: { pct: 100 }
+    attrs: { side: $side }
+    note: "перелом есть у каждого; увидит ли его снимок — чувствительность обследования: обзорный пропускает 25,9 % (728_2, раздел 1.3)"
+  - f: img.xr_rib_multiple
+    band: { pct: 100 }
+    when: { ribs: [three_plus, flail] }
+    note: "три ребра и больше сломаны у каждого с таким переломом; сосчитает ли их снимок — чувствительность обследования"
+confirm: [exam.xray_ribs, exam.xray_chest]
+redFlags: [sign.paradoxical_breathing]
+treatment:
+  # анальгезия всем — НПВП (M01A) (728_2, раздел 3, УУР C, УДД 5), парацетамол — критерий качества 5;
+  # дыхательные упражнения — разделы 3–4 и критерий 8; тугое бинтование противопоказано — способствует
+  # пневмонии (раздел 3, УУР C, УДД 5)
+  firstLine: [tx.ibuprofen, tx.paracetamol]
+  supportive: [tx.breathing_exercises]
+  harmful: [tx.chest_binding]
+  plan: [tx.ibuprofen, tx.breathing_exercises]
+  byParam:
+    # множественные переломы и боль, которую не снимают анальгетики, — блокада (раздел 3, УУР C, УДД 2)
+    - when: { ribs: [three_plus, flail] }
+      supportive: [tx.rib_block, tx.breathing_exercises]
+  # одиночные неосложнённые — амбулаторно; три ребра и больше — госпитализация; множественные и
+  # флотирующие — торакальное хирургическое отделение (728_2, раздел 6)
+  setting:
+    default: home
+    param: { name: ribs, map: { one_two: home, three_plus: ward, flail: transfer } }
+    redFlag: transfer
+texts:
+  summary:
+    ru: >-
+      Перелом рёбер после удара или падения на бок: сильная боль в месте перелома, больно вдохнуть и
+      кашлянуть, глубокий вдох обрывается, под пальцами хрустят отломки. Подтверждают снимком рёбер;
+      обычный снимок груди нужен, чтобы не пропустить воздух и кровь в плевральной полости. Главное
+      лечение — обезболивание и дыхательная гимнастика; одно-два ребра — дома, три и больше — в
+      стационаре, реберный клапан — в торакальном отделении. Тугое бинтование вредно.
+pearls:
+  - ru: "Не бинтуйте грудь туго: дыхание станет ещё поверхностнее, и за переломом придёт пневмония."
+  - ru: "Обезболивание при переломе рёбер — не удобство, а лечение: без него человек не дышит глубоко и не откашливается."
+simplified: "Переломов I–II рёбер и грудины, двусторонних переломов, ушиба лёгкого, ОРИТ и ИВЛ в игре нет. Место по возрасту и болезням лёгких — пока нет: пожилых с переломами рёбер тоже чаще кладут."
+sources:
+  - { kind: guideline, title: "Закрытая травма груди", org: "Минздрав РФ", year: 2025, url: "https://cr.minzdrav.gov.ru/view-cr/728_2", note: "ID 728_2, опубликованы 18.12.2025, применяются; сверено с рубрикатором 29.09.2026; раздел 1.3: переломы рёбер — у всех с повреждением костей грудной клетки, рентгенонегативны при рутинной рентгенографии лёгких 25,9 %; раздел 1.4: S22.3 — перелом ребра, S22.4 — множественные переломы рёбер, S22.5 — флотирующая грудная клетка; раздел 1.6: боль, крепитация и «ступенька», прерванный вдох, симптом осевых нагрузок; раздел 2.4: подтверждение рентгенографией рёбер (УУР B, УДД 3); раздел 3: анальгезия всем (УУР C, УДД 5), блокады при множественных переломах (УУР C, УДД 2), тугое бинтование не рекомендуется (УУР C, УДД 5); раздел 6: одиночные неосложнённые — амбулаторно, перелом трёх и более рёбер — госпитализация, множественные и флотирующие — торакальное хирургическое отделение; раздел 7: сращение через 3–4 недели, прогноз при 1–2 рёбрах благоприятен; частоты признаков не даны — полосы игровые" }
+  - { kind: paper, title: "Peek J, Beks RB, Hietbrink F, De Jong MB, Heng M, Beeres FJP, IJpma FFA, Leenen LPH, Groenwold RHH, Houwert RM. Epidemiology and outcome of rib fractures: a nationwide study in the Netherlands. Eur J Trauma Emerg Surg 2022;48(1):265–271", url: "https://pubmed.ncbi.nlm.nih.gov/32506373/", note: "PMID 32506373, PMC8825616, сверено 29.09.2026: 14 850 поступивших с переломами рёбер; медиана возраста — 62 года (49–75), мужчин — 67,8 %; одно ребро — 17,9 %, два — 17,7 %, три и больше — 64,4 %, клапан — 3,9 %; смертность за 30 дней — 6,9 %" }
+  - { kind: paper, title: "Sirmali M, Türüt H, Topçu S, Gülhan E, Yazici U, Kaya S, Taştepe I. A comprehensive analysis of traumatic rib fractures: morbidity, mortality and management. Eur J Cardiothorac Surg 2003;24(1):133–138", url: "https://pubmed.ncbi.nlm.nih.gov/12853057/", note: "PMID 12853057, сверено 29.09.2026: 548 больных с переломами рёбер, 331 мужчина и 217 женщин, средний возраст — 43 года; пневмоторакс — 37,2 %, гемоторакс — 26,8 %, гемопневмоторакс — 15,3 %, клапан — 5,8 %, изолированная подкожная эмфизема — 2,2 %; в отделении — 4,5 ± 3,4 суток" }
+  - { kind: paper, title: "Liman ST, Kuzucu A, Tastepe AI, Ulasan GN, Topcu S. Chest injury due to blunt trauma. Eur J Cardiothorac Surg 2003;23(3):374–378", url: "https://pubmed.ncbi.nlm.nih.gov/12614809/", note: "PMID 12614809, сверено 29.09.2026: 1 490 поступивших с тупой травмой груди; пневмоторакс или гемоторакс — у 6,7 % без переломов рёбер, у 24,9 % с одним-двумя, у 81,4 % с тремя и больше; койко-день — 4,5" }
+review: draft

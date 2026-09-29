@@ -586,9 +586,6 @@ try {
 
   // П5: снимки, ЭКГ, портреты; с 0.0.34 — срезы головы на КТ и МРТ (spec 2026-09-ct-mri-ultrasound)
   await page.goto(`${base}/spikes/imaging`);
-  await page.waitForTimeout(2500);
-  await page.screenshot({ path: join(OUT, '06-imaging.png'), fullPage: true });
-  check(true, 'П5: экран снимков открылся (смотреть 06-imaging.png)');
   // нарисован ли холст: неподвижный рисунок в вебе копируется в 2D-холст (без своего контекста
   // WebGL) — посередине непрозрачный пиксель; холст, потерявший контекст, пуст
   const drawn = async (selector: string) => page.locator(selector).evaluateAll(els => els.map(el => {
@@ -596,13 +593,29 @@ try {
     const d = c.getContext('2d')?.getImageData(Math.floor(c.width / 2), Math.floor(c.height / 2), 1, 1).data;
     return d !== undefined && d[3] === 255;
   }));
+  // рисунков на экране больше сорока, в вебе каждый рисует CanvasKit в главном потоке — снимок
+  // экрана ждёт кадра, которого до конца рисования нет (с 0.2.0 снимков груди на семь больше, и
+  // под нагрузкой на всё уходило за 30 с): сначала ждём, пока нарисованы все
+  const allDrawn = async (ms: number) => {
+    await page.waitForTimeout(2500);
+    for (const until = Date.now() + ms; Date.now() < until;) {
+      const all = await drawn('canvas');
+      if (all.length > 0 && all.every(Boolean)) return;
+      await page.waitForTimeout(500);
+    }
+  };
+  await allDrawn(90_000);
+  await page.screenshot({ path: join(OUT, '06-imaging.png'), fullPage: true });
+  check(true, 'П5: экран снимков открылся (смотреть 06-imaging.png)');
   const heads = await drawn('[data-testid^="head-ct-"] canvas, [data-testid^="head-mri-"] canvas');
   const us = await drawn('[data-testid^="us-"] canvas');
   const abd = await drawn('[data-testid^="abd-"] canvas');
+  // снимок груди при травме (часть 32в): воздух, кровь, переломы рёбер
+  const chest = await drawn('[data-testid^="chest-"] canvas');
   const allImages = await drawn('canvas');
-  check(heads.length === 7 && heads.every(Boolean) && us.length === 11 && us.every(Boolean) && abd.length === 3 && abd.every(Boolean) && allImages.every(Boolean),
-    `П5: срезы головы нарисованы — ${heads.filter(Boolean).length} из 7, УЗИ — ${us.filter(Boolean).length} из 11, снимки живота — ${abd.filter(Boolean).length} из 3; все рисунки экрана — ${allImages.filter(Boolean).length} из ${allImages.length} (смотреть 06-head-*.png, 06-us.png, 06-abdomen.png)`);
-  for (const id of ['head-ct', 'head-mri', 'us', 'abdomen']) {
+  check(heads.length === 7 && heads.every(Boolean) && us.length === 11 && us.every(Boolean) && abd.length === 3 && abd.every(Boolean) && chest.length === 7 && chest.every(Boolean) && allImages.every(Boolean),
+    `П5: срезы головы нарисованы — ${heads.filter(Boolean).length} из 7, УЗИ — ${us.filter(Boolean).length} из 11, снимки живота — ${abd.filter(Boolean).length} из 3, груди при травме — ${chest.filter(Boolean).length} из 7; все рисунки экрана — ${allImages.filter(Boolean).length} из ${allImages.length} (смотреть 06-head-*.png, 06-us.png, 06-abdomen.png, 06-chest.png)`);
+  for (const id of ['head-ct', 'head-mri', 'us', 'abdomen', 'chest']) {
     await page.getByTestId(id).scrollIntoViewIfNeeded();
     await page.waitForTimeout(300);
     await page.getByTestId(id).screenshot({ path: join(OUT, `06-${id}.png`) });
@@ -610,7 +623,7 @@ try {
 
   // П7: рентген костей кодом (spec 2026-09-chapter-2, часть 31): у каждого вида — норма и переломы
   await page.goto(`${base}/spikes/bones`);
-  await page.waitForTimeout(2500);
+  await allDrawn(60_000);
   const bones = await drawn('[data-testid^="bone-"] canvas');
   check(bones.length === 16 && bones.every(Boolean), `П7: рентген костей нарисован — ${bones.filter(Boolean).length} из 16 (смотреть 06-bones-*.png)`);
   for (const view of ['wrist', 'ankle', 'foot', 'hip', 'clavicle', 'ribs']) {
@@ -1351,6 +1364,17 @@ try {
   const footSnap = await page.locator('text=Снимок стопы нужен').first().isVisible().catch(() => false);
   check((await visibleText(page, 'enc-article-title')) === 'Оттавские правила для стопы' && footSnap,
     `энциклопедия, правило для стопы: ${await visibleText(page, 'enc-article-title')} — «снимок стопы нужен»`);
+  // травма груди (0.2.0): место по количеству крови и по числу рёбер
+  await page.goto(`${base}/encyclopedia/article/cond.traumatic_hemothorax`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const massive = await page.locator('text=При большом гемотораксе — операция.').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'Травматический гемоторакс' && massive,
+    `энциклопедия, гемоторакс: ${await visibleText(page, 'enc-article-title')} — «при большом гемотораксе — операция»`);
+  await page.goto(`${base}/encyclopedia/article/cond.rib_fracture`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const three = await page.locator('text=При переломе трёх и более рёбер — в стационаре.').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'Перелом рёбер' && three,
+    `энциклопедия, перелом рёбер: ${await visibleText(page, 'enc-article-title')} — «при переломе трёх и более рёбер — в стационаре»`);
 
   // кампания: карьера 1 → глава 1 — письма и задания; письмо наставника; смена открывается;
   // «Продолжить» в меню — карьера (spec 2026-09-campaign)

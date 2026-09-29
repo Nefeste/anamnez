@@ -90,6 +90,10 @@ export function recordBoneXray(width: number, findings: BoneFindings, seed: numb
     const layer = Skia.Paint();
     layer.setImageFilter(Skia.ImageFilter.MakeBlur(0.0022, 0.0022, TileMode.Clamp, null));
     c.saveLayer(layer);
+    if (panel.zoom) {
+      c.translate(panel.zoom.dx, panel.zoom.dy);
+      c.scale(panel.zoom.k, panel.zoom.k);
+    }
     // мягкие ткани: края размыты, толще — светлее
     for (const t of panel.soft) c.drawPath(poly(t.outline), paint('#3e3e3e', { alpha: 0.5 + 0.5 * t.density, blend: BlendMode.Screen, blur: 0.012 }));
     for (const a of panel.air) c.drawPath(poly(a.outline), paint('#0a0a0a', { alpha: a.density, blur: 0.008 }));

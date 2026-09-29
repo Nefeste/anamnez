@@ -2,7 +2,7 @@
 // функции, и сам рисунок без экрана (Skia через CanvasKit, tools/imaging/headless.ts): где светло и
 // где темно, то же зерно — тот же рисунок.
 import { beforeAll, describe, expect, test } from 'bun:test';
-import { BONE_ASPECT, type BoneFindings, boneFilm, type BonePanel, type BoneView, CLAVICLE_AXIS, FEMORAL_HEAD, type FractureGeo, MORTISE, type Pt, SITES } from '../../src/render/xray/boneGeometry';
+import { BONE_ASPECT, type Bone, type BoneFindings, boneFilm, type BonePanel, type BoneView, CLAVICLE_AXIS, FEMORAL_HEAD, type FractureGeo, MORTISE, panelPoint, type Pt, SITES } from '../../src/render/xray/boneGeometry';
 import { centroid, inside, moved } from '../../src/render/xray/boneShapes';
 import { BONE_CASES } from '../../src/state/imagingCases';
 import { loadSkia, luma, rasterize } from '../imaging/headless';
@@ -105,6 +105,53 @@ describe('рентген костей: геометрия', () => {
     expect(lat.carried.mc3.angle).toBe(0);
   });
 
+  test('кисть: большой палец растёт от кости-трапеции — ниже и сбоку от остальных, отведён; у него две фаланги', () => {
+    // ось кости — главная ось её контура; основание — конец, ближний к запястью
+    const axis = (b: Bone) => {
+      const [cx, cy] = centroid(b.outline);
+      let xx = 0, xy = 0, yy = 0;
+      for (const [x, y] of b.outline) {
+        xx += (x - cx) ** 2;
+        xy += (x - cx) * (y - cy);
+        yy += (y - cy) ** 2;
+      }
+      const a = 0.5 * Math.atan2(2 * xy, xx - yy);
+      const dir: Pt = [Math.cos(a), Math.sin(a)];
+      const proj = b.outline.map(([x, y]) => (x - cx) * dir[0] + (y - cy) * dir[1]);
+      const [lo, hi] = [Math.min(...proj), Math.max(...proj)];
+      const ends: Pt[] = [[cx + dir[0] * lo, cy + dir[1] * lo], [cx + dir[0] * hi, cy + dir[1] * hi]];
+      const [base, head] = ends[0][1] > ends[1][1] ? ends : [ends[1], ends[0]];
+      return { base, head, len: hi - lo, deg: (Math.atan2(head[0] - base[0], base[1] - head[1]) * 180) / Math.PI };
+    };
+    const [pa, lat] = boneFilm({ view: 'wrist' }, 1).panels;
+    for (const [p, side] of [[pa, 'лучевую'], [lat, 'ладонную']] as const) {
+      const mc1 = axis(boneOf(p, 'mc1'));
+      const bases = ['mc2', 'mc3', 'mc4', 'mc5'].map(id => axis(boneOf(p, id)));
+      // основание первой пястной — ниже оснований остальных (у запястья) и в стороне от них
+      for (const b of bases) expect({ side, lower: mc1.base[1] > b.base[1] + 0.02 }).toEqual({ side, lower: true });
+      expect(mc1.base[0]).toBeLessThan(Math.min(...bases.map(b => b.base[0])) - 0.05);
+      // отведена от второй пястной на 25–40° и короче её
+      const angle = bases[0].deg - mc1.deg;
+      expect({ side, angle: angle > 25 && angle < 40 }).toEqual({ side, angle: true });
+      expect(mc1.len).toBeLessThan(0.8 * bases[0].len);
+      // стоит на трапеции: её середина — у основания первой пястной
+      const tz = centroid(boneOf(p, 'trapezium').outline);
+      expect(Math.hypot(tz[0] - mc1.base[0], tz[1] - mc1.base[1])).toBeLessThan(0.1);
+      // у большого пальца две фаланги, средней нет; две сесамовидные кости; у II–V — основные
+      // фаланги за головками пястных
+      for (const id of ['pp1', 'dp1', 'sesamoid_r', 'sesamoid_u', 'pp2', 'pp3', 'pp4', 'pp5']) boneOf(p, id);
+      expect(p.bones.some(b => b.id === 'mp1')).toBe(false);
+      // между большим и указательным — воздух: первый межпальцевый промежуток
+      const pp1 = axis(boneOf(p, 'pp1')), pp2 = axis(boneOf(p, 'pp2'));
+      const web: Pt = [(pp1.head[0] + pp2.base[0]) / 2, (pp1.head[1] + pp2.base[1]) / 2];
+      expect({ side, web: p.soft.some(t => inside(web, t.outline)) }).toEqual({ side, web: false });
+      expect(p.soft.some(t => inside(mc1.base, t.outline) && inside(pp1.base, t.outline))).toBe(true);
+    }
+    // при переломе лучевой со смещением большой палец уходит вместе с запястьем
+    const [broken] = boneFilm({ view: 'wrist', fractures: [{ site: 'radius', displacement: 1 }] }, 1).panels;
+    for (const id of ['mc1', 'pp1', 'dp1', 'sesamoid_r', 'pp2']) expect(broken.carried[id]).toEqual(broken.carried.lunate);
+  });
+
   test('голеностоп: при смещении малоберцовой таранная кость уходит кнаружи — щель у внутренней лодыжки шире 5 мм', () => {
     const clear = (d: number) => {
       const [ap] = boneFilm({ view: 'ankle', fractures: [{ site: 'fibula', displacement: d }] }, 1).panels;
@@ -185,10 +232,12 @@ describe('рентген костей: рисунок без экрана', () =
     draw = (f, seed) => rasterize(recordBoneXray(S, f, seed), S, Math.round(S * BONE_ASPECT[f.view]));
   });
   /** Яркость точки панели: координаты — в долях ширины панели. */
-  const at = (px: Uint8Array, view: BoneView, p: BonePanel, [x, y]: Pt) => {
+  const atPanel = (px: Uint8Array, view: BoneView, p: BonePanel, [x, y]: Pt) => {
     const h = Math.round(S * BONE_ASPECT[view]);
     return luma(px, S, h, p.x + x * p.w, ((p.y + y * p.w) * S) / (h - 1));
   };
+  /** Яркость точки рисунка — с масштабом панели. */
+  const at = (px: Uint8Array, view: BoneView, p: BonePanel, q: Pt) => atPanel(px, view, p, panelPoint(p, q));
 
   test('кость светлее мягких тканей, мягкие ткани светлее воздуха; корковый слой диафиза светлее середины', async () => {
     const { rgba } = await draw({ view: 'wrist' }, 1);
@@ -231,11 +280,12 @@ describe('рентген костей: рисунок без экрана', () =
     expect(boneFilm({ view: 'wrist' }, 1).mirror).toBe(false);
     const right = (await draw({ view: 'wrist' }, 1)).rgba;
     const left = (await draw({ view: 'wrist', side: 'left' }, 1)).rgba;
-    // у правой в 0,455 — лучевая кость, в 0,545 — межкостный промежуток
-    const bone: Pt = [0.455, 1.8], gap: Pt = [0.545, 1.8];
-    expect(at(right, 'wrist', pa, bone) - at(right, 'wrist', pa, gap)).toBeGreaterThan(20);
-    expect(at(left, 'wrist', pa, gap) - at(left, 'wrist', pa, bone)).toBeGreaterThan(20);
-    expect(Math.abs(at(left, 'wrist', pa, gap) - at(right, 'wrist', pa, bone))).toBeLessThan(12);
+    // у правой здесь — локтевая кость, а в зеркальной точке панели — воздух за предплечьем
+    const bone = panelPoint(pa, [0.69, 1.8]);
+    const air: Pt = [1 - bone[0], bone[1]];
+    expect(atPanel(right, 'wrist', pa, bone) - atPanel(right, 'wrist', pa, air)).toBeGreaterThan(20);
+    expect(atPanel(left, 'wrist', pa, air) - atPanel(left, 'wrist', pa, bone)).toBeGreaterThan(20);
+    expect(Math.abs(atPanel(left, 'wrist', pa, air) - atPanel(right, 'wrist', pa, bone))).toBeLessThan(12);
   });
 
   test('то же зерно — те же байты; другое — другой снимок перелома; все варианты «Проверок» рисуются', async () => {

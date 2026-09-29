@@ -1,11 +1,13 @@
 // Снимки кодом (spec 2026-09-ct-mri-ultrasound): срез головы на КТ и МРТ (часть 20) и сектор УЗИ
 // (часть 21; подвздошная область с отростком — часть 29), обзорный снимок живота стоя (spec
-// 2026-09-chapter-2, часть 30б) — геометрия очагов, и сам рисунок без экрана (Skia через CanvasKit,
-// tools/imaging/headless.ts): где светло и где темно, то же зерно — тот же рисунок.
+// 2026-09-chapter-2, часть 30б), снимок груди при травме (часть 32в) — геометрия очагов, и сам
+// рисунок без экрана (Skia через CanvasKit, tools/imaging/headless.ts): где светло и где темно, то
+// же зерно — тот же рисунок.
 import { beforeAll, describe, expect, test } from 'bun:test';
 import { brainRadius, headGeometry, type HeadFindings, type HeadFocus, inside, skullInnerRadius } from '../../src/render/ct/geometry';
-import { ABDOMEN_CASES, HEAD_CASES, US_CASES } from '../../src/state/imagingCases';
+import { ABDOMEN_CASES, CHEST_CASES, HEAD_CASES, US_CASES } from '../../src/state/imagingCases';
 import { ABDOMEN_ASPECT, abdomenGeometry, colonAt, CRESCENT_X, DIAPHRAGM, domeY, type Loop, loopFolds, loopGas, loopLevels } from '../../src/render/xray/abdomenGeometry';
+import * as chest from '../../src/render/xray/chestGeometry';
 import { inSector, polar as usPolar, R1, usGeometry } from '../../src/render/us/geometry';
 import { loadSkia, luma, rasterize } from '../imaging/headless';
 
@@ -508,6 +510,126 @@ describe('снимок живота: рисунок без экрана', () => 
     expect(Buffer.from(a.png).equals(Buffer.from(c.png))).toBe(false);
     expect(ABDOMEN_CASES.map(k => k.key)).toEqual(['abd-normal', 'abd-free-gas', 'abd-levels']);
     for (const k of ABDOMEN_CASES) {
+      expect((await draw(k.findings, k.seed)).png.length).toBeGreaterThan(1000);
+      expect(k.label.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('снимок груди при травме: геометрия', () => {
+  const minX = (pts: readonly [number, number][]) => Math.min(...pts.map(p => p[0]));
+  const maxX = (pts: readonly [number, number][]) => Math.max(...pts.map(p => p[0]));
+
+  test('пневмоторакс: край лёгкого — в своём поле; у большого дальше от стенки, чем у малого; без воздуха края нет', () => {
+    const wall = minX(chest.hemithorax(-1, {}));
+    const small = chest.collapsedLung({ pneumothorax: { side: 'right', size: 'small' } })!;
+    const large = chest.collapsedLung({ pneumothorax: { side: 'right', size: 'large' } })!;
+    // правая сторона пациента — слева на снимке
+    expect(maxX(small)).toBeLessThan(0.5);
+    expect(maxX(large)).toBeLessThan(0.5);
+    // малый — узкая полоса у стенки, большой — лёгкое поджато к корню
+    expect(minX(small) - wall).toBeGreaterThan(0.01);
+    expect(minX(small) - wall).toBeLessThan(0.05);
+    expect(minX(large) - wall).toBeGreaterThan(0.1);
+    // стоя воздух собирается вверху: у верхушки полоса шире, чем у купола
+    const top = (pts: readonly [number, number][]) => Math.min(...pts.map(p => p[1]));
+    const bottom = (pts: readonly [number, number][]) => Math.max(...pts.map(p => p[1]));
+    const field = chest.hemithorax(-1, {});
+    expect(top(small) - top(field)).toBeGreaterThan(bottom(field) - bottom(small));
+    // левый — справа на снимке
+    expect(minX(chest.collapsedLung({ pneumothorax: { side: 'left', size: 'large' } })!)).toBeGreaterThan(0.5);
+    expect(chest.collapsedLung({})).toBeUndefined();
+    // гемопневмоторакс: воздух над кровью — край лёгкого тоже есть
+    expect(chest.collapsedLung({ effusion: { side: 'left', air: true } })).toBeDefined();
+  });
+
+  test('напряжённый пневмоторакс и массивная кровь сдвигают средостение в здоровую сторону, купол на стороне воздуха ниже', () => {
+    expect(chest.mediastinalShift({ pneumothorax: { side: 'right', size: 'large', tension: true } })).toBeGreaterThan(0);
+    expect(chest.mediastinalShift({ pneumothorax: { side: 'left', size: 'large', tension: true } })).toBeLessThan(0);
+    expect(chest.mediastinalShift({ effusion: { side: 'right', massive: true } })).toBeGreaterThan(0);
+    expect(chest.mediastinalShift({ effusion: { side: 'left', massive: true } })).toBeLessThan(0);
+    expect(chest.mediastinalShift({ pneumothorax: { side: 'right', size: 'large' } })).toBe(0);
+    expect(chest.mediastinalShift({ effusion: { side: 'right' } })).toBe(0);
+    expect(chest.mediastinalShift({})).toBe(0);
+    const tension = { pneumothorax: { side: 'right' as const, size: 'large' as const, tension: true } };
+    expect(chest.domeY(-1, tension)).toBeGreaterThan(chest.domeY(-1, {}));
+    expect(chest.domeY(1, tension)).toBe(chest.domeY(1, {}));
+  });
+
+  test('кровь: внизу своего поля, у стенки выше, чем у средостения; массивная — выше средней; с воздухом — ровный уровень', () => {
+    const mid = chest.fluidTop({ effusion: { side: 'right' } })!;
+    const big = chest.fluidTop({ effusion: { side: 'right', massive: true } })!;
+    const level = chest.fluidTop({ effusion: { side: 'right', air: true } })!;
+    expect(maxX(mid)).toBeLessThanOrEqual(0.5);
+    expect(minX(chest.fluidTop({ effusion: { side: 'left' } })!)).toBeGreaterThanOrEqual(0.5);
+    // у стенки (первая точка) граница выше — меньше y
+    expect(mid[0][1]).toBeLessThan(mid[mid.length - 1][1]);
+    // средняя — над куполом, но ниже середины поля; массивная — выше
+    expect(mid[0][1]).toBeLessThan(chest.domeY(-1, {}));
+    expect(mid[0][1]).toBeGreaterThan(0.45);
+    expect(big[0][1]).toBeLessThan(mid[0][1] - 0.15);
+    expect(new Set(level.map(p => p[1])).size).toBe(1);
+    expect(chest.fluidTop({})).toBeUndefined();
+  });
+
+  test('перелом ребра — в боковом отделе своего ребра, на своей стороне; номера по зерну одни, три — соседние вокруг одного', () => {
+    const layout = chest.ribLayout(5, false);
+    for (const n of [4, 6, 8]) {
+      const rib = layout[n - 1];
+      const right = chest.ribFractureAt(-1, rib);
+      const left = chest.ribFractureAt(1, rib);
+      expect(right.at[0]).toBeLessThan(0.5 - 0.2);
+      expect(left.at[0]).toBeGreaterThan(0.5 + 0.2);
+      expect(Math.abs(right.at[1] - rib.y0)).toBeLessThan(0.06);
+    }
+    for (const seed of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) {
+      const [one] = chest.fracturedRibs(seed, false);
+      expect(one).toBeGreaterThanOrEqual(4);
+      expect(one).toBeLessThanOrEqual(8);
+      expect(chest.fracturedRibs(seed, true)).toEqual([one - 1, one, one + 1]);
+      expect(chest.fracturedRibs(seed, false)).toEqual([one]);
+    }
+    expect(chest.ribLayout(5, false)).toEqual(layout);
+  });
+});
+
+describe('снимок груди при травме: рисунок без экрана', () => {
+  const S = 240;
+  const SH = Math.round(S * chest.XRAY_ASPECT);
+  let draw: (f: chest.XrayFindings, seed: number) => Promise<{ rgba: Uint8Array; png: Uint8Array }>;
+  beforeAll(async () => {
+    await loadSkia();
+    const { recordChestXray } = await import('../../src/render/xray/chest');
+    draw = (f, seed) => rasterize(recordChestXray(S, f, seed), S, SH);
+  });
+  const at = (px: Uint8Array, p: [number, number]) => luma(px, S, SH, p[0], p[1]);
+
+  test('воздух между краем лёгкого и стенкой — темнее того же места без пневмоторакса: сосудов там нет', async () => {
+    const off = (await draw({}, 3)).rgba;
+    const on = (await draw({ pneumothorax: { side: 'left', size: 'large' } }, 3)).rgba;
+    for (const p of [[0.8, 0.45], [0.78, 0.3], [0.82, 0.55]] as [number, number][]) expect(at(off, p) - at(on, p)).toBeGreaterThan(12);
+  });
+
+  test('кровь внизу поля — светлее того же места без неё: мягкие ткани, а не воздух', async () => {
+    const off = (await draw({}, 3)).rgba;
+    const on = (await draw({ effusion: { side: 'left' } }, 3)).rgba;
+    for (const p of [[0.8, 0.62], [0.75, 0.6], [0.85, 0.63]] as [number, number][]) expect(at(on, p) - at(off, p)).toBeGreaterThan(40);
+  });
+
+  test('напряжённый пневмоторакс справа сдвигает сердце влево: за прежним краем тени сердца светло', async () => {
+    const off = (await draw({}, 3)).rgba;
+    const on = (await draw({ pneumothorax: { side: 'right', size: 'large', tension: true } }, 3)).rgba;
+    for (const p of [[0.76, 0.62], [0.77, 0.58]] as [number, number][]) expect(at(on, p) - at(off, p)).toBeGreaterThan(40);
+  });
+
+  test('то же зерно — те же байты; все варианты «Проверок» рисуются', async () => {
+    const a = await draw({ ribFractures: { side: 'right', ribs: [5, 6, 7] } }, 9);
+    const b = await draw({ ribFractures: { side: 'right', ribs: [5, 6, 7] } }, 9);
+    expect(Buffer.from(a.png).equals(Buffer.from(b.png))).toBe(true);
+    const plain = await draw({}, 9);
+    expect(Buffer.from(a.png).equals(Buffer.from(plain.png))).toBe(false);
+    expect(CHEST_CASES.map(k => k.key)).toEqual(['chest-small', 'chest-large', 'chest-tension', 'chest-fluid', 'chest-massive', 'chest-level', 'chest-rib']);
+    for (const k of CHEST_CASES) {
       expect((await draw(k.findings, k.seed)).png.length).toBeGreaterThan(1000);
       expect(k.label.length).toBeGreaterThan(0);
     }

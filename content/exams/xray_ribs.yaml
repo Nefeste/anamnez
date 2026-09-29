@@ -1,0 +1,25 @@
+id: exam.xray_ribs
+name: { ru: "Рентгенография рёбер" }
+kind: imaging
+room: room.xray
+equipment: [eq.xray_analog, eq.xray_digital]
+radiation: low
+time: { procedure: 15, report: 20 }
+# цена — игровое число; доза — 0,105 мЗв против 0,02 у снимка грудной клетки (Shuaib 2014)
+cost: 1100
+discomfort: 1
+checks:
+  # против КТ: перелом нашли у 18 из 22 (82 %), число рёбер верно — у 16 из 22 (73 %), специфичность
+  # — 100 % (Hoffstetter 2014); 99,5 — игровая оценка, чтобы снимок иногда ошибался
+  - { f: img.xr_rib_fracture, sens: 82, spec: 99.5 }
+  - { f: img.xr_rib_multiple, sens: 73, spec: 99.5 }
+texts:
+  hint:
+    ru: "Снимок рёбер на стороне травмы: видно, есть ли перелом и сколько рёбер сломано. Переломы видны лучше, чем на обычном снимке груди, но и он пропускает примерно каждый пятый."
+  summary:
+    ru: "Снимок рёбер на стороне травмы в прямой и косой проекциях; описание делает рентгенолог."
+sources:
+  - { kind: guideline, title: "Закрытая травма груди", org: "Минздрав РФ", year: 2025, url: "https://cr.minzdrav.gov.ru/view-cr/728_2", note: "ID 728_2, опубликованы 18.12.2025, применяются; сверено с рубрикатором 29.09.2026; раздел 2.4: у всех с переломами рёбер — подтверждение диагноза рентгенографией ребра (рёбер) (УУР B, УДД 3); в ряде случаев место перелома на рентгенографии рёбер видно плохо (раздел 1.6)" }
+  - { kind: paper, title: "Hoffstetter P, Dornia C, Schäfer S, Wagner M, Dendl LM, Stroszczynski C, Schreyer AG. Diagnostic significance of rib series in minor thorax trauma compared to plain chest film and computed tomography. J Trauma Manag Outcomes 2014;8:10", url: "https://pubmed.ncbi.nlm.nih.gov/25152770/", note: "PMID 25152770, PMC4141660, сверено 29.09.2026: 56 больных с лёгкой травмой груди, снимок рёбер и КТ; КТ нашла перелом у 22, снимок рёбер — у 18 (82 %), число рёбер верно — у 16 (73 %), ложных находок нет (специфичность 100 %); обзорный снимок груди — 46 %" }
+  - { kind: paper, title: "Shuaib W, Vijayasarathi A, Tiwana MH, Johnson JO, Maddu KK, Khosa F. The diagnostic utility of rib series in assessing rib fractures. Emerg Radiol 2014;21(2):159–164", url: "https://pubmed.ncbi.nlm.nih.gov/24297110/", note: "PMID 24297110, сверено 29.09.2026: 422 снимка рёбер; находки — 17,5 %, лечение изменили — в 0,23 %; доза — 0,105 мЗв против 0,02 мЗв у снимка грудной клетки" }
+review: draft

@@ -430,12 +430,12 @@ describe('операционная: экраны', () => {
     // операционная: что здесь делают — операции; их аппараты нужны все сразу
     const room = article(db, 'room.or')!;
     expect(room.blocks.find(b => b.key === 'doneHere')!.refs!.map(r => r.id)).toEqual([
-      OP, 'tx.abscess_drainage', 'tx.hernia_repair', 'tx.clavicle_plate', 'tx.ankle_orif', 'tx.radius_plate', 'tx.mt5_fixation', 'tx.hip_screws', 'tx.adhesiolysis', 'tx.hartmann',
+      OP, 'tx.abscess_drainage', 'tx.hernia_repair', 'tx.clavicle_plate', 'tx.ankle_orif', 'tx.radius_plate', 'tx.mt5_fixation', 'tx.hip_screws', 'tx.adhesiolysis', 'tx.hartmann', 'tx.thoracotomy',
       'tx.ulcer_suture', 'tx.cholecystectomy', 'tx.hip_arthroplasty',
     ]);
     expect(room.blocks.find(b => b.key === 'needs')!.rows!.map(r => r.label)).toEqual([T.encyclopedia.needPeople, T.encyclopedia.needMachines]);
     expect(article(db, 'eq.or_table')!.blocks.find(b => b.key === 'examsBy')!.refs!.map(r => r.id)).toEqual([
-      OP, 'tx.abscess_drainage', 'tx.hernia_repair', 'tx.clavicle_plate', 'tx.ankle_orif', 'tx.radius_plate', 'tx.mt5_fixation', 'tx.hip_screws', 'tx.adhesiolysis', 'tx.hartmann',
+      OP, 'tx.abscess_drainage', 'tx.hernia_repair', 'tx.clavicle_plate', 'tx.ankle_orif', 'tx.radius_plate', 'tx.mt5_fixation', 'tx.hip_screws', 'tx.adhesiolysis', 'tx.hartmann', 'tx.thoracotomy',
       'tx.ulcer_suture', 'tx.cholecystectomy', 'tx.hip_arthroplasty',
     ]);
     // перфорация (часть 28б): риск без операции — у болезни, исходы по стадии — у операции

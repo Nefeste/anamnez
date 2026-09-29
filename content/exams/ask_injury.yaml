@@ -12,6 +12,7 @@ checks:
   - { f: sym.foot_pain, sens: 95, spec: 100 }
   - { f: sym.hip_pain, sens: 95, spec: 100 }
   - { f: sym.shoulder_pain, sens: 95, spec: 100 }
+  - { f: sym.chest_injury_pain, sens: 95, spec: 100 }
   - { f: sym.immediate_dysfunction, sens: 85, spec: 85 }
 texts:
   hint:

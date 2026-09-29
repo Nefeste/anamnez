@@ -48,7 +48,13 @@ export function ResultPicture({ image }: { image: ResultImage }) {
   if (image.kind === 'xray') {
     return (
       <View testID="result-xray" style={{ borderRadius: 6, overflow: 'hidden' }}>
-        <Xray width={w} seed={image.seed} findings={{ ...(image.infiltrate ? { infiltrate: { side: image.infiltrate, density: DENSITY } } : {}), hyperinflation: image.hyperinflation }} />
+        <Xray width={w} seed={image.seed} findings={{
+          ...(image.infiltrate ? { infiltrate: { side: image.infiltrate, density: DENSITY } } : {}),
+          hyperinflation: image.hyperinflation,
+          ...(image.pneumothorax ? { pneumothorax: image.pneumothorax } : {}),
+          ...(image.effusion ? { effusion: image.effusion } : {}),
+          ...(image.ribFractures ? { ribFractures: image.ribFractures } : {}),
+        }} />
       </View>
     );
   }

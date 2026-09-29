@@ -12,7 +12,8 @@ const { recordUsSector } = await import('../../src/render/us/sector');
 const { recordAbdomenXray, ABDOMEN_ASPECT } = await import('../../src/render/xray/abdomen');
 const { recordBoneXray } = await import('../../src/render/xray/bones');
 const { BONE_ASPECT } = await import('../../src/render/xray/boneGeometry');
-const { ABDOMEN_CASES, BONE_CASES, HEAD_CASES, US_CASES } = await import('../../src/state/imagingCases');
+const { recordChestXray, XRAY_ASPECT } = await import('../../src/render/xray/chest');
+const { ABDOMEN_CASES, BONE_CASES, CHEST_CASES, HEAD_CASES, US_CASES } = await import('../../src/state/imagingCases');
 
 const SIZE = 480;
 for (const k of HEAD_CASES) {
@@ -35,6 +36,17 @@ for (const k of ABDOMEN_CASES) {
   const t0 = performance.now();
   const h = Math.round(SIZE * ABDOMEN_ASPECT);
   const picture = recordAbdomenXray(SIZE, k.findings, k.seed);
+  const ms = performance.now() - t0;
+  const { png } = await rasterize(picture, SIZE, h);
+  await Bun.write(join(OUT, `${k.key}.png`), png);
+  console.log(`${k.key}.png — ${k.label}, запись ${ms.toFixed(1)} мс`);
+}
+
+// обзорный снимок груди: норма и травма груди (часть 32в)
+for (const k of [{ key: 'chest-normal', findings: {}, seed: 1, label: 'норма' }, ...CHEST_CASES]) {
+  const t0 = performance.now();
+  const h = Math.round(SIZE * XRAY_ASPECT);
+  const picture = recordChestXray(SIZE, k.findings, k.seed);
   const ms = performance.now() - t0;
   const { png } = await rasterize(picture, SIZE, h);
   await Bun.write(join(OUT, `${k.key}.png`), png);

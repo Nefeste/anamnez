@@ -189,14 +189,20 @@ function tacticExam(db: ContentDb, diagnosis: Id, obs: readonly Observation[], d
   return best;
 }
 
+/** Пункция и дренаж (часть 32в): их, как и операцию, не делают без подтверждающего снимка. */
+const invasive = (db: ContentDb, tx: Id) => db.treatments[tx]?.class?.startsWith('drainage.') === true;
+
 /**
- * Нужна операция, а подтверждающего обследования из рекомендации ещё нет — самое дешёвое из
- * доступных (часть 32). Без операции его не требуем: грипп лечат и без экспресс-теста.
+ * Нужна операция, пункция или дренаж, а подтверждающего обследования из рекомендации ещё нет —
+ * самое дешёвое из доступных (часть 32; пункцию и дренирование не выполняют, не убедившись в
+ * характере содержимого плевральной полости, — 728_2, раздел 2.4). Без них его не требуем: грипп
+ * лечат и без экспресс-теста.
  */
-function confirmBeforeSurgery(db: ContentDb, diagnosis: Id, obs: readonly Observation[], done: readonly Id[], exams: readonly Id[]): Id | undefined {
+function confirmBeforeInvasive(db: ContentDb, diagnosis: Id, obs: readonly Observation[], done: readonly Id[], exams: readonly Id[]): Id | undefined {
   const c = db.conditions[diagnosis];
-  if (!c?.surgery || c.confirm === 'clinical' || c.confirm.some(id => done.includes(id))) return undefined;
-  if (choosePlan(db, diagnosis, obs, { ward: true, or: true }).setting !== 'surgery') return undefined;
+  if (!c || c.confirm === 'clinical' || c.confirm.some(id => done.includes(id))) return undefined;
+  const plan = choosePlan(db, diagnosis, obs, { ward: true, or: true });
+  if (plan.setting !== 'surgery' && !plan.treatments.some(tx => invasive(db, tx))) return undefined;
   return c.confirm.filter(id => exams.includes(id)).sort((a, b) => examCost(db, a) - examCost(db, b) || (a < b ? -1 : 1))[0];
 }
 
@@ -225,9 +231,9 @@ export function nextStep(db: ContentDb, patient: Patient, obs: readonly Observat
     // диагноз ясен — уточняет то, от чего зависит лечение (часть 32): смещение отломков видно на снимке
     const tactic = tacticExam(db, top.id, obs, done, opt);
     if (tactic) return { step: { kind: 'exam', exam: tactic }, phase: now };
-    // перед операцией — подтверждающее обследование из рекомендации (часть 32): нестабильный
-    // перелом с деформацией не оперируют без снимка
-    const confirm = confirmBeforeSurgery(db, top.id, obs, done, opt.exams);
+    // перед операцией, пункцией и дренажом — подтверждающее обследование из рекомендации (части
+    // 32 и 32в): нестабильный перелом с деформацией не оперируют, пневмоторакс не дренируют без снимка
+    const confirm = confirmBeforeInvasive(db, top.id, obs, done, opt.exams);
     if (confirm) return { step: { kind: 'exam', exam: confirm }, phase: now };
     const plan = choosePlan(db, top.id, obs);
     const risks = [...new Set(plan.treatments.flatMap(tx => db.treatments[tx].contraindications.map(k => k.id)))].sort();

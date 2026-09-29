@@ -15,6 +15,7 @@ import { complaintText, observationText } from '@/engine/med/text';
 import type { Observation, Patient } from '@/engine/med/types';
 import type { Difficulty } from '@/engine/shift/types';
 import type { BoneFindings, BoneFracture } from '@/render/xray/boneGeometry';
+import { fracturedRibs, type XrayFindings } from '@/render/xray/chestGeometry';
 import { T } from '@/i18n';
 import { lowerFirst } from '@/i18n/case';
 
@@ -32,7 +33,14 @@ export interface Line {
  * нарисован так же, как настоящий. Рисует её src/render (ADR 0013).
  */
 export type ResultImage =
-  | { kind: 'xray'; infiltrate?: 'right' | 'left' | 'both'; hyperinflation: boolean; seed: number }
+  /**
+   * обзорный снимок груди: инфильтрат, эмфизема; с травмой груди (часть 32в) — воздух и кровь в
+   * плевральной полости, переломы рёбер
+   */
+  | {
+    kind: 'xray'; infiltrate?: 'right' | 'left' | 'both'; hyperinflation: boolean;
+    pneumothorax?: XrayFindings['pneumothorax']; effusion?: XrayFindings['effusion']; ribFractures?: XrayFindings['ribFractures']; seed: number;
+  }
   | { kind: 'ecg'; rate: number; st: number; rScale: number; seed: number }
   /**
    * УЗИ брюшной полости: правая подвздошная область, `appendix` — виден воспалённый отросток (часть
@@ -242,6 +250,8 @@ const TX_GROUPS: [string, string[]][] = [
   ['metabolic', ['antidiabetic', 'hormone', 'mineral']],
   // травма (часть 32): гипсовая лонгета и закрытая репозиция
   ['trauma', ['immobilization']],
+  // травма груди (часть 32в): плевральная пункция и дренирование
+  ['drainage', ['drainage']],
 ];
 
 /** Порядок групп лечения — для решения и энциклопедии. */
@@ -297,15 +307,34 @@ function treatmentChoices(obs: readonly Observation[]): VisitView['treatments'] 
     .sort((a, b) => (a.name < b.name ? -1 : 1));
 }
 
-/** Снимок, лента и сектор УЗИ — по тому, что показало это обследование; частота на ленте — по пульсу. */
-function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observation[], seed: number): ResultImage | undefined {
+/**
+ * Снимок, лента и сектор УЗИ — по тому, что показало это обследование; частота на ленте — по
+ * пульсу. `patientSeed` — зерно пациента: номера сломанных рёбер одни на обзорном снимке и на
+ * снимке рёбер (часть 32в).
+ */
+function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observation[], seed: number, patientSeed: number): ResultImage | undefined {
   const shown = (f: Id) => obs.find(o => o.f === f && o.shown);
+  // сторона находки — из её атрибута, иначе — та, на которую жалуется пациент
+  const complaintSide = [...obs, ...known].map(o => o.attrs?.side).find((x): x is 'right' | 'left' => x === 'right' || x === 'left') ?? 'right';
+  const sideOf = (f: Id): 'right' | 'left' | undefined => {
+    const o = shown(f);
+    if (!o) return undefined;
+    return o.attrs?.side === 'right' || o.attrs?.side === 'left' ? o.attrs.side : complaintSide;
+  };
   if (exam === 'exam.xray_chest') {
     const side = shown('img.cxr_infiltrate')?.attrs?.side;
+    // травма груди: смещение средостения — при напряжённом пневмотораксе или массивной крови
+    const air = sideOf('img.cxr_pneumothorax');
+    const blood = sideOf('img.cxr_hemothorax');
+    const shift = shown('img.cxr_mediastinal_shift') !== undefined;
+    const ribs = sideOf('img.xr_rib_fracture');
     return {
       kind: 'xray',
       ...(side === 'right' || side === 'left' || side === 'both' ? { infiltrate: side } : {}),
       hyperinflation: shown('img.cxr_hyperinflation') !== undefined,
+      ...(air ? { pneumothorax: { side: air, size: shown('img.cxr_pneumothorax_large') ? 'large' : 'small', ...(shift && !blood ? { tension: true } : {}) } } : {}),
+      ...(blood ? { effusion: { side: blood, ...(shown('img.cxr_hemothorax_large') || (shift && !air) ? { massive: true } : {}), ...(air ? { air: true } : {}) } } : {}),
+      ...(ribs ? { ribFractures: { side: ribs, ribs: fracturedRibs(patientSeed, shown('img.xr_rib_multiple') !== undefined) } } : {}),
       seed,
     };
   }
@@ -335,13 +364,18 @@ function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observat
   // сторона — из жалобы или находки
   const bone = BONE_EXAMS[exam];
   if (bone) {
-    const side = [...obs, ...known].map(o => o.attrs?.side).find(x => x === 'left' || x === 'right') ?? 'right';
     const fractures: BoneFracture[] = [];
     for (const [f, fracture] of bone.fractures) if (shown(f)) fractures.push(...fracture);
+    // рёбра (часть 32в): номера — от зерна пациента, как на обзорном снимке; три и больше — соседние
+    const ribs = fractures.some(x => x.site === 'rib') ? fracturedRibs(patientSeed, shown('img.xr_rib_multiple') !== undefined) : [];
+    const all = [...fractures.filter(x => x.site !== 'rib'), ...ribs.map(rib => ({ site: 'rib' as const, rib, displacement: 0.3 }))];
     // одно место — одна запись: сильнее смещение — то, что видно
     const bySite = new Map<string, BoneFracture>();
-    for (const x of fractures) if ((bySite.get(x.site)?.displacement ?? -1) < (x.displacement ?? 0)) bySite.set(x.site, x);
-    return { kind: 'bone', view: bone.view, side, fractures: [...bySite.values()], seed };
+    for (const x of all) {
+      const key = x.rib !== undefined ? `${x.site}${x.rib}` : x.site;
+      if ((bySite.get(key)?.displacement ?? -1) < (x.displacement ?? 0)) bySite.set(key, x);
+    }
+    return { kind: 'bone', view: bone.view, side: complaintSide, fractures: [...bySite.values()], seed };
   }
   return undefined;
 }
@@ -389,6 +423,14 @@ const BONE_EXAMS: Record<Id, { view: BoneFindings['view']; fractures: [Id, BoneF
       ['img.xr_clavicle_displaced', [{ site: 'clavicle', displacement: 0.9 }]],
     ],
   },
+  // часть 32в: снимок рёбер — перелом со ступенькой; сколько рёбер и какие — по зерну пациента
+  'exam.xray_ribs': {
+    view: 'ribs',
+    fractures: [
+      ['img.xr_rib_fracture', [{ site: 'rib' }]],
+      ['img.xr_rib_multiple', [{ site: 'rib' }]],
+    ],
+  },
 };
 
 /** «Студенту» — до пяти гипотез с частотой (03-game-design.md §14). */
@@ -419,6 +461,9 @@ export function makeCaseView(c: CaseInput): VisitView {
     exam: o.exam,
     text: o.exam === 'complaint' ? complaintText(db, o, p.sex, p.seed) : observationText(db, o, p.sex, p.seed),
   });
+  // уточнения, которых нет, отдельной строкой не пишутся (часть 32в): у такого признака нет текста
+  // «нет» — «пневмоторакса нет» скажет основной признак, а «средостение не смещено» уже лишнее
+  const visible = (o: Observation) => o.shown || (db.findings[o.f]?.texts.absent?.length ?? 0) > 0;
   const obs = observationsOfCase(p, c.arrived);
   const treatments = treatmentChoices(obs);
   return {
@@ -429,14 +474,14 @@ export function makeCaseView(c: CaseInput): VisitView {
     minutesSpent: c.minutesSpent,
     money: c.money,
     complaints: complaintObservations(p).map(line),
-    results: c.arrived.flatMap(a => a.obs).map(line),
+    results: c.arrived.flatMap(a => a.obs).filter(visible).map(line),
     groups: c.arrived
       .map((a, i) => {
-        const image = imageOf(a.exam, a.obs, obs, fnv1a(`${p.seed}:${a.exam}`));
-        return { key: `${i}:${a.exam}`, exam: a.exam, name: db.exams[a.exam].name.ru, at: hhmm(a.at), fresh: c.step > 0 && a.step === c.step, lines: a.obs.map(line), ...(image ? { image } : {}) };
+        const image = imageOf(a.exam, a.obs, obs, fnv1a(`${p.seed}:${a.exam}`), p.seed);
+        return { key: `${i}:${a.exam}`, exam: a.exam, name: db.exams[a.exam].name.ru, at: hhmm(a.at), fresh: c.step > 0 && a.step === c.step, lines: a.obs.filter(visible).map(line), ...(image ? { image } : {}) };
       })
       .reverse(),
-    freshCount: c.arrived.filter(a => c.step > 0 && a.step === c.step).reduce((n, a) => n + a.obs.length, 0),
+    freshCount: c.arrived.filter(a => c.step > 0 && a.step === c.step).reduce((n, a) => n + a.obs.filter(visible).length, 0),
     pending: c.pending.map(x => ({ exam: x.exam, name: db.exams[x.exam].name.ru, at: hhmm(x.readyAt) })),
     meanwhile: c.meanwhile,
     ...(c.urgent ? { urgent: true } : {}),
