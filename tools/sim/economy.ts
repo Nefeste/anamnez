@@ -196,7 +196,7 @@ function playDay(s: ShiftState, strategy: Strategy, prefetch = false) {
     // диагноз и лечение — по тому, что пришло в смене
     const { obs, beliefs } = beliefsOf(p);
     const dx = beliefs[0].id;
-    const tx = choosePlan(db, dx, obs);
+    const tx = choosePlan(db, dx, obs, p.patient.age);
     step({ kind: 'diagnose', id: dx });
     for (const id of tx.treatments) step({ kind: 'toggleTreatment', id });
     step({ kind: 'setting', setting: tx.setting });

@@ -33,13 +33,15 @@ export function effectiveCheck(sens: number, spec: number, skill: ExamSkill): { 
 
 /**
  * Подходит ли обследование пациенту — по полу и возрасту из базы: о месячных и беременности
- * не спрашивают мужчину и женщину 73 лет. Не подходит — его нет в карте пациента, движок его не
- * делает, «виртуальный врач» не назначает.
+ * не спрашивают мужчину и женщину 73 лет. С части 32г — и по жалобе: о травме головы спрашивают
+ * пришедших с травмой головы, а не с пиелонефритом ради вопроса о рвоте. Не подходит — его нет в
+ * карте пациента, движок его не делает, «виртуальный врач» не назначает.
  */
-export function examFits(exam: Exam, patient: Pick<Patient, 'sex' | 'age'>): boolean {
+export function examFits(exam: Exam, patient: Pick<Patient, 'sex' | 'age' | 'complaints'>): boolean {
   return (exam.sex === undefined || exam.sex === patient.sex)
     && (exam.ageMin === undefined || patient.age >= exam.ageMin)
-    && (exam.ageMax === undefined || patient.age <= exam.ageMax);
+    && (exam.ageMax === undefined || patient.age <= exam.ageMax)
+    && (exam.complaints === undefined || exam.complaints.some(f => patient.complaints.includes(f)));
 }
 
 /**

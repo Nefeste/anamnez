@@ -142,10 +142,10 @@ describe('место по параметру: что тоже не ошибка'
   test('основание пятой плюсневой: план по снимку — обувь дома, значительное смещение — операция', () => {
     const F = 'exam.xray_foot';
     const plain = [xr(F, 'img.xr_mt5_fracture', true), xr(F, 'img.xr_mt5_displaced', false)];
-    expect(likelyParams(db, MT5, plain).displacement).toBe('none');
-    expect(choosePlan(db, MT5, plain)).toEqual({ treatments: ['tx.ibuprofen', 'tx.rigid_shoe'], setting: 'home' });
+    expect(likelyParams(db, MT5, plain, 40).displacement).toBe('none');
+    expect(choosePlan(db, MT5, plain, 40)).toEqual({ treatments: ['tx.ibuprofen', 'tx.rigid_shoe'], setting: 'home' });
     const displaced = [xr(F, 'img.xr_mt5_fracture', true), xr(F, 'img.xr_mt5_displaced', true)];
-    expect(choosePlan(db, MT5, displaced, { ward: true, or: true }).setting).toBe('surgery');
+    expect(choosePlan(db, MT5, displaced, 40, { ward: true, or: true }).setting).toBe('surgery');
   });
 });
 

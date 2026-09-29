@@ -60,7 +60,7 @@ function playDay(db: ContentDb, s: ShiftState, seed: number) {
       }
     }
     while (p.pending.length > 0) apply(db, s, { kind: 'waitResults' });
-    const chosen = choosePlan(db, plan.diagnosis, observationsOf(p));
+    const chosen = choosePlan(db, plan.diagnosis, observationsOf(p), p.patient.age);
     run(db, s, [{ kind: 'diagnose', id: plan.diagnosis }, ...chosen.treatments.map(id => ({ kind: 'toggleTreatment', id }) as Command), { kind: 'setting', setting: chosen.setting }, { kind: 'finish' }]);
   }
 }
@@ -77,7 +77,7 @@ export function queueState(db: ContentDb): ShiftState {
     const first = s.queue[0];
     const truth = truthOf(s, first);
     run(db, s, [{ kind: 'call', id: first }, { kind: 'exam', exam: 'exam.ask_complaints' }, { kind: 'exam', exam: 'exam.ask_chronic' }, { kind: 'diagnose', id: truth }]);
-    for (const tx of choosePlan(db, truth, observationsOf(current(s)!)).treatments) apply(db, s, { kind: 'toggleTreatment', id: tx });
+    for (const tx of choosePlan(db, truth, observationsOf(current(s)!), current(s)!.patient.age).treatments) apply(db, s, { kind: 'toggleTreatment', id: tx });
     apply(db, s, { kind: 'finish' });
     if (s.queue.length === 0) continue;
     run(db, s, [{ kind: 'call', id: s.queue[0] }, { kind: 'exam', exam: 'exam.ask_complaints' }, { kind: 'exam', exam: 'exam.cbc' }, { kind: 'sendAway' }]);

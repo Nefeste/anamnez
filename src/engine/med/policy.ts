@@ -68,12 +68,13 @@ function askingExam(db: ContentDb, contraindication: Id): Id | undefined {
  * амбулатория). Препарат выбора без известных противопоказаний (иначе первая допустимая
  * замена); место — по умолчанию или выше, если врач видел красный флаг этого состояния. Скрытый
  * параметр болезни — по тому, что видно (часть 32): смещение на снимке — репозиция, нестабильный
- * перелом — операция. Операцию выбирают местом «В операционную», не в назначении.
+ * перелом — операция; производный — по правилу решения и возрасту `age` (часть 32г): показана КТ
+ * при сотрясении — перевод. Операцию выбирают местом «В операционную», не в назначении.
  */
-export function choosePlan(db: ContentDb, diagnosis: Id, observations: readonly Observation[], venue: Venue = {}): Plan {
+export function choosePlan(db: ContentDb, diagnosis: Id, observations: readonly Observation[], age: number, venue: Venue = {}): Plan {
   const base = db.conditions[diagnosis]?.treatment;
   if (!base) return { treatments: [], setting: 'home' };
-  const params = likelyParams(db, diagnosis, observations);
+  const params = likelyParams(db, diagnosis, observations, age);
   const t = tacticsFor(base, params);
   const known = knownFacts(db, observations);
   const blocked = new Set([...known.risks, ...known.conditions]);
@@ -169,15 +170,15 @@ export function tacticParams(db: ContentDb, condId: Id): string[] {
  * польза ниже `minGain` — не назначается. Перелом со штыкообразной деформацией — ещё снимок:
  * смещён он или нестабилен, решает он.
  */
-function tacticExam(db: ContentDb, diagnosis: Id, obs: readonly Observation[], done: readonly Id[], opt: StepOptions): Id | undefined {
+function tacticExam(db: ContentDb, diagnosis: Id, obs: readonly Observation[], age: number, done: readonly Id[], opt: StepOptions): Id | undefined {
   let best: Id | undefined;
   let bestScore = 0;
   for (const name of tacticParams(db, diagnosis)) {
-    const top = paramBeliefs(db, diagnosis, name, obs).reduce((a, b) => Math.max(a, b.p), 0);
+    const top = paramBeliefs(db, diagnosis, name, obs, age).reduce((a, b) => Math.max(a, b.p), 0);
     if (top >= opt.threshold) continue;
     for (const id of opt.exams) {
       if (done.includes(id)) continue;
-      const gain = paramGain(db, diagnosis, name, id, obs);
+      const gain = paramGain(db, diagnosis, name, id, obs, age);
       if (quantize(gain) < quantize(opt.minGain)) continue;
       const score = quantize(gain / examCost(db, id));
       if (score > bestScore) {
@@ -198,10 +199,10 @@ const invasive = (db: ContentDb, tx: Id) => db.treatments[tx]?.class?.startsWith
  * характере содержимого плевральной полости, — 728_2, раздел 2.4). Без них его не требуем: грипп
  * лечат и без экспресс-теста.
  */
-function confirmBeforeInvasive(db: ContentDb, diagnosis: Id, obs: readonly Observation[], done: readonly Id[], exams: readonly Id[]): Id | undefined {
+function confirmBeforeInvasive(db: ContentDb, diagnosis: Id, obs: readonly Observation[], age: number, done: readonly Id[], exams: readonly Id[]): Id | undefined {
   const c = db.conditions[diagnosis];
   if (!c || c.confirm === 'clinical' || c.confirm.some(id => done.includes(id))) return undefined;
-  const plan = choosePlan(db, diagnosis, obs, { ward: true, or: true });
+  const plan = choosePlan(db, diagnosis, obs, age, { ward: true, or: true });
   if (plan.setting !== 'surgery' && !plan.treatments.some(tx => invasive(db, tx))) return undefined;
   return c.confirm.filter(id => exams.includes(id)).sort((a, b) => examCost(db, a) - examCost(db, b) || (a < b ? -1 : 1))[0];
 }
@@ -229,13 +230,13 @@ export function nextStep(db: ContentDb, patient: Patient, obs: readonly Observat
     }
     const top = beliefs[0];
     // диагноз ясен — уточняет то, от чего зависит лечение (часть 32): смещение отломков видно на снимке
-    const tactic = tacticExam(db, top.id, obs, done, opt);
+    const tactic = tacticExam(db, top.id, obs, patient.age, done, opt);
     if (tactic) return { step: { kind: 'exam', exam: tactic }, phase: now };
     // перед операцией, пункцией и дренажом — подтверждающее обследование из рекомендации (части
     // 32 и 32в): нестабильный перелом с деформацией не оперируют, пневмоторакс не дренируют без снимка
-    const confirm = confirmBeforeInvasive(db, top.id, obs, done, opt.exams);
+    const confirm = confirmBeforeInvasive(db, top.id, obs, patient.age, done, opt.exams);
     if (confirm) return { step: { kind: 'exam', exam: confirm }, phase: now };
-    const plan = choosePlan(db, top.id, obs);
+    const plan = choosePlan(db, top.id, obs, patient.age);
     const risks = [...new Set(plan.treatments.flatMap(tx => db.treatments[tx].contraindications.map(k => k.id)))].sort();
     const ask: Id[] = [];
     for (const k of risks) {
@@ -248,7 +249,7 @@ export function nextStep(db: ContentDb, patient: Patient, obs: readonly Observat
   const ask = (now.ask ?? []).filter(id => !done.includes(id));
   if (ask.length > 0) return { step: { kind: 'exam', exam: ask[0] }, phase: { ...now, ask: ask.slice(1) } };
   const diagnosis = now.diagnosis!;
-  return { step: { kind: 'decide', diagnosis, confidence: now.confidence ?? 0, plan: choosePlan(db, diagnosis, obs, opt.venue) }, phase: { ...now, ask: [] } };
+  return { step: { kind: 'decide', diagnosis, confidence: now.confidence ?? 0, plan: choosePlan(db, diagnosis, obs, patient.age, opt.venue) }, phase: { ...now, ask: [] } };
 }
 
 export function runDoctor(db: ContentDb, patient: Patient, strategy: Strategy, rng: Rng, opt: DoctorOptions): DoctorResult {
@@ -279,7 +280,7 @@ export function runDoctor(db: ContentDb, patient: Patient, strategy: Strategy, r
     // «всё подряд» спрашивает и назначает всё; ленивый решает по жалобам
     if (strategy === 'shotgun') for (const id of opt.exams) if (examFits(db.exams[id], patient)) doExam(id);
     const top = posterior(db, opt.candidates, obs, ctxOf())[0];
-    decision = { diagnosis: top.id, confidence: top.p, plan: choosePlan(db, top.id, obs) };
+    decision = { diagnosis: top.id, confidence: top.p, plan: choosePlan(db, top.id, obs, patient.age) };
   }
 
   const primary = patient.truth.conditions.find(c => c.role === 'primary')!.id;

@@ -8,6 +8,7 @@ import type { Condition, ContentDb, Id, Link, Season } from '../../content/types
 import { log2 } from '../core/math';
 import { P_ONE } from '../core/rng';
 import { chronicChance, presentingWeight } from './generate';
+import { checkRule, knownOf, type RuleVerdict } from './rules';
 import type { Observation, Sex } from './types';
 
 export interface InferContext {
@@ -331,12 +332,15 @@ const tellingOf = (c: Condition, name: string): Id[] => [...new Set(c.findings.f
  * Скрытый параметр болезни по тому, что видно (spec 2026-09-chapter-2, часть 32): вероятность
  * каждого значения при этом диагнозе — его доля, умноженная на правдоподобие наблюдений тех
  * признаков, чьи связи от параметра зависят (смещение на снимке); остальные признаки значений не
- * различают. Порядок — как объявлены.
+ * различают. Порядок — как объявлены. Производный параметр (часть 32г) — по правилу решения на
+ * известных признаках и возрасте пациента `age` (`derivedBeliefs`).
  */
-export function paramBeliefs(db: ContentDb, condId: Id, name: string, observations: readonly Observation[]): { value: string; p: number }[] {
+export function paramBeliefs(db: ContentDb, condId: Id, name: string, observations: readonly Observation[], age: number): { value: string; p: number }[] {
   const c = db.conditions[condId];
   const dist = c?.params?.[name];
   if (!dist) return [];
+  const rule = c.derived?.[name];
+  if (rule) return derivedBeliefs(dist, checkRule(db.rules[rule], age, knownOf(observations)).verdict);
   const grouped = byFinding(observations);
   const telling = tellingOf(c, name).filter(f => grouped.has(f));
   const weighted = Object.entries(dist).map(([value, share]) => {
@@ -349,14 +353,24 @@ export function paramBeliefs(db: ContentDb, condId: Id, name: string, observatio
 }
 
 /**
- * Самое вероятное значение каждого скрытого параметра болезни (часть 32); ничего такого не видно —
- * самое частое, при равенстве — объявленное раньше.
+ * Производный параметр (часть 32г): правило выполнено — «yes» наверняка, выполниться уже не может —
+ * «no»; пока неизвестно — доли из записи (игровая оценка: сколько таких больных с показанием).
  */
-export function likelyParams(db: ContentDb, condId: Id, observations: readonly Observation[]): Record<string, string> {
+function derivedBeliefs(dist: Record<string, number>, verdict: RuleVerdict): { value: string; p: number }[] {
+  const total = Object.values(dist).reduce((a, b) => a + b, 0);
+  return Object.entries(dist).map(([value, share]) => ({ value, p: verdict !== 'unknown' ? (value === verdict ? 1 : 0) : total > 0 ? share / total : 0 }));
+}
+
+/**
+ * Самое вероятное значение каждого скрытого параметра болезни (часть 32); ничего такого не видно —
+ * самое частое, при равенстве — объявленное раньше. `age` — возраст пациента: от него зависят
+ * правила производных параметров (часть 32г).
+ */
+export function likelyParams(db: ContentDb, condId: Id, observations: readonly Observation[], age: number): Record<string, string> {
   const out: Record<string, string> = {};
   for (const name of Object.keys(db.conditions[condId]?.params ?? {})) {
     let best: { value: string; p: number } | undefined;
-    for (const b of paramBeliefs(db, condId, name, observations)) if (!best || b.p > best.p) best = b;
+    for (const b of paramBeliefs(db, condId, name, observations, age)) if (!best || b.p > best.p) best = b;
     if (best) out[name] = best.value;
   }
   return out;
@@ -364,14 +378,23 @@ export function likelyParams(db: ContentDb, condId: Id, observations: readonly O
 
 /**
  * Польза обследования для скрытого параметра, биты (часть 32): насколько оно в среднем уточнит
- * значение при этом диагнозе — сумма по проверяемым признакам, как у `expectedGain`.
+ * значение при этом диагнозе — сумма по проверяемым признакам, как у `expectedGain`. У производного
+ * параметра (часть 32г) — приближение: вывод правила станет известен, когда проверят всё, что
+ * осталось (`left`), поэтому польза — неопределённость, умноженная на долю оставшегося, которую
+ * обследование проверит.
  */
-export function paramGain(db: ContentDb, condId: Id, name: string, examId: Id, observations: readonly Observation[]): number {
+export function paramGain(db: ContentDb, condId: Id, name: string, examId: Id, observations: readonly Observation[], age: number): number {
   const c = db.conditions[condId];
   const exam = db.exams[examId];
   if (!c || !exam) return 0;
-  const beliefs = paramBeliefs(db, condId, name, observations);
+  const beliefs = paramBeliefs(db, condId, name, observations, age);
   if (beliefs.length < 2) return 0;
+  const rule = c.derived?.[name];
+  if (rule) {
+    const { left } = checkRule(db.rules[rule], age, knownOf(observations));
+    const covered = left.filter(f => exam.checks.some(k => k.f === f)).length;
+    return left.length > 0 ? (entropy(beliefs.map(b => ({ id: b.value, p: b.p }))) * covered) / left.length : 0;
+  }
   const observed = new Set(observations.map(o => o.f));
   const telling = new Set(tellingOf(c, name));
   const h0 = entropy(beliefs.map(b => ({ id: b.value, p: b.p })));

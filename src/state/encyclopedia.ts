@@ -309,7 +309,10 @@ function findingArticle(db: ContentDb, f: Finding): Article {
 
   const flagFor = Object.values(db.conditions).filter(c => c.redFlags?.includes(f.id)).map(c => ref(db, c.id)).sort(byTitle);
   if (flagFor.length > 0) blocks.push({ key: 'redFlagFor', title: e.redFlagFor, refs: flagFor });
-  const inRules = Object.values(db.rules).filter(r => r.any.includes(f.id) || r.complaints.includes(f.id)).map(r => ref(db, r.id)).sort(byTitle);
+  const inRules = Object.values(db.rules)
+    .filter(r => r.any.includes(f.id) || r.complaints.includes(f.id) || (r.minor?.any ?? []).includes(f.id) || (r.requires ?? []).includes(f.id))
+    .map(r => ref(db, r.id))
+    .sort(byTitle);
   if (inRules.length > 0) blocks.push({ key: 'inRules', title: e.inRules, refs: inRules });
 
   const subtitle = [e.findingKind[f.kind], f.redFlag ? e.redFlag : ''].filter(Boolean).join(' · ');
@@ -327,6 +330,8 @@ function examArticle(db: ContentDb, x: Exam): Article {
       note: e.accuracyNote,
     });
   }
+  // только при жалобе (часть 32г): расспрос о травме головы — при травме головы
+  if (x.complaints) blocks.push({ key: 'forComplaints', title: e.examForComplaints, refs: x.complaints.map(id => ref(db, id)) });
   const confirms = Object.values(db.conditions).filter(c => c.confirm !== 'clinical' && c.confirm.includes(x.id)).map(c => ref(db, c.id)).sort(byTitle);
   if (confirms.length > 0) blocks.push({ key: 'confirms', title: e.confirms, refs: confirms });
   // где делают: помещение, аппараты, где берут материал; без помещения — у врача в кабинете
@@ -427,9 +432,13 @@ function ruleArticle(db: ContentDb, x: Rule): Article {
   const blocks: Block[] = [
     { key: 'what', title: e.what, text: [x.texts.summary.ru] },
     { key: 'when', title: e.ruleWhen, refs: x.complaints.map(id => ref(db, id)), ...(x.ageMin !== undefined ? { note: e.ruleAge(x.ageMin) } : {}) },
-    { key: 'any', title: e.ruleAny, text: [x.texts.yes.ru], refs: x.any.map(id => ref(db, id)) },
-    { key: 'none', title: e.ruleNone, text: [x.texts.no.ru] },
-    { key: 'exams', title: e.ruleExams, refs: x.exams.map(id => ref(db, id)) },
+    // часть 32г: к кому правило применимо, возраст и дополнительные признаки
+    ...(x.requires ? [{ key: 'requires', title: e.ruleRequires, refs: x.requires.map(id => ref(db, id)), text: [x.texts.na?.ru ?? ''] }] : []),
+    { key: 'any', title: e.ruleAny, text: [x.texts.yes.ru, ...(x.age?.main !== undefined ? [e.ruleAgeMain(x.age.main)] : [])], refs: x.any.map(id => ref(db, id)) },
+    ...(x.minor ? [{ key: 'minor', title: e.ruleMinor(x.minor.count), refs: x.minor.any.map(id => ref(db, id)), text: x.age?.minor ? [e.ruleAgeMinor(x.age.minor[0], x.age.minor[1])] : [] }] : []),
+    { key: 'none', title: x.minor ? e.ruleNoneMinor : e.ruleNone, text: [x.texts.no.ru] },
+    // обследования, которого в игре нет (КТ, часть 32г), — словами
+    { key: 'exams', title: e.ruleExams, refs: x.exams.map(id => ref(db, id)), ...(x.texts.exam ? { text: [x.texts.exam.ru] } : {}) },
     { key: 'about', title: e.ruleAbout, refs: x.about.map(id => ref(db, id)).sort(byTitle) },
     sources(db, x),
   ];

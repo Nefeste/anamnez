@@ -5,6 +5,7 @@
 // меняются только там, где изменилась медицина.
 import type { Condition, ContentDb, Id, Link, Risk, Season } from '../../content/types';
 import { P_ONE, Rng } from '../core/rng';
+import { checkRule } from './rules';
 import type { ActiveCondition, Patient, Sex, TrueFinding } from './types';
 
 export interface GenContext {
@@ -87,13 +88,15 @@ export function generatePatient(db: ContentDb, seed: number, ctx: GenContext): P
   const conditions: ActiveCondition[] = activeIds.map(id => {
     const c = db.conditions[id];
     const params: Record<string, string> = {};
-    for (const name of sortedKeys(c.params ?? {})) params[name] = paramRng.fork(`${id}.${name}`).weightedKey(c.params![name]);
-    if (id === primaryId) for (const [name, value] of Object.entries(ctx.params ?? {})) if (c.params?.[name]?.[value] !== undefined) params[name] = value;
+    // производный параметр (часть 32г) не бросается: его считают по признакам ниже
+    for (const name of sortedKeys(c.params ?? {})) if (!c.derived?.[name]) params[name] = paramRng.fork(`${id}.${name}`).weightedKey(c.params![name]);
+    if (id === primaryId) for (const [name, value] of Object.entries(ctx.params ?? {})) if (c.params?.[name]?.[value] !== undefined && !c.derived?.[name]) params[name] = value;
     const { day, stage } = id === primaryId ? presentationDay(c, courseRng.fork(id)) : { day: 0, stage: c.stages[0].id };
     return { id, role: id === primaryId ? 'primary' : 'comorbid', day, stage, params };
   });
 
   const findings = realizeFindings(db, again('findings'), conditions, risks);
+  deriveParams(db, conditions, age, findings);
   const values = realizeValues(db, again('values'), findings);
   const complaints = pickComplaints(db, findings);
 
@@ -177,6 +180,20 @@ function presentationDay(c: Condition, rng: Rng): { day: number; stage: string }
   const day = rng.range(lo, Math.max(lo, hi));
   const stage = natural.find(s => day >= s.days[0] && day < s.days[1]) ?? last;
   return { day, stage: stage.id };
+}
+
+/**
+ * Производные параметры (spec 2026-09-chapter-2, часть 32г): «yes», если правило решения выполнено
+ * на настоящих признаках и возрасте, иначе «no» — показана ли КТ при сотрясении. Признаки от них не
+ * зависят (валидатор), поэтому считаются после признаков; новых бросков нет.
+ */
+function deriveParams(db: ContentDb, conditions: ActiveCondition[], age: number, findings: readonly TrueFinding[]): void {
+  const has = new Set(findings.map(x => x.f));
+  for (const c of conditions) {
+    for (const [name, ruleId] of Object.entries(db.conditions[c.id].derived ?? {})) {
+      c.params[name] = checkRule(db.rules[ruleId], age, f => has.has(f)).verdict === 'yes' ? 'yes' : 'no';
+    }
+  }
 }
 
 function linkApplies(link: Link, cond: ActiveCondition | undefined): boolean {

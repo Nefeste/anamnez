@@ -824,7 +824,7 @@ function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
   const beliefs = posterior(db, candidates, obs, contextOf(db, patient, obs));
   const confidence = beliefs.find(b => b.id === dx)?.p ?? 0;
   // в операционную — операцией поставленного диагноза (часть 28): по тому, что видно на снимке (часть 32б)
-  const op = p.draft.setting === 'surgery' ? operationFor(db, dx, likelyParams(db, dx, obs)) : undefined;
+  const op = p.draft.setting === 'surgery' ? operationFor(db, dx, likelyParams(db, dx, obs, patient.age)) : undefined;
   const plan = { treatments: op ? [...new Set([...p.draft.treatments, op])].sort() : [...p.draft.treatments], setting: p.draft.setting };
   const ev = evaluatePlan(db, patient, plan, obs);
   const outcome = observe(db, patient, plan, ev, branch(s, `outcome:${p.id}`));
@@ -1012,7 +1012,7 @@ export function orBlock(db: ContentDb, s: ShiftState, op?: Id): OrBlock | null {
 /** Можно ли с этим диагнозом в операционную: у него есть операция, операционная её делает, после неё есть койка. */
 /** Операция диагноза для этого пациента (часть 32б): по самому вероятному значению скрытого параметра из того, что видно. */
 export function operationOf(db: ContentDb, p: ShiftPatient, diagnosis: Id): Id | undefined {
-  return operationFor(db, diagnosis, likelyParams(db, diagnosis, observationsOf(p)));
+  return operationFor(db, diagnosis, likelyParams(db, diagnosis, observationsOf(p), p.patient.age));
 }
 
 function canOperate(db: ContentDb, s: ShiftState, diagnosis: Id | undefined, p?: ShiftPatient): boolean {

@@ -86,6 +86,12 @@ export const conditionSchema = z.strictObject({
     chronic: z.strictObject({ band: probability, ageMin: z.number().int().optional(), risks: z.array(riskMultiplier).optional() }).optional(),
   }),
   params: z.record(z.string(), weights).optional(),
+  /**
+   * производные параметры (часть 32г): «yes», если правило решения выполнено на настоящих
+   * признаках и возрасте, иначе «no»; доли того же параметра в `params` — для вывода, пока
+   * признаки правила не известны
+   */
+  derived: z.record(z.string(), z.string().regex(/^rule\.[a-z0-9_]+$/)).optional(),
   course: z.strictObject({
     stages: z.array(z.strictObject({ id: z.string(), days: z.tuple([z.number(), z.number()]), needs: z.literal('treatment').optional() })).min(1),
     /** в какие дни болезни обычно обращаются */
@@ -238,6 +244,8 @@ export const examSchema = z.strictObject({
   /** кому делают по возрасту, лет включительно: вне его не предлагается */
   ageMin: z.number().int().min(0).max(120).optional(),
   ageMax: z.number().int().min(0).max(120).optional(),
+  /** кому делают: только пришедшим с одной из этих жалоб (часть 32г: расспрос о травме головы) */
+  complaints: z.array(z.string().regex(/^sym\.[a-z0-9_]+$/)).min(1).optional(),
   /** чувствительность и специфичность — в процентах */
   checks: z.array(z.strictObject({ f: z.string(), sens: accuracy, spec: accuracy })).min(1),
   texts: z.strictObject({ summary: text, hint }),
@@ -638,13 +646,24 @@ export const ruleSchema = z.strictObject({
   id: z.string().regex(/^rule\.[a-z0-9_]+$/),
   name: text,
   complaints: z.array(z.string()).min(1),
+  /** основные признаки: хватит одного */
   any: z.array(z.string()).min(1),
-  exams: z.array(z.string().regex(/^exam\.[a-z0-9_]+$/)).min(1),
+  /** дополнительные признаки: нужно не меньше `count` (часть 32г) */
+  minor: z.strictObject({ any: z.array(z.string()).min(1), count: z.number().int().min(2) }).optional(),
+  /** возраст: старше `main` — основной признак, в пределах `minor` — дополнительный (часть 32г) */
+  age: z.strictObject({ main: z.number().int().min(1).max(120).optional(), minor: z.tuple([z.number().int().min(0), z.number().int().max(120)]).optional() }).optional(),
+  /** применимо, только если есть хоть один из этих признаков (часть 32г: лёгкая ЧМТ) */
+  requires: z.array(z.string()).min(1).optional(),
+  /** какое обследование правило назначает; пусто — его в игре нет (КТ, часть 32г), тогда `texts.exam` */
+  exams: z.array(z.string().regex(/^exam\.[a-z0-9_]+$/)).default([]),
   ageMin: z.number().int().min(0).max(120).optional(),
   /** о каких болезнях — для энциклопедии */
   about: z.array(z.string().regex(/^cond\.[a-z0-9_]+$/)).min(1),
-  /** yes — есть признак: «Снимок нужен»; no — проверили все, признаков нет */
-  texts: z.strictObject({ summary: text, hint, yes: text, no: text }),
+  /**
+   * yes — есть признак: «Снимок нужен»; no — проверили все, признаков нет; na — правило не
+   * применимо; exam — что за обследование, если в игре его нет
+   */
+  texts: z.strictObject({ summary: text, hint, yes: text, no: text, na: text.optional(), exam: text.optional() }),
   sources: z.array(source).min(1),
   review,
 });

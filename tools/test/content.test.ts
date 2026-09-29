@@ -275,6 +275,47 @@ describe('каталог больницы', () => {
     expect(has(broken(d => edit(d, O, 'exams: [exam.xray_ankle]', 'exams: [exam.xray_wrist]')), 'rule.ottawa_ankle: exam.xray_wrist не проверяет ни одного признака cond.ankle_fracture, cond.ankle_sprain')).toBe(true);
   });
 
+  test('правило КТ (часть 32г): дополнительные признаки, возраст, круг применимости, обследование вне игры; производный параметр', () => {
+    const R = 'rules/ct_head.yaml';
+    const C = 'conditions/trauma/concussion.yaml';
+    const has = (errors: string[], text: string) => errors.some(e => e.includes(text));
+    const drop = (dir: string, file: string, start: string) => {
+      const p = join(dir, file);
+      const lines = readFileSync(p, 'utf8').split('\n');
+      if (!lines.some(l => l.startsWith(start))) throw new Error(`в ${file} нет строки «${start}…»`);
+      writeFileSync(p, lines.filter(l => !l.startsWith(start)).join('\n'));
+    };
+    const minor = 'minor: { any: [sym.loss_of_consciousness], count: 2 }';
+    const age = 'age: { main: 60, minor: [40, 60] }';
+    // независимые поломки — в одной копии: сборка каждой копии — полсекунды
+    const a = broken(d => {
+      edit(d, R, minor, 'minor: { any: [sym.vomiting], count: 2 }');
+      drop(d, R, '  na: ');
+      drop(d, R, '  exam: ');
+    });
+    expect(has(a, 'rule.ct_head: sym.vomiting — и основной, и дополнительный признак')).toBe(true);
+    expect(has(a, 'rule.ct_head: у правила с кругом применимости нужен текст «не применяется» (texts.na)')).toBe(true);
+    expect(has(a, 'rule.ct_head: обследования правила в игре нет — нужен текст о нём (texts.exam)')).toBe(true);
+    const b = broken(d => {
+      edit(d, R, minor, 'minor: { any: [sym.loss_of_consciousness], count: 3 }');
+      edit(d, R, age, 'age: { main: 50, minor: [40, 60] }');
+    });
+    expect(has(b, 'rule.ct_head: дополнительных признаков меньше, чем их нужно (3)')).toBe(true);
+    expect(has(b, 'rule.ct_head: основной возраст (старше 50) пересекается с дополнительным')).toBe(true);
+    expect(has(broken(d => edit(d, R, age, 'age: { main: 60, minor: [60, 40] }')), 'rule.ct_head: возраст дополнительного признака — от меньшего к большему')).toBe(true);
+    // производный параметр: правило есть, значения — no и yes, признаки от него не зависят
+    const c = broken(d => {
+      edit(d, C, '  ct: rule.ct_head', '  ct: rule.ct_brain');
+      edit(d, C, '{ f: sym.nausea, band: sometimes }', '{ f: sym.nausea, band: sometimes, when: { ct: [yes] } }');
+      // обследование только при жалобе — жалоба должна быть
+      edit(d, 'exams/ask_head_injury.yaml', 'complaints: [sym.head_injury]', 'complaints: [sym.head_trauma]');
+    });
+    expect(has(c, 'exam.ask_head_injury: жалоба sym.head_trauma не найдена или без текста жалобы')).toBe(true);
+    expect(has(c, 'cond.concussion: правило rule.ct_brain параметра ct не найдено')).toBe(true);
+    expect(has(c, 'cond.concussion: признак sym.nausea зависит от производного параметра ct, а тот — от признаков')).toBe(true);
+    expect(has(broken(d => edit(d, C, 'ct: { no: 32, yes: 68 }', 'ct: { none: 32, yes: 68 }')), 'cond.concussion: у производного параметра ct значения — no и yes')).toBe(true);
+  });
+
   test('смотровая приёмного без мест для скорой; шкала с щелью между полосами или с чужим признаком', () => {
     const bare = broken(d => edit(d, 'hospital/rooms/emergency.yaml', '      - [bed, 2, 2]\n', ''));
     expect(bare.some(e => e.includes('room.emergency S: смотровая приёмного без мест для скорой'))).toBe(true);

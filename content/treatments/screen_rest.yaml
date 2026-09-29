@@ -1,0 +1,15 @@
+id: tx.screen_rest
+name: { ru: "Без экранов 48 часов" }
+kind: regimen
+cost: 0
+effects:
+  # отказ от экрана в первые 48 ч ускоряет регресс симптомов с 8 до 3,5 суток (734_2, раздел 3.1,
+  # УУР C, УДД 2; Macnow 2021 — медианы); у скольких действует — игровая оценка
+  - { on: cond.concussion, kind: cure, band: usually, days: [3, 4] }
+texts:
+  hint:
+    ru: "Первые двое суток после сотрясения — без телефона, компьютера и телевизора и без другой работы, требующей внимания. Так симптомы проходят быстрее: в исследовании — за 3,5 суток вместо 8."
+sources:
+  - { kind: guideline, title: "Сотрясение головного мозга", org: "Минздрав РФ", year: 2026, url: "https://cr.minzdrav.gov.ru/view-cr/734_2", note: "ID 734_2, опубликованы 15.01.2026, применяются; сверено с рубрикатором 29.09.2026; раздел 3.1 (УУР C, УДД 2): отказ от деятельности, требующей внимания и концентрации, в частности от экрана в течение первых 48 ч — ускоряет регресс симптомов с 8 до 3,5 суток" }
+  - { kind: paper, title: "Macnow T, Curran T, Tolliday C, Martin K, McCarthy M, Ayturk D, Babu KM, Mannix R. Effect of Screen Time on Recovery From Concussion: A Randomized Clinical Trial. JAMA Pediatr 2021;175(11):1124–1131", url: "https://pubmed.ncbi.nlm.nih.gov/34491285/", note: "PMID 34491285, сверено 29.09.2026: 125 человек 12–25 лет; медиана выздоровления с экранами — 8,0 суток, без экранов 48 часов — 3,5 суток" }
+review: draft
