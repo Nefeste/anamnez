@@ -9,27 +9,27 @@ icon: icon/icon-512.png
 feature: graphics/feature-1024x500.png
 og: graphics/cover-1920x1080.png
 shots:
-  - file: screenshots/phone/01-queue.png
-    caption: Смена
-    alt: "Смена в амбулатории: карта кабинетов, часы смены и очередь, срочный пациент — первым"
+  - file: screenshots/phone/01-emergency.png
+    caption: Приёмное
+    alt: "Своя больница: план с приёмным отделением и операционной, часы смены; скорая привезла больного — внизу кнопка «сортировать»"
   - file: screenshots/phone/02-xray.png
     caption: Рентген
     alt: "Приём: рентгенограмма грудной клетки с находкой — инфильтрация в нижних отделах справа"
-  - file: screenshots/phone/03-ecg.png
+  - file: screenshots/phone/03-fracture.png
+    caption: Перелом
+    alt: "Приём: рентгенограмма голеностопного сустава в двух проекциях — перелом обеих лодыжек со сдвигом стопы"
+  - file: screenshots/phone/04-ecg.png
     caption: ЭКГ
-    alt: "Приём: лента ЭКГ с подъёмом сегмента ST и жалобы на боль в груди"
-  - file: screenshots/phone/04-diagnosis.png
+    alt: "Приём: лента ЭКГ с подъёмом сегмента ST и жалобы на давящую боль в груди"
+  - file: screenshots/phone/05-diagnosis.png
     caption: Диагноз
     alt: "Решение: выбор диагноза из списка болезней"
-  - file: screenshots/phone/05-plan.png
+  - file: screenshots/phone/06-plan.png
     caption: Лечение
     alt: "Решение: лечение и место лечения — дома, в стационаре или скорая"
-  - file: screenshots/phone/06-outcome.png
+  - file: screenshots/phone/07-outcome.png
     caption: Разбор
     alt: "Итог приёма: что было на самом деле и оценка случая по шести категориям"
-  - file: screenshots/phone/07-summary.png
-    caption: Итоги дня
-    alt: "Итоги дня: принятые пациенты, верные диагнозы, стоимость обследований и оценки случаев"
   - file: screenshots/phone/08-build.png
     caption: Своя больница
     alt: "Стройка своей больницы: помещения на плане, касса и кнопка «Построить»"

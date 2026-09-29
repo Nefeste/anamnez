@@ -9,27 +9,27 @@ icon: icon/icon-512.png
 feature: graphics/feature-1024x500.png
 og: graphics/cover-1920x1080.png
 shots:
-  - file: screenshots/phone/01-queue.png
-    caption: The shift
-    alt: "A shift at the clinic: a map of the rooms, the shift clock and the queue with an urgent patient first"
+  - file: screenshots/phone/01-emergency.png
+    caption: Emergency room
+    alt: "Your own hospital: a plan with the emergency room and the operating theatre; an ambulance has brought a patient, the Sort button is at the bottom"
   - file: screenshots/phone/02-xray.png
     caption: X-ray
     alt: "A visit: a chest X-ray with a finding in the lower right lung"
-  - file: screenshots/phone/03-ecg.png
+  - file: screenshots/phone/03-fracture.png
+    caption: Fracture
+    alt: "A visit: an ankle X-ray in two views, a fracture of both malleoli with the foot shifted"
+  - file: screenshots/phone/04-ecg.png
     caption: ECG
-    alt: "A visit: an ECG strip with ST elevation and a complaint of chest pain"
-  - file: screenshots/phone/04-diagnosis.png
+    alt: "A visit: an ECG strip with ST elevation and a complaint of pressing chest pain"
+  - file: screenshots/phone/05-diagnosis.png
     caption: Diagnosis
     alt: "Decision: choosing a diagnosis from the list of conditions"
-  - file: screenshots/phone/05-plan.png
+  - file: screenshots/phone/06-plan.png
     caption: Treatment
     alt: "Decision: treatment and where to treat — at home, in hospital or by ambulance"
-  - file: screenshots/phone/06-outcome.png
+  - file: screenshots/phone/07-outcome.png
     caption: Case review
     alt: "Visit summary: what it really was and the case score in six categories"
-  - file: screenshots/phone/07-summary.png
-    caption: End of the day
-    alt: "End of the day: patients seen, correct diagnoses, the cost of tests and case scores"
   - file: screenshots/phone/08-build.png
     caption: Your own hospital
     alt: "Building your own hospital: rooms on the plan, the cash desk and the Build button"
