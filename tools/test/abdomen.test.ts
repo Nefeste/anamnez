@@ -23,7 +23,7 @@ import { memoryStore, saveSlot } from '../../src/state/saves';
 import { forgetShift, loadShift, SANDBOX_SLOT, setStore, shiftCaseView } from '../../src/state/session';
 
 const BOTH = ['dept.therapy', 'dept.surgery'];
-const SURGICAL = ['cond.adhesive_sbo', 'cond.biliary_colic', 'cond.cholecystitis', 'cond.pancreatitis', 'cond.perforated_ulcer', 'cond.strangulated_hernia', 'cond.ulcer_bleeding'];
+const SURGICAL = ['cond.adhesive_sbo', 'cond.biliary_colic', 'cond.cholecystitis', 'cond.pancreatitis', 'cond.paraproctitis', 'cond.perforated_ulcer', 'cond.renal_colic', 'cond.strangulated_hernia', 'cond.ulcer_bleeding'];
 const OP = 'tx.cholecystectomy';
 
 /** Песочница с готовой амбулаторией и смотровой приёмного справа; медсестра ЭКГ — в смотровую. */
@@ -138,9 +138,10 @@ describe('отделения больницы: с приёмным — и хир
     for (const p of surgical) expect(p.department).toBe('dept.surgery');
     for (const p of both.filter(p => !SURGICAL.includes(primary(p)))) expect(p.department).toBe('dept.therapy');
     // у пришедших сами прогон терапии почти прежний: те же зёрна — те же люди и в основном те же
-    // болезни; веса хирургии сдвигают жребий болезни у немногих
+    // болезни; веса хирургии сдвигают жребий болезни у немногих (с почечной коликой, часть 30г, —
+    // у 18 %, до неё — у 11 %)
     const same = both.filter((p, i) => primary(p) === primary(therapy[i])).length;
-    expect(same / both.length).toBeGreaterThan(0.85);
+    expect(same / both.length).toBeGreaterThan(0.8);
   });
 });
 
@@ -357,12 +358,13 @@ describe('идеальный врач: неизвестное о пациент�
 });
 
 describe('экраны', () => {
-  test('диагнозы: в больнице с приёмным — и хирургические, среди болезней пищеварения; в амбулатории — нет', () => {
+  test('диагнозы: в больнице с приёмным — и хирургические, среди болезней пищеварения, колика — мочевой системы; в амбулатории — нет', () => {
     const ids = (g: ReturnType<typeof diagnosisGroups>) => g.flatMap(x => x.items.map(i => i.id));
     expect(ids(diagnosisGroups()).some(id => SURGICAL.includes(id))).toBe(false);
     const both = diagnosisGroups(BOTH);
-    const digestive = both.find(g => g.key === 'digestive')!;
-    expect(digestive.items.map(i => i.id)).toEqual(expect.arrayContaining(SURGICAL));
+    const group = (key: string) => both.find(g => g.key === key)!.items.map(i => i.id);
+    expect(group('digestive')).toEqual(expect.arrayContaining(SURGICAL.filter(id => id !== 'cond.renal_colic')));
+    expect(group('urinary')).toEqual(expect.arrayContaining(['cond.renal_colic', 'cond.pyelonephritis']));
     expect(ids(both)).not.toContain('cond.cholelithiasis');
   });
 

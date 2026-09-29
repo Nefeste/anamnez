@@ -429,9 +429,9 @@ describe('операционная: экраны', () => {
     expect(op).toContain('Операционная');
     // операционная: что здесь делают — операции; их аппараты нужны все сразу
     const room = article(db, 'room.or')!;
-    expect(room.blocks.find(b => b.key === 'doneHere')!.refs!.map(r => r.id)).toEqual([OP, 'tx.hernia_repair', 'tx.adhesiolysis', 'tx.ulcer_suture', 'tx.cholecystectomy']);
+    expect(room.blocks.find(b => b.key === 'doneHere')!.refs!.map(r => r.id)).toEqual([OP, 'tx.abscess_drainage', 'tx.hernia_repair', 'tx.adhesiolysis', 'tx.ulcer_suture', 'tx.cholecystectomy']);
     expect(room.blocks.find(b => b.key === 'needs')!.rows!.map(r => r.label)).toEqual([T.encyclopedia.needPeople, T.encyclopedia.needMachines]);
-    expect(article(db, 'eq.or_table')!.blocks.find(b => b.key === 'examsBy')!.refs!.map(r => r.id)).toEqual([OP, 'tx.hernia_repair', 'tx.adhesiolysis', 'tx.ulcer_suture', 'tx.cholecystectomy']);
+    expect(article(db, 'eq.or_table')!.blocks.find(b => b.key === 'examsBy')!.refs!.map(r => r.id)).toEqual([OP, 'tx.abscess_drainage', 'tx.hernia_repair', 'tx.adhesiolysis', 'tx.ulcer_suture', 'tx.cholecystectomy']);
     // перфорация (часть 28б): риск без операции — у болезни, исходы по стадии — у операции
     expect(text).toContain(T.encyclopedia.complicationRisk('перфорация', 36, '2', 12, '5'));
     expect(text).toContain(T.encyclopedia.whereStayComplicated('перфорация', 3, 5));

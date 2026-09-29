@@ -45,6 +45,11 @@ export const encyclopedia = {
     'obstruction:yes': 'при непроходимости кишки',
     'ischemia:yes': 'при ишемии кишки',
     'ischemia:no': 'без ишемии кишки',
+    // почечная колика и парапроктит (часть 30г)
+    'infection:yes': 'при инфекции мочевых путей',
+    'infection:no': 'без инфекции',
+    'depth:superficial': 'при подкожном и подслизистом',
+    'depth:deep': 'при глубоком',
   } as Record<string, string>,
   icd: (code: string) => `МКБ-10: ${code}`,
 

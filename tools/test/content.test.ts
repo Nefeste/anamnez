@@ -174,8 +174,8 @@ describe('каталог больницы', () => {
     // перфорация (часть 28б): Bickell 2006 — 2 % за первые 36 ч, дальше 5 % за 12 ч
     expect(db.conditions['cond.appendicitis'].complication).toEqual({ name: { ru: 'перфорация' }, early: { hours: 36, p: 200 }, later: { every: 12, p: 500 }, stay: [3, 5] });
     // кабинет УЗИ (часть 29): врач УЗД сам делает и сам описывает; экспертный аппарат — улучшение базового
-    expect(db.rooms['room.ultrasound']).toMatchObject({ needsEquipment: true, staff: ['role.sonographer'], equipment: ['eq.us_basic', 'eq.us_expert'], exams: ['exam.us_abdomen'] });
-    expect(db.equipment['eq.us_expert']).toMatchObject({ upgradeOf: 'eq.us_basic', speed: 0.85, quality: { sens: 5, spec: 1 }, exams: ['exam.us_abdomen'] });
+    expect(db.rooms['room.ultrasound']).toMatchObject({ needsEquipment: true, staff: ['role.sonographer'], equipment: ['eq.us_basic', 'eq.us_expert'], exams: ['exam.us_abdomen', 'exam.us_kidney'] });
+    expect(db.equipment['eq.us_expert']).toMatchObject({ upgradeOf: 'eq.us_basic', speed: 0.85, quality: { sens: 5, spec: 1 }, exams: ['exam.us_abdomen', 'exam.us_kidney'] });
     expect(db.exams['exam.us_abdomen']).toMatchObject({ kind: 'imaging', radiation: 'none' });
     // отросток — WSES 2020; камни — точность порядка 95 % (877_1); холецистит — 81 и 83 % (819_1, часть 30)
     expect(db.exams['exam.us_abdomen'].checks).toEqual([

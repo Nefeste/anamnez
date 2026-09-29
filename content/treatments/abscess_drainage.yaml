@@ -1,0 +1,24 @@
+id: tx.abscess_drainage
+name: { ru: "Вскрытие и дренирование парапроктита" }
+kind: surgery
+class: surgery.proctologic
+# расходники операции, ₽ — игровое число
+cost: 4000
+# вскрытие и дренирование — всем с парапроктитом (185_3, раздел 3.2); после операции — перевязки
+# каждый день до выписки (критерий качества 5); срока стационара в тексте нет — игровая оценка
+effects:
+  - { on: cond.paraproctitis, kind: cure, band: { pct: 100 }, days: [3, 6] }
+# осложнения за 30 дней после экстренного вскрытия у больных без болезни Крона — 5,9 % (Causey 2013,
+# NSQIP); смертность в тексте не названа; длительность — игровая оценка
+surgery:
+  room: room.or
+  team: [role.surgeon, role.anesthetist, role.or_nurse]
+  equipment: [eq.or_table, eq.anesthesia]
+  minutes: 30
+  complications: { pct: 5.9 }
+texts:
+  hint: { ru: "Хирург вскрывает гнойник разрезом рядом с задним проходом и оставляет его открытым, чтобы гной оттекал: в глубине раны не должно остаться кармана. Если найдена поражённая крипта, её иссекают или проводят лигатуру. Потом — перевязки каждый день." }
+sources:
+  - { kind: guideline, title: "Острый парапроктит", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/185_3", note: "ID 185_3, опубликованы 02.08.2024, применяются; сверено с рубрикатором 29.09.2026; раздел 3.1: основной метод — хирургический, операция в ближайшие часы после верификации диагноза; раздел 3.2: вскрытие и дренирование — всем; разделы 3.3 и 3.4: лигатура и радикальная операция при найденной крипте; раздел 6: экстренная госпитализация; критерии качества: перевязки не реже раза в день до выписки" }
+  - { kind: paper, title: "Causey MW, Nelson D, Johnson EK, Maykel J, Davis B, Rivadeneira DE, Champagne B, Steele SR. An NSQIP evaluation of practice patterns and outcomes following surgery for anorectal abscess and fistula in patients with and without Crohn's disease. Gastroenterol Rep (Oxf) 2013;1(1):58–63", url: "https://pubmed.ncbi.nlm.nih.gov/24759668/", note: "PMID 24759668, сверено 29.09.2026: 7218 больных, средний возраст 45 лет, 64 % мужчин; осложнения после местных операций — 4,9 %, после экстренных у больных без болезни Крона — 5,9 %" }
+review: draft

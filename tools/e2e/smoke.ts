@@ -1247,6 +1247,8 @@ try {
   const ulcerDx = (await Promise.all(['cond.perforated_ulcer', 'cond.ulcer_bleeding', 'cond.strangulated_hernia'].map(id => visible(page, `dx-${id}`).count()))).every(n => n === 1);
   check(ulcerDx, 'хирургия живота (0.0.49): в выборе диагноза — прободная язва, язвенное кровотечение, ущемлённая паховая грыжа');
   check((await visible(page, 'dx-cond.adhesive_sbo').count()) === 1, 'хирургия живота (0.0.50): в выборе диагноза — спаечная кишечная непроходимость');
+  const colicDx = (await Promise.all(['cond.renal_colic', 'cond.paraproctitis'].map(id => visible(page, `dx-${id}`).count()))).every(n => n === 1);
+  check(colicDx, 'хирургия приёмного (0.0.51): в выборе диагноза — почечная колика и острый парапроктит');
   await visible(page, 'dx-cond.cholecystitis').click();
   await page.screenshot({ path: join(OUT, '19-gall-decision.png'), fullPage: true });
   await visible(page, 'decision-to-plan').click();
@@ -1284,6 +1286,22 @@ try {
   const herniaWhen = await page.locator('text=при непроходимости кишки').first().isVisible().catch(() => false);
   const herniaYes = await page.locator('text=(yes)').count();
   check(herniaWhen && herniaYes === 0, 'энциклопедия, ущемлённая грыжа: условие словами — «при непроходимости кишки», без «yes»');
+  // почечная колика и парапроктит (0.0.51): колика — дома, с инфекцией — перевод, беременная — в
+  // стационар; парапроктит — операция в первые 12 ч; УЗИ почек — в кабинете УЗИ
+  await page.goto(`${base}/encyclopedia/article/cond.renal_colic`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const colicTransfer = await page.locator('text=При инфекции мочевых путей — скорая, перевод в центр.').first().isVisible().catch(() => false);
+  const colicPregnancy = await page.locator('text=Если есть «Беременность» — в стационаре.').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'Почечная колика' && colicTransfer && colicPregnancy && (await page.locator('text=(yes)').count()) === 0,
+    `энциклопедия, почечная колика: ${await visibleText(page, 'enc-article-title')} — с инфекцией перевод, беременная — в стационар`);
+  await page.goto(`${base}/encyclopedia/article/cond.paraproctitis`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const drainage12 = await page.locator('text=Операция — вскрытие и дренирование парапроктита: в первые 12\u00a0ч после поступления.').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'Острый парапроктит' && drainage12, 'энциклопедия, парапроктит: вскрытие и дренирование в первые 12 ч');
+  await page.goto(`${base}/encyclopedia/article/exam.us_kidney`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const usRoom = await page.locator('text=Кабинет УЗИ').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'УЗИ почек и мочевых путей' && usRoom, 'энциклопедия, УЗИ почек: делают в кабинете УЗИ');
 
   // энциклопедия: раздел «Шкалы», статья NEWS2 — баллы по показателям
   await page.goto(`${base}/encyclopedia/article/score.news2`);

@@ -20,7 +20,9 @@ export function ResultPicture({ image }: { image: ResultImage }) {
       <View testID="result-us" style={{ borderRadius: 6, overflow: 'hidden', alignSelf: 'center' }}>
         <UsSector width={Math.min(w, 360)} seed={image.seed} findings={image.view === 'appendix'
           ? { view: 'appendix', appendix: image.appendix ?? 0 }
-          : { view: 'gallbladder', foci: { count: image.stones ?? 0, size: 0.5 }, wall: image.wall ?? 0, fluid: image.wall ? 0.4 : 0 }} />
+          : image.view === 'kidney'
+            ? { view: 'kidney', pelvis: image.pelvis ?? 0 }
+            : { view: 'gallbladder', foci: { count: image.stones ?? 0, size: 0.5 }, wall: image.wall ?? 0, fluid: image.wall ? 0.4 : 0 }} />
       </View>
     );
   }
