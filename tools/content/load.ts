@@ -409,6 +409,9 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (x.age?.minor && !(x.age.minor[0] < x.age.minor[1])) errors.push(`${x.id}: возраст дополнительного признака — от меньшего к большему`);
     if (x.age?.minor && !x.minor) errors.push(`${x.id}: возраст как дополнительный признак без дополнительных признаков`);
     if (x.age?.main !== undefined && x.age.minor && x.age.main < x.age.minor[1]) errors.push(`${x.id}: основной возраст (старше ${x.age.main}) пересекается с дополнительным`);
+    // часть 32д: «55 лет и старше» — `from`; «старше 60» — `main`; вместе — нет
+    if (x.age?.main !== undefined && x.age.from !== undefined) errors.push(`${x.id}: возраст — либо «старше» (main), либо «и старше» (from)`);
+    if (x.age?.from !== undefined && x.age.minor && x.age.from <= x.age.minor[1]) errors.push(`${x.id}: основной возраст (${x.age.from} и старше) пересекается с дополнительным`);
     if (x.requires && !x.texts.na) errors.push(`${x.id}: у правила с кругом применимости нужен текст «не применяется» (texts.na)`);
     if (!x.requires && x.texts.na) errors.push(`${x.id}: текст «не применяется» без круга применимости (requires)`);
     if (x.exams.length === 0 && !x.texts.exam) errors.push(`${x.id}: обследования правила в игре нет — нужен текст о нём (texts.exam)`);

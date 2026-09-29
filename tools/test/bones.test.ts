@@ -7,7 +7,7 @@ import { centroid, inside, moved } from '../../src/render/xray/boneShapes';
 import { BONE_CASES } from '../../src/state/imagingCases';
 import { loadSkia, luma, rasterize } from '../imaging/headless';
 
-const VIEWS: BoneView[] = ['wrist', 'ankle', 'foot', 'hip', 'clavicle', 'ribs'];
+const VIEWS: BoneView[] = ['wrist', 'ankle', 'knee', 'foot', 'hip', 'clavicle', 'ribs'];
 const still = (f: FractureGeo) => f.move.angle === 0 && f.move.dx === 0 && f.move.dy === 0;
 const boneOf = (p: BonePanel, id: string) => {
   const b = p.bones.find(x => x.id === id);
@@ -22,7 +22,7 @@ describe('рентген костей: геометрия', () => {
     for (const view of VIEWS) {
       const film = boneFilm({ view }, 1);
       expect(film.aspect).toBe(BONE_ASPECT[view]);
-      expect(film.panels.length).toBe(view === 'wrist' || view === 'ankle' ? 2 : 1);
+      expect(film.panels.length).toBe(view === 'wrist' || view === 'ankle' || view === 'knee' ? 2 : 1);
       for (const p of film.panels) {
         expect(p.x).toBeGreaterThanOrEqual(0);
         expect(p.x + p.w).toBeLessThanOrEqual(1 + 1e-9);
@@ -165,6 +165,24 @@ describe('рентген костей: геометрия', () => {
     expect(ap.carried.calcaneus).toEqual(ap.carried.talus);
   });
 
+  test('колено: при смещении верхний отломок надколенника уходит вверх; выпот — серая тень жидкости над надколенником вместо жира', () => {
+    // перелом надколенника — поперёк, верхний отломок тянет четырёхглавая мышца (970_1, раздел 1.2)
+    for (const p of boneFilm({ view: 'knee', fractures: [{ site: 'patella', displacement: 1 }] }, 1).panels) {
+      expect(p.fractures).toHaveLength(1);
+      expect(p.fractures[0].bone).toBe('patella');
+      expect(p.fractures[0].move.dy).toBeLessThan(-0.05);
+    }
+    const [dryAp, dry] = boneFilm({ view: 'knee' }, 1).panels;
+    const [wetAp, wet] = boneFilm({ view: 'knee', effusion: true }, 1).panels;
+    expect(wetAp.soft).toEqual(dryAp.soft);
+    expect(wet.soft).toHaveLength(dry.soft.length + 1);
+    expect(wet.air).toHaveLength(dry.air.length - 1);
+    // жидкость — выше надколенника и впереди бедра
+    const fluid = centroid(wet.soft[wet.soft.length - 1].outline);
+    expect(fluid[1]).toBeLessThan(centroid(boneOf(wet, 'patella').outline)[1]);
+    expect(fluid[0]).toBeLessThan(centroid(boneOf(wet, 'femur').outline)[0]);
+  });
+
   test('шейка бедра: при смещении бедро уходит вверх, и отломок шейки заходит на головку', () => {
     const [p] = boneFilm({ view: 'hip', fractures: [{ site: 'femoral_neck', displacement: 1 }] }, 1).panels;
     const f = p.fractures[0];
@@ -295,7 +313,7 @@ describe('рентген костей: рисунок без экрана', () =
     const c = await draw(f, 10);
     expect(Buffer.from(a.png).equals(Buffer.from(b.png))).toBe(true);
     expect(Buffer.from(a.png).equals(Buffer.from(c.png))).toBe(false);
-    expect(BONE_CASES).toHaveLength(16);
+    expect(BONE_CASES).toHaveLength(20);
     expect(new Set(BONE_CASES.map(k => k.findings.view))).toEqual(new Set(VIEWS));
     for (const k of BONE_CASES) {
       expect((await draw(k.findings, k.seed)).png.length).toBeGreaterThan(1000);

@@ -95,7 +95,7 @@ export interface BoneCase {
 
 const b = T.spikes.bones;
 
-/** Рентген костей (часть 31): у каждого вида — норма и переломы без смещения и со смещением. */
+/** Рентген костей (часть 31): у каждого вида — норма и переломы без смещения и со смещением; у колена — и выпот (часть 32д). */
 export const BONE_CASES: BoneCase[] = [
   { key: 'bone-wrist', findings: { view: 'wrist' }, seed: 1, label: b.wrist },
   { key: 'bone-wrist-line', findings: { view: 'wrist', fractures: [{ site: 'radius' }] }, seed: 2, label: b.wristLine },
@@ -103,6 +103,10 @@ export const BONE_CASES: BoneCase[] = [
   { key: 'bone-ankle', findings: { view: 'ankle' }, seed: 4, label: b.ankle },
   { key: 'bone-ankle-fibula', findings: { view: 'ankle', fractures: [{ site: 'fibula' }] }, seed: 5, label: b.ankleFibula },
   { key: 'bone-ankle-bimalleolar', findings: { view: 'ankle', fractures: [{ site: 'fibula', displacement: 0.9 }, { site: 'medial_malleolus', displacement: 0.9 }] }, seed: 6, label: b.ankleBimalleolar },
+  { key: 'bone-knee', findings: { view: 'knee' }, seed: 17, label: b.knee },
+  { key: 'bone-knee-effusion', findings: { view: 'knee', effusion: true }, seed: 18, label: b.kneeEffusion },
+  { key: 'bone-knee-patella', findings: { view: 'knee', fractures: [{ site: 'patella' }], effusion: true }, seed: 19, label: b.kneePatella },
+  { key: 'bone-knee-patella-displaced', findings: { view: 'knee', fractures: [{ site: 'patella', displacement: 0.9 }], effusion: true }, seed: 20, label: b.kneePatellaDisplaced },
   { key: 'bone-foot', findings: { view: 'foot' }, seed: 7, label: b.foot },
   { key: 'bone-foot-mt5', findings: { view: 'foot', fractures: [{ site: 'mt5', displacement: 0.6 }] }, seed: 8, label: b.footMt5 },
   { key: 'bone-foot-mt3', findings: { view: 'foot', fractures: [{ site: 'mt3', displacement: 0.9 }] }, seed: 9, label: b.footMt3 },

@@ -316,6 +316,16 @@ describe('каталог больницы', () => {
     expect(has(broken(d => edit(d, C, 'ct: { no: 32, yes: 68 }', 'ct: { none: 32, yes: 68 }')), 'cond.concussion: у производного параметра ct значения — no и yes')).toBe(true);
   });
 
+  test('возраст «и старше» (часть 32д): у колена — с 55 лет; вместе со «старше» или внутри дополнительного — ошибка', () => {
+    const has = (errors: string[], text: string) => errors.some(e => e.includes(text));
+    const a = broken(d => {
+      edit(d, 'rules/ottawa_knee.yaml', 'age: { from: 55 }', 'age: { main: 54, from: 55 }');
+      edit(d, 'rules/ct_head.yaml', 'age: { main: 60, minor: [40, 60] }', 'age: { from: 60, minor: [40, 60] }');
+    });
+    expect(has(a, 'rule.ottawa_knee: возраст — либо «старше» (main), либо «и старше» (from)')).toBe(true);
+    expect(has(a, 'rule.ct_head: основной возраст (60 и старше) пересекается с дополнительным')).toBe(true);
+  });
+
   test('смотровая приёмного без мест для скорой; шкала с щелью между полосами или с чужим признаком', () => {
     const bare = broken(d => edit(d, 'hospital/rooms/emergency.yaml', '      - [bed, 2, 2]\n', ''));
     expect(bare.some(e => e.includes('room.emergency S: смотровая приёмного без мест для скорой'))).toBe(true);
