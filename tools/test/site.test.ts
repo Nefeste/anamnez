@@ -11,9 +11,12 @@ import { parse } from 'yaml';
 
 const STORE = resolve(import.meta.dir, '../../store');
 
+/** Паспорт игры (facts): строки, которые знает сайт, — в его порядке. */
+const FACTS = ['platform', 'price', 'age', 'players', 'internet', 'languages'];
 const LIMITS: Record<string, number> = {
   name: 40, title: 60, description: 220, kind: 40, lead: 160, caption: 30, alt: 160,
   'card.text': 240, 'card.points': 80, 'links.text': 40, note: 200,
+  ...Object.fromEntries(FACTS.map((k) => [`facts.${k}`, 40])),
 };
 const STATUS = ['dev', 'test', 'live'];
 
@@ -86,6 +89,19 @@ export function check(page: Page, store = STORE): string[] {
   image('icon', meta.icon, (w, h) => (w === h && w >= 192 ? null : 'нужен квадрат от 192 × 192'));
   image('feature', meta.feature, (w, h) => (near(w / h, 1024 / 500) && w >= 1024 ? null : 'нужно 1024 × 500'));
   if (meta.og) image('og', meta.og, (w, h) => (w >= 1200 && h >= 630 ? null : 'нужно не меньше 1200 × 630'));
+  if (meta.cover) image('cover', meta.cover, (w, h) => (near(w / h, 3) && w >= 1920 ? null : 'нужно 3 : 1 от 1920 × 640'));
+
+  const facts = meta.facts;
+  if (facts !== undefined && facts !== null) {
+    if (typeof facts !== 'object' || Array.isArray(facts)) errs.push('facts — не словарь: строки вида «platform: Android»');
+    else {
+      for (const [k, v] of Object.entries(facts)) {
+        if (FACTS.includes(k)) text(`facts.${k}`, v);
+        else errs.push(`facts: поля ${k} нет — можно ${FACTS.join(', ')}`);
+      }
+      if (Object.keys(facts).length < 2) errs.push('facts: нужно от 2 строк');
+    }
+  }
 
   const shots = Array.isArray(meta.shots) ? meta.shots : [];
   if (shots.length < 3 || shots.length > 8) errs.push('shots: нужно от 3 до 8 снимков');
@@ -136,8 +152,12 @@ describe('store/site/ — страница игры на сайте', () => {
   }
 
   test('проверка ловит нарушения', () => {
-    const bad = check({ meta: { status: 'beta', shots: [{ file: 'nope.png' }] }, body: '<b>x</b>\n# Заголовок\n[a](http://x)', line: 1 });
-    for (const part of ['нет поля name', 'status', 'снимок 1: нет файла', 'HTML', 'заголовки', 'http://x', 'нет поля card'])
+    const bad = check({
+      meta: { status: 'beta', shots: [{ file: 'nope.png' }], facts: { platform: 'Android', rating: '5', age: 'x'.repeat(41) } },
+      body: '<b>x</b>\n# Заголовок\n[a](http://x)',
+      line: 1,
+    });
+    for (const part of ['нет поля name', 'status', 'снимок 1: нет файла', 'HTML', 'заголовки', 'http://x', 'нет поля card', 'поля rating нет', 'facts.age: 41'])
       expect(bad.some((e) => e.includes(part))).toBe(true);
   });
 });

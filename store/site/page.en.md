@@ -41,6 +41,13 @@ card:
     - A review of every visit, a campaign with a mentor and a case of the day
     - Free, offline and ad-free
 note: A game. Not a medical device and not a substitute for a doctor’s advice.
+facts:
+  platform: Android
+  price: free, no ads or purchases
+  age: 16+
+  players: one
+  internet: not needed
+  languages: Russian
 ---
 
 Anamnesis is a doctor simulator with honest diagnostics. Every patient has a real illness or
