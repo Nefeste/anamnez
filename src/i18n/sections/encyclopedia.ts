@@ -81,6 +81,10 @@ export const encyclopedia = {
   whereStayComplicated: (name: string, lo: number, hi: number) => `После операции, если была ${name}, — ${lo === hi ? lo : `${lo}–${hi}`}\u00a0${pluralRu(hi, 'день', 'дня', 'дней')}.`,
   complicationRisk: (name: string, hours: number, early: string, every: number, later: string) =>
     `${name[0].toUpperCase()}${name.slice(1)} без операции: за первые ${hours}\u00a0ч — до ${early}\u00a0%, дальше — ${later}\u00a0% за каждые ${every}\u00a0ч.`,
+  // по сроку (часть 30б): прободная язва позже суток — поздняя госпитализация
+  complicationAfter: (name: string, hours: number) => `Позже ${hours}\u00a0ч от начала болезни — ${name}.`,
+  // каждый час до операции (часть 30б, Buck 2013)
+  opDelay: (pctHour: string) => `Каждый час от поступления до операции выживаемость ниже на ${pctHour}\u00a0%.`,
   opOutcomes: 'Исходы',
   opComplications: (plain: string, complicated?: string, name?: string) =>
     `Осложнения после операции — ${plain}\u00a0%${complicated && name ? `; если была ${name}, — ${complicated}\u00a0%` : ''}.`,

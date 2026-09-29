@@ -46,10 +46,19 @@ export function complicationsOf(db: ContentDb, tx: Id, surgeon?: StaffMember, co
   return Math.min(P_ONE, Math.round((base * k) / 100));
 }
 
-/** Доля умерших в стационаре после операции, 1/10 000: без осложнённой стадии и с ней (часть 28б). */
-export function deathsOf(db: ContentDb, tx: Id, complicated = false): number {
+/**
+ * Доля умерших в стационаре после операции, 1/10 000: без осложнённой стадии и с ней (часть 28б).
+ * У операции с `delay` — ещё и по ожиданию (часть 30б): каждый полный час от поступления до
+ * разреза выживаемость ниже на `delay` (прободная язва, Buck 2013) — умножением, без степени с
+ * дробью: так одинаково на всех движках JavaScript (ADR 0004).
+ */
+export function deathsOf(db: ContentDb, tx: Id, complicated = false, hoursWaited = 0): number {
   const x = db.treatments[tx]?.surgery;
-  return (complicated && x?.complicated ? x.complicated.death : x?.death) ?? 0;
+  const base = (complicated && x?.complicated ? x.complicated.death : x?.death) ?? 0;
+  if (!x?.delay) return base;
+  let survive = 1 - base / P_ONE;
+  for (let h = 1; h <= Math.floor(hoursWaited); h++) survive *= 1 - x.delay / P_ONE;
+  return Math.min(P_ONE, Math.round((1 - survive) * P_ONE));
 }
 
 /** Часов от начала болезни к приходу: сутки болезни — из генератора, час начала в сутках — из ветви зерна пациента. */
@@ -66,6 +75,9 @@ export function onsetHours(patient: Patient): number {
 export function complicationAt(db: ContentDb, patient: Patient): number {
   const c = db.conditions[primaryOf(patient).id]?.complication;
   if (!c) return Infinity;
+  // по сроку (часть 30б): прободная язва позже 24 ч от начала — давняя перфорация по шкале Boey
+  if (c.after !== undefined) return c.after;
+  if (!c.early || !c.later) return Infinity;
   const u = Rng.seeded(patient.seed).fork('complication').range(0, P_ONE - 1) / P_ONE;
   const early = c.early.p / P_ONE;
   if (u < early) return (c.early.hours * u) / early;

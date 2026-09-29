@@ -1080,7 +1080,7 @@ function finishOperation(db: ContentDb, s: ShiftState, p: ShiftPatient | undefin
     p.closed!.notes.push({ code: 'op.complication', tx: op.tx });
   }
   // умер после операции — решено сейчас, случится ночью (часть 28б): доля — по стадии
-  if (branch(s, `surgery:${p.id}:death`).chance(deathsOf(db, op.tx, complicated))) stay.dies = daysIn(stay, s.day);
+  if (branch(s, `surgery:${p.id}:death`).chance(deathsOf(db, op.tx, complicated, (op.start - p.arriveT) / 3600))) stay.dies = daysIn(stay, s.day);
   // срок — от решения положить: наблюдали, потом оперировали — считается от поступления; у
   // холецистита — от начала болезни (часть 30): пришедшему на третьи сутки оперировать уже поздно
   const plan = db.conditions[p.closed!.diagnosis]?.surgery;

@@ -238,7 +238,8 @@ function conditionArticle(db: ContentDb, c: Condition): Article {
   if (c.selfLimiting) course.push(e.selfLimiting);
   if (c.untreated && c.untreated.p > 0) course.push(e.untreated(e.band[bandOf(c.untreated.p)], c.untreated.days[0], c.untreated.days[1]));
   const x = c.complication;
-  if (x) course.push(e.complicationRisk(x.name.ru, x.early.hours, pct(x.early.p), x.later.every, pct(x.later.p)));
+  if (x?.after !== undefined) course.push(e.complicationAfter(x.name.ru, x.after));
+  else if (x?.early && x.later) course.push(e.complicationRisk(x.name.ru, x.early.hours, pct(x.early.p), x.later.every, pct(x.later.p)));
   if (course.length > 0) blocks.push({ key: 'course', title: e.course, text: course });
 
   if (c.redFlags?.length) blocks.push({ key: 'redFlags', title: e.redFlags, text: [e.redFlagsNote], refs: c.redFlags.map(id => ref(db, id)) });
@@ -323,6 +324,7 @@ function treatmentArticle(db: ContentDb, x: Treatment): Article {
     const k = op.complicated;
     const out = [e.opComplications(pct(op.complications), k && pct(k.complications), stage)];
     if (op.death !== undefined) out.push(e.opDeaths(pct(op.death), k?.death !== undefined ? pct(k.death) : undefined, stage));
+    if (op.delay !== undefined) out.push(e.opDelay(pct(op.delay)));
     blocks.push({ key: 'outcomes', title: e.opOutcomes, text: out });
   }
   blocks.push(sources(db, x));

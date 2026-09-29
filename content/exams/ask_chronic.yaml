@@ -11,6 +11,8 @@ checks:
   - { f: hx.hypertension, sens: 95, spec: 99 }
   - { f: hx.diabetes, sens: 95, spec: 99 }
   - { f: hx.gallstones, sens: 95, spec: 99 }
+  - { f: hx.ulcer, sens: 95, spec: 99 }
+  - { f: hx.hernia, sens: 95, spec: 99 }
 texts:
   hint:
     ru: "Хронические болезни меняют картину: у человека с ХОБЛ или астмой одышка может быть обострением, а не новой болезнью."

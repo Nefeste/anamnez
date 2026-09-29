@@ -36,7 +36,9 @@ export type ResultImage =
    * УЗИ брюшной полости: правая подвздошная область, `appendix` — виден воспалённый отросток (часть
    * 29); или желчный пузырь — `stones` камней, `wall` — утолщённая стенка (часть 30)
    */
-  | { kind: 'us'; view: 'appendix' | 'gallbladder'; appendix?: number; stones?: number; wall?: number; seed: number };
+  | { kind: 'us'; view: 'appendix' | 'gallbladder'; appendix?: number; stones?: number; wall?: number; seed: number }
+  /** обзорный снимок живота стоя (часть 30б): серп свободного газа под куполом, раздутые петли с уровнями */
+  | { kind: 'abdomen'; freeGas: boolean; levels: boolean; seed: number };
 
 /** Результаты одного обследования. `fresh` — пришли за последнее действие игрока. */
 export interface ResultGroup {
@@ -306,6 +308,9 @@ function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observat
       rScale: shown('ecg.lvh') ? 1.5 : 1,
       seed,
     };
+  }
+  if (exam === 'exam.xray_abdomen') {
+    return { kind: 'abdomen', freeGas: shown('img.xr_free_gas') !== undefined, levels: shown('img.xr_bowel_levels') !== undefined, seed };
   }
   if (exam === 'exam.us_abdomen') {
     // что нашли, то и на картинке: отросток — «мишенью»; иначе желчный пузырь — с камнями и

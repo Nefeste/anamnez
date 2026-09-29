@@ -540,6 +540,16 @@ try {
   await page.waitForTimeout(500);
   check((await page.getByTestId('result-xray').count()) === 1 && (await page.getByTestId('result-xray').isVisible()), 'П4: рентген в карте — снимком');
   await page.screenshot({ path: join(OUT, '04-xray.png') });
+  // обзорный снимок живота стоя — тоже рисунком (0.0.49): кадр выше, чем шире
+  await page.getByTestId('tab-order').click();
+  await page.getByTestId('exam-exam.xray_abdomen').click();
+  for (let i = 0; i < 5 && (await page.getByTestId('visit-wait').count()) > 0; i++) await page.getByTestId('visit-wait').click();
+  await page.getByTestId('result-xray-abdomen').scrollIntoViewIfNeeded();
+  await page.waitForTimeout(500);
+  const abdBox = await page.getByTestId('result-xray-abdomen').boundingBox();
+  check((await page.getByTestId('result-xray-abdomen').count()) === 1 && abdBox !== null && abdBox.height > abdBox.width,
+    `П4: обзорный снимок живота в карте — рисунком ${Math.round(abdBox?.width ?? 0)} × ${Math.round(abdBox?.height ?? 0)}`);
+  await page.screenshot({ path: join(OUT, '04-xray-abdomen.png') });
   await page.screenshot({ path: join(OUT, '04-patient-exams.png'), fullPage: true });
   // решение — отдельный экран в два шага, а не четвёртая вкладка (отзыв на 0.0.5)
   check((await page.locator('[data-testid^="tab-"]').count()) === 3 && (await page.getByTestId('visit-decide').isVisible()), 'П4: три вкладки действий, «Решение» — отдельной кнопкой внизу');
@@ -588,10 +598,11 @@ try {
   }));
   const heads = await drawn('[data-testid^="head-ct-"] canvas, [data-testid^="head-mri-"] canvas');
   const us = await drawn('[data-testid^="us-"] canvas');
+  const abd = await drawn('[data-testid^="abd-"] canvas');
   const allImages = await drawn('canvas');
-  check(heads.length === 7 && heads.every(Boolean) && us.length === 9 && us.every(Boolean) && allImages.every(Boolean),
-    `П5: срезы головы нарисованы — ${heads.filter(Boolean).length} из 7, УЗИ — ${us.filter(Boolean).length} из 9; все рисунки экрана — ${allImages.filter(Boolean).length} из ${allImages.length} (смотреть 06-head-*.png, 06-us.png)`);
-  for (const id of ['head-ct', 'head-mri', 'us']) {
+  check(heads.length === 7 && heads.every(Boolean) && us.length === 9 && us.every(Boolean) && abd.length === 3 && abd.every(Boolean) && allImages.every(Boolean),
+    `П5: срезы головы нарисованы — ${heads.filter(Boolean).length} из 7, УЗИ — ${us.filter(Boolean).length} из 9, снимки живота — ${abd.filter(Boolean).length} из 3; все рисунки экрана — ${allImages.filter(Boolean).length} из ${allImages.length} (смотреть 06-head-*.png, 06-us.png, 06-abdomen.png)`);
+  for (const id of ['head-ct', 'head-mri', 'us', 'abdomen']) {
     await page.getByTestId(id).scrollIntoViewIfNeeded();
     await page.waitForTimeout(300);
     await page.getByTestId(id).screenshot({ path: join(OUT, `06-${id}.png`) });
@@ -1233,6 +1244,8 @@ try {
   await visible(page, 'dx-cond.cholecystitis').waitFor({ timeout: 10_000 });
   const surgicalDx = (await Promise.all(['cond.cholecystitis', 'cond.biliary_colic', 'cond.pancreatitis'].map(id => visible(page, `dx-${id}`).count()))).every(n => n === 1);
   check(surgicalDx && (await visible(page, 'dx-cond.cholelithiasis').count()) === 0, 'холецистит: в выборе диагноза — желчная колика, острый холецистит, острый панкреатит; камни без приступа — нет');
+  const ulcerDx = (await Promise.all(['cond.perforated_ulcer', 'cond.ulcer_bleeding', 'cond.strangulated_hernia'].map(id => visible(page, `dx-${id}`).count()))).every(n => n === 1);
+  check(ulcerDx, 'хирургия живота (0.0.49): в выборе диагноза — прободная язва, язвенное кровотечение, ущемлённая паховая грыжа');
   await visible(page, 'dx-cond.cholecystitis').click();
   await page.screenshot({ path: join(OUT, '19-gall-decision.png'), fullPage: true });
   await visible(page, 'decision-to-plan').click();
@@ -1245,6 +1258,18 @@ try {
   await page.goto(`${base}/encyclopedia/article/cond.pancreatitis`);
   await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
   check((await visibleText(page, 'enc-article-title')) === 'Острый панкреатит', `энциклопедия, панкреатит: ${await visibleText(page, 'enc-article-title')}`);
+  // прободная язва (0.0.49): операция в первые 2 ч, позже суток — давняя перфорация; у ушивания —
+  // цена каждого часа ожидания
+  await page.goto(`${base}/encyclopedia/article/cond.perforated_ulcer`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const window2 = await page.locator('text=в первые 2\u00a0ч после поступления').first().isVisible().catch(() => false);
+  const after24 = await page.locator('text=Позже 24\u00a0ч от начала болезни — давняя перфорация').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'Прободная язва' && window2 && after24,
+    `энциклопедия, прободная язва: ${await visibleText(page, 'enc-article-title')} — ушивание в первые 2 ч, позже суток — давняя перфорация`);
+  await page.goto(`${base}/encyclopedia/article/tx.ulcer_suture`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const perHour = await page.locator('text=Каждый час от поступления до операции выживаемость ниже на 2,4\u00a0%.').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'Ушивание прободной язвы' && perHour, 'энциклопедия, ушивание: каждый час ожидания — выживаемость ниже на 2,4 %');
 
   // энциклопедия: раздел «Шкалы», статья NEWS2 — баллы по показателям
   await page.goto(`${base}/encyclopedia/article/score.news2`);

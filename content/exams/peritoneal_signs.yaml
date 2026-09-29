@@ -6,11 +6,12 @@ cost: 0
 discomfort: 2
 checks:
   - { f: sign.peritoneal_signs, sens: 85, spec: 92 }
+  - { f: sign.liver_dullness_loss, sens: 60, spec: 95 }
 texts:
   hint:
     ru: "Проверяет, воспалена ли брюшина: при аппендиците и других «острых животах» боль резко усиливается, когда врач отпускает руку. Положительный — повод вызвать скорую."
   summary:
-    ru: "Симптом Щёткина–Блюмберга, кашлевой толчок, поколачивание по передней брюшной стенке."
+    ru: "Симптом Щёткина–Блюмберга, кашлевой толчок, поколачивание по передней брюшной стенке, перкуссия над печенью."
 sources:
   - { kind: paper, title: "Wagner JM, McKinney WP, Carpenter JL. Does this patient have appendicitis? JAMA 1996;276(19):1589–1594", note: "черновик: точность — игровая оценка" }
 review: draft

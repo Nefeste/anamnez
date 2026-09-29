@@ -23,7 +23,7 @@ import { memoryStore, saveSlot } from '../../src/state/saves';
 import { forgetShift, loadShift, SANDBOX_SLOT, setStore, shiftCaseView } from '../../src/state/session';
 
 const BOTH = ['dept.therapy', 'dept.surgery'];
-const SURGICAL = ['cond.biliary_colic', 'cond.cholecystitis', 'cond.pancreatitis'];
+const SURGICAL = ['cond.biliary_colic', 'cond.cholecystitis', 'cond.pancreatitis', 'cond.perforated_ulcer', 'cond.strangulated_hernia', 'cond.ulcer_bleeding'];
 const OP = 'tx.cholecystectomy';
 
 /** Песочница с готовой амбулаторией и смотровой приёмного справа; медсестра ЭКГ — в смотровую. */
@@ -137,10 +137,10 @@ describe('отделения больницы: с приёмным — и хир
     expect(surgical.length).toBeGreaterThan(40);
     for (const p of surgical) expect(p.department).toBe('dept.surgery');
     for (const p of both.filter(p => !SURGICAL.includes(primary(p)))) expect(p.department).toBe('dept.therapy');
-    // у пришедших сами прогон терапии прежний: те же зёрна — те же люди и болезни, кроме тех,
-    // кто теперь пришёл с хирургической
+    // у пришедших сами прогон терапии почти прежний: те же зёрна — те же люди и в основном те же
+    // болезни; веса хирургии сдвигают жребий болезни у немногих
     const same = both.filter((p, i) => primary(p) === primary(therapy[i])).length;
-    expect(same / both.length).toBeGreaterThan(0.9);
+    expect(same / both.length).toBeGreaterThan(0.85);
   });
 });
 

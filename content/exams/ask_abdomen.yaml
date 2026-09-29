@@ -21,6 +21,10 @@ checks:
   - { f: sym.pain_scapula, sens: 80, spec: 96 }
   - { f: sym.fatty_food, sens: 80, spec: 94 }
   - { f: sym.back_radiation, sens: 85, spec: 96 }
+  - { f: sym.dagger_pain, sens: 92, spec: 97 }
+  - { f: sym.hematemesis, sens: 92, spec: 99 }
+  - { f: sym.no_stool_gas, sens: 88, spec: 95 }
+  - { f: sym.groin_bulge, sens: 90, spec: 99 }
 texts:
   hint:
     ru: "Где болит и куда отдаёт, куда сместилась боль, после чего началась, есть ли тошнота, рвота, жидкий стул, изжога. Отличает кишечную инфекцию, аппендицит, болезни желудка, желчного пузыря и поджелудочной железы."

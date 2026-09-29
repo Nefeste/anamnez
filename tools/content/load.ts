@@ -246,7 +246,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     }
     if (c.complication) {
       const x = c.complication;
-      if (prob(x.early.p) >= 10000 || prob(x.later.p) >= 10000) errors.push(`${owner}: доля осложнённой стадии за отрезок должна быть меньше 100 %`);
+      if ((x.early && prob(x.early.p) >= 10000) || (x.later && prob(x.later.p) >= 10000)) errors.push(`${owner}: доля осложнённой стадии за отрезок должна быть меньше 100 %`);
       if (x.stay && x.stay[0] > x.stay[1]) errors.push(`${owner}: срок стационара в осложнённой стадии — от большего к меньшему`);
     }
     if (!c.course.selfLimiting && c.presenting && !c.course.untreated) warnings.push(`${owner}: не проходит само, но не сказано, что будет без лечения`);
@@ -344,7 +344,13 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (c.surgery) out.surgery = { tx: c.surgery.tx, window: c.surgery.window, ...(c.surgery.from === 'onset' ? { from: 'onset' as const } : {}) };
     if (c.complication) {
       const x = c.complication;
-      out.complication = { name: x.name, early: { hours: x.early.hours, p: prob(x.early.p) }, later: { every: x.later.every, p: prob(x.later.p) }, ...(x.stay ? { stay: x.stay } : {}) };
+      out.complication = {
+        name: x.name,
+        ...(x.early ? { early: { hours: x.early.hours, p: prob(x.early.p) } } : {}),
+        ...(x.later ? { later: { every: x.later.every, p: prob(x.later.p) } } : {}),
+        ...(x.after !== undefined ? { after: x.after } : {}),
+        ...(x.stay ? { stay: x.stay } : {}),
+      };
     }
     if (c.treatment) out.treatment = c.treatment;
     if (c.pearls) out.pearls = c.pearls;
@@ -395,6 +401,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
         room: x.room, team: x.team, equipment: x.equipment, minutes: x.minutes, complications: prob(x.complications),
         ...(x.death ? { death: prob(x.death) } : {}),
         ...(x.complicated ? { complicated: { complications: prob(x.complicated.complications), ...(x.complicated.death ? { death: prob(x.complicated.death) } : {}) } } : {}),
+        ...(x.delay ? { delay: prob(x.delay) } : {}),
       };
     }
     db.treatments[t.id] = out;

@@ -134,9 +134,13 @@ export const conditionSchema = z.strictObject({
    */
   complication: z.strictObject({
     name: text,
-    early: z.strictObject({ hours: z.number().int().min(1).max(240), p: probability }),
-    later: z.strictObject({ every: z.number().int().min(1).max(240), p: probability }),
+    early: z.strictObject({ hours: z.number().int().min(1).max(240), p: probability }).optional(),
+    later: z.strictObject({ every: z.number().int().min(1).max(240), p: probability }).optional(),
+    /** наступает наверняка через столько часов от начала болезни (часть 30б: прободная язва позже 24 ч — Boey) */
+    after: z.number().int().min(1).max(240).optional(),
     stay: z.tuple([z.number().int().min(1), z.number().int().min(1)]).optional(),
+  }).refine(x => (x.after !== undefined) !== (x.early !== undefined && x.later !== undefined) && (x.early === undefined) === (x.later === undefined), {
+    message: 'осложнённая стадия — либо по риску (early и later), либо по сроку (after)',
   }).optional(),
   /** у того, с чем приходят, — не меньше трёх (валидатор); у хронического фона хватит одного */
   findings: z.array(link).min(1),
@@ -240,6 +244,8 @@ export const treatmentSchema = z.strictObject({
     death: probability.optional(),
     /** в осложнённой стадии болезни на момент разреза: свои осложнения и смерть */
     complicated: z.strictObject({ complications: probability, death: probability.optional() }).optional(),
+    /** каждый полный час от поступления до разреза выживаемость ниже на столько (часть 30б: прободная язва — Buck 2013) */
+    delay: probability.optional(),
   }).optional(),
   texts: z.strictObject({ hint }),
   sources: z.array(source).min(1),

@@ -101,16 +101,22 @@ export interface Surgery {
   death?: P;
   /** в осложнённой стадии болезни на момент разреза — свои доли */
   complicated?: { complications: P; death?: P };
+  /** каждый полный час от поступления до разреза выживаемость ниже на столько (часть 30б, Buck 2013) */
+  delay?: P;
 }
 
 /**
  * Осложнённая стадия (часть 28б): без действенного лечения наступает по часам от начала болезни —
- * за первые `early.hours` часов с долей `early.p`, дальше — `later.p` за каждые `later.every` часов.
+ * по риску (за первые `early.hours` часов с долей `early.p`, дальше — `later.p` за каждые
+ * `later.every` часов) или по сроку `after` (часть 30б).
  */
 export interface Complication {
   name: Text;
-  early: { hours: number; p: P };
-  later: { every: number; p: P };
+  /** по риску: за первые `early.hours` часов — `early.p`, дальше `later.p` за каждые `later.every` */
+  early?: { hours: number; p: P };
+  later?: { every: number; p: P };
+  /** по сроку: наступает наверняка через столько часов от начала болезни (часть 30б) */
+  after?: number;
   /** срок стационара после операции в этой стадии, сутки */
   stay?: [number, number];
 }
