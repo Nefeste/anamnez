@@ -75,6 +75,21 @@ export const encyclopedia = {
     // сотрясение головного мозга (часть 32г): показана ли КТ — по правилу решения
     'ct:yes': 'при показаниях к КТ',
     'ct:no': 'без показаний к КТ',
+    // раны (часть 32г-2): чем нанесена, давность, края, сухожилие, прививки от столбняка, размер
+    'cause:cut': 'при порезе',
+    'cause:bite': 'при укусе',
+    'cause:blunt': 'при ране от удара',
+    'delay:fresh': 'при свежей ране',
+    'delay:late': 'при ране старше суток',
+    'edges:apart': 'при расходящихся краях',
+    'edges:together': 'при сомкнутых краях',
+    'tendon:intact': 'при целом сухожилии',
+    'tendon:cut': 'при перерезанном сухожилии',
+    'tetanus:current': 'при прививке от столбняка меньше 5\u00a0лет назад',
+    'tetanus:overdue': 'при прививке от столбняка больше 5\u00a0лет назад',
+    'tetanus:none': 'без записей о прививках от столбняка',
+    'extent:small': 'при небольшой ране',
+    'extent:large': 'при большой ране с кровопотерей',
   } as Record<string, string>,
   /** несколько условий одной фразой (часть 30д): «при» — один раз, последнее — через «и» */
   whenList: (words: string[]) => {
@@ -107,6 +122,7 @@ export const encyclopedia = {
   supportive: 'Облегчить состояние',
   notIndicated: 'Не нужно',
   harmful: 'Опасно',
+  prevent: 'Обязательная профилактика',
   setting: { home: 'дома', ward: 'в стационаре', ambulance: 'скорая, больница', admit: 'в стационаре', surgery: 'операция', transfer: 'скорая, перевод в центр' },
   whereTitle: 'Где лечить',
   whereDefault: (s: string) => `Обычно — ${s}.`,
@@ -175,6 +191,7 @@ export const encyclopedia = {
   acceptableFor: 'Можно при',
   supportiveFor: 'Облегчает при',
   harmfulFor: 'Опасно при',
+  preventFor: 'Профилактика при',
   contraindications: 'Противопоказания',
   level: { absolute: 'нельзя', relative: 'с осторожностью' },
 

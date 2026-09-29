@@ -10,9 +10,13 @@ export interface Plan {
   setting: Setting;
 }
 
-/** Роль назначения при состоянии; не названное в тактике — «не показано». */
-export type TxRole = 'firstLine' | 'acceptable' | 'supportive' | 'notIndicated' | 'harmful';
-const ROLES: TxRole[] = ['firstLine', 'acceptable', 'supportive', 'notIndicated', 'harmful'];
+/**
+ * Роль назначения при состоянии; не названное в тактике — «не показано». `prevent` — обязательная
+ * профилактика (часть 32г-2): анатоксин столбнячный, вакцина от бешенства.
+ */
+export type TxRole = 'firstLine' | 'acceptable' | 'supportive' | 'notIndicated' | 'harmful' | 'prevent';
+type ListRole = Exclude<TxRole, 'prevent'>;
+const ROLES: ListRole[] = ['firstLine', 'acceptable', 'supportive', 'notIndicated', 'harmful'];
 
 /** Насколько серьёзна помощь: чем выше, тем срочнее и сложнее. */
 export const SETTING_ORDER: Record<Setting, number> = { home: 0, ward: 1, admit: 1, ambulance: 2, surgery: 3, transfer: 3 };
@@ -87,6 +91,8 @@ export interface PlanEval {
   firstLineBlocked: boolean;
   /** что сделать до приезда скорой: первая линия состояния, которое лечат не дома (ОКС) */
   preHospital: Id[];
+  /** обязательная профилактика по правде о пациенте, которой нет в плане (часть 32г-2) */
+  preventMissing: Id[];
 }
 
 export function primaryOf(patient: Patient) {
@@ -122,11 +128,22 @@ export function untreatedOf(db: ContentDb, condition: Pick<ActiveCondition, 'id'
 }
 
 /**
+ * Обязательная профилактика при этих значениях скрытых параметров (часть 32г-2): общая и из
+ * подошедших записей `byParam`; без параметров — вся, какая бывает при этом состоянии.
+ */
+export function preventOf(t: Tactics | undefined, params?: Record<string, string>): Id[] {
+  if (!t) return [];
+  const over = (t.byParam ?? []).filter(b => !params || whenHolds(b.when, params));
+  return [...new Set([...(t.prevent ?? []), ...over.flatMap(b => b.prevent ?? [])])];
+}
+
+/**
  * Роль назначения при состоянии. `params` — скрытые параметры болезни у этого больного (часть 32):
  * тактика по ним сильнее общей — у перелома со смещением репозиция — первая линия.
  */
 export function txRole(db: ContentDb, condId: Id, tx: Id, params?: Record<string, string>): TxRole {
   const t = db.conditions[condId]?.treatment;
+  if (preventOf(t, params).includes(tx)) return 'prevent';
   const x = params && t?.byParam?.find(b => whenHolds(b.when, params) && ROLES.some(role => b[role].includes(tx)));
   if (x) return ROLES.find(role => x[role].includes(tx))!;
   // своя операция болезни — первая линия (часть 28); в тактике её нет: до приезда скорой её не сделать.
@@ -176,9 +193,10 @@ export function tacticsFor(t: Tactics, params: Record<string, string> = {}): Tac
   const over = (t.byParam ?? []).filter(b => whenHolds(b.when, params));
   if (over.length === 0) return t;
   const named = new Set(over.flatMap(b => ROLES.flatMap(role => b[role])));
-  const lists = Object.fromEntries(ROLES.map(role => [role, [...new Set([...over.flatMap(b => b[role]), ...t[role].filter(id => !named.has(id))])]])) as Record<TxRole, Id[]>;
+  const lists = Object.fromEntries(ROLES.map(role => [role, [...new Set([...over.flatMap(b => b[role]), ...t[role].filter(id => !named.has(id))])]])) as Record<ListRole, Id[]>;
   const plan = over.find(b => b.plan)?.plan ?? t.plan?.filter(id => lists.firstLine.includes(id) || lists.acceptable.includes(id) || lists.supportive.includes(id));
-  return { ...lists, setting: t.setting, ...(plan && plan.length > 0 ? { plan } : {}) };
+  const prevent = preventOf(t, params);
+  return { ...lists, setting: t.setting, ...(plan && plan.length > 0 ? { plan } : {}), ...(prevent.length > 0 ? { prevent } : {}) };
 }
 
 /** Где на самом деле надо лечить: место по умолчанию, по тяжести случая, при красном флаге. */
@@ -246,5 +264,7 @@ export function evaluatePlan(db: ContentDb, patient: Patient, plan: Plan, observ
     firstLineBlocked,
     // до приезда скорой операцию не сделать
     preHospital: tactics && tactics.setting.default !== 'home' ? tactics.firstLine.filter(tx => db.treatments[tx]?.kind !== 'surgery') : [],
+    // профилактику, противопоказанную тем, о чём врач знает (аллергия на пенициллины), в вину не ставим
+    preventMissing: preventOf(base, params).filter(tx => !plan.treatments.includes(tx) && !db.treatments[tx]?.contraindications.some(k => knownIds.has(k.id))).sort(),
   };
 }

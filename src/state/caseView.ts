@@ -254,6 +254,9 @@ const TX_GROUPS: [string, string[]][] = [
   ['trauma', ['immobilization']],
   // травма груди (часть 32в): плевральная пункция и дренирование
   ['drainage', ['drainage']],
+  // раны (часть 32г-2): повязка, обработка со швом и без; анатоксин, вакцина, иммуноглобулины
+  ['wounds', ['wound']],
+  ['vaccines', ['vaccine']],
 ];
 
 /** Порядок групп лечения — для решения и энциклопедии. */
@@ -580,6 +583,7 @@ export function noteText(n: ScoreNote): string {
     case 'tx.noCure': return t.noCure;
     case 'tx.none': return t.none;
     case 'tx.preHospitalMissing': return t.preHospitalMissing(tx(n.tx));
+    case 'tx.preventMissing': return t.preventMissing(tx(n.tx));
     case 'setting.under': return t.settingUnder(n.recommended);
     case 'setting.over': return t.settingOver(n.recommended);
     case 'safety.knownViolation': return t.knownViolation(tx(n.tx), riskName(n.by));

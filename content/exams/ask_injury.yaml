@@ -14,7 +14,12 @@ checks:
   - { f: sym.shoulder_pain, sens: 95, spec: 100 }
   - { f: sym.chest_injury_pain, sens: 95, spec: 100 }
   - { f: sym.head_injury, sens: 95, spec: 100 }
+  - { f: sym.hand_wound, sens: 95, spec: 100 }
+  - { f: sym.head_wound, sens: 95, spec: 100 }
+  - { f: sym.animal_bite, sens: 98, spec: 100 }
   - { f: sym.immediate_dysfunction, sens: 85, spec: 85 }
+  # давность раны (часть 32г-2): меньше суток — шов, больше — обработка без шва (688_2, раздел 3.2)
+  - { f: hx.wound_late, sens: 95, spec: 98 }
 texts:
   hint:
     ru: "Как именно случилась травма и что было сразу после неё. Если двигать суставом стало невозможно сразу, это довод за перелом или вывих; при ушибе движения пропадают позже, по мере отёка."

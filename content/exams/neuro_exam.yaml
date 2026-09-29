@@ -4,6 +4,8 @@ kind: physical
 time: { procedure: 5 }
 cost: 0
 discomfort: 0
+# каждому с травмой и раной головы (733_2, раздел 2.2 и критерий качества 2; 734_2, раздел 2.2.1)
+routineFor: [sym.head_injury, sym.head_wound]
 checks:
   - { f: sign.gcs_low, sens: 90, spec: 98 }
   - { f: sign.nystagmus, sens: 80, spec: 95 }

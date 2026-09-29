@@ -1386,6 +1386,13 @@ try {
   const ctTransfer = await page.locator('text=При показаниях к КТ — скорая, перевод в центр.').first().isVisible().catch(() => false);
   check((await visibleText(page, 'enc-article-title')) === 'Сотрясение головного мозга' && ctTransfer,
     `энциклопедия, сотрясение: ${await visibleText(page, 'enc-article-title')} — «при показаниях к КТ — скорая, перевод в центр»`);
+  // раны (0.2.2): перерезанное сухожилие — перевод; обязательная профилактика при укусе
+  await page.goto(`${base}/encyclopedia/article/cond.hand_wound`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const tendon = await page.locator('text=При перерезанном сухожилии — скорая, перевод в центр.').first().isVisible().catch(() => false);
+  const prevent = await page.locator('text=Обязательная профилактика, при укусе').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'Открытая рана кисти' && tendon && prevent,
+    `энциклопедия, рана кисти: ${await visibleText(page, 'enc-article-title')} — перевод при перерезанном сухожилии, профилактика при укусе`);
 
   // кампания: карьера 1 → глава 1 — письма и задания; письмо наставника; смена открывается;
   // «Продолжить» в меню — карьера (spec 2026-09-campaign)

@@ -124,6 +124,7 @@ export const spikes = {
       supportive: 'облегчает самочувствие',
       notIndicated: 'не показано',
       harmful: 'вредно',
+      prevent: 'профилактика',
     } as Record<string, string>,
     // не лекарство (часть 32): гипсовая лонгета, репозиция, операция — «лечение выбора»
     roleTx: { firstLine: 'лечение выбора' } as Record<string, string>,
@@ -180,6 +181,7 @@ export const spikes = {
       noCure: 'Не назначено лечение причины болезни',
       none: 'Ничего не рекомендовано — даже при простуде пациенту нужен совет',
       preHospitalMissing: (tx: string) => `До приезда скорой не дали: ${lowerFirst(tx)}`,
+      preventMissing: (tx: string) => `Не назначено: ${lowerFirst(tx)} — без этой профилактики лечение неполное`,
       settingUnder: (should: string) => `Недооценили тяжесть: нужно было ${UNDER[should] ?? UNDER.ambulance}`,
       settingOver: (should: string) => `Перестраховка: хватило бы ${OVER[should] ?? OVER.ward}`,
       knownViolation: (tx: string, by: string) => `${tx}: противопоказано (${lowerFirst(by)}), и вы об этом знали`,
@@ -238,6 +240,7 @@ export const spikes = {
       metabolic: 'Обмен веществ и кровь',
       nerves: 'Голова и спина',
       bones: 'Кости и суставы',
+      skin: 'Кожа и раны',
     } as Record<string, string>,
     txGroup: {
       antibiotics: 'Антибиотики',
@@ -250,6 +253,8 @@ export const spikes = {
       metabolic: 'Обмен веществ и кровь',
       trauma: 'Гипс и вправление',
       drainage: 'Пункции и дренажи',
+      wounds: 'Раны и повязки',
+      vaccines: 'Прививки и сыворотки',
       regimen: 'Режим и советы',
     } as Record<string, string>,
   },

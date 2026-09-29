@@ -117,6 +117,11 @@ export const conditionSchema = z.strictObject({
     /** типичное назначение целиком, если первая линия — выбор из равных (цистит: одно из двух) */
     plan: z.array(txId).min(1).optional(),
     /**
+     * обязательная профилактика (часть 32г-2): её нет в плане — лечение неполное, даже если рана
+     * зажила (анатоксин столбнячный при просроченной прививке, вакцина от бешенства после укуса)
+     */
+    prevent: z.array(txId).min(1).optional(),
+    /**
      * тактика по скрытому параметру (spec 2026-09-chapter-2, часть 32): при таких значениях у
      * названных здесь лечений — эта роль, у остальных — из общих списков; своё типичное назначение
      * (перелом со смещением — репозиция, без смещения — лонгета)
@@ -129,6 +134,8 @@ export const conditionSchema = z.strictObject({
       notIndicated: z.array(txId).default([]),
       harmful: z.array(txId).default([]),
       plan: z.array(txId).min(1).optional(),
+      /** обязательная профилактика при этих значениях — вдобавок к общей */
+      prevent: z.array(txId).min(1).optional(),
     })).min(1).optional(),
     setting: z.strictObject({
       default: setting,
@@ -239,6 +246,8 @@ export const examSchema = z.strictObject({
   radiation: z.enum(['none', 'low', 'medium', 'high']).optional(),
   /** спрашивают каждого (анамнез жизни): «виртуальный врач» делает это первым */
   routine: z.boolean().optional(),
+  /** делают каждому с одной из этих жалоб, первым (часть 32г-2): при ране головы — неврологический осмотр */
+  routineFor: z.array(z.string().regex(/^sym\.[a-z0-9_]+$/)).min(1).optional(),
   /** кому делают: только этому полу (о месячных и беременности — женщин) */
   sex: z.enum(['m', 'f']).optional(),
   /** кому делают по возрасту, лет включительно: вне его не предлагается */
