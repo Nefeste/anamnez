@@ -28,7 +28,7 @@ function png(file: string): { w: number; h: number; alpha: boolean } {
   return { w: b.readUInt32BE(16), h: b.readUInt32BE(20), alpha: b[25] === 6 || b[25] === 4 };
 }
 
-const TEXTS = ['listing.ru.md', 'forms.md', 'privacy.ru.md', 'privacy.en.md', 'site/anamnez.ru.md', 'site/press.ru.md'];
+const TEXTS = ['listing.ru.md', 'forms.md', 'privacy.ru.md', 'privacy.en.md', 'site/page.ru.md', 'site/page.en.md', 'site/press.ru.md'];
 
 // чужие игры, сериалы и прошлые прототипы (11-publishing.md §2); бренды лекарств — findBrand (ADR 0012)
 const FORBIDDEN = [
@@ -53,7 +53,7 @@ describe('store: тексты', () => {
 
   test('оговорка — в полном описании и на странице сайта', () => {
     expect(field(listing, 'Полное описание').trimEnd().endsWith(DISCLAIMER)).toBe(true);
-    expect(read('site/anamnez.ru.md')).toContain(DISCLAIMER);
+    expect(read('site/page.ru.md')).toContain(DISCLAIMER);
     expect(read('site/press.ru.md')).toContain(DISCLAIMER);
   });
 
