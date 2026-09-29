@@ -83,6 +83,10 @@ export const spikes = {
     meanwhile: 'За это время',
     ready: (name: string) => `Готово: ${name}`,
     likely: 'Похоже на (уровень «Студент»)',
+    // правила решения на «Студенте» (spec 2026-09-chapter-2, часть 32): оттавские — нужен ли снимок
+    rules: 'Правила решения (уровень «Студент»)',
+    ruleYes: (yes: string, found: string) => `${yes}: ${found}`,
+    ruleCheck: (left: string) => `Проверьте: ${left}`,
     outOf10: (n: number) => `${n} из 10`,
     similar: (n: number) => `у ${n} из 10 похожих пациентов`,
     correct: 'Верно',
@@ -117,6 +121,8 @@ export const spikes = {
       notIndicated: 'не показано',
       harmful: 'вредно',
     } as Record<string, string>,
+    // не лекарство (часть 32): гипсовая лонгета, репозиция, операция — «лечение выбора»
+    roleTx: { firstLine: 'лечение выбора' } as Record<string, string>,
     outcome: {
       // день 0 — в день приёма (боль прошла от обезболивающего): «через 0 дней» так не говорят
       recovered: (day: number, female: boolean) =>
@@ -166,6 +172,7 @@ export const spikes = {
       harmful: (tx: string) => `${tx}: при этой болезни вредно`,
       notIndicated: (tx: string) => `${tx}: здесь не показано`,
       acceptable: (tx: string) => `${tx}: допустимая замена — без противопоказаний лучше препарат выбора`,
+      acceptableTx: (tx: string) => `${tx}: допустимо, но здесь лучше лечение выбора`,
       noCure: 'Не назначено лечение причины болезни',
       none: 'Ничего не рекомендовано — даже при простуде пациенту нужен совет',
       preHospitalMissing: (tx: string) => `До приезда скорой не дали: ${lowerFirst(tx)}`,
@@ -226,6 +233,7 @@ export const spikes = {
       urinary: 'Почки и мочевые пути',
       metabolic: 'Обмен веществ и кровь',
       nerves: 'Голова и спина',
+      bones: 'Кости и суставы',
     } as Record<string, string>,
     txGroup: {
       antibiotics: 'Антибиотики',
@@ -236,6 +244,7 @@ export const spikes = {
       heart: 'Сердце и давление',
       digestive: 'Желудок и кишечник',
       metabolic: 'Обмен веществ и кровь',
+      trauma: 'Гипс и вправление',
       regimen: 'Режим и советы',
     } as Record<string, string>,
   },

@@ -14,7 +14,9 @@ import type { CaseScore, Grade, ScoreNote } from '@/engine/med/score';
 import { complaintText, observationText } from '@/engine/med/text';
 import type { Observation, Patient } from '@/engine/med/types';
 import type { Difficulty } from '@/engine/shift/types';
+import type { BoneFindings, BoneFracture } from '@/render/xray/boneGeometry';
 import { T } from '@/i18n';
+import { lowerFirst } from '@/i18n/case';
 
 export const DEPARTMENT = 'dept.therapy';
 
@@ -40,7 +42,9 @@ export type ResultImage =
    */
   | { kind: 'us'; view: 'appendix' | 'gallbladder' | 'kidney' | 'colon'; appendix?: number; stones?: number; wall?: number; pelvis?: number; diverticulum?: number; seed: number }
   /** обзорный снимок живота стоя (часть 30б): серп свободного газа под куполом, раздутые петли с уровнями */
-  | { kind: 'abdomen'; freeGas: boolean; levels: boolean; seed: number };
+  | { kind: 'abdomen'; freeGas: boolean; levels: boolean; seed: number }
+  /** снимок костей (часть 32): запястье или голеностоп в двух проекциях — линия перелома и смещение, что нашёл рентгенолог */
+  | ({ kind: 'bone'; seed: number } & BoneFindings);
 
 /** Результаты одного обследования. `fresh` — пришли за последнее действие игрока. */
 export interface ResultGroup {
@@ -123,6 +127,8 @@ export interface VisitView {
   /** где лечить: варианты этой больницы */
   settings: SettingOption[];
   hints: { id: Id; name: string; outOf10: number }[];
+  /** «Студенту» — правила решения к жалобе (часть 32): что говорят по уже проверенному */
+  rules: { id: Id; name: string; text: string }[];
   /** из чего выбирают диагноз — болезни отделений этой больницы по системам органов */
   diagnoses: DiagnosisGroup[];
   /** всё лечение базы по алфавиту; warning — противопоказание, о котором врач уже знает */
@@ -234,6 +240,8 @@ const TX_GROUPS: [string, string[]][] = [
   ['heart', ['antihypertensive', 'antiplatelet', 'antianginal']],
   ['digestive', ['acid', 'rehydration']],
   ['metabolic', ['antidiabetic', 'hormone', 'mineral']],
+  // травма (часть 32): гипсовая лонгета и закрытая репозиция
+  ['trauma', ['immobilization']],
 ];
 
 /** Порядок групп лечения — для решения и энциклопедии. */
@@ -323,11 +331,63 @@ function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observat
   }
   // почка (часть 30г): расширенная лоханка — если её показало УЗИ
   if (exam === 'exam.us_kidney') return { kind: 'us', view: 'kidney', pelvis: shown('img.us_hydronephrosis') ? 0.8 : 0, seed };
+  // кости (часть 32): что нашёл рентгенолог — линия перелома, смещение, признаки нестабильности;
+  // сторона — из жалобы или находки
+  const bone = BONE_EXAMS[exam];
+  if (bone) {
+    const side = [...obs, ...known].map(o => o.attrs?.side).find(x => x === 'left' || x === 'right') ?? 'right';
+    const fractures: BoneFracture[] = [];
+    for (const [f, fracture] of bone.fractures) if (shown(f)) fractures.push(...fracture);
+    // одно место — одна запись: сильнее смещение — то, что видно
+    const bySite = new Map<string, BoneFracture>();
+    for (const x of fractures) if ((bySite.get(x.site)?.displacement ?? -1) < (x.displacement ?? 0)) bySite.set(x.site, x);
+    return { kind: 'bone', view: bone.view, side, fractures: [...bySite.values()], seed };
+  }
   return undefined;
 }
 
+/**
+ * Снимки костей (часть 32): вид и что рисует каждая находка — линия перелома, смещение (0–1),
+ * нестабильный перелом: у лучевой — сильнее смещение, у голеностопа — обе лодыжки и сдвиг таранной.
+ */
+const BONE_EXAMS: Record<Id, { view: BoneFindings['view']; fractures: [Id, BoneFracture[]][] }> = {
+  'exam.xray_wrist': {
+    view: 'wrist',
+    fractures: [
+      ['img.xr_radius_fracture', [{ site: 'radius', displacement: 0 }]],
+      ['img.xr_radius_displaced', [{ site: 'radius', displacement: 0.55 }]],
+      ['img.xr_radius_unstable', [{ site: 'radius', displacement: 1 }]],
+      ['img.xr_ulnar_styloid', [{ site: 'ulnar_styloid', displacement: 0.4 }]],
+    ],
+  },
+  'exam.xray_ankle': {
+    view: 'ankle',
+    fractures: [
+      ['img.xr_ankle_fracture', [{ site: 'fibula', displacement: 0 }]],
+      ['img.xr_ankle_unstable', [{ site: 'fibula', displacement: 0.8 }, { site: 'medial_malleolus', displacement: 0.8 }]],
+    ],
+  },
+};
+
 /** «Студенту» — до пяти гипотез с частотой (03-game-design.md §14). */
 const HINTS = 5;
+
+/**
+ * Правила решения к жалобе пациента (часть 32): есть признак правила — что оно велит («Снимок
+ * нужен: …»); проверили все и ни одного — «перелом маловероятен»; иначе — что осталось проверить.
+ */
+function rulesOf(p: Patient, obs: readonly Observation[]): VisitView['rules'] {
+  const t = T.spikes.patient;
+  const names = (ids: Id[]) => ids.map(f => lowerFirst(db.findings[f].name.ru)).join(', ');
+  return Object.values(db.rules)
+    .filter(r => r.complaints.some(f => p.complaints.includes(f)) && p.age >= (r.ageMin ?? 0))
+    .map(r => {
+      const found = r.any.filter(f => obs.some(o => o.f === f && o.shown));
+      const left = r.any.filter(f => !obs.some(o => o.f === f));
+      const text = found.length > 0 ? t.ruleYes(r.texts.yes.ru, names(found)) : left.length === 0 ? r.texts.no.ru : t.ruleCheck(names(left));
+      return { id: r.id, name: r.name.ru, text };
+    });
+}
 
 export function makeCaseView(c: CaseInput): VisitView {
   const p = c.patient;
@@ -366,6 +426,7 @@ export function makeCaseView(c: CaseInput): VisitView {
     hints: c.difficulty === 'doctor' ? [] : beliefsOf(p, obs, c.departments).slice(0, HINTS)
       .map(b => ({ id: b.id, name: db.conditions[b.id].name.ru, outOf10: Math.round(b.p * 10) }))
       .filter((h, i) => i === 0 || h.outOf10 > 0),
+    rules: c.difficulty === 'doctor' ? [] : rulesOf(p, obs),
     treatments,
     treatmentGroups: groupTreatments(treatments),
     draft: c.draft,
@@ -406,7 +467,8 @@ export function decisionOf(x: {
     grades: keys.map(k => ({ key: k, label: t.grade[k], grade: x.score[k] })),
     overall: x.score.overall,
     notes: x.score.notes.map(noteText),
-    plan: x.ev.roles.map(r => ({ name: db.treatments[r.tx].name.ru, role: t.role[r.role] })),
+    // не лекарство — «лечение выбора» (часть 32)
+    plan: x.ev.roles.map(r => ({ name: db.treatments[r.tx].name.ru, role: (db.treatments[r.tx].kind !== 'drug' ? t.roleTx[r.role] : undefined) ?? t.role[r.role] })),
     settingName: t.setting[x.plan.setting],
     rational: t.rationalLine(
       x.review.rational.exams.length > 0 ? x.review.rational.exams.map(e => db.exams[e].name.ru).join(', ') : t.rationalNone,
@@ -438,7 +500,7 @@ export function noteText(n: ScoreNote): string {
   switch (n.code) {
     case 'tx.harmful': return t.harmful(tx(n.tx));
     case 'tx.notIndicated': return t.notIndicated(tx(n.tx));
-    case 'tx.acceptable': return t.acceptable(tx(n.tx));
+    case 'tx.acceptable': return db.treatments[n.tx].kind === 'drug' ? t.acceptable(tx(n.tx)) : t.acceptableTx(tx(n.tx));
     case 'tx.noCure': return t.noCure;
     case 'tx.none': return t.none;
     case 'tx.preHospitalMissing': return t.preHospitalMissing(tx(n.tx));

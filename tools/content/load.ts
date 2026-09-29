@@ -15,6 +15,7 @@ import {
   BANDS, type ChapterSrc, chapterSchema, type CharacterSrc, characterSchema, type ConditionSrc, conditionSchema, type EconomySrc, economySchema, type EquipmentSrc, equipmentSchema, type ExamSrc, examSchema, type FindingSrc, findingSchema,
   type LinkSrc, PREVALENCE, type PresetSrc, presetSchema, type ProbabilitySrc, type RiskSrc, type RoleSrc, riskSchema, roleSchema, type RoomSrc, roomSchema,
   type TipSrc, tipSchema, type TreatmentSrc, treatmentSchema, versionSchema, type AchievementSrc, achievementSchema, type ScoreSrc, scoreSchema,
+  type RuleSrc, ruleSchema,
 } from './schema';
 
 export const CONTENT_DIR = join(import.meta.dir, '../../content');
@@ -87,6 +88,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   const tips: Record<string, TipSrc> = {};
   const achievements: Record<string, AchievementSrc> = {};
   const scores: Record<string, ScoreSrc> = {};
+  const rules: Record<string, RuleSrc> = {};
   let economy: EconomySrc | undefined;
   let contentVersion = 0;
 
@@ -165,8 +167,11 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     } else if (top === 'scores') {
       const x = check(scoreSchema);
       if (x) { expectId(x.id, 'score'); put(scores, x); }
+    } else if (top === 'rules') {
+      const x = check(ruleSchema);
+      if (x) { expectId(x.id, 'rule'); put(rules, x); }
     } else {
-      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/economy.yaml, campaign/characters, campaign/chapters, campaign/tips, achievements, scores)`);
+      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/economy.yaml, campaign/characters, campaign/chapters, campaign/tips, achievements, scores, rules)`);
     }
   }
   if (!contentVersion) errors.push('version.yaml: нет contentVersion');
@@ -181,6 +186,9 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       else for (const v of values) if (!(v in params[param])) errors.push(`${owner}: ${what} — у параметра ${param} нет значения ${v}`);
     }
   };
+  /** бывают ли оба условия сразу: по каждому общему параметру есть общее значение */
+  const overlaps = (a: Record<string, string[]> | undefined, b: Record<string, string[]> | undefined) =>
+    Object.entries(a ?? {}).every(([param, values]) => !b?.[param] || values.some(v => b[param].includes(v)));
   const checkLinks = (owner: string, links: LinkSrc[], params?: Record<string, Record<string, number>>, stages?: string[]) => {
     for (const l of links) {
       if (!hasF(l.f)) { errors.push(`${owner}: признак ${l.f} не найден`); continue; }
@@ -239,6 +247,25 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       const cures = (id: string) => treatments[id]?.effects.some(e => e.on === owner && e.kind === 'cure') === true;
       for (const id of [...t.notIndicated, ...t.harmful]) if (cures(id)) errors.push(`${owner}: ${id} действует на причину, а в тактике — «не показано» или «вредно»`);
       if (c.presenting && !c.course.selfLimiting && t.setting.default === 'home' && !t.firstLine.some(cures)) errors.push(`${owner}: само не проходит, а первая линия не действует на причину`);
+      // тактика по скрытому параметру (часть 32): условие по объявленному параметру, лечения есть
+      // и не повторяются; типичное назначение — из показанного при этих значениях; что при них
+      // действует на причину — не «не показано» и не «вредно»
+      for (const [i, x] of (t.byParam ?? []).entries()) {
+        const what = `тактика по параметру №${i + 1}`;
+        if (Object.keys(x.when).length === 0) errors.push(`${owner}: ${what} — без условия`);
+        checkWhen(owner, what, x.when, c.params);
+        const own = new Set<string>();
+        for (const id of [x.firstLine, x.acceptable, x.supportive, x.notIndicated, x.harmful].flat()) {
+          if (!(id in treatments)) errors.push(`${owner}: ${what} — лечение ${id} не найдено`);
+          if (own.has(id)) errors.push(`${owner}: ${what} — лечение ${id} стоит в двух списках`);
+          own.add(id);
+        }
+        const shown = (id: string) => [x.firstLine, x.acceptable, x.supportive].some(l => l.includes(id)) || (!own.has(id) && [t.firstLine, t.acceptable, t.supportive].some(l => l.includes(id)));
+        for (const id of x.plan ?? []) if (!shown(id)) errors.push(`${owner}: ${what} — в типичном назначении ${id} — не из первой линии, допустимых или облегчающих`);
+        for (const id of x.plan ?? []) if (treatments[id]?.kind === 'surgery') errors.push(`${owner}: ${what} — операцию ${id} выбирают «В операционную», а не в назначении`);
+        const curesHere = (id: string) => treatments[id]?.effects.some(e => e.on === owner && e.kind === 'cure' && overlaps(e.when, x.when)) === true;
+        for (const id of [...x.notIndicated, ...x.harmful]) if (curesHere(id)) errors.push(`${owner}: ${what} — ${id} при этих значениях действует на причину, а стоит «не показано» или «вредно»`);
+      }
     }
     // с чем приходят — узнаётся по нескольким признакам; хроническому фону хватит одного (часть 30)
     if (c.presenting && c.findings.length < 3) errors.push(`${owner}: у болезни, с которой приходят, меньше трёх признаков`);
@@ -252,7 +279,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       else if (c.complication && !op.surgery?.complicated) errors.push(`${owner}: у болезни есть осложнённая стадия, а у операции ${c.surgery.tx} нет долей для неё (complicated)`);
       // срок после наблюдения в палате (часть 30в) — у того, что лечат и без операции, и дольше экстренного
       const x = c.surgery;
-      if (x.observe !== undefined && x.observe <= x.window) errors.push(`${owner}: срок после наблюдения (observe) должен быть больше срока экстренной операции`);
+      if (x.observe !== undefined && (x.window === undefined || x.observe <= x.window)) errors.push(`${owner}: срок после наблюдения (observe) должен быть больше срока экстренной операции`);
+      if (x.window === undefined && (x.from !== undefined || c.complication)) errors.push(`${owner}: срок от начала болезни и осложнённая стадия — только со сроком операции (window)`);
       if (x.observe !== undefined && x.from === 'onset') errors.push(`${owner}: срок после наблюдения (observe) считается от поступления, а срок операции — от начала болезни`);
       if (x.stay && x.stay[0] > x.stay[1]) errors.push(`${owner}: срок стационара после операции — от большего к меньшему`);
     }
@@ -317,6 +345,18 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     }
     if (!(x.levels.medium < x.levels.high)) errors.push(`${x.id}: средний уровень ответа должен быть ниже высокого`);
   }
+  // правила решения (часть 32): жалобы — признаки с жалобой, признаки и обследования есть, и
+  // обследование правила открывает хоть один признак болезней, о которых оно
+  for (const x of Object.values(rules)) {
+    for (const f of x.complaints) if (!findings[f]?.texts.complaint) errors.push(`${x.id}: жалоба ${f} не найдена или без текста жалобы`);
+    for (const f of x.any) if (!hasF(f)) errors.push(`${x.id}: признак ${f} не найден`);
+    for (const id of x.about) if (!conditions[id]?.presenting) errors.push(`${x.id}: болезнь ${id} не найдена или с ней не приходят`);
+    for (const id of x.exams) {
+      if (!exams[id]) { errors.push(`${x.id}: обследование ${id} не найдено`); continue; }
+      const about = new Set(x.about.flatMap(c => conditions[c]?.findings.map(l => l.f) ?? []));
+      if (!exams[id].checks.some(ch => about.has(ch.f))) errors.push(`${x.id}: ${id} не проверяет ни одного признака ${x.about.join(', ')}`);
+    }
+  }
   checkWho({ conditions, findings, exams, risks }, errors);
   checkHospital({ rooms, equipment, roles, exams, conditions, treatments }, errors);
 
@@ -330,6 +370,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     tips: Object.fromEntries(Object.values(tips).sort((a, b) => a.order - b.order).map(t => [t.id, t])),
     achievements: Object.fromEntries(Object.values(achievements).sort((a, b) => a.order - b.order).map(a => [a.id, a])),
     scores: Object.fromEntries(Object.values(scores).sort((a, b) => (a.id < b.id ? -1 : 1)).map(x => [x.id, x])),
+    rules: Object.fromEntries(Object.values(rules).sort((a, b) => (a.id < b.id ? -1 : 1)).map(x => [x.id, x])),
     economy: economy
       ? { ...economy, sandbox: { ...economy.sandbox, corridor: rects(economy.sandbox.corridor) } }
       : NO_ECONOMY,
@@ -369,7 +410,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (c.surgery) {
       const x = c.surgery;
       out.surgery = {
-        tx: x.tx, window: x.window,
+        tx: x.tx,
+        ...(x.window !== undefined ? { window: x.window } : {}),
         ...(x.from === 'onset' ? { from: 'onset' as const } : {}),
         ...(x.observe !== undefined ? { observe: x.observe } : {}),
         ...(x.stay ? { stay: x.stay } : {}),

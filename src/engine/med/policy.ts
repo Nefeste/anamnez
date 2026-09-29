@@ -4,8 +4,8 @@
 import type { ContentDb, Id, Setting } from '../../content/types';
 import { Rng } from '../core/rng';
 import { complaintObservations, examFits, runExam } from './exams';
-import { type Belief, contextOf, expectedGain, knownFacts, posterior } from './infer';
-import { choiceFor, type Plan, possibleFor, SETTING_ORDER, type Venue } from './plan';
+import { type Belief, contextOf, expectedGain, knownFacts, likelyParams, paramBeliefs, paramGain, posterior } from './infer';
+import { choiceFor, type Plan, possibleFor, SETTING_ORDER, tacticsFor, type Venue, whenHolds } from './plan';
 import type { Observation, Patient } from './types';
 
 export type Strategy = 'rational' | 'lazy' | 'shotgun';
@@ -63,21 +63,22 @@ function askingExam(db: ContentDb, contraindication: Id): Id | undefined {
 }
 
 /**
- * План для своего диагноза: препарат выбора без известных противопоказаний (иначе
- * первая допустимая замена) и место лечения — по умолчанию или выше, если врач видел
- * красный флаг этого состояния.
- */
-/**
- * Типичное назначение и место лечения: что нужно пациенту по тому, что известно, — и что это
- * значит здесь (`venue`: своя палата со свободной койкой; нет — амбулатория).
+ * Типичное назначение и место лечения для своего диагноза: что нужно пациенту по тому, что
+ * известно, — и что это значит здесь (`venue`: своя палата со свободной койкой; нет —
+ * амбулатория). Препарат выбора без известных противопоказаний (иначе первая допустимая
+ * замена); место — по умолчанию или выше, если врач видел красный флаг этого состояния. Скрытый
+ * параметр болезни — по тому, что видно (часть 32): смещение на снимке — репозиция, нестабильный
+ * перелом — операция. Операцию выбирают местом «В операционную», не в назначении.
  */
 export function choosePlan(db: ContentDb, diagnosis: Id, observations: readonly Observation[], venue: Venue = {}): Plan {
-  const t = db.conditions[diagnosis]?.treatment;
-  if (!t) return { treatments: [], setting: 'home' };
+  const base = db.conditions[diagnosis]?.treatment;
+  if (!base) return { treatments: [], setting: 'home' };
+  const params = likelyParams(db, diagnosis, observations);
+  const t = tacticsFor(base, params);
   const known = knownFacts(db, observations);
   const blocked = new Set([...known.risks, ...known.conditions]);
-  const ok = (tx: Id) => !db.treatments[tx].contraindications.some(k => blocked.has(k.id));
-  const cures = (tx: Id) => db.treatments[tx].effects.some(e => e.on === diagnosis && e.kind === 'cure');
+  const ok = (tx: Id) => !db.treatments[tx].contraindications.some(k => blocked.has(k.id)) && db.treatments[tx].kind !== 'surgery';
+  const cures = (tx: Id) => db.treatments[tx].effects.some(e => e.on === diagnosis && e.kind === 'cure' && whenHolds(e.when, params));
   // типичное назначение; если противопоказание убрало лечение причины — замена из первой линии и допустимых
   const treatments = (t.plan ?? t.firstLine).filter(ok);
   if (!treatments.some(cures)) {
@@ -89,6 +90,10 @@ export function choosePlan(db: ContentDb, diagnosis: Id, observations: readonly 
   const raise = (s: Setting) => {
     if (SETTING_ORDER[s] > SETTING_ORDER[setting]) setting = s;
   };
+  if (t.setting.param) {
+    const s = t.setting.param.map[params[t.setting.param.name]];
+    if (s) raise(s);
+  }
   if (t.setting.redFlag && (db.conditions[diagnosis].redFlags ?? []).some(f => seen.has(f))) raise(t.setting.redFlag);
   for (const r of t.setting.risks ?? []) if (known.risks.includes(r.id)) raise(r.setting);
   return { treatments: [...new Set(treatments)].sort(), setting: choiceFor(setting, venue) };
@@ -148,6 +153,53 @@ function bestExam(db: ContentDb, beliefs: Belief[], ctx: Parameters<typeof expec
 }
 
 /**
+ * Скрытые параметры болезни, от которых зависит лечение (часть 32): место по параметру и тактика
+ * по параметру — смещение отломков, стабильность перелома.
+ */
+export function tacticParams(db: ContentDb, condId: Id): string[] {
+  const t = db.conditions[condId]?.treatment;
+  if (!t) return [];
+  return [...new Set([...(t.setting.param ? [t.setting.param.name] : []), ...(t.byParam ?? []).flatMap(b => Object.keys(b.when))])].sort();
+}
+
+/**
+ * Обследование, которое уточнит то, от чего зависит лечение при этом диагнозе (часть 32): пока
+ * значение параметра не достигло порога уверенности — самое полезное для него на единицу цены;
+ * польза ниже `minGain` — не назначается. Перелом со штыкообразной деформацией — ещё снимок:
+ * смещён он или нестабилен, решает он.
+ */
+function tacticExam(db: ContentDb, diagnosis: Id, obs: readonly Observation[], done: readonly Id[], opt: StepOptions): Id | undefined {
+  let best: Id | undefined;
+  let bestScore = 0;
+  for (const name of tacticParams(db, diagnosis)) {
+    const top = paramBeliefs(db, diagnosis, name, obs).reduce((a, b) => Math.max(a, b.p), 0);
+    if (top >= opt.threshold) continue;
+    for (const id of opt.exams) {
+      if (done.includes(id)) continue;
+      const gain = paramGain(db, diagnosis, name, id, obs);
+      if (quantize(gain) < quantize(opt.minGain)) continue;
+      const score = quantize(gain / examCost(db, id));
+      if (score > bestScore) {
+        bestScore = score;
+        best = id;
+      }
+    }
+  }
+  return best;
+}
+
+/**
+ * Нужна операция, а подтверждающего обследования из рекомендации ещё нет — самое дешёвое из
+ * доступных (часть 32). Без операции его не требуем: грипп лечат и без экспресс-теста.
+ */
+function confirmBeforeSurgery(db: ContentDb, diagnosis: Id, obs: readonly Observation[], done: readonly Id[], exams: readonly Id[]): Id | undefined {
+  const c = db.conditions[diagnosis];
+  if (!c?.surgery || c.confirm === 'clinical' || c.confirm.some(id => done.includes(id))) return undefined;
+  if (choosePlan(db, diagnosis, obs, { ward: true, or: true }).setting !== 'surgery') return undefined;
+  return c.confirm.filter(id => exams.includes(id)).sort((a, b) => examCost(db, a) - examCost(db, b) || (a < b ? -1 : 1))[0];
+}
+
+/**
  * Шаг разумного врача по тому, что уже известно: следующее обследование или решение. Сначала —
  * вопросы, которые задают всем: польза вопроса о хронических болезнях в модели не видна
  * (сопутствующие считаются известными), а без него обострение ХОБЛ не узнать. Потом, пока
@@ -169,6 +221,13 @@ export function nextStep(db: ContentDb, patient: Patient, obs: readonly Observat
       if (best) return { step: { kind: 'exam', exam: best }, phase: now };
     }
     const top = beliefs[0];
+    // диагноз ясен — уточняет то, от чего зависит лечение (часть 32): смещение отломков видно на снимке
+    const tactic = tacticExam(db, top.id, obs, done, opt);
+    if (tactic) return { step: { kind: 'exam', exam: tactic }, phase: now };
+    // перед операцией — подтверждающее обследование из рекомендации (часть 32): нестабильный
+    // перелом с деформацией не оперируют без снимка
+    const confirm = confirmBeforeSurgery(db, top.id, obs, done, opt.exams);
+    if (confirm) return { step: { kind: 'exam', exam: confirm }, phase: now };
     const plan = choosePlan(db, top.id, obs);
     const risks = [...new Set(plan.treatments.flatMap(tx => db.treatments[tx].contraindications.map(k => k.id)))].sort();
     const ask: Id[] = [];

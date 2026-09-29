@@ -1098,13 +1098,16 @@ function finishOperation(db: ContentDb, s: ShiftState, p: ShiftPatient | undefin
     // непроходимости без ишемии и перитонита — не позже 72 ч от поступления
     const observed = plan.observe !== undefined && !needed;
     const window = observed ? plan.observe! : plan.window;
-    const onTime = rounded <= window;
-    if (onTime) day.onTime++;
-    else day.late++;
-    p.closed!.notes.push({
-      code: onTime ? 'op.onTime' : 'op.late', tx: op.tx, hours: rounded, window,
-      ...(fromOnset ? { onset: true as const } : {}), ...(observed ? { observed: true as const } : {}),
-    });
+    // срока нет (часть 32: закрытый перелом) — строки срока нет
+    if (window !== undefined) {
+      const onTime = rounded <= window;
+      if (onTime) day.onTime++;
+      else day.late++;
+      p.closed!.notes.push({
+        code: onTime ? 'op.onTime' : 'op.late', tx: op.tx, hours: rounded, window,
+        ...(fromOnset ? { onset: true as const } : {}), ...(observed ? { observed: true as const } : {}),
+      });
+    }
   }
   if (s.economy) ledgerOf(s).expenses.consumables += db.treatments[op.tx].cost;
   startOperations(db, s);

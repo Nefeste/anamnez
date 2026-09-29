@@ -5,6 +5,7 @@ import { Ecg } from '@/render/Ecg';
 import { UsSector } from '@/render/UsSector';
 import { Xray } from '@/render/Xray';
 import { XrayAbdomen } from '@/render/XrayAbdomen';
+import { XrayBone } from '@/render/XrayBone';
 import type { ResultImage } from '@/state/caseView';
 import { space } from '@/ui/theme';
 
@@ -33,6 +34,14 @@ export function ResultPicture({ image }: { image: ResultImage }) {
     return (
       <View testID="result-xray-abdomen" style={{ borderRadius: 6, overflow: 'hidden' }}>
         <XrayAbdomen width={w} seed={image.seed} findings={{ freeGas: image.freeGas ? 0.8 : 0, levels: image.levels ? 0.8 : 0 }} />
+      </View>
+    );
+  }
+  if (image.kind === 'bone') {
+    // кости (часть 32): две проекции на одной плёнке — во всю ширину, чтобы линия перелома была видна
+    return (
+      <View testID="result-xray-bone" style={{ borderRadius: 6, overflow: 'hidden' }}>
+        <XrayBone width={w} seed={image.seed} findings={image} />
       </View>
     );
   }

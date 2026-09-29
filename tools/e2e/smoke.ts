@@ -1327,6 +1327,18 @@ try {
   await page.goto(`${base}/encyclopedia/article/score.news2`);
   await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
   check((await visibleText(page, 'enc-article-title')).startsWith('NEWS2'), `энциклопедия, шкала: ${await visibleText(page, 'enc-article-title')}`);
+  // травма (0.0.54): правило решения — в «Шкалах и правилах»; у перелома — тактика по смещению
+  await page.goto(`${base}/encyclopedia/article/rule.ottawa_ankle`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const snapNeeded = await page.locator('text=Снимок нужен').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'Оттавские правила для голеностопа' && snapNeeded,
+    `энциклопедия, правило: ${await visibleText(page, 'enc-article-title')} — «снимок нужен»`);
+  await page.goto(`${base}/encyclopedia/article/cond.distal_radius_fracture`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const byShift = await page.locator('text=Первая линия, при смещении').first().isVisible().catch(() => false);
+  const unstableOp = await page.locator('text=При нестабильном переломе — операция.').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'Перелом дистального отдела лучевой кости' && byShift && unstableOp,
+    `энциклопедия, перелом лучевой: ${await visibleText(page, 'enc-article-title')} — репозиция при смещении, нестабильный — операция`);
 
   // кампания: карьера 1 → глава 1 — письма и задания; письмо наставника; смена открывается;
   // «Продолжить» в меню — карьера (spec 2026-09-campaign)

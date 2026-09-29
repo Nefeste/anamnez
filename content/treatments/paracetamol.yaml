@@ -18,9 +18,16 @@ effects:
   - { on: cond.appendicitis, kind: relieve, band: sometimes, days: [0, 1] }
   - { on: cond.migraine, kind: cure, band: sometimes, days: [0, 1] }
   - { on: cond.tension_headache, kind: cure, band: often, days: [0, 1] }
+  # травма (часть 32): обезболивание — НПВП и парацетамол (846_1 и 855_1, раздел 3.1; 832_2, раздел 3.1)
+  - { on: cond.distal_radius_fracture, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.ankle_fracture, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.ankle_sprain, kind: relieve, band: often, days: [0, 1] }
+  - { on: cond.wrist_contusion, kind: relieve, band: often, days: [0, 1] }
 texts:
   hint:
     ru: "Снижает температуру и боль. Лечит не причину болезни, а самочувствие: после него температура нормальная, а пневмония — нет."
 sources:
   - { kind: guideline, title: "Острые респираторные вирусные инфекции (ОРВИ) у взрослых", org: "Минздрав РФ", year: 2025, url: "https://cr.minzdrav.gov.ru/view-cr/724_2", note: "ID 724_2, опубликованы 04.08.2025, применяются; сверено с рубрикатором 28.09.2026" }
+  - { kind: guideline, title: "Закрытые повреждения мягких тканей конечностей", org: "Минздрав РФ", year: 2026, url: "https://cr.minzdrav.gov.ru/view-cr/832_2", note: "ID 832_2, опубликованы 13.01.2026, применяются; сверено с рубрикатором 29.09.2026; раздел 3.1: при ушибах и растяжениях — ненаркотические анальгетики (N02) и НПВП (M01A)" }
+  - { kind: guideline, title: "Переломы лодыжек", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/855_1", note: "ID 855_1, опубликованы 19.12.2024, применяются; сверено с рубрикатором 29.09.2026; раздел 3.3.1: мультимодальная анальгезия — НПВП, парацетамол, габапентиноиды, опиоиды короткого действия" }
 review: draft

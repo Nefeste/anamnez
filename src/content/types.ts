@@ -48,8 +48,8 @@ export interface Link {
  */
 export type Setting = 'home' | 'ward' | 'ambulance' | 'admit' | 'surgery' | 'transfer';
 
-/** Система органов в порядке показа: простуда и ЛОР, лёгкие, сердце, живот, мочевые, обмен, голова и спина. */
-export const SYSTEMS = ['airways', 'lungs', 'heart', 'digestive', 'urinary', 'metabolic', 'nerves'] as const;
+/** Система органов в порядке показа: простуда и ЛОР, лёгкие, сердце, живот, мочевые, обмен, голова и спина, кости и суставы (часть 32). */
+export const SYSTEMS = ['airways', 'lungs', 'heart', 'digestive', 'urinary', 'metabolic', 'nerves', 'bones'] as const;
 export type BodySystem = (typeof SYSTEMS)[number];
 
 /** Тактика при состоянии (`04-medical-model.md` §8). */
@@ -61,6 +61,11 @@ export interface Tactics {
   harmful: Id[];
   /** типичное назначение целиком, если первая линия — выбор из равных; нет — вся первая линия */
   plan?: Id[];
+  /**
+   * тактика по скрытому параметру (spec 2026-09-chapter-2, часть 32): при таких значениях у
+   * названных лечений — эта роль, у остальных — из общих списков; своё типичное назначение
+   */
+  byParam?: TacticsByParam[];
   setting: {
     default: Setting;
     /** уточнение по скрытому параметру случая */
@@ -70,6 +75,17 @@ export interface Tactics {
     /** если у пациента есть фактор риска */
     risks?: { id: Id; setting: Setting }[];
   };
+}
+
+/** Тактика при значениях скрытого параметра: перелом со смещением — репозиция, без смещения — лонгета. */
+export interface TacticsByParam {
+  when: Record<string, string[]>;
+  firstLine: Id[];
+  acceptable: Id[];
+  supportive: Id[];
+  notIndicated: Id[];
+  harmful: Id[];
+  plan?: Id[];
 }
 
 /** Лечение — группа или МНН без доз (ADR 0012). */
@@ -141,7 +157,8 @@ export interface Complication {
  */
 export interface ConditionSurgery {
   tx: Id;
-  window: number;
+  /** нет — в рекомендации срока нет: закрытый нестабильный перелом оперируют в эту госпитализацию (часть 32) */
+  window?: number;
   from?: 'onset';
   /** нужды в экстренной операции нет, лечат в палате: не помогло — операция не позже стольких часов от поступления */
   observe?: number;
@@ -581,6 +598,26 @@ export interface Score {
   review: Review;
 }
 
+/**
+ * Правило решения (spec 2026-09-chapter-2, часть 32): оттавские правила — при жалобе из
+ * `complaints` обследования `exams` нужны, если есть хоть один признак из `any`; проверили все —
+ * и ни одного: перелом маловероятен, снимок можно не делать. Проверено с `ageMin` лет.
+ */
+export interface Rule {
+  id: Id;
+  name: Text;
+  complaints: Id[];
+  any: Id[];
+  exams: Id[];
+  ageMin?: number;
+  /** о каких болезнях — для энциклопедии */
+  about: Id[];
+  /** yes — есть признак: «Снимок нужен»; no — проверили все, признаков нет */
+  texts: { summary: Text; hint: Text; yes: Text; no: Text };
+  sources: Source[];
+  review: Review;
+}
+
 export interface ContentDb {
   contentVersion: number;
   hash: string;
@@ -600,6 +637,8 @@ export interface ContentDb {
   achievements: Record<Id, Achievement>;
   /** шкалы по витальным: NEWS2 (часть 27) */
   scores: Record<Id, Score>;
+  /** правила решения: оттавские (часть 32) */
+  rules: Record<Id, Rule>;
   /** производное: какие обследования проверяют признак */
   revealedBy: Record<Id, Id[]>;
 }

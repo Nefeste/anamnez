@@ -3,7 +3,7 @@
 // Здесь только вид: разделы, статьи, поиск; экраны — src/app/encyclopedia. База приходит
 // параметром, как у движка: тесты подставляют ту же собранную базу.
 import {
-  type Condition, type ContentDb, type Equipment, type Exam, type Finding, type Id, type Link, type P, type Risk, type RoomType, type Score, type StaffRole, SYSTEMS,
+  type Condition, type ContentDb, type Equipment, type Exam, type Finding, type Id, type Link, type P, type Risk, type RoomType, type Rule, type Score, type StaffRole, SYSTEMS,
   type Tactics, type Tip, type Treatment,
 } from '@/content/types';
 import { formatNumber } from '@/engine/med/text';
@@ -80,14 +80,14 @@ export function sectionOf(db: ContentDb, id: Id): Section | undefined {
   if (db.exams[id]) return 'exams';
   if (db.treatments[id]) return 'treatments';
   if (db.risks[id]) return 'risks';
-  if (db.scores[id]) return 'scores';
+  if (db.scores[id] || db.rules[id]) return 'scores';
   if (db.rooms[id] || db.equipment[id] || db.roles[id]) return 'hospital';
   if (db.tips[id]) return 'tips';
   return undefined;
 }
 
 function nameOf(db: ContentDb, id: Id): string {
-  return (db.conditions[id] ?? db.findings[id] ?? db.exams[id] ?? db.treatments[id] ?? db.risks[id] ?? db.scores[id] ?? db.rooms[id] ?? db.equipment[id] ?? db.roles[id] ?? db.tips[id])?.name.ru ?? id;
+  return (db.conditions[id] ?? db.findings[id] ?? db.exams[id] ?? db.treatments[id] ?? db.risks[id] ?? db.scores[id] ?? db.rules[id] ?? db.rooms[id] ?? db.equipment[id] ?? db.roles[id] ?? db.tips[id])?.name.ru ?? id;
 }
 
 const ref = (db: ContentDb, id: Id, note?: string): Ref => (note ? { id, title: nameOf(db, id), note } : { id, title: nameOf(db, id) });
@@ -171,7 +171,7 @@ export function similar(db: ContentDb, id: Id): Id[] {
 // --- статьи -------------------------------------------------------------------------------
 
 /** Тактика: подпись в статье болезни и, если есть, в статье лечения («первая линия при …»). */
-const TACTICS: { key: keyof Omit<Tactics, 'setting'>; label: 'firstLine' | 'plan' | 'acceptable' | 'supportive' | 'notIndicated' | 'harmful'; forLabel?: 'firstLineFor' | 'planFor' | 'acceptableFor' | 'supportiveFor' | 'harmfulFor' }[] = [
+const TACTICS: { key: keyof Omit<Tactics, 'setting' | 'byParam'>; label: 'firstLine' | 'plan' | 'acceptable' | 'supportive' | 'notIndicated' | 'harmful'; forLabel?: 'firstLineFor' | 'planFor' | 'acceptableFor' | 'supportiveFor' | 'harmfulFor' }[] = [
   { key: 'firstLine', label: 'firstLine', forLabel: 'firstLineFor' },
   { key: 'plan', label: 'plan', forLabel: 'planFor' },
   { key: 'acceptable', label: 'acceptable', forLabel: 'acceptableFor' },
@@ -231,6 +231,10 @@ function conditionArticle(db: ContentDb, c: Condition): Article {
     ? { key: 'confirm', title: e.confirm, text: [e.clinical] }
     : { key: 'confirm', title: e.confirm, refs: c.confirm.map(id => ref(db, id)) });
 
+  // правила решения (часть 32): оттавские — нужен ли снимок
+  const rules = Object.values(db.rules).filter(r => r.about.includes(c.id)).map(r => ref(db, r.id));
+  if (rules.length > 0) blocks.push({ key: 'rules', title: e.rulesFor, refs: rules });
+
   const alike = similar(db, c.id);
   if (alike.length > 0) blocks.push({ key: 'similar', title: e.similar, refs: alike.map(id => ref(db, id)) });
 
@@ -238,6 +242,15 @@ function conditionArticle(db: ContentDb, c: Condition): Article {
   if (t) {
     const rows = TACTICS.map(k => ({ label: e[k.label], refs: (t[k.key] ?? []).map(id => ref(db, id)) })).filter(r => r.refs.length > 0);
     if (c.surgery) rows.unshift({ label: e.surgeryRow, refs: [ref(db, c.surgery.tx)] });
+    // тактика по скрытому параметру (часть 32): «Первая линия, со смещением — …»
+    for (const b of t.byParam ?? []) {
+      const when = whenText(b.when);
+      if (!when) continue;
+      for (const k of TACTICS) {
+        const ids = b[k.key] ?? [];
+        if (ids.length > 0) rows.push({ label: e.byParamRow(e[k.label], when), refs: ids.map(id => ref(db, id)) });
+      }
+    }
     blocks.push({ key: 'treatment', title: e.treatment, rows });
     blocks.push({ key: 'where', title: e.whereTitle, text: whereLines(db, c, t) });
   }
@@ -277,6 +290,8 @@ function findingArticle(db: ContentDb, f: Finding): Article {
 
   const flagFor = Object.values(db.conditions).filter(c => c.redFlags?.includes(f.id)).map(c => ref(db, c.id)).sort(byTitle);
   if (flagFor.length > 0) blocks.push({ key: 'redFlagFor', title: e.redFlagFor, refs: flagFor });
+  const inRules = Object.values(db.rules).filter(r => r.any.includes(f.id) || r.complaints.includes(f.id)).map(r => ref(db, r.id)).sort(byTitle);
+  if (inRules.length > 0) blocks.push({ key: 'inRules', title: e.inRules, refs: inRules });
 
   const subtitle = [e.findingKind[f.kind], f.redFlag ? e.redFlag : ''].filter(Boolean).join(' · ');
   return { id: f.id, section: 'findings', title: f.name.ru, subtitle, blocks };
@@ -313,9 +328,11 @@ function treatmentArticle(db: ContentDb, x: Treatment): Article {
   const e = T.encyclopedia;
   const blocks: Block[] = [{ key: 'what', title: e.what, text: [x.texts.hint.ru] }];
   const conditions = Object.values(db.conditions);
+  // роль по скрытому параметру (часть 32) — с условием: «Первая линия при — Перелом… (со смещением)»
+  const byParam = (c: Condition, key: (typeof TACTICS)[number]['key']) => (c.treatment?.byParam ?? []).filter(b => (b[key] ?? []).includes(x.id)).map(b => ref(db, c.id, whenText(b.when)));
   const rows = TACTICS.flatMap(k => (k.forLabel ? [{
     label: e[k.forLabel],
-    refs: conditions.filter(c => (c.treatment?.[k.key] ?? []).includes(x.id)).map(c => ref(db, c.id)).sort(byTitle),
+    refs: [...conditions.filter(c => (c.treatment?.[k.key] ?? []).includes(x.id)).map(c => ref(db, c.id)), ...conditions.flatMap(c => byParam(c, k.key))].sort(byTitle),
   }] : [])).filter(r => r.refs.length > 0);
   if (rows.length > 0) blocks.push({ key: 'usedAs', title: e.usedAs, rows });
   if (x.contraindications.length > 0) {
@@ -324,7 +341,7 @@ function treatmentArticle(db: ContentDb, x: Treatment): Article {
   // операция (часть 28): что ею лечат и в какой срок, где делают и какая бригада
   const op = x.surgery;
   if (op) {
-    const treats = conditions.filter(c => c.surgery?.tx === x.id).map(c => ref(db, c.id, e.opWindow(c.surgery!.window, c.surgery!.from === 'onset', c.surgery!.observe))).sort(byTitle);
+    const treats = conditions.filter(c => c.surgery?.tx === x.id).map(c => ref(db, c.id, c.surgery!.window !== undefined ? e.opWindow(c.surgery!.window, c.surgery!.from === 'onset', c.surgery!.observe) : undefined)).sort(byTitle);
     if (treats.length > 0) blocks.push({ key: 'treats', title: e.opTreats, refs: treats });
     blocks.push({ key: 'where', title: e.whereDone, refs: [ref(db, op.room), ...op.equipment.map(id => ref(db, id))] });
     blocks.push({ key: 'team', title: e.opTeam, refs: op.team.map(id => ref(db, id)) });
@@ -383,6 +400,21 @@ function scoreArticle(db: ContentDb, x: Score): Article {
     sources(db, x),
   ];
   return { id: x.id, section: 'scores', title: x.name.ru, subtitle: e.scoreKind, blocks };
+}
+
+/** Правило решения (часть 32): когда применяют, какие признаки, какое обследование, при каких болезнях. */
+function ruleArticle(db: ContentDb, x: Rule): Article {
+  const e = T.encyclopedia;
+  const blocks: Block[] = [
+    { key: 'what', title: e.what, text: [x.texts.summary.ru] },
+    { key: 'when', title: e.ruleWhen, refs: x.complaints.map(id => ref(db, id)), ...(x.ageMin !== undefined ? { note: e.ruleAge(x.ageMin) } : {}) },
+    { key: 'any', title: e.ruleAny, text: [x.texts.yes.ru], refs: x.any.map(id => ref(db, id)) },
+    { key: 'none', title: e.ruleNone, text: [x.texts.no.ru] },
+    { key: 'exams', title: e.ruleExams, refs: x.exams.map(id => ref(db, id)) },
+    { key: 'about', title: e.ruleAbout, refs: x.about.map(id => ref(db, id)).sort(byTitle) },
+    sources(db, x),
+  ];
+  return { id: x.id, section: 'scores', title: x.name.ru, subtitle: e.ruleKind, blocks };
 }
 
 // --- больница: помещения, аппараты, должности (spec 2026-09-own-hospital) ----------------
@@ -467,6 +499,7 @@ export function article(db: ContentDb, id: Id): Article | undefined {
   if (db.treatments[id]) return treatmentArticle(db, db.treatments[id]);
   if (db.risks[id]) return riskArticle(db, db.risks[id]);
   if (db.scores[id]) return scoreArticle(db, db.scores[id]);
+  if (db.rules[id]) return ruleArticle(db, db.rules[id]);
   if (db.rooms[id]) return roomArticle(db, db.rooms[id]);
   if (db.equipment[id]) return equipmentArticle(db, db.equipment[id]);
   if (db.roles[id]) return roleArticle(db, db.roles[id]);
@@ -487,7 +520,7 @@ const EXAM_GROUPS: { key: 'ask' | 'examine' | 'lab' | 'imaging'; kinds: Exam['ki
 function table(db: ContentDb, section: Section): { id: Id; name: { ru: string } }[] {
   if (section === 'hospital') return [...Object.values(db.rooms), ...Object.values(db.equipment), ...Object.values(db.roles)];
   if (section === 'tips') return Object.values(db.tips);
-  if (section === 'scores') return Object.values(db.scores);
+  if (section === 'scores') return [...Object.values(db.scores), ...Object.values(db.rules)];
   const t = { conditions: db.conditions, findings: db.findings, exams: db.exams, treatments: db.treatments, risks: db.risks }[section];
   return Object.values(t);
 }
@@ -518,7 +551,10 @@ export function sectionView(db: ContentDb, section: Section): SectionView {
       { key: 'roles', title: e.hospitalGroup.roles, items: refs(Object.values(db.roles)) },
     ];
   } else if (section === 'scores') {
-    groups = [{ key: 'scores', title: e.sections.scores, items: refs(Object.values(db.scores)) }];
+    groups = [
+      { key: 'scores', title: e.scoreGroup, items: refs(Object.values(db.scores)) },
+      { key: 'rules', title: e.ruleGroup, items: refs(Object.values(db.rules)) },
+    ];
   } else if (section === 'tips') {
     // в том порядке, в каком наставник подсказывает
     groups = [{ key: 'tips', title: e.tipKind, items: Object.values(db.tips).map(x => ({ id: x.id, title: x.name.ru })) }];

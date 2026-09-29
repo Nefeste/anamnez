@@ -1,0 +1,18 @@
+id: tx.closed_reduction
+name: { ru: "Закрытая репозиция и гипсовая лонгета" }
+kind: procedure
+class: immobilization.reduction
+# работа, обезболивание и гипс, ₽ — игровое число
+cost: 1500
+effects:
+  # отломки вправляют под местной или проводниковой анестезией и держат в лонгете (846_1, раздел
+  # 3.1); вторичное смещение — у 9,1 % леченных без операции (Rundgren 2020); перелом без смещения
+  # лонгета тоже держит — вправлять его незачем
+  - { on: cond.distal_radius_fracture, kind: cure, band: { pct: 90.9 }, days: [35, 49], when: { displacement: [none, displaced] } }
+texts:
+  hint:
+    ru: "Врач под обезболиванием вправляет сместившийся отломок и накладывает гипсовую лонгету; положение проверяют контрольным снимком. Если перелом нестабилен и отломок снова уходит, нужна операция."
+sources:
+  - { kind: guideline, title: "Переломы дистального отдела костей предплечья", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/846_1", note: "ID 846_1, опубликованы 18.12.2024, применяются; сверено с рубрикатором 29.09.2026; раздел 3.1: закрытая ручная репозиция под местной или проводниковой анестезией с последующей иммобилизацией, контрольная рентгенография; консервативно — если после репозиции нет признаков нестабильности; раздел 2.4: консервативное лечение возможно амбулаторно" }
+  - { kind: paper, title: "Rundgren J, Bojan A, Mellstrand Navarro C, Enocson A. Epidemiology, classification, treatment and mortality of distal radius fractures in adults: an observational study of 23,394 fractures from the national Swedish fracture register. BMC Musculoskelet Disord 2020;21:88", url: "https://pubmed.ncbi.nlm.nih.gov/32035488/", note: "PMID 32035488, PMC7007648, сверено 29.09.2026: вторичная операция — у 9,1 % леченных без операции" }
+review: draft

@@ -1,0 +1,23 @@
+id: tx.ankle_orif
+name: { ru: "Остеосинтез лодыжек" }
+kind: surgery
+class: surgery.bone
+# пластины, винты и расходники, ₽ — игровое число
+cost: 25000
+effects:
+  - { on: cond.ankle_fracture, kind: cure, band: { pct: 100 }, days: [2, 5] }
+# в игре оперирует хирург — травматолога-ортопеда в штате нет; 90 минут — игровая оценка;
+# осложнения в первые 4 месяца — 7,2 % (Happonen 2024)
+surgery:
+  room: room.or
+  team: [role.surgeon, role.anesthetist, role.or_nurse]
+  equipment: [eq.or_table, eq.anesthesia]
+  minutes: 90
+  complications: { pct: 7.2 }
+texts:
+  hint:
+    ru: "Открытая репозиция и фиксация лодыжек пластиной и винтами: восстанавливает «вилку» голеностопного сустава. Нужна при нестабильном переломе — двух повреждениях кольца сустава, смещении, подвывихе стопы."
+sources:
+  - { kind: guideline, title: "Переломы лодыжек", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/855_1", note: "ID 855_1, опубликованы 19.12.2024, применяются; сверено с рубрикатором 29.09.2026; раздел 3.2: операция — при всех нестабильных повреждениях, смещении с нарушением конгруэнтности, неудаче закрытой репозиции, открытых переломах; накостный остеосинтез лодыжек; раздел 6: нестабильный перелом — экстренная госпитализация; срок операции от травмы не назван" }
+  - { kind: paper, title: "Happonen V, Kröger H, Sund R. Complications After Ankle Fracture Surgery in Finland Between 1998 and 2020. J Bone Joint Surg Am 2024;106(13):1212–1220", url: "https://pubmed.ncbi.nlm.nih.gov/38683891/", note: "PMID 38683891, PMC11594073, сверено 29.09.2026: 83 666 операций; осложнения в первые 4 месяца — 7,2 % (инфекция 4,4 %, тромбоэмболия 1,6 %)" }
+review: draft
