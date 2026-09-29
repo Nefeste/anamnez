@@ -70,6 +70,7 @@ export default function RootLayout() {
           <Stack.Screen name="spikes/decision" options={{ title: T.spikes.decision.title }} />
           <Stack.Screen name="spikes/outcome" options={{ title: T.spikes.decision.outcomeTitle }} />
           <Stack.Screen name="spikes/imaging" options={{ title: T.spikes.imaging.title }} />
+          <Stack.Screen name="spikes/bones" options={{ title: T.spikes.bones.title }} />
           <Stack.Screen name="spikes/save" options={{ title: T.spikes.save.title }} />
           <Stack.Screen name="shift/index" options={{ title: T.shift.title }} />
           <Stack.Screen name="shift/patient" options={{ title: T.spikes.patient.title }} />

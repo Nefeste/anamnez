@@ -608,6 +608,17 @@ try {
     await page.getByTestId(id).screenshot({ path: join(OUT, `06-${id}.png`) });
   }
 
+  // П7: рентген костей кодом (spec 2026-09-chapter-2, часть 31): у каждого вида — норма и переломы
+  await page.goto(`${base}/spikes/bones`);
+  await page.waitForTimeout(2500);
+  const bones = await drawn('[data-testid^="bone-"] canvas');
+  check(bones.length === 16 && bones.every(Boolean), `П7: рентген костей нарисован — ${bones.filter(Boolean).length} из 16 (смотреть 06-bones-*.png)`);
+  for (const view of ['wrist', 'ankle', 'foot', 'hip', 'clavicle', 'ribs']) {
+    await page.getByTestId(`bones-${view}`).scrollIntoViewIfNeeded();
+    await page.waitForTimeout(300);
+    await page.getByTestId(`bones-${view}`).screenshot({ path: join(OUT, `06-bones-${view}.png`) });
+  }
+
   // П6: сохранение с копией и откат
   await page.goto(`${base}/spikes/save`);
   await page.getByTestId('save-save').click();
