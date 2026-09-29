@@ -246,6 +246,36 @@ describe('сектор УЗИ: геометрия', () => {
     for (const p of wet.fluid!) expect(usPolar(p).r).toBeGreaterThan(usPolar(c).r);
     expect(usGeometry({ view: 'appendix', appendix: 0.9 }, 8).fluid).toBeUndefined();
   });
+
+  test('левая подвздошная область: кишка вдоль, слои по порядку; дивертикул — у ближней стенки, в жиру, за ним тень; стенка толще с параметром', () => {
+    const g = usGeometry({ view: 'colon', diverticulum: 0.8 }, 11);
+    expect(g.loops).toHaveLength(2);
+    for (const v of g.vessels!) expect(inSector(v.c)).toBe(true);
+    const c = g.colon!;
+    // газ — на ближней стенке просвета; тень под ним — до конца сектора
+    for (const p of c.gas) expect(c.lumen).toContainEqual(p);
+    expect(c.shadow.filter(p => Math.abs(usPolar(p).r - R1) < 1e-9)).toHaveLength(2);
+    // по одному лучу сверху вниз: наружная стенка, подслизистый слой, просвет
+    const top = (poly: [number, number][], k: number) => usPolar(poly[k]).r;
+    for (const k of [5, 20, 35]) {
+      expect(top(c.wall, k)).toBeLessThan(top(c.submucosa, k));
+      expect(top(c.submucosa, k)).toBeLessThan(top(c.lumen, k));
+    }
+    // дивертикул — ближе к датчику, чем стенка кишки под ним; весь в светлом жире; за серединой — тень до конца
+    const d = g.diverticulum!;
+    const pd = usPolar(d.core.c);
+    expect(pd.r).toBeLessThan(top(c.wall, 20));
+    for (const p of d.wall) expect(inside(p, g.halo!)).toBe(true);
+    expect(d.shadow.filter(p => Math.abs(usPolar(p).r - R1) < 1e-9)).toHaveLength(2);
+    // без воспаления — ни дивертикула, ни жира; толще — стенка
+    const none = usGeometry({ view: 'colon' }, 11);
+    expect([none.diverticulum, none.halo]).toEqual([undefined, undefined]);
+    const thick = (t: number) => {
+      const x = usGeometry({ view: 'colon', diverticulum: t }, 11).colon!;
+      return top(x.lumen, 20) - top(x.wall, 20);
+    };
+    expect(thick(1)).toBeGreaterThan(thick(0) * 2);
+  });
 });
 
 describe('сектор УЗИ: рисунок без экрана', () => {
@@ -315,11 +345,33 @@ describe('сектор УЗИ: рисунок без экрана', () => {
     expect(at(off, c)).toBeGreaterThan(60);
   });
 
+  test('кишка: толстая стенка — темнее, чем там же без воспаления; дивертикул — яркая середина в тёмном кольце, вокруг светлее', async () => {
+    const f = { view: 'colon' as const, diverticulum: 0.8 };
+    const g = usGeometry(f, 11);
+    const on = (await draw(f, 11)).rgba;
+    const off = (await draw({ view: 'colon' }, 11)).rgba;
+    const d = g.diverticulum!;
+    const R = (Math.max(...d.wall.map(p => p[0])) - Math.min(...d.wall.map(p => p[0]))) / 2;
+    /** Средняя яркость по верхней половине круга радиуса k·R — под дивертикулом тень. */
+    const upper = (px: Uint8Array, k: number) => {
+      let sum = 0;
+      for (let i = 0; i <= 8; i++) sum += at(px, [d.core.c[0] + k * R * Math.cos(Math.PI + (i * Math.PI) / 8), d.core.c[1] + k * R * Math.sin(Math.PI + (i * Math.PI) / 8)]);
+      return sum / 9;
+    };
+    expect(at(on, d.core.c)).toBeGreaterThan(200);
+    expect(upper(on, 0.72)).toBeLessThan(at(on, d.core.c) - 100);
+    expect(upper(on, 1.6)).toBeGreaterThan(upper(off, 1.6) + 20);
+    // мышечный слой толстой стенки — там, где у здоровой кишки уже серая ткань вокруг
+    const k = 32;
+    const m: [number, number] = [(g.colon!.wall[k][0] + g.colon!.submucosa[k][0]) / 2, (g.colon!.wall[k][1] + g.colon!.submucosa[k][1]) / 2];
+    expect(at(on, m)).toBeLessThan(at(off, m) - 20);
+  });
+
   test('то же зерно — те же байты; все варианты «Проверок» рисуются', async () => {
     const a = await draw({ view: 'kidney', fluid: 0.5 }, 9);
     const b = await draw({ view: 'kidney', fluid: 0.5 }, 9);
     expect(Buffer.from(a.png).equals(Buffer.from(b.png))).toBe(true);
-    expect(US_CASES.length).toBe(9);
+    expect(US_CASES.length).toBe(11);
     for (const k of US_CASES) expect((await draw(k.findings, k.seed)).png.length).toBeGreaterThan(1000);
   });
 });

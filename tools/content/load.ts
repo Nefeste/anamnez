@@ -263,6 +263,9 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       checkWhen(owner, 'осложнённая стадия', x.when, c.params);
     }
     if (!c.course.selfLimiting && c.presenting && !c.course.untreated) warnings.push(`${owner}: не проходит само, но не сказано, что будет без лечения`);
+    // течение по скрытому параметру (часть 30д): параметр объявлен, значения — из его списка
+    if (typeof c.course.selfLimiting === 'object') checkWhen(owner, 'проходит само', c.course.selfLimiting.when, c.params);
+    checkWhen(owner, 'без лечения', c.course.untreated?.when, c.params);
   }
   for (const t of Object.values(treatments)) {
     for (const e of t.effects) {
@@ -354,8 +357,14 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (c.params) out.params = c.params;
     if (c.course.presentation) out.presentation = c.course.presentation;
     if (c.redFlags) out.redFlags = c.redFlags;
-    if (c.course.selfLimiting) out.selfLimiting = true;
-    if (c.course.untreated) out.untreated = { p: prob(c.course.untreated.band), days: c.course.untreated.days };
+    if (c.course.selfLimiting) {
+      out.selfLimiting = true;
+      if (typeof c.course.selfLimiting === 'object') out.selfLimitingWhen = c.course.selfLimiting.when;
+    }
+    if (c.course.untreated) {
+      const u = c.course.untreated;
+      out.untreated = { p: prob(u.band), days: u.days, ...(u.when ? { when: u.when } : {}) };
+    }
     if (c.course.stay) out.stay = c.course.stay;
     if (c.surgery) {
       const x = c.surgery;

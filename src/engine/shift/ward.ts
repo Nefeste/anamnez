@@ -6,7 +6,7 @@
 // по суткам в стационаре. Так обход, итоги дня и повтор дают одно и то же.
 import type { ContentDb, Id } from '../../content/types';
 import { P_ONE, type Rng } from '../core/rng';
-import { curesOf, type Plan, type PlanEval, primaryOf } from '../med/plan';
+import { curesOf, type Plan, type PlanEval, primaryOf, selfLimits, untreatedOf } from '../med/plan';
 import type { Patient } from '../med/types';
 import type { Operation } from './surgery';
 
@@ -100,12 +100,13 @@ export function wardCourse(db: ContentDb, patient: Patient, plan: Plan, ev: Plan
     out.readyAfter = from + rng.fork('ready').range(lo, hi);
     return out;
   }
-  if (cond.selfLimiting) {
+  if (selfLimits(db, primary)) {
     const end = cond.stages[cond.stages.length - 1].days[1];
     out.readyAfter = from + Math.max(1, end - primary.day - from);
     return out;
   }
-  if (cond.untreated) out.worseAfter = from + Math.max(1, rng.fork('worse').range(cond.untreated.days[0], cond.untreated.days[1]));
+  const untreated = untreatedOf(db, primary);
+  if (untreated) out.worseAfter = from + Math.max(1, rng.fork('worse').range(untreated.days[0], untreated.days[1]));
   return out;
 }
 

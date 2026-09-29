@@ -10,11 +10,17 @@ effects:
   - { on: cond.sinusitis_bacterial, kind: cure, band: usually, days: [2, 5] }
   - { on: cond.pyelonephritis, kind: cure, band: often, days: [2, 5] }
   - { on: cond.copd_exacerbation, kind: cure, band: sometimes, days: [2, 5] }
+  # дивертикулит (179_3, раздел 3.1.3): консервативное лечение эффективно у всех с острым
+  # дивертикулитом и инфильтратом, при абсцессе неэффективно в 19–21 % (у Gregersen 2016 — 20 %);
+  # абсцессу больше 3 см нужно дренирование, перитониту — операция; сроки — игровая оценка
+  - { on: cond.diverticulitis, kind: cure, band: always, days: [3, 7], when: { form: [uncomplicated, infiltrate] } }
+  - { on: cond.diverticulitis, kind: cure, band: { pct: 80 }, days: [4, 7], when: { form: [abscess_small] } }
 contraindications:
   - { id: risk.allergy_penicillin, level: absolute, reaction: often }
 texts:
   hint:
     ru: "Амоксициллин, защищённый от ферментов бактерий, — действует шире. Нужен при пневмонии у людей с хроническими болезнями или недавно лечившихся антибиотиком."
 sources:
+  - { kind: guideline, title: "Дивертикулярная болезнь", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/179_3", note: "ID 179_3, опубликованы 27.09.2024, применяются; сверено с рубрикатором 29.09.2026; раздел 3.1.3: антибиотики широкого спектра, активные против грамотрицательных и анаэробных бактерий, — при остром дивертикулите, инфильтрате, флегмоне и абсцессе до 3 см; эффективно у всех с острым дивертикулитом и инфильтратом, при абсцессе неэффективно в 19–21 %" }
   - { kind: guideline, title: "Внебольничная пневмония у взрослых", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/654_2", note: "ID 654_2, опубликованы 23.12.2024, применяются; сверено с рубрикатором 28.09.2026" }
 review: draft

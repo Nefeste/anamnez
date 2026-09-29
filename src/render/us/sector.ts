@@ -2,7 +2,8 @@
 // geometry.ts, здесь — рисунок, одна запись в SkPicture. Ткань — серая зернистость: кожа и
 // жир светлее, мышцы и кора почки темнее печени, синус почки светлый; жидкость — чёрная.
 // С глубиной сигнал слабеет. За плотной точкой — тень, за жидкостью — светлее. В подвздошной
-// области (часть 29) — петли кишки с газом и грязной тенью, сосуды и отросток «мишенью».
+// области (часть 29) — петли кишки с газом и грязной тенью, сосуды и отросток «мишенью»; в левой
+// (часть 30д) — сигмовидная кишка вдоль и воспалённый дивертикул с тенью.
 import { BlendMode, BlurStyle, ClipOp, PaintStyle, Skia, type SkPaint, type SkPath, type SkPicture, StrokeCap, StrokeJoin, TileMode } from '@shopify/react-native-skia';
 import { APEX, HALF, polar, type Pt, R0, R1, ray, type UsFindings, usGeometry } from './geometry';
 
@@ -67,7 +68,7 @@ export function recordUsSector(width: number, findings: UsFindings, seed: number
   c.clipPath(sector, ClipOp.Intersect, true);
 
   // 1. Ткани: печень — фоном (в подвздошной области — брыжейка и кишка), сверху кожа и мышцы стенки с яркими фасциями
-  c.drawPath(sector, paint(g.view === 'appendix' ? BOWEL : LIVER));
+  c.drawPath(sector, paint(g.view === 'appendix' || g.view === 'colon' ? BOWEL : LIVER));
   c.drawPath(band(R0, g.skin), paint(SKIN, { blur: 0.004 }));
   c.drawPath(band(g.skin, g.wall), paint(MUSCLE, { blur: 0.004 }));
   for (const r of [g.skin, g.wall, (g.skin + g.wall) / 2]) c.drawPath(arc(r), paint(WALL, { stroke: r === (g.skin + g.wall) / 2 ? 0.002 : 0.004, alpha: 0.7, blur: 0.002 }));
@@ -95,6 +96,14 @@ export function recordUsSector(width: number, findings: UsFindings, seed: number
     c.drawPath(pathOf(g.target[2]), paint(SUBMUCOSA, { blur: 0.003 }));
     c.drawPath(pathOf(g.target[3]), paint(FLUID, { blur: 0.003 }));
   }
+  // сигмовидная кишка (часть 30д): мышечный слой — тёмный (утолщён — толще), подслизистый — светлый,
+  // просвет — серый; дивертикул — тёмное кольцо стенки
+  if (g.colon) {
+    c.drawPath(pathOf(g.colon.wall), paint(MUSCULARIS, { blur: 0.003 }));
+    c.drawPath(pathOf(g.colon.submucosa), paint(SUBMUCOSA, { blur: 0.003 }));
+    c.drawPath(pathOf(g.colon.lumen), paint(LOOP, { blur: 0.003 }));
+  }
+  if (g.diverticulum) c.drawPath(pathOf(g.diverticulum.wall), paint(MUSCULARIS, { blur: 0.003 }));
 
   // 2в. Утолщённая стенка пузыря (часть 30): яркая, посередине — тёмная полоска отёка
   if (g.gbWall) {
@@ -124,6 +133,17 @@ export function recordUsSector(width: number, findings: UsFindings, seed: number
   }
   for (const v of g.vessels ?? []) c.drawCircle(X(v.c[0]), X(v.c[1]), v.r * W, paint(WALL, { stroke: 0.003, alpha: 0.6, blur: 0.002 }));
   if (g.target) c.drawPath(pathOf(g.target[0]), paint(WALL, { stroke: 0.004, blur: 0.002 }));
+  if (g.colon) {
+    c.drawPath(pathOf(g.colon.shadow), paint('#000000', { alpha: 0.45, blur: 0.02 }));
+    c.drawPath(pathOf(g.colon.wall), paint(WALL, { stroke: 0.003, alpha: 0.75, blur: 0.002 }));
+    c.drawPath(pathOf(g.colon.gas, false), paint('#ffffff', { stroke: 0.008, blur: 0.003 }));
+  }
+  // дивертикул: за яркой серединой — тень по лучам, середина — ярче всего
+  if (g.diverticulum) {
+    const d = g.diverticulum;
+    c.drawPath(pathOf(d.shadow), paint('#000000', { alpha: 0.6, blur: 0.012 }));
+    c.drawCircle(X(d.core.c[0]), X(d.core.c[1]), d.core.r * W, paint('#ffffff', { blur: 0.004 }));
+  }
   if (g.enhancement) c.drawPath(pathOf(g.enhancement), paint('#ffffff', { alpha: 0.24, blur: 0.02, blend: BlendMode.Screen }));
   for (const k of g.foci) c.drawPath(pathOf(k.shadow), paint('#000000', { alpha: 0.85, blur: 0.01 }));
   // точка — яркая дуга: светится поверхность, обращённая к датчику, за ней — уже тень

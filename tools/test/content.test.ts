@@ -180,6 +180,8 @@ describe('каталог больницы', () => {
     // отросток — WSES 2020; камни — точность порядка 95 % (877_1); холецистит — 81 и 83 % (819_1, часть 30)
     expect(db.exams['exam.us_abdomen'].checks).toEqual([
       { f: 'img.us_appendicitis', sens: 7600, spec: 9500 }, { f: 'img.us_gallstones', sens: 9500, spec: 9500 }, { f: 'img.us_cholecystitis', sens: 8100, spec: 8300 },
+      // дивертикулит — 92 и 90 % (Laméris 2008, часть 30д)
+      { f: 'img.us_diverticulitis', sens: 9200, spec: 9000 },
     ]);
     expect(Object.values(db.roles).filter(r => r.reads).map(r => r.id).sort()).toEqual(['role.radiologist', 'role.sonographer']);
     expect(db.roles['role.sonographer'].rooms).toEqual(['room.ultrasound']);

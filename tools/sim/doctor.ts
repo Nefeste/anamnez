@@ -7,7 +7,7 @@
 import { Rng } from '../../src/engine/core/rng';
 import { observe, type OutcomeKind } from '../../src/engine/med/course';
 import { generatePatient } from '../../src/engine/med/generate';
-import { evaluatePlan } from '../../src/engine/med/plan';
+import { evaluatePlan, primaryOf, selfLimits } from '../../src/engine/med/plan';
 import { type DoctorResult, examCost, runDoctor, type Strategy } from '../../src/engine/med/policy';
 import { type Grade, scoreCase } from '../../src/engine/med/score';
 import { buildDb } from '../content/load';
@@ -83,13 +83,13 @@ for (let i = 0; i < N; i++) {
     const outcome = observe(db, patient, r.plan, ev, Rng.seeded(patient.seed).fork(`outcome:${s}`));
     const score = scoreCase({
       verdict: r.correct ? 'correct' : r.correctGroup ? 'partly' : 'wrong',
-      confidence: r.confidence, cost: costOf(r), rationalCost, plan: ev, outcome, selfLimiting: cond.selfLimiting === true,
+      confidence: r.confidence, cost: costOf(r), rationalCost, plan: ev, outcome, selfLimiting: selfLimits(db, primaryOf(patient)),
       redFlags: (cond.redFlags ?? []).filter(f => present.has(f)).map(f => ({ f, seen: r.observations.some(o => o.f === f && o.shown) })),
     });
     x.overall[score.overall]++;
     x.treatment[score.treatment]++;
     x.outcomes[outcome.kind]++;
-    const needless = cond.selfLimiting === true && ev.roles.some(v => v.role === 'notIndicated' && db.treatments[v.tx].class?.startsWith('antibiotic.'));
+    const needless = selfLimits(db, primaryOf(patient)) && ev.roles.some(v => v.role === 'notIndicated' && db.treatments[v.tx].class?.startsWith('antibiotic.'));
     if (needless) x.needlessAntibiotic++;
     if (s === 'rational' && i < HN) {
       rationalCases.push({ truth, correct: r.correct, correctGroup: r.correctGroup, money: r.money, minutes: r.minutes, exams: r.exams.length, needless, reaction: outcome.kind === 'reaction' });
@@ -130,7 +130,7 @@ const hired: Hired[] = SKILLS.map(skill => {
     });
     const ev = evaluatePlan(db, patient, r.plan, r.observations);
     const outcome = observe(db, patient, r.plan, ev, Rng.seeded(patient.seed).fork('outcome:rational'));
-    const needless = db.conditions[truth].selfLimiting === true && ev.roles.some(v => v.role === 'notIndicated' && db.treatments[v.tx].class?.startsWith('antibiotic.'));
+    const needless = selfLimits(db, primaryOf(patient)) && ev.roles.some(v => v.role === 'notIndicated' && db.treatments[v.tx].class?.startsWith('antibiotic.'));
     cases.push({ truth, correct: r.correct, correctGroup: r.correctGroup, money: r.money, minutes: r.minutes, exams: r.exams.length, needless, reaction: outcome.kind === 'reaction' });
   }
   return { skill, cases };

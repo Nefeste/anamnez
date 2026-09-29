@@ -1,4 +1,5 @@
 import { pluralRu } from '../plural';
+import { lowerFirst } from '../case';
 
 const decimal = (x: number) => String(x).replace('.', ',');
 
@@ -50,7 +51,18 @@ export const encyclopedia = {
     'infection:no': 'без инфекции',
     'depth:superficial': 'при подкожном и подслизистом',
     'depth:deep': 'при глубоком',
+    // дивертикулит (часть 30д)
+    'form:uncomplicated': 'при неосложнённом',
+    'form:infiltrate': 'при инфильтрате',
+    'form:abscess_small': 'при абсцессе до 3\u00a0см',
+    'form:abscess_large': 'при абсцессе больше 3\u00a0см',
+    'form:peritonitis': 'при перитоните',
   } as Record<string, string>,
+  /** несколько условий одной фразой (часть 30д): «при» — один раз, последнее — через «и» */
+  whenList: (words: string[]) => {
+    const rest = words.slice(1).map(w => w.replace(/^при /, ''));
+    return `${[words[0], ...rest.slice(0, -1)].join(', ')} и ${rest[rest.length - 1]}`;
+  },
   icd: (code: string) => `МКБ-10: ${code}`,
 
   // статья болезни — разделы в порядке 05-content.md §4
@@ -84,7 +96,7 @@ export const encyclopedia = {
   whereRedFlag: (s: string) => `При красных флагах — ${s}.`,
   whereRisk: (risk: string, s: string) => `Если есть «${risk}» — ${s}.`,
   // операция и срок стационара (spec 2026-09-chapter-2, части 26 и 28)
-  whereSurgery: (op: string, hours: number, onset = false) => `Операция — ${op.toLowerCase()}: в первые ${hours}\u00a0ч ${onset ? 'от начала болезни' : 'после поступления'}.`,
+  whereSurgery: (op: string, hours: number, onset = false) => `Операция — ${lowerFirst(op)}: в первые ${hours}\u00a0ч ${onset ? 'от начала болезни' : 'после поступления'}.`,
   whereStay: (lo: number, hi: number) => `В стационаре обычно ${lo === hi ? lo : `${lo}–${hi}`}\u00a0${pluralRu(hi, 'день', 'дня', 'дней')}.`,
   // наблюдение в палате и стационар после операции (часть 30в)
   whereObserve: (hours: number) => `Без показаний к экстренной операции — лечение в палате; не помогло — операция не позже ${hours}\u00a0ч после поступления.`,
@@ -110,7 +122,10 @@ export const encyclopedia = {
   opTeam: 'Бригада',
   course: 'Без лечения',
   selfLimiting: 'Обычно проходит само.',
-  untreated: (band: string, from: number, to: number) => `Без действенного лечения ${band.toLowerCase()} становится хуже — на ${from}–${to}-й день.`,
+  // по скрытому параметру (часть 30д): «При неосложнённом — обычно проходит само.»
+  selfLimitingIf: (when: string) => `${when[0].toUpperCase()}${when.slice(1)} — обычно проходит само.`,
+  untreated: (band: string, from: number, to: number, when?: string) =>
+    `${when ? `${when[0].toUpperCase()}${when.slice(1)} без` : 'Без'} действенного лечения ${band.toLowerCase()} становится хуже — на ${from}–${to}-й день.`,
   redFlags: 'Красные флаги',
   redFlagsNote: 'Признаки опасного течения: с ними тактика другая.',
   pearls: 'Что запомнить',

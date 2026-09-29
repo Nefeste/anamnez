@@ -20,7 +20,7 @@ import { complaintObservations, type ExamSkill, examFits, NORMAL_SKILL, runExam 
 import { generatePatient, typicalPatient } from '../med/generate';
 import { contextOf, posterior } from '../med/infer';
 import { scaleTriage } from '../med/news2';
-import { choiceFor, evaluatePlan, primaryOf, recommendedSetting, settingFit, type Venue } from '../med/plan';
+import { choiceFor, evaluatePlan, primaryOf, recommendedSetting, selfLimits, settingFit, type Venue } from '../med/plan';
 import { examCost, indicated, nextStep } from '../med/policy';
 import { buildReview, type ReviewData } from '../med/review';
 import { scoreCase } from '../med/score';
@@ -833,7 +833,7 @@ function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
   const verdict = dx === truth ? 'correct' : group(dx) === group(truth) ? 'partly' : 'wrong';
   const score = scoreCase({
     verdict, confidence, cost: p.done.reduce((a, id) => a + examCost(db, id), 0), rationalCost: review.rational.cost,
-    plan: ev, outcome, selfLimiting: cond.selfLimiting === true,
+    plan: ev, outcome, selfLimiting: selfLimits(db, primaryOf(patient)),
     redFlags: (cond.redFlags ?? []).filter(f => present.has(f)).map(f => ({ f, seen: obs.some(o => o.f === f && o.shown) })),
     // что было правильно выбрать здесь: со своей палатой — положить в неё, со своей операционной — оперировать
     should: choiceFor(recommendedSetting(db, patient), venueOf(db, s, plan.setting === 'admit' || plan.setting === 'surgery', operationFor(db, truth) ?? null)),
@@ -1087,12 +1087,16 @@ function finishOperation(db: ContentDb, s: ShiftState, p: ShiftPatient | undefin
   // срок — от решения положить: наблюдали, потом оперировали — считается от поступления; у
   // холецистита — от начала болезни (часть 30): пришедшему на третьи сутки оперировать уже поздно
   const plan = db.conditions[p.closed!.diagnosis]?.surgery;
-  if (plan) {
+  // срок — у операции, которая по правде была нужна, или после наблюдения; оперировали то, что
+  // лечат без операции (часть 30д: дивертикулит без перитонита), — строки срока нет, разбор скажет
+  // «больше нужного»
+  const needed = recommendedSetting(db, p.patient) === 'surgery';
+  if (plan && (needed || plan.observe !== undefined)) {
     const fromOnset = plan.from === 'onset';
     const rounded = fromOnset ? Math.round(hours * 10) / 10 : Math.round((op.start - p.closed!.at) / 360) / 10;
     // экстренной операции не было нужно, лечили в палате — срок после наблюдения (часть 30в): у
     // непроходимости без ишемии и перитонита — не позже 72 ч от поступления
-    const observed = plan.observe !== undefined && recommendedSetting(db, p.patient) !== 'surgery';
+    const observed = plan.observe !== undefined && !needed;
     const window = observed ? plan.observe! : plan.window;
     const onTime = rounded <= window;
     if (onTime) day.onTime++;

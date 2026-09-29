@@ -6,7 +6,7 @@
 // (ADR 0004): одинаковый исход на телефоне и в тестах.
 import type { ContentDb, Id } from '../../content/types';
 import { P_ONE, type Rng } from '../core/rng';
-import { curesOf, type Plan, type PlanEval, primaryOf, SETTING_ORDER } from './plan';
+import { curesOf, type Plan, type PlanEval, primaryOf, selfLimits, SETTING_ORDER, untreatedOf } from './plan';
 import type { Patient } from './types';
 
 /** Сколько дней после приёма модель следит за пациентом, отпущенным домой. */
@@ -62,11 +62,13 @@ export function observe(db: ContentDb, patient: Patient, plan: Plan, ev: PlanEva
   }
 
   // 3. Без действенного лечения: ухудшение по записи состояния, иначе — как пойдёт болезнь.
-  if (cond.untreated && rng.fork('worse').chance(cond.untreated.p)) {
-    const day = Math.min(OBSERVE_DAYS, rng.fork('worse-day').range(cond.untreated.days[0], cond.untreated.days[1]));
+  // И то и другое может зависеть от скрытого параметра (часть 30д: форма дивертикулита).
+  const untreated = untreatedOf(db, primary);
+  if (untreated && rng.fork('worse').chance(untreated.p)) {
+    const day = Math.min(OBSERVE_DAYS, rng.fork('worse-day').range(untreated.days[0], untreated.days[1]));
     return { kind: 'worse', day, returns: { day, reason: 'worse' }, cured: false };
   }
-  if (cond.selfLimiting) {
+  if (selfLimits(db, primary)) {
     // проходит к концу последней стадии, считая от дня болезни на приёме
     const end = cond.stages[cond.stages.length - 1].days[1];
     const left = Math.max(1, end - primary.day);

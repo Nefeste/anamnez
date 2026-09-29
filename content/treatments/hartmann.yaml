@@ -1,0 +1,28 @@
+id: tx.hartmann
+name: { ru: "Резекция по Гартману" }
+kind: surgery
+class: surgery.abdominal
+# расходники операции, ₽ — игровое число
+cost: 15000
+# при перитоните — экстренная резекция толстой кишки с участком перфорации, операция выбора —
+# Гартмана (179_3, раздел 3.2.1); срок выздоровления — в стационаре после операции, см.
+# surgery.stay болезни
+effects:
+  - { on: cond.diverticulitis, kind: cure, band: { pct: 100 }, days: [7, 12] }
+# после операции Гартмана при гнойном и каловом перитоните осложнения — 44 % (LADIES 2019: 29 из
+# 66); смертность — 10,8 % в наблюдательных исследованиях и 9,4 % в РКИ (Halim 2019, 25 исследований,
+# 3546 больных) — взята 10,8 %: так лечат не только отобранных больных; длительность — игровая оценка
+surgery:
+  room: room.or
+  team: [role.surgeon, role.anesthetist, role.or_nurse]
+  equipment: [eq.or_table, eq.anesthesia]
+  minutes: 150
+  complications: { pct: 44 }
+  death: { pct: 10.8 }
+texts:
+  hint: { ru: "Хирург удаляет участок сигмовидной кишки с разрушенным дивертикулом — источник инфекции, верхний конец выводит на кожу живота (колостома), нижний ушивает. Кишку соединяют потом, отдельной плановой операцией. Задачи плановой операции в экстренной не решают." }
+sources:
+  - { kind: guideline, title: "Дивертикулярная болезнь", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/179_3", note: "ID 179_3, опубликованы 27.09.2024, применяются; сверено с рубрикатором 29.09.2026; раздел 3.2.1: при перитоните и при неэффективности консервативного и малоинвазивного лечения абсцесса — экстренная резекция толстой кишки с участком перфорации; операция выбора — Гартмана или Микулича; лапароскопия и открытая операция одинаково эффективны; задачи плановой операции при экстренной не решают" }
+  - { kind: paper, title: "Lambrichts DPV, Vennix S, Musters GD, Mulder IM, Swank HA, Hoofwijk AGM, et al. Hartmann's procedure versus sigmoidectomy with primary anastomosis for perforated diverticulitis with purulent or faecal peritonitis (LADIES): a multicentre, parallel-group, randomised, open-label, superiority trial. Lancet Gastroenterol Hepatol 2019;4(8):599–610", url: "https://pubmed.ncbi.nlm.nih.gov/31178342/", note: "PMID 31178342, сверено 29.09.2026: 133 больных с перитонитом (Hinchey III и IV); после операции Гартмана осложнения — 29 из 66 (44 %), смертность — 2 из 66 (3 %); без колостомы через 12 месяцев — 71,7 % против 94,6 % после первичного анастомоза" }
+  - { kind: paper, title: "Halim H, Askari A, Nunn R, Hollingshead J. Primary resection anastomosis versus Hartmann's procedure in Hinchey III and IV diverticulitis. World J Emerg Surg 2019;14:32", url: "https://pubmed.ncbi.nlm.nih.gov/31338117/", note: "PMID 31338117, сверено 29.09.2026: 25 исследований, 3546 больных; смертность после операции Гартмана — 10,8 % в наблюдательных исследованиях и 9,4 % в РКИ" }
+review: draft

@@ -1,0 +1,114 @@
+id: cond.diverticulitis
+name: { ru: "Острый дивертикулит" }
+icd10: K57
+department: dept.surgery
+system: digestive
+kind: disease
+severity: serious
+epidemiology:
+  # 188 на 100 тыс. в год (Bharucha 2015); доля среди пришедших — игровая оценка
+  prevalence: rare
+  # старше 50 лет — 85 % госпитализированных (Hupfeld 2018); дивертикулы — у 10 % в 40 лет и у 60 %
+  # в 70 (179_3, раздел 1.2)
+  age: { min: 18, peak: [50, 85] }
+  # женщин — 60 % (Hupfeld 2018)
+  sex: { m: 0.67, f: 1 }
+params:
+  # осложнённых (абсцесс и перитонит) — 15 %: у госпитализированных — 12–17 % (Hupfeld 2018), 15 % в
+  # исследовании в WSES 2020; перитонит — 2 %: перфорация 3,5 на 100 тыс. в год (Morris 2008) при
+  # 188 дивертикулитах (Bharucha 2015); абсцессов до 3 см — 40 % (Mali 2019: меньше 4 см — 44 %);
+  # инфильтрат — игровая оценка
+  form: { uncomplicated: 75, infiltrate: 10, abscess_small: 5, abscess_large: 8, peritonitis: 2 }
+course:
+  stages:
+    - { id: acute, days: [0, 14] }
+  # когда приходят — игровая оценка
+  presentation: [1, 3]
+  # неосложнённый проходит и без антибиотиков: медиана выздоровления — 14 дней без них и 12 с ними,
+  # разницы нет (DIABOLO, Daniels 2017; 179_3, раздел 3.1.3, УУР A)
+  selfLimiting: { when: { form: [uncomplicated] } }
+  # остальные формы без лечения — хуже; на какой день — игровая оценка
+  untreated: { band: always, days: [1, 3], when: { form: [infiltrate, abscess_small, abscess_large, peritonitis] } }
+  # срока стационара в 179_3 нет — игровая оценка
+  stay: [3, 7]
+# при перитоните — экстренная резекция толстой кишки (179_3, раздел 3.2.1); срок 2 ч — так
+# экстренную операцию определяют рекомендации по непроходимости (327_3, термины); после операции
+# Гартмана — 7–12 суток, игровая оценка
+surgery: { tx: tx.hartmann, window: 2, stay: [7, 12] }
+findings:
+  # острый дивертикулит в первую очередь проявляется болью в левой подвздошной области; при
+  # перфорации боль быстро становится разлитой (179_3, раздел 1.6)
+  - { f: sym.llq_pain, band: always, when: { form: [uncomplicated, infiltrate, abscess_small, abscess_large] } }
+  - { f: sym.llq_pain, band: often, when: { form: [peritonitis] } }
+  - { f: sym.abdominal_pain, band: usually }
+  - { f: sym.abrupt_onset, band: usually, when: { form: [peritonitis] } }
+  # при пальпации — болезненность отделов ободочной кишки, инфильтрат (179_3, раздел 2.2)
+  - { f: sign.llq_tenderness, band: usually, when: { form: [uncomplicated, infiltrate, abscess_small, abscess_large] } }
+  - { f: sign.llq_mass, band: usually, when: { form: [infiltrate] } }
+  - { f: sign.llq_mass, band: often, when: { form: [abscess_small, abscess_large] } }
+  - { f: sign.peritoneal_signs, band: usually, when: { form: [peritonitis] } }
+  # субфебрилитет и лейкоцитоз — в большинстве; при инфильтрате выше 38 °C — у 2/3; при перитоните —
+  # выше 37,5 °C (179_3, раздел 1.6)
+  - { f: vital.fever, band: sometimes, when: { form: [uncomplicated] } }
+  - f: vital.fever
+    band: { pct: 67 }
+    when: { form: [infiltrate] }
+    note: "179_3, раздел 1.6: при остром паракишечном инфильтрате у 2/3 больных температура выше 38 °C"
+  - { f: vital.fever, band: often, when: { form: [abscess_small, abscess_large] } }
+  - { f: vital.fever, band: usually, when: { form: [peritonitis] } }
+  - { f: vital.tachycardia, band: sometimes, when: { form: [infiltrate, abscess_small, abscess_large] } }
+  - { f: vital.tachycardia, band: usually, when: { form: [peritonitis] } }
+  - { f: lab.wbc_high, band: usually }
+  # С-реактивный белок — весьма чувствительный маркер воспаления (179_3, раздел 2.3)
+  - { f: lab.crp_high, band: usually }
+  # вздутие, задержка стула или жидкий стул, тошнота, рвота — реже; при инфильтрате вздутие и
+  # нарушение стула — больше чем у 2/3 (179_3, раздел 1.6)
+  - { f: sym.bloating, band: sometimes, when: { form: [uncomplicated] } }
+  - { f: sym.bloating, band: usually, when: { form: [infiltrate] } }
+  - { f: sym.constipation, band: sometimes }
+  - { f: sym.diarrhea, band: sometimes }
+  - { f: sym.nausea, band: sometimes, when: { form: [uncomplicated] } }
+  - { f: sym.nausea, band: often, when: { form: [infiltrate, abscess_small, abscess_large, peritonitis] } }
+  - { f: sym.vomiting, band: sometimes, when: { form: [infiltrate, abscess_small, abscess_large, peritonitis] } }
+  - f: img.us_diverticulitis
+    band: { pct: 100 }
+    note: "воспалён дивертикул у каждого больного; найдёт ли его УЗИ — чувствительность обследования (Laméris 2008: 92 %)"
+# УЗИ — всем для установления диагноза (179_3, раздел 2.4; критерий качества 2)
+confirm: [exam.us_abdomen]
+redFlags: [sign.peritoneal_signs]
+treatment:
+  # антибиотики широкого спектра против грамотрицательных и анаэробов — при остром дивертикулите,
+  # инфильтрате, флегмоне и абсцессе до 3 см (179_3, раздел 3.1.3, УУР C); при неосложнённом можно и
+  # без них (УУР A); в игре — амоксициллин с клавулановой кислотой
+  firstLine: [tx.amoxicillin_clavulanate]
+  # спазмолитики — в составе консервативного лечения (179_3, раздел 3.1.3)
+  supportive: [tx.drotaverine]
+  # неосложнённый — амбулаторно (WSES 2020; 179_3, раздел 6.1: в отобранных случаях); инфильтрат и
+  # абсцесс — стационар (179_3, раздел 6.1); абсцесс больше 3 см — пункция и дренирование под УЗИ или
+  # КТ (раздел 3.2.1): в больнице этого нет — перевод; перитонит — экстренная операция
+  setting:
+    default: home
+    param: { name: form, map: { uncomplicated: home, infiltrate: ward, abscess_small: ward, abscess_large: transfer, peritonitis: surgery } }
+    redFlag: surgery
+texts:
+  summary:
+    ru: >-
+      Воспаление дивертикула — мешковидного выпячивания стенки толстой кишки, чаще сигмовидной.
+      Боль внизу живота слева, небольшая температура, лейкоцитоз; подтверждает УЗИ. Неосложнённый
+      лечат дома, он проходит и без антибиотиков; инфильтрат и небольшой абсцесс — в стационаре
+      антибиотиками; большой абсцесс дренируют, а при перитоните — экстренная операция.
+pearls:
+  - ru: "Боль слева внизу живота с температурой у человека старше 50 лет — прежде всего подумайте о дивертикулите."
+  - ru: "Колоноскопию в остром периоде не делают — риск перфорации: не раньше чем через месяц после стихания воспаления."
+  - ru: "Неосложнённый дивертикулит можно лечить и без антибиотиков: выздоравливают за то же время."
+simplified: "Форм дивертикулита в игре пять; КТ нет — форму подсказывают осмотр, анализы и УЗИ. Антибиотиков в вену в игре нет: в палате — те же таблетки. Дренирования абсцесса под УЗИ нет — большой абсцесс переводят; кровотечения и свищей нет."
+sources:
+  - { kind: guideline, title: "Дивертикулярная болезнь", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/179_3", note: "ID 179_3, опубликованы 27.09.2024, применяются; сверено с рубрикатором 29.09.2026; разделы 1.5 и 1.6: формы и клиника, при инфильтрате выше 38 °C — у 2/3; раздел 2.2: пальпация; раздел 2.3: СРБ всем; раздел 2.4: УЗИ всем, колоноскопия — не раньше чем через месяц; раздел 3.1.3: консервативно — острый дивертикулит, инфильтрат, абсцесс до 3 см, при абсцессе неэффективно в 19–21 %; раздел 3.2.1: абсцесс больше 3 см — дренирование, перитонит — резекция; раздел 6.1: где лечить; частоты без пояснений — черновик" }
+  - { kind: guideline, title: "Sartelli M, Weber DG, Kluger Y, Ansaloni L, Coccolini F, Abu-Zidan F, et al. 2020 update of the WSES guidelines for the management of acute colonic diverticulitis in the emergency setting. World J Emerg Surg 2020;15(1):32", url: "https://pubmed.ncbi.nlm.nih.gov/32381121/", note: "PMID 32381121, сверено 29.09.2026: неосложнённый — амбулаторно у отобранных больных, неудача — 4,3 %; абсцесс — у 15–20 % госпитализированных; малый абсцесс антибиотиками — неудача 20 %" }
+  - { kind: paper, title: "Hupfeld L, Pommergaard HC, Burcharth J, Rosenberg J. Emergency admissions for complicated colonic diverticulitis are increasing: a nationwide register-based cohort study. Int J Colorectal Dis 2018;33(7):879–886", url: "https://pubmed.ncbi.nlm.nih.gov/29789871/", note: "PMID 29789871, сверено 29.09.2026: Дания, 2000–2012; неосложнённый — 83–88 % госпитализаций; старше 50 лет — 85 %, женщин — 60 %" }
+  - { kind: paper, title: "Bharucha AE, Parthasarathy G, Ditah I, Fletcher JG, Ewelukwa O, Pendlimari R, et al. Temporal trends in the incidence and natural history of diverticulitis: a population-based study. Am J Gastroenterol 2015;110(11):1589–1596", url: "https://pubmed.ncbi.nlm.nih.gov/26416187/", note: "PMID 26416187, сверено 29.09.2026: 188 на 100 тыс. в год в 2000–2007 годах, осложнения — у 12 %" }
+  - { kind: paper, title: "Morris CR, Harvey IM, Stebbings WS, Hart AR. Incidence of perforated diverticulitis and risk factors for death in a UK population. Br J Surg 2008;95(7):876–881", url: "https://pubmed.ncbi.nlm.nih.gov/18509877/", note: "PMID 18509877, сверено 29.09.2026: перфорация — 3,5 на 100 тыс. взрослых в год, оперировали 93,1 %" }
+  - { kind: paper, title: "Mali J, Mentula P, Leppäniemi A, Sallinen V. Determinants of treatment and outcomes of diverticular abscesses. World J Emerg Surg 2019;14:31", url: "https://pubmed.ncbi.nlm.nih.gov/31320921/", note: "PMID 31320921, сверено 29.09.2026: 241 абсцесс, меньше 40 мм — 107 (44 %), антибиотиками вылечены 87 % из них" }
+  - { kind: paper, title: "Gregersen R, Mortensen LQ, Burcharth J, Pommergaard HC, Rosenberg J. Treatment of patients with acute colonic diverticulitis complicated by abscess formation: A systematic review. Int J Surg 2016;35:201–208", url: "https://pubmed.ncbi.nlm.nih.gov/27741423/", note: "PMID 27741423, сверено 29.09.2026: 8766 больных; неудача лечения — около 20 %; абсцесс меньше 3 см — достаточно антибиотиков" }
+  - { kind: paper, title: "Daniels L, Ünlü Ç, de Korte N, van Dieren S, Stockmann HB, Vrouenraets BC, et al. Randomized clinical trial of observational versus antibiotic treatment for a first episode of CT-proven uncomplicated acute diverticulitis. Br J Surg 2017;104(1):52–61", url: "https://pubmed.ncbi.nlm.nih.gov/27686365/", note: "PMID 27686365 (DIABOLO), сверено 29.09.2026: 528 больных; медиана выздоровления — 14 дней без антибиотиков и 12 с ними, разницы в осложнениях нет" }
+review: draft

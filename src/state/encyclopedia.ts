@@ -112,7 +112,8 @@ function strongest(links: readonly Link[]): Link[] {
 export function whenText(when: Record<string, string[]> | undefined): string | undefined {
   if (!when) return undefined;
   const words = Object.entries(when).flatMap(([name, values]) => values.map(v => T.encyclopedia.when[`${name}:${v}`] ?? T.encyclopedia.when[v])).filter((w): w is string => w !== undefined);
-  return words.length > 0 ? words.join(', ') : undefined;
+  // несколько значений (часть 30д): «при инфильтрате, абсцессе и перитоните» — «при» один раз
+  return words.length <= 1 ? words[0] : T.encyclopedia.whenList(words);
 }
 
 /** Ряды «почти всегда / обычно / … / не бывает»; внутри ряда — по алфавиту. */
@@ -242,8 +243,9 @@ function conditionArticle(db: ContentDb, c: Condition): Article {
   }
 
   const course: string[] = [];
-  if (c.selfLimiting) course.push(e.selfLimiting);
-  if (c.untreated && c.untreated.p > 0) course.push(e.untreated(e.band[bandOf(c.untreated.p)], c.untreated.days[0], c.untreated.days[1]));
+  // течение может зависеть от скрытого параметра (часть 30д): «при неосложнённом — проходит само»
+  if (c.selfLimiting) course.push(c.selfLimitingWhen ? e.selfLimitingIf(whenText(c.selfLimitingWhen) ?? '') : e.selfLimiting);
+  if (c.untreated && c.untreated.p > 0) course.push(e.untreated(e.band[bandOf(c.untreated.p)], c.untreated.days[0], c.untreated.days[1], whenText(c.untreated.when)));
   const x = c.complication;
   if (x?.after !== undefined) course.push(e.complicationAfter(x.name.ru, x.after, whenText(x.when)));
   else if (x?.early && x.later) course.push(e.complicationRisk(x.name.ru, x.early.hours, pct(x.early.p), x.later.every, pct(x.later.p)));

@@ -23,7 +23,7 @@ import { memoryStore, saveSlot } from '../../src/state/saves';
 import { forgetShift, loadShift, SANDBOX_SLOT, setStore, shiftCaseView } from '../../src/state/session';
 
 const BOTH = ['dept.therapy', 'dept.surgery'];
-const SURGICAL = ['cond.adhesive_sbo', 'cond.biliary_colic', 'cond.cholecystitis', 'cond.pancreatitis', 'cond.paraproctitis', 'cond.perforated_ulcer', 'cond.renal_colic', 'cond.strangulated_hernia', 'cond.ulcer_bleeding'];
+const SURGICAL = ['cond.adhesive_sbo', 'cond.biliary_colic', 'cond.cholecystitis', 'cond.diverticulitis', 'cond.pancreatitis', 'cond.paraproctitis', 'cond.perforated_ulcer', 'cond.renal_colic', 'cond.strangulated_hernia', 'cond.ulcer_bleeding'];
 const OP = 'tx.cholecystectomy';
 
 /** Песочница с готовой амбулаторией и смотровой приёмного справа; медсестра ЭКГ — в смотровую. */

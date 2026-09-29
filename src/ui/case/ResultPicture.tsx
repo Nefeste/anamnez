@@ -22,7 +22,9 @@ export function ResultPicture({ image }: { image: ResultImage }) {
           ? { view: 'appendix', appendix: image.appendix ?? 0 }
           : image.view === 'kidney'
             ? { view: 'kidney', pelvis: image.pelvis ?? 0 }
-            : { view: 'gallbladder', foci: { count: image.stones ?? 0, size: 0.5 }, wall: image.wall ?? 0, fluid: image.wall ? 0.4 : 0 }} />
+            : image.view === 'colon'
+              ? { view: 'colon', diverticulum: image.diverticulum ?? 0 }
+              : { view: 'gallbladder', foci: { count: image.stones ?? 0, size: 0.5 }, wall: image.wall ?? 0, fluid: image.wall ? 0.4 : 0 }} />
       </View>
     );
   }

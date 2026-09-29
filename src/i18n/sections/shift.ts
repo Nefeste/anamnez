@@ -1,5 +1,6 @@
 // Смена в амбулатории (spec 2026-09-first-shift): очередь, часы, итоги дня.
 import { pluralRu } from '../plural';
+import { lowerFirst } from '../case';
 
 const patients = (n: number) => `${n}\u00a0${pluralRu(n, 'пациент', 'пациента', 'пациентов')}`;
 const ago = (female: boolean, m: string, f: string) => (female ? f : m);
@@ -201,8 +202,8 @@ export const shift = {
       // палата (spec 2026-09-chapter-2, часть 26): день поступления — «первые сутки»
       ward: (days: number) => `В палате: ${days + 1}-е\u00a0сутки`,
       // операционная (часть 28): на столе и ждёт операции в палате
-      onTable: (op: string, until: string) => `Идёт операция: ${op.toLowerCase()}, до ${until}`,
-      waitingOp: (op: string) => `В палате, ждёт операции: ${op.toLowerCase()}`,
+      onTable: (op: string, until: string) => `Идёт операция: ${lowerFirst(op)}, до ${until}`,
+      waitingOp: (op: string) => `В палате, ждёт операции: ${lowerFirst(op)}`,
       // скорая (spec 2026-09-chapter-2, часть 27)
       ambulance: {
         unsorted: 'Привезла скорая — ждёт сортировки',
@@ -231,7 +232,7 @@ export const shift = {
       same: 'Без перемен',
       worse: 'Хуже: лечение не помогает',
       ready: 'Жалоб нет, показатели в норме',
-      reaction: (tx: string, by: string) => `Реакция на ${tx.toLowerCase()}: ${by.toLowerCase()}`,
+      reaction: (tx: string, by: string) => `Реакция на ${lowerFirst(tx)}: ${lowerFirst(by)}`,
     } as Record<'better' | 'same' | 'worse' | 'ready', string> & { reaction: (tx: string, by: string) => string },
     readyHint: 'можно выписывать',
     vital: {
@@ -255,9 +256,9 @@ export const shift = {
     noDiagnosis: 'сначала — диагноз',
     orDown: (why: string) => `операционная не работает: ${why}`,
     noOpEquipment: (gen: string) => `в операционной нет ${gen}`,
-    opWaiting: (op: string, n: number) => `Ждёт операции: ${op.toLowerCase()}${n > 1 ? ` · в очереди ${n}-й` : ''}`,
-    opOn: (op: string, until: string) => `Идёт операция: ${op.toLowerCase()}, до ${until}`,
-    opDone: (op: string) => `После операции: ${op.toLowerCase()}`,
+    opWaiting: (op: string, n: number) => `Ждёт операции: ${lowerFirst(op)}${n > 1 ? ` · в очереди ${n}-й` : ''}`,
+    opOn: (op: string, until: string) => `Идёт операция: ${lowerFirst(op)}, до ${until}`,
+    opDone: (op: string) => `После операции: ${lowerFirst(op)}`,
     opStage: (name: string) => `на операции — ${name}`,
     opComplication: 'после операции — осложнение, стационар дольше',
   },
@@ -272,7 +273,7 @@ export const shift = {
     measured: 'Фельдшер измерил',
     news2: (n: number) => `NEWS2 — ${n}\u00a0${pluralRu(n, 'балл', 'балла', 'баллов')}: 7 и больше — красный, 5–6 или 3 по одному показателю — жёлтый`,
     // на «Студенте»: тревожный признак, что поднял цвет выше баллов
-    flag: (f: string, triage: string) => `Тревожный признак: ${f.toLowerCase()} — ${COLOR[triage] ?? triage}`,
+    flag: (f: string, triage: string) => `Тревожный признак: ${lowerFirst(f)} — ${COLOR[triage] ?? triage}`,
     sortLabel: 'Как срочно смотреть',
     sort: {
       red: 'Красный — сразу',

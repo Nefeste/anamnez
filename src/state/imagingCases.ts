@@ -44,6 +44,8 @@ export const US_CASES: UsCase[] = [
   { key: 'us-appendix', findings: { view: 'appendix' }, seed: 6, label: u.appendix },
   { key: 'us-appendix-target', findings: { view: 'appendix', appendix: 0.8 }, seed: 7, label: u.appendixTarget },
   { key: 'us-appendix-fluid', findings: { view: 'appendix', appendix: 0.9, fluid: 0.6 }, seed: 8, label: u.appendixFluid },
+  { key: 'us-colon', findings: { view: 'colon' }, seed: 10, label: u.colon },
+  { key: 'us-colon-diverticulum', findings: { view: 'colon', diverticulum: 0.8 }, seed: 11, label: u.colonDiverticulum },
 ];
 
 export interface AbdomenCase {

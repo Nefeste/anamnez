@@ -101,6 +101,21 @@ export function curesOf(db: ContentDb, condition: Pick<ActiveCondition, 'id' | '
   return treatments.flatMap(tx => db.treatments[tx]?.effects.filter(e => e.on === condition.id && e.kind === 'cure' && whenHolds(e.when, condition.params)) ?? []);
 }
 
+/**
+ * Проходит ли болезнь у этого больного сама: у записи `selfLimiting` может быть условие по
+ * скрытому параметру (часть 30д: неосложнённый дивертикулит проходит и без антибиотиков, абсцесс — нет).
+ */
+export function selfLimits(db: ContentDb, condition: Pick<ActiveCondition, 'id' | 'params'>): boolean {
+  const c = db.conditions[condition.id];
+  return c?.selfLimiting === true && whenHolds(c.selfLimitingWhen, condition.params);
+}
+
+/** Что будет без действенного лечения у этого больного — запись `untreated`, если её условие совпало (часть 30д). */
+export function untreatedOf(db: ContentDb, condition: Pick<ActiveCondition, 'id' | 'params'>): { p: number; days: [number, number] } | undefined {
+  const u = db.conditions[condition.id]?.untreated;
+  return u && whenHolds(u.when, condition.params) ? u : undefined;
+}
+
 export function txRole(db: ContentDb, condId: Id, tx: Id): TxRole {
   // своя операция болезни — первая линия (часть 28); в тактике её нет: до приезда скорой её не сделать
   if (db.conditions[condId]?.surgery?.tx === tx) return 'firstLine';

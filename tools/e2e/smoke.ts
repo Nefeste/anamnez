@@ -600,8 +600,8 @@ try {
   const us = await drawn('[data-testid^="us-"] canvas');
   const abd = await drawn('[data-testid^="abd-"] canvas');
   const allImages = await drawn('canvas');
-  check(heads.length === 7 && heads.every(Boolean) && us.length === 9 && us.every(Boolean) && abd.length === 3 && abd.every(Boolean) && allImages.every(Boolean),
-    `П5: срезы головы нарисованы — ${heads.filter(Boolean).length} из 7, УЗИ — ${us.filter(Boolean).length} из 9, снимки живота — ${abd.filter(Boolean).length} из 3; все рисунки экрана — ${allImages.filter(Boolean).length} из ${allImages.length} (смотреть 06-head-*.png, 06-us.png, 06-abdomen.png)`);
+  check(heads.length === 7 && heads.every(Boolean) && us.length === 11 && us.every(Boolean) && abd.length === 3 && abd.every(Boolean) && allImages.every(Boolean),
+    `П5: срезы головы нарисованы — ${heads.filter(Boolean).length} из 7, УЗИ — ${us.filter(Boolean).length} из 11, снимки живота — ${abd.filter(Boolean).length} из 3; все рисунки экрана — ${allImages.filter(Boolean).length} из ${allImages.length} (смотреть 06-head-*.png, 06-us.png, 06-abdomen.png)`);
   for (const id of ['head-ct', 'head-mri', 'us', 'abdomen']) {
     await page.getByTestId(id).scrollIntoViewIfNeeded();
     await page.waitForTimeout(300);
@@ -1249,6 +1249,7 @@ try {
   check((await visible(page, 'dx-cond.adhesive_sbo').count()) === 1, 'хирургия живота (0.0.50): в выборе диагноза — спаечная кишечная непроходимость');
   const colicDx = (await Promise.all(['cond.renal_colic', 'cond.paraproctitis'].map(id => visible(page, `dx-${id}`).count()))).every(n => n === 1);
   check(colicDx, 'хирургия приёмного (0.0.51): в выборе диагноза — почечная колика и острый парапроктит');
+  check((await visible(page, 'dx-cond.diverticulitis').count()) === 1, 'хирургия приёмного (0.0.52): в выборе диагноза — острый дивертикулит');
   await visible(page, 'dx-cond.cholecystitis').click();
   await page.screenshot({ path: join(OUT, '19-gall-decision.png'), fullPage: true });
   await visible(page, 'decision-to-plan').click();
@@ -1302,6 +1303,14 @@ try {
   await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
   const usRoom = await page.locator('text=Кабинет УЗИ').first().isVisible().catch(() => false);
   check((await visibleText(page, 'enc-article-title')) === 'УЗИ почек и мочевых путей' && usRoom, 'энциклопедия, УЗИ почек: делают в кабинете УЗИ');
+  // дивертикулит (0.0.52): где лечить — по форме, неосложнённый проходит сам; у операции — фамилия с большой буквы
+  await page.goto(`${base}/encyclopedia/article/cond.diverticulitis`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const bigAbscess = await page.locator('text=При абсцессе больше 3\u00a0см — скорая, перевод в центр.').first().isVisible().catch(() => false);
+  const selfHeals = await page.locator('text=При неосложнённом — обычно проходит само.').first().isVisible().catch(() => false);
+  const hartmann = await page.locator('text=Операция — резекция по Гартману: в первые 2\u00a0ч после поступления.').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'Острый дивертикулит' && bigAbscess && selfHeals && hartmann,
+    `энциклопедия, дивертикулит: ${await visibleText(page, 'enc-article-title')} — большой абсцесс переводят, неосложнённый проходит сам, резекция по Гартману в первые 2 ч`);
 
   // энциклопедия: раздел «Шкалы», статья NEWS2 — баллы по показателям
   await page.goto(`${base}/encyclopedia/article/score.news2`);

@@ -28,6 +28,7 @@ import {
   type Command, DAY, type Difficulty, type Mode, type Notice, SHIFT_END, SHIFT_SCHEMA_VERSION, type ShiftPatient, type ShiftState, type Triage,
 } from '@/engine/shift/types';
 import { T } from '@/i18n';
+import { lowerFirst } from '@/i18n/case';
 import {
   type Arrival, type Decision, decisionOf, hhmm, makeCaseView, outcomeText, patientName, type SettingOption, treatmentGroupsFor, type VisitView,
 } from './caseView';
@@ -698,7 +699,7 @@ export function takeOver(id: string): boolean {
 /** Нанятый врач словами: «терапевт Иванова Елена»; уволен — просто «врач». */
 function doctorOfCase(s: ShiftState, by: string): string {
   const m = s.staff?.find(x => x.id === by);
-  return m ? T.shift.colleagueCase.doctor(db.roles[m.role]?.name.ru.toLowerCase() ?? '', personName(m.sex, m.seed)) : T.shift.colleagueCase.someone;
+  return m ? T.shift.colleagueCase.doctor(lowerFirst(db.roles[m.role]?.name.ru ?? ''), personName(m.sex, m.seed)) : T.shift.colleagueCase.someone;
 }
 
 /** Кто вёл закрытый приём — для экрана итога: глагол по полу врача; уволен — без имени. */
@@ -1247,7 +1248,7 @@ function summaryOf(s: ShiftState): SummaryView | undefined {
   const colleagues = Object.entries(h.colleagues ?? {}).sort(([a], [b]) => (a < b ? -1 : 1)).map(([id, c]) => {
     const m = s.staff?.find(x => x.id === id);
     return {
-      id, title: m ? T.shift.summary.colleague(personName(m.sex, m.seed), db.roles[m.role]?.name.ru.toLowerCase() ?? '') : T.shift.summary.colleagueGone,
+      id, title: m ? T.shift.summary.colleague(personName(m.sex, m.seed), lowerFirst(db.roles[m.role]?.name.ru ?? '')) : T.shift.summary.colleagueGone,
       line: T.shift.summary.colleagueLine(c.seen, c.correct, c.partly, c.wrong, c.grades, c.taken ?? 0),
       // его приёмы — к разбору, как ваши (часть 19)
       cases: all.filter(p => p.closed?.by === id && closedDay(p) === h.day).sort((a, b) => a.closed!.at - b.closed!.at).map(caseRow),

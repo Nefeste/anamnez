@@ -13,7 +13,7 @@ import { Rng } from '@/engine/core/rng';
 import { observe } from '@/engine/med/course';
 import { complaintObservations, examFits, runExam } from '@/engine/med/exams';
 import { generatePatient } from '@/engine/med/generate';
-import { evaluatePlan } from '@/engine/med/plan';
+import { evaluatePlan, primaryOf, selfLimits } from '@/engine/med/plan';
 import { examCost } from '@/engine/med/policy';
 import { buildReview } from '@/engine/med/review';
 import { scoreCase } from '@/engine/med/score';
@@ -180,7 +180,7 @@ export function createVisit(first: number, opts: { season?: Season; onFinish?: (
       const present = new Set(p.truth.findings.map(f => f.f));
       const score = scoreCase({
         verdict, confidence, cost: s.done.reduce((a, id) => a + examCost(db, id), 0), rationalCost: review.rational.cost,
-        plan: ev, outcome, selfLimiting: cond.selfLimiting === true,
+        plan: ev, outcome, selfLimiting: selfLimits(db, primaryOf(p)),
         redFlags: (cond.redFlags ?? []).filter(f => present.has(f)).map(f => ({ f, seen: obs.some(o => o.f === f && o.shown) })),
       });
       s.decision = decisionOf({ patient: p, arrived: s.arrived, diagnosis: dx, verdict, confidence, plan, ev, outcome, score, review });

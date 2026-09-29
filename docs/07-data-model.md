@@ -69,7 +69,8 @@ interface Condition {
     stages: { id: string; days: [number, number]; needs?: 'treatment' }[];
     presentation?: [number, number];    // в какие дни болезни обычно обращаются
     selfLimiting?: boolean;             // проходит само к концу последней стадии
-    untreated?: { p: P; days: [number, number] };  // без действенного лечения: ухудшение и на какой день
+    selfLimitingWhen?: Record<string, string[]>;   // с 0.0.52: проходит само только при этих значениях параметра
+    untreated?: { p: P; days: [number, number]; when?: Record<string, string[]> };  // без действенного лечения: ухудшение и на какой день; when — с 0.0.52
     stay?: [number, number];            // обычный срок стационара, сутки, — по рекомендации (0.0.43);
                                         // нет — срок действия лечения причины, иначе неделя
     // позже (приёмное и скорая, этап 4) — осложнения новыми состояниями:

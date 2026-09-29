@@ -90,10 +90,13 @@ export const conditionSchema = z.strictObject({
     stages: z.array(z.strictObject({ id: z.string(), days: z.tuple([z.number(), z.number()]), needs: z.literal('treatment').optional() })).min(1),
     /** в какие дни болезни обычно обращаются */
     presentation: z.tuple([z.number().int().min(0), z.number().int().min(0)]).optional(),
-    /** проходит само: без лечения — выздоровление к концу стадий */
-    selfLimiting: z.boolean().optional(),
-    /** без действенного лечения: с какой вероятностью и на какой день становится хуже */
-    untreated: z.strictObject({ band: probability, days: z.tuple([z.number().int().min(0), z.number().int().min(0)]) }).optional(),
+    /**
+     * проходит само: без лечения — выздоровление к концу стадий; `{ when }` — только при этих
+     * значениях скрытого параметра (часть 30д: неосложнённый дивертикулит — да, абсцесс — нет)
+     */
+    selfLimiting: z.union([z.boolean(), z.strictObject({ when: z.record(z.string(), z.array(z.string())) })]).optional(),
+    /** без действенного лечения: с какой вероятностью и на какой день становится хуже; `when` — при каких значениях параметра */
+    untreated: z.strictObject({ band: probability, days: z.tuple([z.number().int().min(0), z.number().int().min(0)]), when: z.record(z.string(), z.array(z.string())).optional() }).optional(),
     /** в стационаре при действенном лечении: через сколько суток можно выписывать (spec 2026-09-chapter-2, часть 26) */
     stay: z.tuple([z.number().int().min(1), z.number().int().min(1)]).optional(),
   }),

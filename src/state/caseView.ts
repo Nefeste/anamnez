@@ -34,10 +34,11 @@ export type ResultImage =
   | { kind: 'ecg'; rate: number; st: number; rScale: number; seed: number }
   /**
    * УЗИ брюшной полости: правая подвздошная область, `appendix` — виден воспалённый отросток (часть
-   * 29); или желчный пузырь — `stones` камней, `wall` — утолщённая стенка (часть 30); УЗИ почек —
-   * почка, `pelvis` — расширенная лоханка (часть 30г)
+   * 29); или желчный пузырь — `stones` камней, `wall` — утолщённая стенка (часть 30); или левая
+   * подвздошная область — `diverticulum`, воспалённый дивертикул (часть 30д); УЗИ почек — почка,
+   * `pelvis` — расширенная лоханка (часть 30г)
    */
-  | { kind: 'us'; view: 'appendix' | 'gallbladder' | 'kidney'; appendix?: number; stones?: number; wall?: number; pelvis?: number; seed: number }
+  | { kind: 'us'; view: 'appendix' | 'gallbladder' | 'kidney' | 'colon'; appendix?: number; stones?: number; wall?: number; pelvis?: number; diverticulum?: number; seed: number }
   /** обзорный снимок живота стоя (часть 30б): серп свободного газа под куполом, раздутые петли с уровнями */
   | { kind: 'abdomen'; freeGas: boolean; levels: boolean; seed: number };
 
@@ -317,6 +318,7 @@ function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observat
     // что нашли, то и на картинке: отросток — «мишенью»; иначе желчный пузырь — с камнями и
     // утолщённой стенкой, если их показало УЗИ, или обычный
     if (shown('img.us_appendicitis')) return { kind: 'us', view: 'appendix', appendix: 0.8, seed };
+    if (shown('img.us_diverticulitis')) return { kind: 'us', view: 'colon', diverticulum: 0.8, seed };
     return { kind: 'us', view: 'gallbladder', stones: shown('img.us_gallstones') ? 3 : 0, wall: shown('img.us_cholecystitis') ? 0.8 : 0, seed };
   }
   // почка (часть 30г): расширенная лоханка — если её показало УЗИ
