@@ -48,6 +48,8 @@ const attrSpec = z.union([
 const link = z.strictObject({
   f: z.string(),
   band: probability,
+  /** точная частота — откуда она: сверено с источником (без пояснения — предупреждение сборки) */
+  note: z.string().min(10).optional(),
   stages: z.array(z.string()).optional(),
   when: z.record(z.string(), z.array(z.string())).optional(),
   attrs: z.record(z.string(), attrSpec).optional(),
@@ -254,7 +256,7 @@ export const riskSchema = z.strictObject({
 // Помещения, аппараты и должности — игровые предметы: цены и размеры — баланс игры. Что
 // каким аппаратом делают — медицинский факт, он записан в записях обследований с источниками.
 
-export const OBJECT_KINDS = ['bed', 'chair', 'desk', 'couch', 'cabinet', 'machine', 'plant', 'sink', 'bench', 'xray', 'table', 'ecg', 'analyzer', 'or_table', 'anesthesia'] as const;
+export const OBJECT_KINDS = ['bed', 'chair', 'desk', 'couch', 'cabinet', 'machine', 'plant', 'sink', 'bench', 'xray', 'table', 'ecg', 'analyzer', 'or_table', 'anesthesia', 'us'] as const;
 const cellSrc = z.tuple([z.number().int().min(0), z.number().int().min(0)]);
 /** «нет лаборатории», «нет лаборанта» — родительный падеж для причин «не работает» */
 const gen = text;
@@ -308,7 +310,7 @@ export const equipmentSchema = z.strictObject({
   gen,
   room: roomId,
   /** как выглядит на карте: у каждого вида аппарата свой рисунок (spec 2026-09-living-map) */
-  sprite: z.enum(['ecg', 'analyzer', 'xray', 'or_table', 'anesthesia']),
+  sprite: z.enum(['ecg', 'analyzer', 'xray', 'or_table', 'anesthesia', 'us']),
   /** улучшение другого аппарата: цифровой рентген — плёночного */
   upgradeOf: eqId.optional(),
   /** своё место в помещении — номер из `slots` (стол операционной — под пациентом); занято — первое свободное */
@@ -337,6 +339,8 @@ export const roleSchema = z.strictObject({
   stands: roleId.optional(),
   /** без места в этом помещении не работает — терапевту нужна ординаторская */
   needs: roomId.optional(),
+  /** описывает снимки своего помещения — от навыка точность (рентгенолог, врач УЗД, часть 29) */
+  reads: z.boolean().optional(),
   texts: z.strictObject({ hint }),
 });
 

@@ -192,7 +192,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
         else for (const v of values) if (!(v in params[param])) errors.push(`${owner}: у параметра ${param} нет значения ${v}`);
       }
       for (const s of l.stages ?? []) if (stages && !stages.includes(s)) errors.push(`${owner}: стадия ${s} не объявлена`);
-      if (typeof l.band !== 'string') warnings.push(`${owner}: точная частота ${l.f} = ${l.band.pct} % — проверьте, что источник её называет`);
+      if (typeof l.band !== 'string' && !l.note) warnings.push(`${owner}: точная частота ${l.f} = ${l.band.pct} % — проверьте, что источник её называет, и запишите откуда (note)`);
+      if (typeof l.band === 'string' && l.note) errors.push(`${owner}: у ${l.f} пояснение (note) — только у точной частоты`);
     }
   };
   for (const c of Object.values(conditions)) {
@@ -429,7 +430,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   for (const r of Object.values(roles).sort((a, b) => (a.id < b.id ? -1 : 1))) {
     const out: StaffRole = {
       id: r.id, name: r.name, gen: r.gen, hire: r.hire, salary: r.salary,
-      ...(r.stands ? { stands: r.stands } : {}), ...(r.needs ? { needs: r.needs } : {}),
+      ...(r.stands ? { stands: r.stands } : {}), ...(r.needs ? { needs: r.needs } : {}), ...(r.reads ? { reads: true as const } : {}),
       // встающий на чужое место работает там же, где та должность
       rooms: Object.keys(rooms).sort().filter(id => rooms[id].staff.includes(r.stands ?? r.id)), texts: r.texts,
     };
@@ -697,6 +698,13 @@ function checkHospital(c: {
     if (r.needs && !rooms[r.needs]) errors.push(`${r.id}: нужна ${r.needs} — такого помещения нет`);
     else if (r.needs && !rooms[r.needs].sizes.every(z => z.places > 0)) errors.push(`${r.id}: нужна ${r.needs}, а мест для врачей в ней нет`);
     if (!Object.values(rooms).some(x => x.staff.includes(r.stands ?? r.id))) errors.push(`${r.id}: ни одно помещение в нём не нуждается`);
+    // описывает снимки (часть 29): там, где он работает, снимки делают
+    if (r.reads && !Object.values(rooms).some(x => x.staff.includes(r.id) && exList.some(e => e.room === x.id && e.kind === 'imaging'))) errors.push(`${r.id}: описывает снимки, а там, где он работает, снимков не делают`);
+  }
+  // снимок помещения описывает один человек — от его навыка точность
+  for (const x of Object.values(rooms)) {
+    const readers = x.staff.filter(id => roles[id]?.reads);
+    if (readers.length > 1) errors.push(`${x.id}: снимки описывают сразу ${readers.join(' и ')} — должен один`);
   }
   // подтверждающее обследование должно быть достижимо: помещение и аппарат есть в каталоге
   for (const cond of Object.values(c.conditions)) {

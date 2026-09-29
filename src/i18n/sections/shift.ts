@@ -143,6 +143,8 @@ export const shift = {
       emergency: 'Приёмное',
       // операционная (часть 28)
       or: 'Операционная',
+      // кабинет УЗИ (часть 29)
+      ultrasound: 'УЗИ',
     } as Record<string, string>,
     // для чтения с экрана: что на карте, словами
     label: (waiting: number, away: number, inRoom: string | undefined) =>
@@ -167,6 +169,7 @@ export const shift = {
       surgeon: 'Хирург',
       anesthetist: 'Анестезиолог',
       orNurse: 'Операционная медсестра',
+      sonographer: 'Врач УЗД',
     } as Record<string, string>,
     // нанятый врач (spec 2026-09-hired-doctors): кто он и кого принимает
     therapist: (name: string, skill: number) => `${name}, терапевт · навык ${skill}`,
@@ -181,6 +184,7 @@ export const shift = {
       ecgNurse: 'Снимает ЭКГ',
       radiographer: 'Делает рентгеновские снимки',
       radiologist: 'Описывает снимки: его заключение приходит вместе со снимком',
+      sonographer: 'Делает УЗИ и сразу описывает, что видит',
     } as Record<string, string>,
     doing: {
       registration: 'В регистратуре: заводят карту',
@@ -189,8 +193,8 @@ export const shift = {
       waiting: (min: number) => `Ждёт приёма ${min}\u00a0мин`,
       office: 'У вас в кабинете',
       colleague: (doctor: string) => `На приёме у терапевта: ${doctor}`,
-      exam: { xray: 'На рентгене', ecg: 'На ЭКГ', lab: 'Сдаёт анализы' } as Record<string, string>,
-      examQueue: { xray: 'Ждёт очереди на рентген', ecg: 'Ждёт очереди на ЭКГ', lab: 'Ждёт очереди на анализы' } as Record<string, string>,
+      exam: { xray: 'На рентгене', ecg: 'На ЭКГ', lab: 'Сдаёт анализы', ultrasound: 'На УЗИ' } as Record<string, string>,
+      examQueue: { xray: 'Ждёт очереди на рентген', ecg: 'Ждёт очереди на ЭКГ', lab: 'Ждёт очереди на анализы', ultrasound: 'Ждёт очереди на УЗИ' } as Record<string, string>,
       results: (hh: string) => `Ждёт результатов — будут к ${hh}`,
       leaving: 'Приём окончен — уходит',
       left: (female: boolean) => ago(female, 'Не дождался приёма и уходит', 'Не дождалась приёма и уходит'),

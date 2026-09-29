@@ -915,7 +915,7 @@ function sandboxLayout(s: ShiftState): ClinicLayout {
   return l;
 }
 
-// обследования, которых в своей больнице не сделать, — и почему
+// обследования, которых в этой больнице не сделать, — и почему: в своей и в амбулатории практики
 const blocked = new WeakMap<HospitalCtx, Record<Id, string>>();
 
 function unavailableOf(s: ShiftState): Record<Id, string> {
@@ -1806,7 +1806,8 @@ function buildCaseView(): VisitView | undefined {
     canSendAway: p.status === 'inRoom' && p.pending.length > 0,
     returnNote: p.returnReason && prev?.closed ? T.shift.returnNote(p.returnReason, closedDay(prev), female(p)) : undefined,
     difficulty: s.meta.difficulty ?? 'doctor',
-    ...(s.hospital ? { unavailable: unavailableOf(s) } : {}),
+    // и в практике: кабинета УЗИ в амбулатории нет (часть 29)
+    unavailable: unavailableOf(s),
     ...(wardBeds(db, s).length > 0 ? { settings: settingOptions(s, p.draft.diagnosis) } : {}),
     ...(p.payer ? { payerNote: T.sandbox.payerNote[p.payer] } : {}),
     ...(p.paid && p.closed ? { payment: paymentText(db, p.payer ?? 'oms', p.paid, p.closed) } : {}),

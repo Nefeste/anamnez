@@ -24,7 +24,7 @@ export const headingOf = (dx: number, dy: number) => Math.atan2(-dx, dy);
 
 /** За этими предметами работают или у них стоят: к ним поворачиваются лицом. */
 const DESKS: ReadonlySet<ObjectKind> = new Set(['desk', 'table']);
-const WORK: ReadonlySet<ObjectKind> = new Set(['desk', 'table', 'couch', 'bed', 'ecg', 'analyzer', 'xray', 'machine', 'sink', 'cabinet', 'or_table', 'anesthesia']);
+const WORK: ReadonlySet<ObjectKind> = new Set(['desk', 'table', 'couch', 'bed', 'ecg', 'analyzer', 'xray', 'machine', 'sink', 'cabinet', 'or_table', 'anesthesia', 'us']);
 /** На этих сидят или лежат: человек на них смотрит, куда повёрнут предмет. */
 const SEATS: ReadonlySet<ObjectKind> = new Set(['chair', 'bench', 'couch', 'bed', 'xray', 'or_table']);
 

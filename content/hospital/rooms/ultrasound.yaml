@@ -1,0 +1,21 @@
+id: room.ultrasound
+name: { ru: "Кабинет УЗИ" }
+gen: { ru: "кабинета УЗИ" }
+staff: [role.sonographer]
+needsEquipment: true
+# цена и содержание — игровой баланс; пациент лежит на кушетке, аппарат — у изголовья, врач — рядом
+sizes:
+  - id: S
+    w: 6
+    h: 7
+    cost: 18000
+    upkeep: 150
+    door: { x: 3 }
+    slots: [[1, 3]]
+    objects:
+      - [couch, 2, 3]
+      - [cabinet, 4, 2]
+    staff: { role.sonographer: [3, 3] }
+    patient: [2, 3]
+texts:
+  hint: { ru: "Врач УЗД водит датчиком по коже и сразу описывает, что видит: при боли в животе справа внизу ищет воспалённый червеобразный отросток. Без облучения." }

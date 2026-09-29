@@ -1,7 +1,8 @@
 // Сектор УЗИ кодом (ADR 0013, spec 2026-09-ct-mri-ultrasound, часть 21): геометрия —
 // geometry.ts, здесь — рисунок, одна запись в SkPicture. Ткань — серая зернистость: кожа и
 // жир светлее, мышцы и кора почки темнее печени, синус почки светлый; жидкость — чёрная.
-// С глубиной сигнал слабеет. За плотной точкой — тень, за жидкостью — светлее.
+// С глубиной сигнал слабеет. За плотной точкой — тень, за жидкостью — светлее. В подвздошной
+// области (часть 29) — петли кишки с газом и грязной тенью, сосуды и отросток «мишенью».
 import { BlendMode, BlurStyle, ClipOp, PaintStyle, Skia, type SkPaint, type SkPath, type SkPicture, StrokeCap, StrokeJoin, TileMode } from '@shopify/react-native-skia';
 import { APEX, HALF, polar, type Pt, R0, R1, ray, type UsFindings, usGeometry } from './geometry';
 
@@ -16,6 +17,11 @@ const CORTEX = '#555555';
 const SINUS = '#bdbdbd';
 const WALL = '#d8d8d8';
 const FLUID = '#060606';
+const BOWEL = '#7c7c7c';
+const LOOP = '#666666';
+const MUSCULARIS = '#2c2c2c';
+const SUBMUCOSA = '#c9c9c9';
+const HALO = '#b3b3b3';
 
 export function recordUsSector(width: number, findings: UsFindings, seed: number): SkPicture {
   const W = width;
@@ -60,8 +66,8 @@ export function recordUsSector(width: number, findings: UsFindings, seed: number
   c.save();
   c.clipPath(sector, ClipOp.Intersect, true);
 
-  // 1. Ткани: печень — фоном, сверху кожа и мышцы стенки с яркими фасциями
-  c.drawPath(sector, paint(LIVER));
+  // 1. Ткани: печень — фоном (в подвздошной области — брыжейка и кишка), сверху кожа и мышцы стенки с яркими фасциями
+  c.drawPath(sector, paint(g.view === 'appendix' ? BOWEL : LIVER));
   c.drawPath(band(R0, g.skin), paint(SKIN, { blur: 0.004 }));
   c.drawPath(band(g.skin, g.wall), paint(MUSCLE, { blur: 0.004 }));
   for (const r of [g.skin, g.wall, (g.skin + g.wall) / 2]) c.drawPath(arc(r), paint(WALL, { stroke: r === (g.skin + g.wall) / 2 ? 0.002 : 0.004, alpha: 0.7, blur: 0.002 }));
@@ -79,6 +85,17 @@ export function recordUsSector(width: number, findings: UsFindings, seed: number
     c.drawPath(pathOf(lb, false), paint(WALL, { stroke: 0.003, alpha: 0.7, blur: 0.002 }));
   }
 
+  // 2б. Подвздошная область: петли кишки, в глубине — сосуды; вокруг воспалённого отростка — светлый отёчный жир
+  for (const l of g.loops ?? []) c.drawPath(pathOf(l.wall), paint(LOOP, { blur: 0.006 }));
+  for (const v of g.vessels ?? []) c.drawCircle(X(v.c[0]), X(v.c[1]), v.r * W, paint(FLUID, { blur: 0.003 }));
+  if (g.halo) c.drawPath(pathOf(g.halo), paint(HALO, { blur: 0.018 }));
+  if (g.target) {
+    // «мишень»: мышечный слой — тёмное кольцо, подслизистый — светлое, просвет — тёмный
+    c.drawPath(pathOf(g.target[1]), paint(MUSCULARIS, { blur: 0.003 }));
+    c.drawPath(pathOf(g.target[2]), paint(SUBMUCOSA, { blur: 0.003 }));
+    c.drawPath(pathOf(g.target[3]), paint(FLUID, { blur: 0.003 }));
+  }
+
   // 3. Жидкость — чёрная: полость пузыря, полоса у органа, расширенная лоханка
   if (g.gallbladder) c.drawPath(pathOf(g.gallbladder), paint(FLUID, { blur: 0.002 }));
   if (g.fluid) c.drawPath(pathOf(g.fluid), paint(FLUID, { blur: 0.003 }));
@@ -93,6 +110,14 @@ export function recordUsSector(width: number, findings: UsFindings, seed: number
 
   // 5. Стенка пузыря — тонкая яркая; за пузырём — светлее, за точками — тень
   if (g.gallbladder) c.drawPath(pathOf(g.gallbladder), paint(WALL, { stroke: 0.005, blur: 0.002 }));
+  // кишка: стенка — тонкая яркая, газ — ярче всего, под газом — грязная (не чёрная) тень
+  for (const l of g.loops ?? []) {
+    c.drawPath(pathOf(l.shadow), paint('#000000', { alpha: 0.45, blur: 0.02 }));
+    c.drawPath(pathOf(l.wall), paint(WALL, { stroke: 0.003, alpha: 0.75, blur: 0.002 }));
+    c.drawPath(pathOf(l.gas, false), paint('#ffffff', { stroke: 0.008, blur: 0.003 }));
+  }
+  for (const v of g.vessels ?? []) c.drawCircle(X(v.c[0]), X(v.c[1]), v.r * W, paint(WALL, { stroke: 0.003, alpha: 0.6, blur: 0.002 }));
+  if (g.target) c.drawPath(pathOf(g.target[0]), paint(WALL, { stroke: 0.004, blur: 0.002 }));
   if (g.enhancement) c.drawPath(pathOf(g.enhancement), paint('#ffffff', { alpha: 0.24, blur: 0.02, blend: BlendMode.Screen }));
   for (const k of g.foci) c.drawPath(pathOf(k.shadow), paint('#000000', { alpha: 0.85, blur: 0.01 }));
   // точка — яркая дуга: светится поверхность, обращённая к датчику, за ней — уже тень

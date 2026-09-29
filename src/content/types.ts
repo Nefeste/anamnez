@@ -261,7 +261,7 @@ export type Season = 'winter' | 'spring' | 'summer' | 'autumn';
 // --- каталог больницы (spec 2026-09-own-hospital) ------------------------------------------
 
 export type Cell = [number, number];
-export type ObjectKind = 'bed' | 'chair' | 'desk' | 'couch' | 'cabinet' | 'machine' | 'plant' | 'sink' | 'bench' | 'xray' | 'table' | 'ecg' | 'analyzer' | 'or_table' | 'anesthesia';
+export type ObjectKind = 'bed' | 'chair' | 'desk' | 'couch' | 'cabinet' | 'machine' | 'plant' | 'sink' | 'bench' | 'xray' | 'table' | 'ecg' | 'analyzer' | 'or_table' | 'anesthesia' | 'us';
 export type RoomSizeId = 'S' | 'M' | 'L';
 
 /**
@@ -317,7 +317,7 @@ export interface Equipment {
   name: Text;
   gen: Text;
   room: Id;
-  sprite: 'ecg' | 'analyzer' | 'xray' | 'or_table' | 'anesthesia';
+  sprite: 'ecg' | 'analyzer' | 'xray' | 'or_table' | 'anesthesia' | 'us';
   upgradeOf?: Id;
   /** своё место в помещении — номер из `slots`; занято — первое свободное */
   slot?: number;
@@ -346,6 +346,8 @@ export interface StaffRole {
   stands?: Id;
   /** без места в этом помещении не работает (терапевту нужна ординаторская) */
   needs?: Id;
+  /** описывает снимки своего помещения: от навыка — точность (рентгенолог, врач УЗД) */
+  reads?: true;
   /** производное: где работает */
   rooms: Id[];
   texts: { hint: Text };

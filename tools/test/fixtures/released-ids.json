@@ -1,6 +1,6 @@
 {
-  "version": "0.0.46",
-  "base": 23,
+  "version": "0.0.47",
+  "base": 24,
   "ids": {
     "achievements": [
       "ach.allergy_10",
@@ -141,6 +141,8 @@
       "eq.immuno_analyzer",
       "eq.or_table",
       "eq.urine_analyzer",
+      "eq.us_basic",
+      "eq.us_expert",
       "eq.xray_analog",
       "eq.xray_digital"
     ],
@@ -186,6 +188,7 @@
       "exam.tsh",
       "exam.urinalysis",
       "exam.urine_dipstick",
+      "exam.us_abdomen",
       "exam.vitals",
       "exam.xray_chest"
     ],
@@ -210,6 +213,7 @@
       "hx.travel",
       "img.cxr_hyperinflation",
       "img.cxr_infiltrate",
+      "img.us_appendicitis",
       "lab.creatinine_high",
       "lab.crp_high",
       "lab.ferritin_low",
@@ -345,6 +349,7 @@
       "role.radiographer",
       "role.radiologist",
       "role.registrar",
+      "role.sonographer",
       "role.surgeon",
       "role.therapist"
     ],
@@ -359,6 +364,7 @@
       "room.staff",
       "room.toilet",
       "room.triage",
+      "room.ultrasound",
       "room.waiting",
       "room.ward",
       "room.xray"
@@ -378,6 +384,7 @@
       "room.staff/S",
       "room.toilet/S",
       "room.triage/S",
+      "room.ultrasound/S",
       "room.waiting/L",
       "room.waiting/M",
       "room.waiting/S",

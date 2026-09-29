@@ -39,4 +39,7 @@ export const US_CASES: UsCase[] = [
   { key: 'us-kidney', findings: { view: 'kidney' }, seed: 3, label: u.kidney },
   { key: 'us-kidney-pelvis', findings: { view: 'kidney', pelvis: 0.7 }, seed: 4, label: u.kidneyPelvis },
   { key: 'us-kidney-fluid', findings: { view: 'kidney', fluid: 0.6 }, seed: 5, label: u.kidneyFluid },
+  { key: 'us-appendix', findings: { view: 'appendix' }, seed: 6, label: u.appendix },
+  { key: 'us-appendix-target', findings: { view: 'appendix', appendix: 0.8 }, seed: 7, label: u.appendixTarget },
+  { key: 'us-appendix-fluid', findings: { view: 'appendix', appendix: 0.9, fluid: 0.6 }, seed: 8, label: u.appendixFluid },
 ];

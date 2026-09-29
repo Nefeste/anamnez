@@ -46,6 +46,9 @@ findings:
   - { f: sign.peritoneal_signs, band: often }
   - { f: lab.wbc_high, band: usually }
   - { f: lab.crp_high, band: often }
+  - f: img.us_appendicitis
+    band: { pct: 100 }
+    note: "воспалён отросток у каждого больного; найдёт ли его УЗИ — чувствительность обследования (WSES 2020: 76 % у больных с подтверждённым аппендицитом)"
 confirm: clinical
 redFlags: [sign.peritoneal_signs]
 treatment:

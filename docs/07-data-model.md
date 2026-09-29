@@ -260,7 +260,7 @@ interface RoomSize {
   places: number;                        // мест для нанятых врачей — ординаторская (0.0.32)
 }
 interface Equipment {
-  id: Id; name: Text; gen: Text; room: Id; sprite: 'ecg' | 'analyzer' | 'xray' | 'or_table' | 'anesthesia'; upgradeOf?: Id;
+  id: Id; name: Text; gen: Text; room: Id; sprite: 'ecg' | 'analyzer' | 'xray' | 'or_table' | 'anesthesia' | 'us'; upgradeOf?: Id;
   slot?: number;                         // своё место в помещении (стол — под пациентом, 0.0.45)
   price: number; upkeep: number;
   breakdown: P;                          // шанс поломки за день работы; поломок в 0.2.0 нет
@@ -275,6 +275,7 @@ interface StaffRole {
   salary: [number, number];              // за смену при навыке 1 и 5
   stands?: Id;                           // встаёт на место этой должности: терапевт — врача (0.0.32)
   needs?: Id;                            // без места в этом помещении не работает: ординаторская
+  reads?: true;                          // описывает снимки помещения: рентгенолог, врач УЗД (0.0.47)
   rooms: Id[];                           // производное: где работает (встающий — там же, где та должность)
   texts: { hint: Text };
 }
@@ -411,6 +412,12 @@ interface Patient {
   `taken`, сколько его пациентов вы забрали. Приём с `from` — ваш: в прежних строках итогов,
   в профиле и оценке «Смены».
 
+- С 0.0.47 — кабинет УЗИ (часть 29): помещение `room.ultrasound`, аппараты `eq.us_basic` и
+  `eq.us_expert` (рисунок `us`), должность `role.sonographer` с `reads`; у должности `reads` —
+  кто описывает снимки помещения, от его навыка точность (прежде — всегда рентгенолог). У
+  карты смены — место пациента `spots.ultrasound`, фигурка `sonographer`, помещение
+  обследования `ultrasound`. Картинка результата `ResultImage` — ещё и `us` (вид `appendix`,
+  виден ли отросток). Схема сохранения прежняя.
 - С 0.0.46 — перфорация и смерть (часть 28б): у операции `stay.op.complicated` — на момент
   разреза болезнь была в осложнённой стадии; у лежащего `stay.dies` — сутки, в ночь которых он
   умрёт (решено в конце операции). Исход `died`; в «мягком режиме» — `transferred` с

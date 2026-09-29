@@ -190,11 +190,15 @@ describe('готовая амбулатория', () => {
     ]);
   });
 
-  test('работает каждое помещение, доступно каждое обследование, смену можно открыть', () => {
+  test('работает каждое помещение, доступно каждое обследование, кроме УЗИ, смену можно открыть', () => {
     const plan = planOf(db, presetHospital(db, clinic).hospital);
     const working = workingRooms(db, plan, presetStaff);
     expect(working.size).toBe(plan.rooms.length);
-    for (const id of Object.keys(db.exams)) expect({ id, ...examWhere(db, plan, working, presetStaff, id) }).toMatchObject({ id, rooms: expect.any(Array) });
+    // кабинета УЗИ в амбулатории нет (spec 2026-09-chapter-2): практика — прежняя амбулатория
+    const us = Object.keys(db.exams).filter(id => db.exams[id].room === 'room.ultrasound');
+    expect(us).toEqual(['exam.us_abdomen']);
+    for (const id of Object.keys(db.exams).filter(x => !us.includes(x))) expect({ id, ...examWhere(db, plan, working, presetStaff, id) }).toMatchObject({ id, rooms: expect.any(Array) });
+    for (const id of us) expect(examWhere(db, plan, working, presetStaff, id)).toEqual({ block: { kind: 'noRoom', room: 'room.ultrasound' } });
     expect(openBlocks(db, plan, working, presetStaff)).toEqual([]);
   });
 

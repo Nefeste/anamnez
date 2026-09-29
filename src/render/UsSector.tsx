@@ -11,7 +11,7 @@ export function UsSector({ width, findings, seed = 1, still = false }: { width: 
     () => recordUsSector(width, findings, seed),
     // находки сравниваются по значению: новый объект с теми же полями не перерисовывает сектор
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [width, seed, findings.view, findings.foci?.count, findings.foci?.size, findings.pelvis, findings.fluid],
+    [width, seed, findings.view, findings.foci?.count, findings.foci?.size, findings.pelvis, findings.fluid, findings.appendix],
   );
   return (
     <Canvas style={{ width, height: width }} __destroyWebGLContextAfterRender={still}>

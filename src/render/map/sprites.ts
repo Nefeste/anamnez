@@ -8,9 +8,9 @@ import type { ObjectKind } from '@/engine/hospital/grid';
 import { CLOTHES, HAIR, SKIN } from '@/render/look';
 import { BODIES, type Hair, HAIRS, HEADS, STYLES, UNIFORM } from './figures';
 
-export const OBJECT_KINDS: ObjectKind[] = ['bed', 'chair', 'desk', 'couch', 'cabinet', 'machine', 'plant', 'sink', 'bench', 'xray', 'table', 'ecg', 'analyzer', 'or_table', 'anesthesia'];
-/** Аппараты, у которых есть рисунок «работает» — горит экран, трубка или лампа над столом (части 23, 28). */
-export const LIT_KINDS: ObjectKind[] = ['ecg', 'analyzer', 'xray', 'or_table', 'anesthesia'];
+export const OBJECT_KINDS: ObjectKind[] = ['bed', 'chair', 'desk', 'couch', 'cabinet', 'machine', 'plant', 'sink', 'bench', 'xray', 'table', 'ecg', 'analyzer', 'or_table', 'anesthesia', 'us'];
+/** Аппараты, у которых есть рисунок «работает» — горит экран, трубка или лампа над столом (части 23, 28, 29). */
+export const LIT_KINDS: ObjectKind[] = ['ecg', 'analyzer', 'xray', 'or_table', 'anesthesia', 'us'];
 
 export interface SpriteAtlas {
   image: SkImage;
@@ -166,6 +166,9 @@ const DARK = '#3A4649';
 const SCREEN_ON = '#CFF5E2';
 const TRACE_ON = '#1F7A55';
 const TUBE_ON = '#FFE9A3';
+/** Экран УЗ-аппарата: тёмный, на нём светлый веер картинки (часть 29). */
+const US_SCREEN = '#1D2426';
+const US_FAN = '#C9D1D3';
 
 /** Предметы и аппараты сверху: спинка, изголовье, экран — к северу, лицо — к югу; `lit` — аппарат работает. */
 function drawObject(u: Pen, k: ObjectKind, lit = false) {
@@ -283,6 +286,20 @@ function drawObject(u: Pen, k: ObjectKind, lit = false) {
       u.circle(0.62, 0.64, 0.05, '#3F8A5A');
       u.circle(0.75, 0.64, 0.05, '#E7EDF0', STEEL_EDGE, 0.015);
       u.quad(0.5, 0.88, 0.52, 0.97, 0.72, 0.97, '#56666B', 0.022);
+      break;
+    case 'us':
+      // тележка: монитор на кронштейне к северу, пульт с трекболом, датчики в держателях сбоку,
+      // кабель к пациенту; работает — на экране веер картинки
+      u.rr(0.16, 0.3, 0.84, 0.9, 0.08, '#E6EAEC', STEEL_EDGE);
+      for (const [x, y] of [[0.22, 0.9], [0.78, 0.9], [0.22, 0.32], [0.78, 0.32]]) u.circle(x, y, 0.045, '#56666B');
+      u.rr(0.2, 0.04, 0.8, 0.3, 0.04, lit ? US_SCREEN : '#2F3B3E', '#56666B', 0.02);
+      if (lit) u.arc(0.5, 0.07, 0.13, 45, 90, US_FAN, 0.1);
+      u.rr(0.24, 0.42, 0.7, 0.74, 0.03, '#CFD6D9');
+      u.circle(0.47, 0.62, 0.06, '#56666B');
+      for (const x of [0.31, 0.39, 0.55, 0.63]) u.rr(x - 0.03, 0.47, x + 0.03, 0.51, 0.01, '#95A3A7');
+      u.rr(0.73, 0.44, 0.82, 0.54, 0.02, '#56666B');
+      u.rr(0.73, 0.58, 0.82, 0.68, 0.02, '#56666B');
+      u.quad(0.78, 0.68, 0.96, 0.8, 0.86, 0.97, '#56666B', 0.022);
       break;
   }
 }

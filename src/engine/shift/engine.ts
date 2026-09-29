@@ -639,13 +639,24 @@ function call(db: ContentDb, s: ShiftState, id: string): Notice[] {
  * Сделать можно, только если в больнице работает его помещение с подходящим аппаратом и есть
  * где взять материал (spec 2026-09-own-hospital); иначе ничего не меняется. К аппарату —
  * очередь по помещению: снимок делают там, где освободятся раньше. Время — с поправкой
- * аппарата и человека, точность снимка — аппарата и рентгенолога; в готовой амбулатории
+ * аппарата и человека, точность снимка — аппарата и того, кто описывает снимок; в готовой амбулатории
  * всё ровно как в базе.
  */
 function exam(db: ContentDb, s: ShiftState, examId: Id): Notice[] {
   const p = current(s);
   const cost = p ? orderExam(db, s, p, examId) : null;
   return p && cost !== null ? spend(db, s, p, cost) : [];
+}
+
+/**
+ * Точность снимка в помещении: поправка аппарата и того, кто снимки этого помещения описывает, —
+ * в рентгене рентгенолога, в УЗИ врача УЗД (роль с `reads`, часть 29), п. п.
+ */
+export function imagingSkill(db: ContentDb, staff: readonly StaffMember[], room: { id: string; type: Id }, eqId?: Id): ExamSkill {
+  const eq = eqId ? db.equipment[eqId] : undefined;
+  const reader = db.rooms[room.type].staff.find(r => db.roles[r]?.reads);
+  const [rs, rp] = readingOf(db, reader ? memberAt(staff, room.id, reader) : undefined);
+  return { sens: 1, spec: 1, sensPp: (eq?.quality.sens ?? 0) + rs, specPp: (eq?.quality.spec ?? 0) + rp };
 }
 
 /**
@@ -666,11 +677,7 @@ function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pc
   const eq = eqId ? db.equipment[eqId] : undefined;
   // время: аппарат и тот, кто делает (первая должность помещения), — в процентах записанного
   const roomPct = room ? Math.round((eq?.speed ?? 1) * speedOf(db, memberAt(ctx.staff, room.id, db.rooms[room.type].staff[0]))) : 100;
-  let skill: ExamSkill = NORMAL_SKILL;
-  if (room && e.kind === 'imaging') {
-    const [rs, rp] = readingOf(db, memberAt(ctx.staff, room.id, 'role.radiologist'));
-    skill = { sens: 1, spec: 1, sensPp: (eq?.quality.sens ?? 0) + rs, specPp: (eq?.quality.spec ?? 0) + rp };
-  }
+  const skill = room && e.kind === 'imaging' ? imagingSkill(db, ctx.staff, room, eqId) : NORMAL_SKILL;
 
   // песочница: показано ли — по тому, что известно сейчас; показанные оплачивают ОМС и ДМС
   if (s.economy && e.cost > 0 && indicated(db, p.patient, observationsOf(p), candidatesOf(db, s.meta.department), examId)) (p.indicated ??= []).push(examId);

@@ -267,6 +267,35 @@ function surgerySave(): { save: string; id: string } {
   return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s }), id };
 }
 
+/**
+ * Песочница с кабинетом УЗИ (spec 2026-09-chapter-2, часть 29): УЗ-аппарат, врач УЗД из
+ * кандидатов; день 1 — у вас в кабинете пациент с аппендицитом, УЗИ сделано и описано
+ * («Студент»: обследования не ошибаются — отросток виден).
+ */
+function usSave(): { save: string; id: string } {
+  const { db } = buildDb();
+  const s = newSandbox(db, { seed: 23, season: 'winter', difficulty: 'student', start: 'clinic', budget: db.economy.sandbox.budgets.generous });
+  const cells: [number, number][] = [];
+  for (let x = 29; x <= 38; x++) for (let y = 7; y <= 9; y++) cells.push([x, y]);
+  apply(db, s, { kind: 'build', cmd: { kind: 'corridor', cells } });
+  apply(db, s, { kind: 'build', cmd: { kind: 'room', type: 'room.ultrasound', size: 'S', x: 29, y: 0, rot: 0 } });
+  const us = s.hospital!.rooms.find(r => r.type === 'room.ultrasound')!.id;
+  apply(db, s, { kind: 'build', cmd: { kind: 'buy', room: us, equipment: 'eq.us_basic' } });
+  apply(db, s, { kind: 'buildEnd' });
+  const c = s.candidates!.find(x => x.role === 'role.sonographer')!;
+  apply(db, s, { kind: 'hire', id: c.id });
+  apply(db, s, { kind: 'assign', id: c.id, room: us });
+  apply(db, s, { kind: 'nextDay' });
+  for (let i = 0; i < 600 && s.queue.length === 0; i++) apply(db, s, { kind: 'advance', seconds: 60 });
+  const id = s.queue[0];
+  s.patients[id].patient = generatePatient(db, 4343, { department: 'dept.therapy', season: 'winter', primary: 'cond.appendicitis', params: {} });
+  apply(db, s, { kind: 'call', id });
+  apply(db, s, { kind: 'exam', exam: 'exam.vitals' });
+  apply(db, s, { kind: 'exam', exam: 'exam.us_abdomen' });
+  apply(db, s, { kind: 'waitResults' });
+  return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s }), id };
+}
+
 /** Песочница до открытия: готовая амбулатория, бюджет «обычный» — экран «Перед открытием». */
 function sandboxFreshSave(): string {
   const { db } = buildDb();
@@ -527,8 +556,8 @@ try {
   const heads = await drawn('[data-testid^="head-ct-"] canvas, [data-testid^="head-mri-"] canvas');
   const us = await drawn('[data-testid^="us-"] canvas');
   const allImages = await drawn('canvas');
-  check(heads.length === 7 && heads.every(Boolean) && us.length === 5 && us.every(Boolean) && allImages.every(Boolean),
-    `П5: срезы головы нарисованы — ${heads.filter(Boolean).length} из 7, УЗИ — ${us.filter(Boolean).length} из 5; все рисунки экрана — ${allImages.filter(Boolean).length} из ${allImages.length} (смотреть 06-head-*.png, 06-us.png)`);
+  check(heads.length === 7 && heads.every(Boolean) && us.length === 8 && us.every(Boolean) && allImages.every(Boolean),
+    `П5: срезы головы нарисованы — ${heads.filter(Boolean).length} из 7, УЗИ — ${us.filter(Boolean).length} из 8; все рисунки экрана — ${allImages.filter(Boolean).length} из ${allImages.length} (смотреть 06-head-*.png, 06-us.png)`);
   for (const id of ['head-ct', 'head-mri', 'us']) {
     await page.getByTestId(id).scrollIntoViewIfNeeded();
     await page.waitForTimeout(300);
@@ -608,6 +637,9 @@ try {
   check((await text(page, 'visit-clock')) === roomClock, 'смена: в кабинете часы идут только делами');
   await page.getByTestId('exam-exam.ask_complaints').click();
   await page.getByTestId('tab-order').click();
+  // кабинета УЗИ в амбулатории нет (часть 29): обследование серым, с причиной
+  const usHere = page.getByTestId('exam-exam.us_abdomen');
+  check(await usHere.isDisabled() && (await usHere.innerText()).includes('нет кабинета УЗИ'), `смена: УЗИ в амбулатории — «${(await usHere.innerText()).replace(/\n/g, ' · ')}»`);
   await page.getByTestId('exam-exam.cbc').click();
   await page.screenshot({ path: join(OUT, '08-shift-card.png') });
   await page.getByTestId('visit-send-away').click();
@@ -1105,6 +1137,38 @@ try {
   await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
   const risk = await page.locator('text=Перфорация без операции').first().isVisible().catch(() => false);
   check(risk, 'энциклопедия, аппендицит: «Перфорация без операции: за первые 36 ч — до 2 %…»');
+
+  // кабинет УЗИ (spec 2026-09-chapter-2, часть 29): у вас пациент с аппендицитом, УЗИ сделано —
+  // результат сектором и строкой; на карте — кабинет УЗИ; в энциклопедии — обследование и кабинет
+  const usv = usSave();
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', usv.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId('shift-continue').waitFor({ timeout: 15_000 });
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId('shift-continue').click();
+  await visible(page, 'result-us').waitFor({ timeout: 10_000 });
+  await visible(page, 'result-us').scrollIntoViewIfNeeded();
+  await page.waitForTimeout(800);
+  const usBox = await visible(page, 'result-us').boundingBox();
+  const usLine = await page.locator('text=утолщённый несжимаемый червеобразный отросток').first().isVisible().catch(() => false);
+  check(usBox !== null && usBox.height > 150 && usLine, `УЗИ: результат в карте — сектором ${Math.round(usBox?.width ?? 0)} × ${Math.round(usBox?.height ?? 0)} и строкой «…утолщённый несжимаемый червеобразный отросток…»`);
+  await page.screenshot({ path: join(OUT, '18-us-result.png'), fullPage: true });
+  await page.goBack();
+  await page.getByTestId('shift-clock').waitFor({ timeout: 10_000 });
+  await page.waitForTimeout(800);
+  await page.screenshot({ path: join(OUT, '18-us-map.png') });
+  await page.goto(`${base}/encyclopedia/article/exam.us_abdomen`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const usAcc = await page.locator('text=чувствительность 76\u00a0%').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'УЗИ брюшной полости' && usAcc, `энциклопедия, УЗИ: ${await visibleText(page, 'enc-article-title')} — чувствительность 76 %, специфичность 95 %`);
+  await page.goto(`${base}/encyclopedia/article/room.ultrasound`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  check((await visibleText(page, 'enc-article-title')) === 'Кабинет УЗИ', `энциклопедия, кабинет: ${await visibleText(page, 'enc-article-title')}`);
 
   // энциклопедия: раздел «Шкалы», статья NEWS2 — баллы по показателям
   await page.goto(`${base}/encyclopedia/article/score.news2`);

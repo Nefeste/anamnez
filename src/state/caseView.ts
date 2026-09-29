@@ -31,7 +31,9 @@ export interface Line {
  */
 export type ResultImage =
   | { kind: 'xray'; infiltrate?: 'right' | 'left' | 'both'; hyperinflation: boolean; seed: number }
-  | { kind: 'ecg'; rate: number; st: number; rScale: number; seed: number };
+  | { kind: 'ecg'; rate: number; st: number; rScale: number; seed: number }
+  /** УЗИ брюшной полости (часть 29): правая подвздошная область; `appendix` — виден воспалённый отросток */
+  | { kind: 'us'; view: 'appendix'; appendix: number; seed: number };
 
 /** Результаты одного обследования. `fresh` — пришли за последнее действие игрока. */
 export interface ResultGroup {
@@ -274,7 +276,7 @@ function treatmentChoices(obs: readonly Observation[]): VisitView['treatments'] 
     .sort((a, b) => (a.name < b.name ? -1 : 1));
 }
 
-/** Снимок и лента — по тому, что показало это обследование; частота на ленте — по пульсу. */
+/** Снимок, лента и сектор УЗИ — по тому, что показало это обследование; частота на ленте — по пульсу. */
 function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observation[], seed: number): ResultImage | undefined {
   const shown = (f: Id) => obs.find(o => o.f === f && o.shown);
   if (exam === 'exam.xray_chest') {
@@ -296,6 +298,7 @@ function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observat
       seed,
     };
   }
+  if (exam === 'exam.us_abdomen') return { kind: 'us', view: 'appendix', appendix: shown('img.us_appendicitis') ? 0.8 : 0, seed };
   return undefined;
 }
 

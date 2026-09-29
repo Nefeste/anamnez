@@ -25,9 +25,11 @@ const edit = (dir: string, file: string, from: string, to: string) => {
 };
 
 describe('валидатор базы', () => {
-  test('настоящая база — без ошибок; у каждой болезни есть источник и отметка проверки', () => {
-    const { db, errors } = buildDb();
+  test('настоящая база — без ошибок и предупреждений; у каждой болезни есть источник и отметка проверки', () => {
+    const { db, errors, warnings } = buildDb();
     expect(errors).toEqual([]);
+    // точная частота — с пояснением, откуда она (note, с 0.0.47)
+    expect(warnings).toEqual([]);
     for (const c of Object.values(db.conditions)) {
       expect(c.sources.length).toBeGreaterThan(0);
       expect(['draft', 'checked', 'reviewed']).toContain(c.review);
@@ -144,7 +146,7 @@ describe('валидатор базы', () => {
 describe('каталог больницы', () => {
   test('собран: у помещений — что открывают, у аппаратов — какие обследования, у должностей — где работают', () => {
     const { db } = buildDb();
-    expect(Object.keys(db.rooms)).toHaveLength(13);
+    expect(Object.keys(db.rooms)).toHaveLength(14);
     // нанятый врач (spec 2026-09-hired-doctors): встаёт на место врача, нужна ординаторская с местами
     expect(db.roles['role.therapist']).toMatchObject({ hire: true, stands: 'role.doctor', needs: 'room.staff', rooms: ['room.office'] });
     expect(db.rooms['room.staff'].sizes.map(z => z.places)).toEqual([2, 4]);
@@ -171,10 +173,38 @@ describe('каталог больницы', () => {
     expect(db.conditions['cond.appendicitis'].surgery).toEqual({ tx: 'tx.appendectomy', window: 24 });
     // перфорация (часть 28б): Bickell 2006 — 2 % за первые 36 ч, дальше 5 % за 12 ч
     expect(db.conditions['cond.appendicitis'].complication).toEqual({ name: { ru: 'перфорация' }, early: { hours: 36, p: 200 }, later: { every: 12, p: 500 }, stay: [3, 5] });
+    // кабинет УЗИ (часть 29): врач УЗД сам делает и сам описывает; экспертный аппарат — улучшение базового
+    expect(db.rooms['room.ultrasound']).toMatchObject({ needsEquipment: true, staff: ['role.sonographer'], equipment: ['eq.us_basic', 'eq.us_expert'], exams: ['exam.us_abdomen'] });
+    expect(db.equipment['eq.us_expert']).toMatchObject({ upgradeOf: 'eq.us_basic', speed: 0.85, quality: { sens: 5, spec: 1 }, exams: ['exam.us_abdomen'] });
+    expect(db.exams['exam.us_abdomen']).toMatchObject({ kind: 'imaging', radiation: 'none', checks: [{ f: 'img.us_appendicitis', sens: 7600, spec: 9500 }] });
+    expect(Object.values(db.roles).filter(r => r.reads).map(r => r.id).sort()).toEqual(['role.radiologist', 'role.sonographer']);
+    expect(db.roles['role.sonographer'].rooms).toEqual(['room.ultrasound']);
+    expect(db.conditions['cond.appendicitis'].findings).toContainEqual(expect.objectContaining({ f: 'img.us_appendicitis' }));
     expect(db.roles['role.doctor'].hire).toBe(false);
     expect(db.rooms['room.waiting'].sizes.map(z => z.seats)).toEqual([6, 10, 18]);
     // у каждого обследования в лаборатории, ЭКГ и рентгене — аппарат
     for (const e of Object.values(db.exams)) if (e.room && db.rooms[e.room].needsEquipment) expect(e.equipment?.length).toBeGreaterThan(0);
+  });
+
+  test('пояснение — только у точной частоты; точная без пояснения — предупреждение', () => {
+    const loose = broken(d => edit(d, 'conditions/therapy/appendicitis.yaml', '  - { f: lab.crp_high, band: often }', '  - { f: lab.crp_high, band: often, note: "частота по полосе, пояснять нечего" }'));
+    expect(loose.some(e => e.includes('cond.appendicitis: у lab.crp_high пояснение (note) — только у точной частоты'))).toBe(true);
+    const dir = mkdtempSync(join(tmpdir(), 'anamnez-content-'));
+    try {
+      cpSync(CONTENT_DIR, dir, { recursive: true });
+      const p = join(dir, 'conditions/therapy/appendicitis.yaml');
+      writeFileSync(p, readFileSync(p, 'utf8').replace(/\n {4}note: "[^"]*"/, ''));
+      expect(buildDb(dir).warnings.some(w => w.includes('cond.appendicitis: точная частота img.us_appendicitis = 100 %'))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('снимки описывает один человек и там, где их делают', () => {
+    const two = broken(d => edit(d, 'hospital/roles/radiographer.yaml', 'salary: [1500, 2500]\n', 'salary: [1500, 2500]\nreads: true\n'));
+    expect(two.some(e => e.includes('room.xray: снимки описывают сразу role.radiographer и role.radiologist — должен один'))).toBe(true);
+    const lab = broken(d => edit(d, 'hospital/roles/lab_tech.yaml', 'salary: [1400, 2300]\n', 'salary: [1400, 2300]\nreads: true\n'));
+    expect(lab.some(e => e.includes('role.lab_tech: описывает снимки, а там, где он работает, снимков не делают'))).toBe(true);
   });
 
   test('смотровая приёмного без мест для скорой; шкала с щелью между полосами или с чужим признаком', () => {

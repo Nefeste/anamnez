@@ -1,5 +1,5 @@
 // Снимки кодом (spec 2026-09-ct-mri-ultrasound): срез головы на КТ и МРТ (часть 20) и сектор УЗИ
-// (часть 21) — геометрия очагов, и сам рисунок без экрана (Skia через CanvasKit,
+// (часть 21; подвздошная область с отростком — часть 29) — геометрия очагов, и сам рисунок без экрана (Skia через CanvasKit,
 // tools/imaging/headless.ts): где светло и где темно, то же зерно — тот же рисунок.
 import { beforeAll, describe, expect, test } from 'bun:test';
 import { brainRadius, headGeometry, type HeadFindings, type HeadFocus, inside, skullInnerRadius } from '../../src/render/ct/geometry';
@@ -195,6 +195,38 @@ describe('сектор УЗИ: геометрия', () => {
     expect(usGeometry({ view: 'kidney' }, 3).fluid).toBeUndefined();
     expect(usGeometry({ view: 'kidney' }, 3).pelvisParts).toBeUndefined();
   });
+
+  test('подвздошная область: петли и сосуды — в секторе; «мишень» — кольца одно в другом, вокруг — жир; растёт с толщиной', () => {
+    const g = usGeometry({ view: 'appendix', appendix: 0.8 }, 7);
+    expect(g.loops).toHaveLength(3);
+    for (const l of g.loops!) {
+      // петля может уходить за край сектора — рисунок обрезан по нему; середина — в секторе
+      expect(inSector(centroid(l.wall))).toBe(true);
+      for (const p of l.gas) expect(l.wall).toContainEqual(p);
+      // тень под газом — по лучам до конца сектора
+      expect(l.shadow.filter(p => Math.abs(usPolar(p).r - R1) < 1e-9)).toHaveLength(2);
+    }
+    expect(g.vessels).toHaveLength(2);
+    for (const v of g.vessels!) expect(inSector(v.c)).toBe(true);
+    const rings = g.target!;
+    expect(rings).toHaveLength(4);
+    for (const p of rings[0]) expect(inSector(p)).toBe(true);
+    for (let k = 1; k < rings.length; k++) for (const p of rings[k]) expect(inside(p, rings[k - 1])).toBe(true);
+    for (const p of rings[0]) expect(inside(p, g.halo!)).toBe(true);
+    // без отростка — ни мишени, ни жира, ни жидкости у него; толще — шире
+    const none = usGeometry({ view: 'appendix', fluid: 1 }, 7);
+    expect([none.target, none.halo, none.fluid]).toEqual([undefined, undefined, undefined]);
+    const width = (t: number) => {
+      const xs = usGeometry({ view: 'appendix', appendix: t }, 7).target![0].map(p => p[0]);
+      return Math.max(...xs) - Math.min(...xs);
+    };
+    expect(width(1)).toBeGreaterThan(width(0.3));
+    // жидкость — серп под отростком: дальше от датчика, чем его середина
+    const wet = usGeometry({ view: 'appendix', appendix: 0.9, fluid: 0.6 }, 8);
+    const c = centroid(wet.target![0]);
+    for (const p of wet.fluid!) expect(usPolar(p).r).toBeGreaterThan(usPolar(c).r);
+    expect(usGeometry({ view: 'appendix', appendix: 0.9 }, 8).fluid).toBeUndefined();
+  });
 });
 
 describe('сектор УЗИ: рисунок без экрана', () => {
@@ -242,11 +274,33 @@ describe('сектор УЗИ: рисунок без экрана', () => {
     expect(at(wide, c)).toBeLessThan(30);
   });
 
+  test('отросток «мишенью»: тёмный просвет, светлый подслизистый слой, тёмный мышечный; вокруг — светлый жир', async () => {
+    const f = { view: 'appendix' as const, appendix: 0.8 };
+    const ring = usGeometry(f, 7).target![0];
+    const c = centroid(ring);
+    const xs = ring.map(p => p[0]);
+    const R = (Math.max(...xs) - Math.min(...xs)) / 2;
+    /** Средняя яркость по кругу радиуса k·R вокруг середины отростка. */
+    const round = (px: Uint8Array, k: number) => {
+      let sum = 0;
+      for (let i = 0; i < 16; i++) sum += at(px, [c[0] + k * R * Math.cos((i * Math.PI) / 8), c[1] + k * R * Math.sin((i * Math.PI) / 8)]);
+      return sum / 16;
+    };
+    const on = (await draw(f, 7)).rgba;
+    const off = (await draw({ view: 'appendix' }, 7)).rgba;
+    expect(at(on, c)).toBeLessThan(30);
+    expect(round(on, 0.45)).toBeGreaterThan(at(on, c) + 100);
+    expect(round(on, 0.45)).toBeGreaterThan(round(on, 0.72) + 60);
+    // вокруг — светлее, чем кишка там же без отростка; без отростка в середине — серая кишка
+    expect(round(on, 1.3)).toBeGreaterThan(round(off, 1.3) + 25);
+    expect(at(off, c)).toBeGreaterThan(60);
+  });
+
   test('то же зерно — те же байты; все варианты «Проверок» рисуются', async () => {
     const a = await draw({ view: 'kidney', fluid: 0.5 }, 9);
     const b = await draw({ view: 'kidney', fluid: 0.5 }, 9);
     expect(Buffer.from(a.png).equals(Buffer.from(b.png))).toBe(true);
-    expect(US_CASES.length).toBe(5);
+    expect(US_CASES.length).toBe(8);
     for (const k of US_CASES) expect((await draw(k.findings, k.seed)).png.length).toBeGreaterThan(1000);
   });
 });
