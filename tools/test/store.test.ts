@@ -4,6 +4,7 @@
 import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { db } from '../../src/content';
 import { PRIVACY_URL, SUPPORT_EMAIL } from '../../src/info';
 import { findBrand } from '../content/brands';
 import { CAPTIONS } from '../store/captions';
@@ -72,6 +73,32 @@ describe('store: тексты', () => {
     // ссылка на карточку RuStore — её вписывают, когда карточка появится
     for (const f of ['listing.ru.md', 'privacy.ru.md', 'privacy.en.md']) {
       expect({ file: f, placeholder: read(f).match(/⟨[^⟩]*⟩/)?.[0] ?? null }).toEqual({ file: f, placeholder: null });
+    }
+  });
+
+  // считают то, с чем приходят (presenting): хроническое без обострения — фон, не болезнь приёма
+  test('числа болезней и травм — те же, что в базе (11-publishing.md §7а)', () => {
+    const come = Object.values(db.conditions).filter(c => c.presenting);
+    const ill = come.filter(c => c.kind === 'disease' || c.kind === 'syndrome');
+    const diseases = ill.length;
+    const injuries = come.filter(c => c.kind === 'injury').length;
+    const therapy = ill.filter(c => c.department === 'dept.therapy').length;
+    const surgery = ill.filter(c => c.department === 'dept.surgery').length;
+    const ru = { ill: /(\d+)\s+болезн/g, injury: /(\d+)\s+травм/g, surgery: /(\d+)\s+хирургическ/g };
+    const en = { ill: /(\d+)\s+conditions?\b/g, injury: /(\d+)\s+injur/g, surgery: /(\d+)\s+more surgical/g };
+    const nums = (text: string, re: RegExp) => [...text.matchAll(re)].map(m => Number(m[1]));
+    const files = [['listing.ru.md', ru], ['site/page.ru.md', ru], ['site/press.ru.md', ru], ['site/page.en.md', en]] as const;
+    for (const [file, re] of files) {
+      const text = read(file);
+      const ills = nums(text, re.ill), hurt = nums(text, re.injury);
+      // всего — хоть раз; другое число болезней — только терапия (поликлиника без приёмного)
+      expect({
+        file,
+        total: ills.includes(diseases) && hurt.includes(injuries),
+        ill: ills.filter(n => n !== diseases && n !== therapy),
+        injury: hurt.filter(n => n !== injuries),
+        surgery: nums(text, re.surgery).filter(n => n !== surgery),
+      }).toEqual({ file, total: true, ill: [], injury: [], surgery: [] });
     }
   });
 

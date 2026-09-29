@@ -1,7 +1,7 @@
 ---
 name: Anamnesis
 title: Anamnesis — a doctor simulator with honest diagnostics
-description: "A doctor simulator for Android: take a history, examine, order tests and X-rays, make a diagnosis and treat. 25 conditions, X-rays and ECGs, a review of every visit. Offline and ad-free. In development for RuStore."
+description: "A doctor simulator for Android: take a history, examine, order tests and X-rays, make a diagnosis and treat. 35 conditions and 16 injuries, X-rays, ultrasound and ECGs, a review of every visit. Offline and ad-free."
 kind: Doctor simulator
 status: dev
 lead: "Every patient is a puzzle: ask, examine, order tests and X-rays, make a diagnosis and treat."
@@ -34,46 +34,59 @@ shots:
     caption: Your own hospital
     alt: "Building your own hospital: rooms on the plan, the cash desk and the Build button"
 card:
-  text: Patients come to you with real illnesses, and almost every sign stays hidden until you ask, examine or order a test. Make a diagnosis, choose a treatment and see the outcome — and between shifts, build your own hospital.
+  text: Patients come to you with real illnesses and injuries, and almost every sign stays hidden until you ask, examine or order a test. Make a diagnosis, choose a treatment and see the outcome — and between shifts, build your own hospital.
   points:
-    - 25 conditions, with X-rays and ECGs unique to each patient
+    - 35 conditions and 16 injuries; each patient’s own X-rays, ultrasound and ECGs
+    - Your own hospital with an emergency department, wards and an operating room
     - A review of every visit, a campaign with a mentor and a case of the day
     - Free, offline and ad-free
 note: A game. Not a medical device and not a substitute for a doctor’s advice.
 ---
 
-Anamnesis is a doctor simulator with honest diagnostics. Every patient has a real illness,
-sometimes more than one, and almost every sign stays hidden until you ask, examine, or order a test
-or an X-ray. The game is in development; the screenshots are from the prototype, which is in
-Russian.
+Anamnesis is a doctor simulator with honest diagnostics. Every patient has a real illness or
+injury, sometimes more than one, and almost every sign stays hidden until you ask, examine, or order
+a test or an X-ray. The game is in development; the screenshots are from an early version, which is
+in Russian.
 
 ## How to play
 
 - **A shift at the clinic.** Patients come with and without appointments. The nurse takes
   temperature, pulse, blood pressure and oxygen saturation and sees urgent patients in first. The
   map shows who is where: at reception, in the waiting room, at the X-ray, in your office.
-- **Examination.** Questions about complaints and history, a physical exam, lab tests, X-rays and
-  ECGs — each with its own cost and time. While a test is running, you can send the patient to wait
-  and see the next one; those who wait too long leave.
-- **Decision.** A diagnosis, a treatment and where to treat: at home, in hospital, or call an
-  ambulance.
+- **Examination.** Questions about complaints and history, a physical exam, lab tests, X-rays,
+  ECGs and ultrasound — each with its own cost and time. While a test is running, you can send the
+  patient to wait and see the next one; those who wait too long leave.
+- **Decision.** A diagnosis, a treatment and where to treat: at home, on a ward or in the operating
+  room — or, if needed, a referral to another hospital or an ambulance.
 - **Review.** What it really was, a score for accuracy, justification, thrift and safety, and how
   an experienced doctor would have reasoned. Patients sent home sometimes get worse and come back,
   and the end-of-day summary tells you what happened to earlier patients.
 - **Campaign.** A young doctor at a village clinic. The first shift is with a mentor; after that
   come letters and tasks without deadlines.
-- **Your own hospital.** Offices, a lab and an X-ray room, hiring, the cash desk. Insurance pays
-  for a justified diagnosis and for tests that were indicated.
+- **Your own hospital.** Offices, a lab, X-ray and ultrasound rooms, an emergency department, wards
+  and an operating room, hiring, the cash desk. Doctors you hire see patients on their own. Insurance
+  pays for a justified diagnosis and for tests that were indicated.
+- **Emergency department.** The ambulance brings in the seriously ill, and urgency is checked
+  against the NEWS2 score. You do a ward round every morning and discharge patients when they are
+  better; a surgical team works in the operating room — and the longer an appendicitis or a
+  perforated ulcer waits, the more dangerous it gets.
 
 ## What’s inside
 
-- 25 conditions a general practitioner sees: from colds and flu to pneumonia, heart attack and
-  appendicitis.
-- X-ray images and ECG strips — different for every patient.
+- 35 conditions and 16 injuries. At the clinic — 25 conditions a general practitioner sees: from
+  colds and flu to pneumonia, heart attack and appendicitis. In a hospital with an emergency
+  department — 10 more surgical ones, from biliary colic to a perforated ulcer and bowel obstruction,
+  and injuries: fractures, chest trauma, concussion.
+- The images are drawn by the program and differ for every patient: chest, abdominal and bone X-rays
+  with the fracture line and displaced fragments, air and blood in the chest after trauma,
+  ultrasound and ECG strips.
+- Decision rules from clinical guidelines: whether an ankle or foot X-ray is needed, whether a CT
+  scan is needed after a blow to the head.
+- Operations — from appendectomy to hip replacement.
 - Signs don’t always show up and tests are sometimes wrong — as in real life. A diagnosis is a
   probability, and the review shows how sure an experienced doctor would have been.
 - “What is this?” for every sign and test in plain words, and more in the in-game encyclopedia:
-  conditions, signs, tests and treatment.
+  conditions, signs, tests, treatment, scores and rules.
 - A doctor profile: practice totals, an archive of recent visits with reviews, and achievements —
   no deadlines and no streaks.
 - Two themes: the light “Chart” — paper and blue ink, like a patient’s record — and the dark
@@ -104,6 +117,7 @@ see a doctor; in an emergency, call your local emergency number (112 in Russia a
 
 ## What’s next
 
-Coming up: the emergency department and ambulance, wards and the operating room, new departments
-and campaign chapters. The game is being prepared for release in RuStore for Android, in Russian
-first. Questions: support@gornitsa.games.
+Coming up: wounds, burns and knee injuries, vascular conditions and emergencies, a campaign chapter
+about a district hospital, and then new departments: cardiology, neurology, CT and MRI. The game is
+being prepared for release in RuStore for Android, in Russian first. Questions:
+support@gornitsa.games.
