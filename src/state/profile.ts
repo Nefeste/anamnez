@@ -221,6 +221,14 @@ export function sanitizeProfile(data: unknown): Profile {
     out.archive = d.archive
       .filter((r): r is CaseRecord => isObject(r) && typeof r.key === 'string' && typeof r.seed === 'number' && typeof r.department === 'string'
         && typeof r.day === 'number' && isObject(r.patient) && isObject((r.patient as Record<string, unknown>).closed))
+      // отделения, с какими приняли пациента (часть 30), — только списком строк; иначе — как у
+      // прежних записей, одно отделение смены
+      .map(r => {
+        const d = r.patient.departments as unknown;
+        if (d === undefined || (Array.isArray(d) && d.every(x => typeof x === 'string'))) return r;
+        const { departments: _, ...patient } = r.patient;
+        return { ...r, patient };
+      })
       .slice(0, ARCHIVE_SIZE);
   }
   return out;

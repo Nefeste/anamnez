@@ -15,7 +15,7 @@ import { confirmed, expensesOf, incomeOf, type Ledger, PAYERS, type Payer } from
 import { sizeOf } from '../../src/engine/hospital/build';
 import { salaryOf } from '../../src/engine/hospital/staff';
 import { examWhere } from '../../src/engine/hospital/requirements';
-import { expectedGain, knownFacts, posterior } from '../../src/engine/med/infer';
+import { contextOf, expectedGain, posterior } from '../../src/engine/med/infer';
 import { choosePlan, examCost, runDoctor, type Strategy } from '../../src/engine/med/policy';
 import type { Grade } from '../../src/engine/med/score';
 import { apply, candidatesOf, current, hospitalCtx, newSandbox, observationsOf } from '../../src/engine/shift/engine';
@@ -111,8 +111,7 @@ const MIN_GAIN = 0.02;
 
 function beliefsOf(p: ShiftPatient) {
   const obs = observationsOf(p);
-  const known = knownFacts(db, obs);
-  const ctx = { sex: p.patient.sex, age: p.patient.age, season: p.patient.season, knownRisks: known.risks, knownConditions: known.conditions };
+  const ctx = contextOf(db, p.patient, obs);
   return { obs, ctx, beliefs: posterior(db, candidates, obs, ctx) };
 }
 

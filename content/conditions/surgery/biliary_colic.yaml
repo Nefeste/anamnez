@@ -1,0 +1,54 @@
+id: cond.biliary_colic
+name: { ru: "Желчная колика" }
+icd10: K80.2
+department: dept.surgery
+system: digestive
+kind: disease
+severity: moderate
+epidemiology:
+  # доля среди пришедших — игровая оценка; бывает только при камнях в желчном пузыре
+  prevalence: common
+  # осложнения ЖКБ чаще всего в 40–69 лет, у женщин ЖКБ в 1,2–2,9 раза чаще (877_1, раздел 1.3)
+  age: { min: 18, peak: [40, 69] }
+  sex: { m: 1, f: 1.6 }
+  requires: [cond.cholelithiasis]
+course:
+  stages:
+    - { id: attack, days: [0, 1] }
+  presentation: [0, 0]
+  # колика переходит в острый холецистит — до 10 % (877_1, раздел 3.3)
+  untreated: { band: { pct: 10 }, days: [0, 2] }
+  # в стационаре — пока не прошёл приступ; суток в тексте нет — игровая оценка
+  stay: [1, 2]
+findings:
+  - { f: sym.abdominal_pain, band: usually }
+  - { f: sym.ruq_pain, band: usually }
+  - { f: sym.epigastric_pain, band: usually }
+  - { f: sym.pain_scapula, band: often }
+  - { f: sym.fatty_food, band: usually }
+  - { f: sym.nausea, band: usually }
+  - { f: sym.vomiting, band: often }
+  - { f: vital.tachycardia, band: sometimes }
+  - { f: sign.ruq_tenderness, band: usually }
+  - { f: sign.murphy, band: sometimes }
+confirm: [exam.us_abdomen]
+treatment:
+  firstLine: [tx.ibuprofen]
+  supportive: [tx.drotaverine]
+  notIndicated: [tx.amoxicillin, tx.amoxicillin_clavulanate, tx.cephalosporin_oral, tx.fluoroquinolone, tx.macrolide, tx.ppi, tx.antacid]
+  plan: [tx.ibuprofen, tx.drotaverine]
+  setting: { default: ambulance }
+texts:
+  summary:
+    ru: >-
+      Приступ боли от камня в желчном пузыре: через час-полтора после жирной еды, часто ночью,
+      распирающая боль под ложечкой и справа под рёбрами, отдаёт под правую лопатку, тошнит,
+      рвёт. Длится от минут до нескольких часов. Лечение — противовоспалительное и спазмолитик,
+      в стационаре; потом — плановая операция.
+pearls:
+  - ru: "Колика дольше шести часов или с температурой и ознобом — ищите уже острый холецистит."
+  - ru: "Камни на УЗИ есть у многих: колику ставят по приступу, а не по камням."
+simplified: "Плановую холецистэктомию после приступа игра не показывает: пациента выписывают, когда прошёл приступ."
+sources:
+  - { kind: guideline, title: "Желчнокаменная болезнь", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/877_1", note: "ID 877_1, опубликованы 25.12.2024, применяются; сверено с рубрикатором 29.09.2026; раздел 1.6: клиника колики, больше 6 ч — подозревать острый холецистит; раздел 3.2: НПВП и спазмолитики до разрешения симптомов; раздел 3.3: колика переходит в острый холецистит до 10 %, после колики — холецистэктомия; раздел 6: срочная госпитализация в хирургию; частоты признаков — черновик" }
+review: draft

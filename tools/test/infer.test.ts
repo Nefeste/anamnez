@@ -3,7 +3,7 @@
 import { describe, expect, test } from 'bun:test';
 import { NO_ECONOMY } from '../content/load';
 import type { Condition, ContentDb, Exam, Finding } from '../../src/content/types';
-import { entropy, expectedGain, posterior } from '../../src/engine/med/infer';
+import { entropy, expectedGain, NO_UNKNOWNS, posterior } from '../../src/engine/med/infer';
 import type { Observation } from '../../src/engine/med/types';
 
 const cond = (id: string, weight: number, crackles: number, infiltrate: number): Condition => ({
@@ -36,7 +36,7 @@ const db: ContentDb = {
   },
 };
 const candidates = Object.keys(db.conditions);
-const ctx = { sex: 'm' as const, age: 67, season: 'winter' as const, knownRisks: [], knownConditions: [] };
+const ctx = { sex: 'm' as const, age: 67, season: 'winter' as const, knownRisks: [], knownConditions: [], unknowns: NO_UNKNOWNS };
 const p = (beliefs: { id: string; p: number }[], id: string) => beliefs.find(b => b.id === id)!.p;
 const crackles = (shown: boolean): Observation => ({ f: 'sign.crackles', shown, exam: 'exam.auscultation' });
 const infiltrate = (shown: boolean): Observation => ({ f: 'img.infiltrate', shown, exam: 'exam.xray' });

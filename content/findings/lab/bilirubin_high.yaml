@@ -1,0 +1,17 @@
+id: lab.bilirubin_high
+name: { ru: "Билирубин выше нормы" }
+leak: { pct: 2 }
+value:
+  unit: "мкмоль/л"
+  ref: [3.4, 20.5]
+  present: [22.0, 90.0]
+  absent: [4.0, 20.5]
+  decimals: 1
+texts:
+  hint:
+    ru: "Жёлтый пигмент из распада гемоглобина; печень выводит его с желчью. Повышается, когда желчи трудно оттекать или страдает печень."
+  present:
+    - ru: "Общий билирубин {value} {unit}"
+  absent:
+    - ru: "Общий билирубин {value} {unit}"
+review: draft

@@ -17,7 +17,9 @@ export function ResultPicture({ image }: { image: ResultImage }) {
   if (image.kind === 'us') {
     return (
       <View testID="result-us" style={{ borderRadius: 6, overflow: 'hidden', alignSelf: 'center' }}>
-        <UsSector width={Math.min(w, 360)} seed={image.seed} findings={{ view: image.view, appendix: image.appendix }} />
+        <UsSector width={Math.min(w, 360)} seed={image.seed} findings={image.view === 'appendix'
+          ? { view: 'appendix', appendix: image.appendix ?? 0 }
+          : { view: 'gallbladder', foci: { count: image.stones ?? 0, size: 0.5 }, wall: image.wall ?? 0, fluid: image.wall ? 0.4 : 0 }} />
       </View>
     );
   }

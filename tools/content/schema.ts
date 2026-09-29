@@ -121,7 +121,11 @@ export const conditionSchema = z.strictObject({
    * лечат операцией (spec 2026-09-chapter-2, часть 28): какой — операция вида `surgery`, — и за
    * сколько часов от поступления её сделать, чтобы не было поздно, — по рекомендации
    */
-  surgery: z.strictObject({ tx: txId, window: z.number().int().min(1).max(240) }).optional(),
+  surgery: z.strictObject({
+    tx: txId, window: z.number().int().min(1).max(240),
+    /** срок — от начала болезни, а не от поступления: ранняя холецистэктомия — в первые 72 ч болезни (часть 30) */
+    from: z.enum(['arrival', 'onset']).optional(),
+  }).optional(),
   /**
    * осложнённая стадия (часть 28б): без действенного лечения наступает по часам от начала
    * болезни — за первые `early.hours` часов с долей `early.p`, дальше — с долей `later.p` за
@@ -134,7 +138,8 @@ export const conditionSchema = z.strictObject({
     later: z.strictObject({ every: z.number().int().min(1).max(240), p: probability }),
     stay: z.tuple([z.number().int().min(1), z.number().int().min(1)]).optional(),
   }).optional(),
-  findings: z.array(link).min(3),
+  /** у того, с чем приходят, — не меньше трёх (валидатор); у хронического фона хватит одного */
+  findings: z.array(link).min(1),
   confirm: z.union([z.array(z.string()).min(1), z.literal('clinical')]),
   redFlags: z.array(z.string()).optional(),
   texts: z.strictObject({ summary: text }),
@@ -300,6 +305,8 @@ export const roomSchema = z.strictObject({
   beds: z.boolean().default(false),
   /** смотровая приёмного: койки — места для пациентов скорой (часть 27) */
   emergency: z.boolean().default(false),
+  /** работает — в больницу приходят и больные этих отделений: приёмное — хирургию (часть 30) */
+  admits: z.array(z.string().regex(/^dept\.[a-z0-9_]+$/)).min(1).optional(),
   sizes: z.array(roomSize).min(1),
   texts: z.strictObject({ hint }),
 });

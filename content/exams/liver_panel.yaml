@@ -1,0 +1,22 @@
+id: exam.liver_panel
+name: { ru: "Печёночные пробы" }
+kind: lab
+room: room.lab
+equipment: [eq.biochem_analyzer]
+collect: room.procedure
+# время и цена — игровые оценки; точность измерения — как у других анализов биохимии
+time: { procedure: 5, turnaround: 60 }
+cost: 600
+discomfort: 1
+checks:
+  - { f: lab.bilirubin_high, sens: 98, spec: 98 }
+  - { f: lab.alt_high, sens: 98, spec: 98 }
+  - { f: lab.alp_high, sens: 98, spec: 98 }
+texts:
+  hint:
+    ru: "Билирубин, АЛТ и щелочная фосфатаза. Повышены — страдает печень или затруднён отток желчи; при остром холецистите бывают повышены у половины больных и больше."
+  summary:
+    ru: "Кровь из вены; общий билирубин, АЛТ, щелочная фосфатаза."
+sources:
+  - { kind: guideline, title: "Желчнокаменная болезнь", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/877_1", note: "ID 877_1, опубликованы 25.12.2024, применяются; сверено с рубрикатором 29.09.2026; раздел 2.3: при подозрении на острый холецистит — АЛТ, АСТ, ЩФ, ГГТ, билирубин" }
+review: draft

@@ -196,6 +196,23 @@ describe('сектор УЗИ: геометрия', () => {
     expect(usGeometry({ view: 'kidney' }, 3).pelvisParts).toBeUndefined();
   });
 
+  test('утолщённая стенка пузыря (часть 30): наружный контур и полоска отёка — снаружи полости, толще с параметром; без неё — нет', () => {
+    const g = usGeometry({ view: 'gallbladder', wall: 0.8 }, 2);
+    const [outer, middle] = g.gbWall!;
+    for (const p of g.gallbladder!) expect(inside(p, middle)).toBe(true);
+    for (const p of middle) expect(inside(p, outer)).toBe(true);
+    const width = (w: number) => {
+      const xs = usGeometry({ view: 'gallbladder', wall: w }, 2).gbWall![0].map(p => p[0]);
+      return Math.max(...xs) - Math.min(...xs);
+    };
+    expect(width(1)).toBeGreaterThan(width(0.2));
+    expect(usGeometry({ view: 'gallbladder' }, 2).gbWall).toBeUndefined();
+    // жидкость — снаружи утолщённой стенки, дальше от датчика
+    const wet = usGeometry({ view: 'gallbladder', wall: 0.8, fluid: 0.6 }, 2);
+    const far = Math.max(...wet.gbWall![0].map(p => usPolar(p).r));
+    expect(Math.max(...wet.fluid!.map(p => usPolar(p).r))).toBeGreaterThan(far);
+  });
+
   test('подвздошная область: петли и сосуды — в секторе; «мишень» — кольца одно в другом, вокруг — жир; растёт с толщиной', () => {
     const g = usGeometry({ view: 'appendix', appendix: 0.8 }, 7);
     expect(g.loops).toHaveLength(3);
@@ -300,7 +317,7 @@ describe('сектор УЗИ: рисунок без экрана', () => {
     const a = await draw({ view: 'kidney', fluid: 0.5 }, 9);
     const b = await draw({ view: 'kidney', fluid: 0.5 }, 9);
     expect(Buffer.from(a.png).equals(Buffer.from(b.png))).toBe(true);
-    expect(US_CASES.length).toBe(8);
+    expect(US_CASES.length).toBe(9);
     for (const k of US_CASES) expect((await draw(k.findings, k.seed)).png.length).toBeGreaterThan(1000);
   });
 });

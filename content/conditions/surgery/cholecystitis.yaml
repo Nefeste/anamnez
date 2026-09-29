@@ -1,0 +1,87 @@
+id: cond.cholecystitis
+name: { ru: "Острый холецистит" }
+icd10: K80.0
+department: dept.surgery
+system: digestive
+kind: disease
+severity: serious
+epidemiology:
+  # доля среди пришедших — игровая оценка; калькулёзный — при камнях в желчном пузыре
+  prevalence: common
+  # осложнения ЖКБ чаще всего в 40–69 лет, у женщин ЖКБ в 1,2–2,9 раза чаще (877_1, раздел 1.3)
+  age: { min: 18, peak: [40, 69] }
+  sex: { m: 1, f: 1.6 }
+  requires: [cond.cholelithiasis]
+course:
+  stages:
+    - { id: early, days: [0, 3] }
+    - { id: late, days: [3, 7] }
+  presentation: [0, 3]
+  # консервативно воспаление стихает примерно у половины (877_1, раздел 3.2)
+  untreated: { band: { pct: 50 }, days: [1, 4] }
+  # при ранней лапароскопической операции в стационаре в среднем 5,4 дня (ACDC); разброс — игровая оценка
+  stay: [3, 6]
+# ранняя холецистэктомия — в первые 72 ч от начала болезни, позже операция труднее (877_1, раздел 3.3)
+surgery: { tx: tx.cholecystectomy, window: 72, from: onset }
+findings:
+  - { f: sym.abdominal_pain, band: usually }
+  - f: sym.ruq_pain
+    band: { pct: 81 }
+    note: "819_1, Прил. Г2 (Trowbridge 2003): чувствительность боли в правом верхнем квадранте — 81 %"
+  - { f: sym.epigastric_pain, band: often }
+  - { f: sym.pain_scapula, band: often }
+  - { f: sym.nausea, band: usually }
+  - { f: sym.vomiting, band: often }
+  - { f: sym.anorexia, band: often }
+  - { f: sym.fever_hx, band: often }
+  - f: vital.fever
+    band: { pct: 35 }
+    note: "819_1, Прил. Г2 (Trowbridge 2003): чувствительность лихорадки — 35 %"
+  - f: sym.chills
+    band: { pct: 13 }
+    note: "819_1, Прил. Г2 (Trowbridge 2003): чувствительность озноба — 13 %"
+  - { f: vital.tachycardia, band: sometimes }
+  - f: sign.ruq_tenderness
+    band: { pct: 77 }
+    note: "819_1, Прил. Г2 (Trowbridge 2003): чувствительность болезненности в правом верхнем квадранте — 77 %"
+  - f: sign.murphy
+    band: { pct: 65 }
+    note: "819_1, Прил. Г2 (Trowbridge 2003): чувствительность симптома Мерфи — 65 %"
+  - { f: sign.jaundice, band: rarely }
+  - f: lab.wbc_high
+    band: { pct: 60 }
+    note: "819_1, раздел 2.3: лейкоцитов больше 11 — только у 60 % больных острым холециститом"
+  - { f: lab.crp_high, band: usually }
+  - f: lab.alt_high
+    band: { pct: 50 }
+    note: "819_1, раздел 2.3: АЛТ повышена у половины больных"
+  - f: lab.bilirubin_high
+    band: { pct: 60 }
+    note: "819_1, раздел 2.3: билирубин повышен у 60 %"
+  - f: lab.alp_high
+    band: { pct: 75 }
+    note: "819_1, раздел 2.3: щелочная фосфатаза повышена в 70–80 % — середина"
+  - f: img.us_cholecystitis
+    band: { pct: 100 }
+    note: "воспаление есть у каждого больного; найдёт ли его УЗИ — чувствительность обследования (819_1, раздел 2.4: 81 %)"
+confirm: [exam.us_abdomen]
+treatment:
+  supportive: [tx.drotaverine, tx.iv_fluids]
+  notIndicated: [tx.amoxicillin, tx.amoxicillin_clavulanate, tx.cephalosporin_oral, tx.fluoroquinolone, tx.macrolide, tx.ppi, tx.antacid]
+  setting: { default: surgery }
+texts:
+  summary:
+    ru: >-
+      Воспаление желчного пузыря, обычно из-за камня, застрявшего в его шейке. Начинается как
+      колика, но боль не проходит: постоянная, справа под рёбрами, отдаёт под лопатку, бывает
+      температура с ознобом. Лечение — ранняя операция, в первые трое суток от начала болезни.
+pearls:
+  - ru: "Симптом Мерфи и УЗИ вместе надёжнее, чем каждый по отдельности: ни осмотр, ни анализы сами диагноз не ставят."
+  - ru: "Время считают от начала болезни, а не от поступления: пришедшему на третьи сутки оперировать уже поздно."
+simplified: "Степени тяжести нет: среднетяжёлый и тяжёлый холецистит, которых переводят в больницу выше уровнем, придут позже. Бескаменный холецистит — у тяжёлых больных в реанимации, в игре его нет."
+sources:
+  - { kind: guideline, title: "Желчнокаменная болезнь", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/877_1", note: "ID 877_1, опубликованы 25.12.2024, применяются; сверено с рубрикатором 29.09.2026; раздел 1.6: клиника острого калькулёзного холецистита; раздел 3.2: спазмолитики и инфузия, антибиотики при лёгком — не рекомендуются, консервативно стихает у половины; раздел 3.3: ранняя холецистэктомия в первые 72 ч от начала болезни" }
+  - { kind: guideline, title: "Холецистит", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/819_1", note: "ID 819_1, опубликованы 22.11.2024, применяются; сверено с рубрикатором 29.09.2026; Прил. Г2 — чувствительность и специфичность симптомов (Trowbridge 2003); раздел 2.3 — частоты сдвигов анализов; раздел 2.4 — УЗИ: чувствительность 81 %, специфичность 83 %" }
+  - { kind: paper, title: "Trowbridge RL, Rutkowski NK, Shojania KG. Does this patient have acute cholecystitis? JAMA 2003;289(1):80–86", note: "по таблице 819_1, Прил. Г2" }
+  - { kind: paper, title: "Gutt CN et al. Acute cholecystitis: early versus delayed cholecystectomy, a multicenter randomized trial (ACDC study, NCT00447304). Ann Surg 2013;258(3):385–393", url: "https://pubmed.ncbi.nlm.nih.gov/24022431/", note: "PMID 24022431, сверено 29.09.2026: при операции в первые 24 ч от поступления в стационаре в среднем 5,4 дня" }
+review: draft

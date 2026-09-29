@@ -1,0 +1,20 @@
+id: exam.lipase
+name: { ru: "Липаза крови" }
+kind: lab
+room: room.lab
+equipment: [eq.biochem_analyzer]
+collect: room.procedure
+# время и цена — игровые оценки; точность измерения — как у других анализов биохимии
+time: { procedure: 5, turnaround: 60 }
+cost: 450
+discomfort: 1
+checks:
+  - { f: lab.lipase_high, sens: 98, spec: 98 }
+texts:
+  hint:
+    ru: "Фермент поджелудочной железы. Выше нормы в три раза и больше при типичной боли — острый панкреатит; при небольшом повышении думают и о другом."
+  summary:
+    ru: "Кровь из вены; активность липазы."
+sources:
+  - { kind: guideline, title: "Острый панкреатит", org: "Минздрав РФ", year: 2025, url: "https://cr.minzdrav.gov.ru/view-cr/903_1", note: "ID 903_1, опубликованы 20.01.2025, применяются; сверено с рубрикатором 29.09.2026; раздел 2: гиперамилаземия или гиперлипаземия в три раза и более выше верхней границы нормы — один из трёх критериев диагноза" }
+review: draft

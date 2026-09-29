@@ -75,7 +75,7 @@ export const encyclopedia = {
   whereRedFlag: (s: string) => `При красных флагах — ${s}.`,
   whereRisk: (risk: string, s: string) => `Если есть «${risk}» — ${s}.`,
   // операция и срок стационара (spec 2026-09-chapter-2, части 26 и 28)
-  whereSurgery: (op: string, hours: number) => `Операция — ${op.toLowerCase()}: в первые ${hours}\u00a0ч после поступления.`,
+  whereSurgery: (op: string, hours: number, onset = false) => `Операция — ${op.toLowerCase()}: в первые ${hours}\u00a0ч ${onset ? 'от начала болезни' : 'после поступления'}.`,
   whereStay: (lo: number, hi: number) => `В стационаре обычно ${lo === hi ? lo : `${lo}–${hi}`}\u00a0${pluralRu(hi, 'день', 'дня', 'дней')}.`,
   // осложнённая стадия (часть 28б): риск по часам без операции, срок после неё, исходы операции
   whereStayComplicated: (name: string, lo: number, hi: number) => `После операции, если была ${name}, — ${lo === hi ? lo : `${lo}–${hi}`}\u00a0${pluralRu(hi, 'день', 'дня', 'дней')}.`,
@@ -88,7 +88,7 @@ export const encyclopedia = {
     `Умирают в стационаре — ${plain}\u00a0%${complicated && name ? `; если была ${name}, — ${complicated}\u00a0%` : ''}.`,
   surgeryRow: 'Операция',
   opTreats: 'Чем лечат и в какой срок',
-  opWindow: (hours: number) => `в первые ${hours}\u00a0ч после поступления`,
+  opWindow: (hours: number, onset = false) => `в первые ${hours}\u00a0ч ${onset ? 'от начала болезни' : 'после поступления'}`,
   opTeam: 'Бригада',
   course: 'Без лечения',
   selfLimiting: 'Обычно проходит само.',

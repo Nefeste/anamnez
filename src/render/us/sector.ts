@@ -96,6 +96,12 @@ export function recordUsSector(width: number, findings: UsFindings, seed: number
     c.drawPath(pathOf(g.target[3]), paint(FLUID, { blur: 0.003 }));
   }
 
+  // 2в. Утолщённая стенка пузыря (часть 30): яркая, посередине — тёмная полоска отёка
+  if (g.gbWall) {
+    c.drawPath(pathOf(g.gbWall[0]), paint(SUBMUCOSA, { blur: 0.004 }));
+    c.drawPath(pathOf(g.gbWall[1]), paint(MUSCULARIS, { blur: 0.004 }));
+  }
+
   // 3. Жидкость — чёрная: полость пузыря, полоса у органа, расширенная лоханка
   if (g.gallbladder) c.drawPath(pathOf(g.gallbladder), paint(FLUID, { blur: 0.002 }));
   if (g.fluid) c.drawPath(pathOf(g.fluid), paint(FLUID, { blur: 0.003 }));

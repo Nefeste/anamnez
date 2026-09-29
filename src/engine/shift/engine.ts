@@ -18,7 +18,7 @@ import { RNG_VERSION, Rng } from '../core/rng';
 import { observe } from '../med/course';
 import { complaintObservations, type ExamSkill, examFits, NORMAL_SKILL, runExam } from '../med/exams';
 import { generatePatient, typicalPatient } from '../med/generate';
-import { knownFacts, posterior } from '../med/infer';
+import { contextOf, posterior } from '../med/infer';
 import { scaleTriage } from '../med/news2';
 import { choiceFor, evaluatePlan, primaryOf, recommendedSetting, settingFit, type Venue } from '../med/plan';
 import { examCost, indicated, nextStep } from '../med/policy';
@@ -274,7 +274,8 @@ export function apply(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
     }
     case 'diagnose': {
       const p = current(s);
-      if (p && db.conditions[cmd.id]?.presenting) {
+      // из болезней отделений, с какими его приняли (часть 30): в амбулатории хирургии нет
+      if (p && db.conditions[cmd.id]?.presenting && (p.departments ?? [s.meta.department]).includes(db.conditions[cmd.id].department)) {
         p.draft.diagnosis = cmd.id;
         // у нового диагноза операции здесь нет — в палату, а нет койки — скорая (часть 28)
         if (p.draft.setting === 'surgery' && !canOperate(db, s, cmd.id)) p.draft.setting = freeBeds(db, s).length > 0 ? 'admit' : 'ambulance';
@@ -449,22 +450,27 @@ function planDay(db: ContentDb, s: ShiftState) {
   // с наставником); человек — тот же, что пришёл бы, если болезнь у него обычна
   const tutorial = s.campaign && d === s.campaign.since + 1 ? (chapterOf(db, s.campaign)?.tutorial ?? []) : [];
   let taught = 0;
+  // какие отделения больница принимает сегодня (часть 30): с работающей смотровой приёмного — и хирургию
+  const departments = departmentsOf(db, s);
   plan.forEach((a, i) => {
     const id = `${d}-${String(i + 1).padStart(2, '0')}`;
-    const gen = { department: s.meta.department, season: s.meta.season };
+    const gen = { department: s.meta.department, departments, season: s.meta.season };
     const primary = a.ret || a.kind === 'ambulance' ? undefined : tutorial[taught];
     if (primary) taught++;
     const patient = a.ret
       ? returningPatient(db, s, a.ret)
       : a.kind === 'ambulance'
-        ? ambulancePatient(db, s, d, a.key)
+        ? ambulancePatient(db, s, d, a.key, departments)
         : primary
         ? typicalPatient(db, k => fnv1a(`${s.meta.seed}:${d}:${a.key}${k ? `:${k}` : ''}`), { ...gen, primary })
         : generatePatient(db, fnv1a(`${s.meta.seed}:${d}:${a.key}`), gen);
+    // вернувшийся — и с теми отделениями, с какими его приняли в первый раз
+    const own = a.ret ? [...new Set([...(s.patients[a.ret.of]?.departments ?? []), ...departments])] : departments;
     s.patients[id] = {
       id, patient, arriveT: a.t, kind: a.kind, triage: 'green', status: 'coming', queuedT: 0, wait: 0, patience: 0,
       results: [], pending: [], done: [], step: 0, spent: { seconds: 0, money: 0 }, draft: { treatments: [], setting: 'home' },
       ...(a.ret ? { returnOf: a.ret.of, returnReason: a.ret.reason } : {}),
+      ...(own.length > 1 ? { departments: own } : {}),
       // скорая не платит отдельно: привезённый — случай ОМС (spec 2026-09-chapter-2, «Баланс»;
       // скорую и экстренную помощь оказывают бесплатно — 323-ФЗ, ст. 11 и 35)
       ...(s.economy ? { payer: a.kind === 'ambulance' ? 'oms' : payerOf(db, s.meta.seed, id, s.economy.reputation ?? db.economy.reputation.start) } : {}),
@@ -475,17 +481,15 @@ function planDay(db: ContentDb, s: ShiftState) {
 }
 
 /**
- * Кого везёт скорая: болезнь отделения с весом по тяжести (лёгкое не везут) и распространённости;
- * у болезни с тяжестью — чаще тяжёлая. Всё — из ветви этой машины.
+ * Кого везёт скорая: человек — как любой пришедший, болезнь — из отделений больницы с весом у
+ * него (возраст, привычки, камни — часть 30) и по тяжести: лёгкое не везут. У болезни с тяжестью
+ * — чаще тяжёлая, жребий ветви машины.
  */
-function ambulancePatient(db: ContentDb, s: ShiftState, d: number, key: string) {
+function ambulancePatient(db: ContentDb, s: ShiftState, d: number, key: string, departments: readonly Id[]) {
   const a = db.economy.ambulance;
-  const br = branch(s, `ambulance:${d}:${key}`);
-  const pool = Object.values(db.conditions).filter(c => c.department === s.meta.department && c.presenting && !c.checkup && c.treatment && a.weight[c.severity] > 0);
-  const c = br.weighted(pool, x => x.weight * a.weight[x.severity]);
-  const severe = c.params?.severity?.severe !== undefined && br.fork('severe').chance(a.severe * 100);
+  const severe = branch(s, `ambulance:${d}:${key}`).fork('severe').chance(a.severe * 100);
   return generatePatient(db, fnv1a(`${s.meta.seed}:${d}:${key}`), {
-    department: s.meta.department, season: s.meta.season, primary: c.id, ...(severe ? { params: { severity: 'severe' } } : {}),
+    department: s.meta.department, departments, season: s.meta.season, carried: a.weight, ...(severe ? { params: { severity: 'severe' } } : {}),
   });
 }
 
@@ -680,7 +684,7 @@ function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pc
   const skill = room && e.kind === 'imaging' ? imagingSkill(db, ctx.staff, room, eqId) : NORMAL_SKILL;
 
   // песочница: показано ли — по тому, что известно сейчас; показанные оплачивают ОМС и ДМС
-  if (s.economy && e.cost > 0 && indicated(db, p.patient, observationsOf(p), candidatesOf(db, s.meta.department), examId)) (p.indicated ??= []).push(examId);
+  if (s.economy && e.cost > 0 && indicated(db, p.patient, observationsOf(p), candidatesOf(db, p.departments ?? s.meta.department), examId)) (p.indicated ??= []).push(examId);
   p.step++;
   p.done.push(examId);
   p.spent.money += e.cost;
@@ -783,8 +787,24 @@ function closePatient(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase
 }
 
 /** Кандидаты вывода — всё, с чем приходят в это отделение. */
-export function candidatesOf(db: ContentDb, department: Id): Id[] {
-  return Object.keys(db.conditions).filter(id => db.conditions[id].presenting && db.conditions[id].department === department).sort();
+export function candidatesOf(db: ContentDb, department: Id | readonly Id[]): Id[] {
+  const depts: readonly Id[] = typeof department === 'string' ? [department] : department;
+  return Object.keys(db.conditions).filter(id => db.conditions[id].presenting && depts.includes(db.conditions[id].department)).sort();
+}
+
+/**
+ * Какие отделения принимает больница смены (spec 2026-09-chapter-2, часть 30): своё и те, что
+ * принимают её работающие помещения (`admits`: смотровая приёмного — хирургию). В амбулатории
+ * практики и в главе 1 — только своё.
+ */
+export function departmentsOf(db: ContentDb, s: ShiftState): Id[] {
+  const ctx = hospitalCtx(db, s);
+  const out = [s.meta.department];
+  for (const r of ctx.plan.rooms) {
+    if (!ctx.working.has(r.id)) continue;
+    for (const d of db.rooms[r.type]?.admits ?? []) if (!out.includes(d)) out.push(d);
+  }
+  return out;
 }
 
 /** Всё, что врач знает о пациенте: жалобы и пришедшие результаты. */
@@ -800,9 +820,8 @@ function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
   const cond = db.conditions[truth];
   const group = (x: Id) => db.conditions[x].group ?? x;
   const obs = observationsOf(p);
-  const candidates = candidatesOf(db, s.meta.department);
-  const known = knownFacts(db, obs);
-  const beliefs = posterior(db, candidates, obs, { sex: patient.sex, age: patient.age, season: patient.season, knownRisks: known.risks, knownConditions: known.conditions });
+  const candidates = candidatesOf(db, p.departments ?? s.meta.department);
+  const beliefs = posterior(db, candidates, obs, contextOf(db, patient, obs));
   const confidence = beliefs.find(b => b.id === dx)?.p ?? 0;
   // в операционную — операцией поставленного диагноза (часть 28)
   const op = p.draft.setting === 'surgery' ? operationFor(db, dx) : undefined;
@@ -832,10 +851,13 @@ export function reviewOf(db: ContentDb, s: ShiftState, p: ShiftPatient, diagnosi
   return reviewFor(db, s.meta, p, diagnosis);
 }
 
-/** Разбор по одной записи пациента: из смены нужны только зерно и отделение — так его строит и архив профиля. */
+/**
+ * Разбор по одной записи пациента: из смены нужны только зерно и отделение — так его строит и
+ * архив профиля; отделения, с какими больница его приняла (часть 30), — в самой записи.
+ */
 export function reviewFor(db: ContentDb, meta: Pick<ShiftState['meta'], 'seed' | 'department'>, p: ShiftPatient, diagnosis: Id): ReviewData {
   const rng = Rng.seeded(meta.seed).fork(`review:${p.id}`);
-  return buildReview(db, p.patient, p.results.map(r => ({ exam: r.exam, obs: r.obs })), diagnosis, candidatesOf(db, meta.department), Object.keys(db.exams).sort(), rng);
+  return buildReview(db, p.patient, p.results.map(r => ({ exam: r.exam, obs: r.obs })), diagnosis, candidatesOf(db, p.departments ?? meta.department), Object.keys(db.exams).sort(), rng);
 }
 
 // --- стационар (spec 2026-09-chapter-2, часть 26) ---------------------------------------------
@@ -1059,14 +1081,16 @@ function finishOperation(db: ContentDb, s: ShiftState, p: ShiftPatient | undefin
   }
   // умер после операции — решено сейчас, случится ночью (часть 28б): доля — по стадии
   if (branch(s, `surgery:${p.id}:death`).chance(deathsOf(db, op.tx, complicated))) stay.dies = daysIn(stay, s.day);
-  // срок — от решения положить: наблюдали, потом оперировали — считается от поступления
-  const window = db.conditions[p.closed!.diagnosis]?.surgery?.window;
-  if (window !== undefined) {
-    const hours = Math.round((op.start - p.closed!.at) / 360) / 10;
-    const onTime = hours <= window;
+  // срок — от решения положить: наблюдали, потом оперировали — считается от поступления; у
+  // холецистита — от начала болезни (часть 30): пришедшему на третьи сутки оперировать уже поздно
+  const plan = db.conditions[p.closed!.diagnosis]?.surgery;
+  if (plan) {
+    const fromOnset = plan.from === 'onset';
+    const rounded = fromOnset ? Math.round(hours * 10) / 10 : Math.round((op.start - p.closed!.at) / 360) / 10;
+    const onTime = rounded <= plan.window;
     if (onTime) day.onTime++;
     else day.late++;
-    p.closed!.notes.push({ code: onTime ? 'op.onTime' : 'op.late', tx: op.tx, hours, window });
+    p.closed!.notes.push({ code: onTime ? 'op.onTime' : 'op.late', tx: op.tx, hours: rounded, window: plan.window, ...(fromOnset ? { onset: true as const } : {}) });
   }
   if (s.economy) ledgerOf(s).expenses.consumables += db.treatments[op.tx].cost;
   startOperations(db, s);
@@ -1490,7 +1514,7 @@ function colleagueStep(db: ContentDb, s: ShiftState, p: ShiftPatient) {
   const how = doctorOf(db, m);
   const pct = speedOf(db, m);
   const r = nextStep(db, p.patient, observationsOf(p), p.done, p.phase ?? {}, {
-    candidates: candidatesOf(db, s.meta.department), exams: examsHere(db, s), threshold: how.threshold, minGain: how.minGain,
+    candidates: candidatesOf(db, p.departments ?? s.meta.department), exams: examsHere(db, s), threshold: how.threshold, minGain: how.minGain,
     // навык 1–2 иногда забывает спросить перед лечением — жребий своей ветви
     skipAsk: q => how.forget > 0 && branch(s, `forget:${p.id}:${q}`).chance(how.forget * 100),
     venue: venueOf(db, s),

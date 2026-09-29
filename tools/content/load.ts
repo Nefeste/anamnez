@@ -233,6 +233,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       for (const id of [...t.notIndicated, ...t.harmful]) if (cures(id)) errors.push(`${owner}: ${id} действует на причину, а в тактике — «не показано» или «вредно»`);
       if (c.presenting && !c.course.selfLimiting && t.setting.default === 'home' && !t.firstLine.some(cures)) errors.push(`${owner}: само не проходит, а первая линия не действует на причину`);
     }
+    // с чем приходят — узнаётся по нескольким признакам; хроническому фону хватит одного (часть 30)
+    if (c.presenting && c.findings.length < 3) errors.push(`${owner}: у болезни, с которой приходят, меньше трёх признаков`);
     // операция (spec 2026-09-chapter-2, часть 28): вида «операция» и действует на причину
     if (c.surgery) {
       const op = treatments[c.surgery.tx];
@@ -339,7 +341,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (c.course.selfLimiting) out.selfLimiting = true;
     if (c.course.untreated) out.untreated = { p: prob(c.course.untreated.band), days: c.course.untreated.days };
     if (c.course.stay) out.stay = c.course.stay;
-    if (c.surgery) out.surgery = c.surgery;
+    if (c.surgery) out.surgery = { tx: c.surgery.tx, window: c.surgery.window, ...(c.surgery.from === 'onset' ? { from: 'onset' as const } : {}) };
     if (c.complication) {
       const x = c.complication;
       out.complication = { name: x.name, early: { hours: x.early.hours, p: prob(x.early.p) }, later: { every: x.later.every, p: prob(x.later.p) }, ...(x.stay ? { stay: x.stay } : {}) };
@@ -402,6 +404,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   for (const r of Object.values(rooms).sort((a, b) => (a.id < b.id ? -1 : 1))) {
     const out: RoomType = {
       id: r.id, name: r.name, gen: r.gen, staff: r.staff, needsEquipment: r.needsEquipment, seats: r.seats, beds: r.beds, emergency: r.emergency,
+      ...(r.admits ? { admits: r.admits } : {}),
       sizes: r.sizes.map(z => ({
         id: z.id, w: z.w, h: z.h, cost: z.cost, upkeep: z.upkeep, door: { x: z.door.x, width: z.door.width },
         objects: z.objects.map(([kind, x, y]) => ({ kind, x, y })), slots: z.slots, staff: z.staff,
@@ -452,11 +455,15 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     // можно построить, у каждого отделения должно быть кого везти — иначе день не начнётся
     if (Object.values(db.rooms).some(r => r.emergency)) {
       const conditions = Object.values(db.conditions);
-      const departments = new Set([...conditions.map(x => x.department), ...Object.values(db.chapters).map(ch => ch.department)]);
+      const departments = new Set([...conditions.map(x => x.department), ...Object.values(db.chapters).map(ch => ch.department), ...Object.values(db.rooms).flatMap(r => r.admits ?? [])]);
       for (const d of departments) {
         const carried = conditions.some(x => x.department === d && x.presenting && !x.checkup && x.treatment && x.weight > 0 && db.economy.ambulance.weight[x.severity] > 0);
         if (!carried) errors.push(`${d}: скорой некого везти — нет болезни отделения с тяжестью, которую везут (hospital/economy.yaml, ambulance.weight)`);
       }
+    }
+    // помещение принимает отделение (часть 30): у отделения есть с чем прийти
+    for (const r of Object.values(db.rooms)) {
+      for (const d of r.admits ?? []) if (!Object.values(db.conditions).some(x => x.presenting && x.department === d)) errors.push(`${r.id}: принимает ${d}, а болезней этого отделения в базе нет`);
     }
     // готовая амбулатория помещается на участок песочницы, вход песочницы — в краю
     const sb = db.economy.sandbox;

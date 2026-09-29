@@ -296,6 +296,39 @@ function usSave(): { save: string; id: string } {
   return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s }), id };
 }
 
+/**
+ * Песочница со смотровой приёмного и кабинетом УЗИ (spec 2026-09-chapter-2, часть 30): больница
+ * принимает и хирургию; день 1 — у вас в кабинете больной острым холециститом, УЗИ сделано и
+ * описано («Студент»: обследования не ошибаются — камни и толстая стенка видны).
+ */
+function gallSave(): { save: string; id: string } {
+  const { db } = buildDb();
+  const s = newSandbox(db, { seed: 25, season: 'winter', difficulty: 'student', start: 'clinic', budget: db.economy.sandbox.budgets.generous });
+  const cells: [number, number][] = [];
+  for (let x = 29; x <= 38; x++) for (let y = 7; y <= 9; y++) cells.push([x, y]);
+  apply(db, s, { kind: 'build', cmd: { kind: 'corridor', cells } });
+  apply(db, s, { kind: 'build', cmd: { kind: 'room', type: 'room.emergency', size: 'M', x: 29, y: 1, rot: 0 } });
+  const er = s.hospital!.rooms[s.hospital!.rooms.length - 1].id;
+  apply(db, s, { kind: 'build', cmd: { kind: 'room', type: 'room.ultrasound', size: 'S', x: 29, y: 10, rot: 2 } });
+  const us = s.hospital!.rooms.find(r => r.type === 'room.ultrasound')!.id;
+  apply(db, s, { kind: 'build', cmd: { kind: 'buy', room: us, equipment: 'eq.us_basic' } });
+  apply(db, s, { kind: 'buildEnd' });
+  apply(db, s, { kind: 'assign', id: s.staff!.find(m => m.role === 'role.nurse' && m.room === 'r7')!.id, room: er });
+  const c = s.candidates!.find(x => x.role === 'role.sonographer')!;
+  apply(db, s, { kind: 'hire', id: c.id });
+  apply(db, s, { kind: 'assign', id: c.id, room: us });
+  apply(db, s, { kind: 'nextDay' });
+  for (let i = 0; i < 600 && s.queue.length === 0; i++) apply(db, s, { kind: 'advance', seconds: 60 });
+  const id = s.queue[0];
+  if (!s.patients[id].departments?.includes('dept.surgery')) throw new Error('gallSave: смотровая приёмного не работает — хирургию не принимают');
+  s.patients[id].patient = generatePatient(db, 4545, { department: 'dept.therapy', departments: s.patients[id].departments, season: 'winter', primary: 'cond.cholecystitis', params: {} });
+  apply(db, s, { kind: 'call', id });
+  apply(db, s, { kind: 'exam', exam: 'exam.vitals' });
+  apply(db, s, { kind: 'exam', exam: 'exam.us_abdomen' });
+  apply(db, s, { kind: 'waitResults' });
+  return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s }), id };
+}
+
 /** Песочница до открытия: готовая амбулатория, бюджет «обычный» — экран «Перед открытием». */
 function sandboxFreshSave(): string {
   const { db } = buildDb();
@@ -556,8 +589,8 @@ try {
   const heads = await drawn('[data-testid^="head-ct-"] canvas, [data-testid^="head-mri-"] canvas');
   const us = await drawn('[data-testid^="us-"] canvas');
   const allImages = await drawn('canvas');
-  check(heads.length === 7 && heads.every(Boolean) && us.length === 8 && us.every(Boolean) && allImages.every(Boolean),
-    `П5: срезы головы нарисованы — ${heads.filter(Boolean).length} из 7, УЗИ — ${us.filter(Boolean).length} из 8; все рисунки экрана — ${allImages.filter(Boolean).length} из ${allImages.length} (смотреть 06-head-*.png, 06-us.png)`);
+  check(heads.length === 7 && heads.every(Boolean) && us.length === 9 && us.every(Boolean) && allImages.every(Boolean),
+    `П5: срезы головы нарисованы — ${heads.filter(Boolean).length} из 7, УЗИ — ${us.filter(Boolean).length} из 9; все рисунки экрана — ${allImages.filter(Boolean).length} из ${allImages.length} (смотреть 06-head-*.png, 06-us.png)`);
   for (const id of ['head-ct', 'head-mri', 'us']) {
     await page.getByTestId(id).scrollIntoViewIfNeeded();
     await page.waitForTimeout(300);
@@ -651,6 +684,9 @@ try {
   await page.getByTestId('visit-fresh').first().waitFor({ timeout: 10_000 });
   check(await page.getByTestId('visit-fresh').first().isVisible(), 'смена: пришедшее без врача — «новое» при вызове');
   await page.getByTestId('visit-decide').click();
+  // в амбулатории хирургии нет (часть 30): среди диагнозов — ни холецистита, ни панкреатита
+  const surgicalHere = await page.locator('[data-testid="dx-cond.cholecystitis"], [data-testid="dx-cond.pancreatitis"], [data-testid="dx-cond.biliary_colic"]').count();
+  check(surgicalHere === 0 && (await page.getByTestId('dx-cond.appendicitis').count()) === 1, `смена: в амбулатории хирургических диагнозов нет (${surgicalHere}), аппендицит — есть`);
   await page.locator('[data-testid^="hint-"]').first().click();
   await page.getByTestId('decision-to-plan').click();
   await page.getByTestId('setting-home').click();
@@ -1169,6 +1205,46 @@ try {
   await page.goto(`${base}/encyclopedia/article/room.ultrasound`);
   await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
   check((await visibleText(page, 'enc-article-title')) === 'Кабинет УЗИ', `энциклопедия, кабинет: ${await visibleText(page, 'enc-article-title')}`);
+
+  // хирургия живота (spec 2026-09-chapter-2, часть 30): со смотровой приёмного больница принимает
+  // и хирургию — у вас больной острым холециститом; УЗИ — желчный пузырь с камнями и толстой
+  // стенкой; в выборе диагноза — колика, холецистит, панкреатит; в энциклопедии — срок операции
+  const gall = gallSave();
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', gall.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId('shift-continue').waitFor({ timeout: 15_000 });
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId('shift-continue').click();
+  await visible(page, 'result-us').waitFor({ timeout: 10_000 });
+  await visible(page, 'result-us').scrollIntoViewIfNeeded();
+  await page.waitForTimeout(800);
+  const gbBox = await visible(page, 'result-us').boundingBox();
+  const gbStones = await page.locator('text=конкременты с акустической тенью').first().isVisible().catch(() => false);
+  const gbWall = await page.locator('text=Стенка желчного пузыря утолщена').first().isVisible().catch(() => false);
+  check(gbBox !== null && gbBox.height > 150 && gbStones && gbWall,
+    `холецистит: УЗИ — сектором ${Math.round(gbBox?.width ?? 0)} × ${Math.round(gbBox?.height ?? 0)}, строки «конкременты с акустической тенью» и «стенка утолщена»`);
+  await page.screenshot({ path: join(OUT, '19-gall-us.png'), fullPage: true });
+  await visible(page, 'visit-decide').click();
+  await visible(page, 'dx-cond.cholecystitis').waitFor({ timeout: 10_000 });
+  const surgicalDx = (await Promise.all(['cond.cholecystitis', 'cond.biliary_colic', 'cond.pancreatitis'].map(id => visible(page, `dx-${id}`).count()))).every(n => n === 1);
+  check(surgicalDx && (await visible(page, 'dx-cond.cholelithiasis').count()) === 0, 'холецистит: в выборе диагноза — желчная колика, острый холецистит, острый панкреатит; камни без приступа — нет');
+  await visible(page, 'dx-cond.cholecystitis').click();
+  await page.screenshot({ path: join(OUT, '19-gall-decision.png'), fullPage: true });
+  await visible(page, 'decision-to-plan').click();
+  await visible(page, 'decision-diagnosis').waitFor({ timeout: 5000 });
+  check((await visibleText(page, 'decision-diagnosis')).includes('Острый холецистит'), `холецистит: диагноз — ${await visibleText(page, 'decision-diagnosis')}`);
+  await page.goto(`${base}/encyclopedia/article/cond.cholecystitis`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const window72 = await page.locator('text=в первые 72\u00a0ч от начала болезни').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'Острый холецистит' && window72, `энциклопедия, холецистит: ${await visibleText(page, 'enc-article-title')} — операция в первые 72 ч от начала болезни`);
+  await page.goto(`${base}/encyclopedia/article/cond.pancreatitis`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  check((await visibleText(page, 'enc-article-title')) === 'Острый панкреатит', `энциклопедия, панкреатит: ${await visibleText(page, 'enc-article-title')}`);
 
   // энциклопедия: раздел «Шкалы», статья NEWS2 — баллы по показателям
   await page.goto(`${base}/encyclopedia/article/score.news2`);

@@ -18,6 +18,8 @@ export interface UsFindings {
   pelvis?: number;
   /** 0–1: тёмная полоса жидкости у органа — толщина */
   fluid?: number;
+  /** 0–1: стенка желчного пузыря утолщена — яркая, с тёмной полоской отёка посередине («двойной контур», часть 30) */
+  wall?: number;
   /**
    * 0–1: в поперечнике виден отросток — «мишень»: слоистая стенка вокруг тёмной середины, вокруг —
    * светлый отёчный жир. 0 — отростка не видно, как обычно у здорового
@@ -75,6 +77,8 @@ export interface UsGeometry {
   liverBottom?: Pt[];
   /** жёлчный пузырь: полость и стенка — один контур */
   gallbladder?: Pt[];
+  /** утолщённая стенка пузыря: наружный контур и середина стенки — полоска отёка */
+  gbWall?: [Pt[], Pt[]];
   /** светлые точки и тень за каждой — по лучам от вершины до конца сектора */
   foci: { c: Pt; r: number; shadow: Pt[] }[];
   /** усиление за пузырём — светлее по лучам под ним */
@@ -142,10 +146,16 @@ export function usGeometry(f: UsFindings, seed: number): UsGeometry {
     const enhancement: Pt[] = [ray(aMin + 0.02, far - 0.02), ray(aMin + 0.02, R1), ray(aMax - 0.02, R1), ray(aMax - 0.02, far - 0.02)];
     const fluid = clamp01(f.fluid);
     const out: UsGeometry = { ...base, gallbladder: gb, foci, enhancement };
+    const thick = clamp01(f.wall);
+    // стенка утолщена: наружный контур шире полости, посередине стенки — тёмная полоска отёка
+    const k = 1.1 + 0.16 * thick;
+    const around = (m: number) => gb.map(p => [c[0] + (p[0] - c[0]) * m, c[1] + (p[1] - c[1]) * m] as Pt);
+    if (thick > 0) out.gbWall = [around(k), around((1 + k) / 2)];
     if (fluid > 0) {
-      // тёмная полоса вдоль нижней стенки пузыря, снаружи
+      // тёмная полоса вдоль нижней стенки пузыря, снаружи (снаружи утолщённой стенки, если она есть)
+      const lower0 = thick > 0 ? around(k).filter(p => polar(p).r > polar(c).r).sort((p, q) => polar(p).a - polar(q).a) : lower;
       const w = 0.006 + 0.03 * fluid;
-      const band = lower.map(p => {
+      const band = lower0.map(p => {
         const q = polar(p);
         return [ray(q.a, q.r + 0.004), ray(q.a, q.r + 0.004 + w)] as const;
       });

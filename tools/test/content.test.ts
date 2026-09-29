@@ -176,7 +176,11 @@ describe('каталог больницы', () => {
     // кабинет УЗИ (часть 29): врач УЗД сам делает и сам описывает; экспертный аппарат — улучшение базового
     expect(db.rooms['room.ultrasound']).toMatchObject({ needsEquipment: true, staff: ['role.sonographer'], equipment: ['eq.us_basic', 'eq.us_expert'], exams: ['exam.us_abdomen'] });
     expect(db.equipment['eq.us_expert']).toMatchObject({ upgradeOf: 'eq.us_basic', speed: 0.85, quality: { sens: 5, spec: 1 }, exams: ['exam.us_abdomen'] });
-    expect(db.exams['exam.us_abdomen']).toMatchObject({ kind: 'imaging', radiation: 'none', checks: [{ f: 'img.us_appendicitis', sens: 7600, spec: 9500 }] });
+    expect(db.exams['exam.us_abdomen']).toMatchObject({ kind: 'imaging', radiation: 'none' });
+    // отросток — WSES 2020; камни — точность порядка 95 % (877_1); холецистит — 81 и 83 % (819_1, часть 30)
+    expect(db.exams['exam.us_abdomen'].checks).toEqual([
+      { f: 'img.us_appendicitis', sens: 7600, spec: 9500 }, { f: 'img.us_gallstones', sens: 9500, spec: 9500 }, { f: 'img.us_cholecystitis', sens: 8100, spec: 8300 },
+    ]);
     expect(Object.values(db.roles).filter(r => r.reads).map(r => r.id).sort()).toEqual(['role.radiologist', 'role.sonographer']);
     expect(db.roles['role.sonographer'].rooms).toEqual(['room.ultrasound']);
     expect(db.conditions['cond.appendicitis'].findings).toContainEqual(expect.objectContaining({ f: 'img.us_appendicitis' }));
@@ -205,6 +209,15 @@ describe('каталог больницы', () => {
     expect(two.some(e => e.includes('room.xray: снимки описывают сразу role.radiographer и role.radiologist — должен один'))).toBe(true);
     const lab = broken(d => edit(d, 'hospital/roles/lab_tech.yaml', 'salary: [1400, 2300]\n', 'salary: [1400, 2300]\nreads: true\n'));
     expect(lab.some(e => e.includes('role.lab_tech: описывает снимки, а там, где он работает, снимков не делают'))).toBe(true);
+  });
+
+  test('помещение принимает отделение без болезней; у болезни, с которой приходят, меньше трёх признаков (часть 30)', () => {
+    const empty = broken(d => edit(d, 'hospital/rooms/emergency.yaml', 'admits: [dept.surgery]', 'admits: [dept.cardiology]'));
+    expect(empty.some(e => e.includes('room.emergency: принимает dept.cardiology, а болезней этого отделения в базе нет'))).toBe(true);
+    // хроническому фону — камням в пузыре — двух признаков хватает, с ними не приходят
+    const few = broken(d => edit(d, 'conditions/surgery/cholelithiasis.yaml', 'presenting: false\n', ''));
+    expect(few.some(e => e.includes('cond.cholelithiasis') && e.includes('меньше трёх признаков'))).toBe(true);
+    expect(buildDb().db.conditions['cond.cholelithiasis'].findings).toHaveLength(2);
   });
 
   test('смотровая приёмного без мест для скорой; шкала с щелью между полосами или с чужим признаком', () => {
@@ -310,8 +323,8 @@ describe('достижения', () => {
     expect(room.some(e => e.includes('ach.lab: помещение room.laboratory не найдено'))).toBe(true);
     const chapter = broken(d => edit(d, 'achievements/district.yaml', 'chapter: chapter.district', 'chapter: chapter.city'));
     expect(chapter.some(e => e.includes('ach.district: глава chapter.city не найдена'))).toBe(true);
-    const dept = broken(d => edit(d, 'achievements/therapy.yaml', 'department: dept.therapy', 'department: dept.surgery'));
-    expect(dept.some(e => e.includes('ach.therapy: в отделении dept.surgery нет болезней'))).toBe(true);
+    const dept = broken(d => edit(d, 'achievements/therapy.yaml', 'department: dept.therapy', 'department: dept.trauma'));
+    expect(dept.some(e => e.includes('ach.therapy: в отделении dept.trauma нет болезней'))).toBe(true);
     const order = broken(d => edit(d, 'achievements/month.yaml', 'order: 5', 'order: 4'));
     expect(order.some(e => e.includes('порядок 4 уже у другого достижения'))).toBe(true);
     const kind = broken(d => edit(d, 'achievements/month.yaml', 'kind: days', 'kind: streakDays'));

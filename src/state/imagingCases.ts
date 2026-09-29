@@ -36,6 +36,7 @@ const u = T.spikes.imaging.us;
 export const US_CASES: UsCase[] = [
   { key: 'us-gb', findings: { view: 'gallbladder' }, seed: 1, label: u.gb },
   { key: 'us-gb-foci', findings: { view: 'gallbladder', foci: { count: 3, size: 0.5 } }, seed: 2, label: u.gbFoci },
+  { key: 'us-gb-wall', findings: { view: 'gallbladder', foci: { count: 3, size: 0.6 }, wall: 0.8, fluid: 0.4 }, seed: 9, label: u.gallbladderWall },
   { key: 'us-kidney', findings: { view: 'kidney' }, seed: 3, label: u.kidney },
   { key: 'us-kidney-pelvis', findings: { view: 'kidney', pelvis: 0.7 }, seed: 4, label: u.kidneyPelvis },
   { key: 'us-kidney-fluid', findings: { view: 'kidney', fluid: 0.6 }, seed: 5, label: u.kidneyFluid },

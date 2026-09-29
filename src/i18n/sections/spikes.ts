@@ -182,11 +182,12 @@ export const spikes = {
         `При сортировке недооценили: по листу передачи NEWS2 — ${news2}\u00a0${pluralRu(news2, 'балл', 'балла', 'баллов')}${flag ? `, но «${flag.toLowerCase()}» — тревожный признак` : ''}, по шкале это ${TRIAGE[triage] ?? triage}`,
       triageOver: (triage: string, news2: number, flag?: string) =>
         `При сортировке переоценили: по листу передачи — ${TRIAGE[triage] ?? triage} (NEWS2 — ${news2}\u00a0${pluralRu(news2, 'балл', 'балла', 'баллов')}${flag ? `, тревожный признак «${flag.toLowerCase()}»` : ''})`,
-      // операционная (spec 2026-09-chapter-2, часть 28): срок от поступления и осложнение после операции
-      opOnTime: (tx: string, hours: number, window: number) =>
-        `${tx} — через ${String(hours).replace('.', ',')}\u00a0ч после поступления: в срок, до ${window}\u00a0ч`,
-      opLate: (tx: string, hours: number, window: number) =>
-        `${tx} — через ${String(hours).replace('.', ',')}\u00a0ч после поступления: позже срока в ${window}\u00a0ч`,
+      // операционная (spec 2026-09-chapter-2, часть 28): срок от поступления — или от начала болезни
+      // (холецистит, часть 30) — и осложнение после операции
+      opOnTime: (tx: string, hours: number, window: number, onset = false) =>
+        `${tx} — через ${String(hours).replace('.', ',')}\u00a0ч ${onset ? 'от начала болезни' : 'после поступления'}: в срок, до ${window}\u00a0ч`,
+      opLate: (tx: string, hours: number, window: number, onset = false) =>
+        `${tx} — через ${String(hours).replace('.', ',')}\u00a0ч ${onset ? 'от начала болезни' : 'после поступления'}: позже срока в ${window}\u00a0ч`,
       opComplication: (tx: string) => `После операции (${tx.toLowerCase()}) — осложнение: инфекция раны или абсцесс, стационар дольше`,
       // стадия болезни на момент разреза (часть 28б): перфорация — уже при поступлении или пока ждали
       opComplicated: (name: string, hours: number, before: boolean) =>
@@ -264,6 +265,8 @@ export const spikes = {
       title: 'УЗИ',
       gb: 'Печень и желчный пузырь',
       gbFoci: 'Светлые точки у нижней стенки пузыря, за ними — тень',
+      // утолщённая стенка пузыря (часть 30)
+      gallbladderWall: 'Камни, толстая двухконтурная стенка пузыря и полоска жидкости',
       kidney: 'Почка под печенью',
       kidneyPelvis: 'Тёмная середина почки расширена',
       kidneyFluid: 'Тёмная полоса жидкости между печенью и почкой',

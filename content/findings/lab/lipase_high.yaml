@@ -1,0 +1,17 @@
+id: lab.lipase_high
+name: { ru: "Липаза выше нормы в 3 раза и более" }
+leak: { pct: 0.5 }
+value:
+  unit: "Ед/л"
+  ref: [13, 60]
+  present: [180, 2400]
+  absent: [14, 110]
+  decimals: 0
+texts:
+  hint:
+    ru: "Фермент поджелудочной железы. Выше нормы в три раза и больше — вместе с типичной болью это острый панкреатит."
+  present:
+    - ru: "Липаза {value} {unit}"
+  absent:
+    - ru: "Липаза {value} {unit}"
+review: draft

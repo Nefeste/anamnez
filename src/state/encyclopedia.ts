@@ -185,7 +185,7 @@ function whereLines(db: ContentDb, c: Condition, t: Tactics): string[] {
   if (s.redFlag && s.redFlag !== s.default) lines.push(e.whereRedFlag(e.setting[s.redFlag]));
   for (const r of s.risks ?? []) if (r.setting !== s.default) lines.push(e.whereRisk(nameOf(db, r.id), e.setting[r.setting]));
   // операция и срок стационара (spec 2026-09-chapter-2, части 26 и 28), после осложнённой стадии — свой (28б)
-  if (c.surgery) lines.push(e.whereSurgery(nameOf(db, c.surgery.tx), c.surgery.window));
+  if (c.surgery) lines.push(e.whereSurgery(nameOf(db, c.surgery.tx), c.surgery.window, c.surgery.from === 'onset'));
   if (c.stay) lines.push(e.whereStay(c.stay[0], c.stay[1]));
   if (c.complication?.stay) lines.push(e.whereStayComplicated(c.complication.name.ru, c.complication.stay[0], c.complication.stay[1]));
   return lines;
@@ -314,7 +314,7 @@ function treatmentArticle(db: ContentDb, x: Treatment): Article {
   // операция (часть 28): что ею лечат и в какой срок, где делают и какая бригада
   const op = x.surgery;
   if (op) {
-    const treats = conditions.filter(c => c.surgery?.tx === x.id).map(c => ref(db, c.id, e.opWindow(c.surgery!.window))).sort(byTitle);
+    const treats = conditions.filter(c => c.surgery?.tx === x.id).map(c => ref(db, c.id, e.opWindow(c.surgery!.window, c.surgery!.from === 'onset'))).sort(byTitle);
     if (treats.length > 0) blocks.push({ key: 'treats', title: e.opTreats, refs: treats });
     blocks.push({ key: 'where', title: e.whereDone, refs: [ref(db, op.room), ...op.equipment.map(id => ref(db, id))] });
     blocks.push({ key: 'team', title: e.opTeam, refs: op.team.map(id => ref(db, id)) });

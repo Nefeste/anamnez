@@ -1737,6 +1737,7 @@ export function archiveCaseView(key: string): VisitView | undefined {
     draft: p.draft,
     decision: decisionFor(r, p, arrived, known),
     difficulty: 'doctor',
+    ...(p.departments ? { departments: p.departments } : {}),
   });
 }
 
@@ -1808,6 +1809,8 @@ function buildCaseView(): VisitView | undefined {
     difficulty: s.meta.difficulty ?? 'doctor',
     // и в практике: кабинета УЗИ в амбулатории нет (часть 29)
     unavailable: unavailableOf(s),
+    // с какими отделениями его приняли (часть 30): с приёмным — и хирургия
+    ...(p.departments ? { departments: p.departments } : {}),
     ...(wardBeds(db, s).length > 0 ? { settings: settingOptions(s, p.draft.diagnosis) } : {}),
     ...(p.payer ? { payerNote: T.sandbox.payerNote[p.payer] } : {}),
     ...(p.paid && p.closed ? { payment: paymentText(db, p.payer ?? 'oms', p.paid, p.closed) } : {}),

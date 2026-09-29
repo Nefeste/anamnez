@@ -161,18 +161,22 @@ describe('кабинет УЗИ: карта и картинка', () => {
     expect(T.shift.map.staff.sonographer).toBe('Врач УЗД');
   });
 
-  test('результат УЗИ — сектором: виден отросток — «мишень», не виден — без неё', () => {
+  test('результат УЗИ — сектором: виден отросток — «мишень»; иначе желчный пузырь — с камнями и стенкой, если их показало УЗИ', () => {
     const sick = generatePatient(db, 5, { department: 'dept.therapy', season: 'autumn', primary: 'cond.appendicitis', params: {} });
-    const input = (shown: boolean): CaseInput => ({
+    const input = (shown: readonly string[]): CaseInput => ({
       version: 1, patient: sick, clock: 600, minutesSpent: 0, money: 0, step: 1, pending: [], meanwhile: [], done: [US],
       draft: { treatments: [], setting: 'home' },
-      arrived: [{ exam: US, step: 1, at: 600, obs: [{ f: FINDING, shown, exam: US }] }],
+      arrived: [{ exam: US, step: 1, at: 600, obs: [FINDING, 'img.us_gallstones', 'img.us_cholecystitis'].map(f => ({ f, shown: shown.includes(f), exam: US })) }],
     });
-    const image = (shown: boolean) => makeCaseView(input(shown)).groups.find(g => g.exam === US)!.image;
-    expect(image(true)).toMatchObject({ kind: 'us', view: 'appendix', appendix: 0.8 });
-    expect(image(false)).toMatchObject({ kind: 'us', view: 'appendix', appendix: 0 });
+    const image = (shown: readonly string[]) => makeCaseView(input(shown)).groups.find(g => g.exam === US)!.image;
+    expect(image([FINDING])).toMatchObject({ kind: 'us', view: 'appendix', appendix: 0.8 });
+    // отросток важнее случайных камней
+    expect(image([FINDING, 'img.us_gallstones'])).toMatchObject({ view: 'appendix' });
+    expect(image([])).toMatchObject({ kind: 'us', view: 'gallbladder', stones: 0, wall: 0 });
+    expect(image(['img.us_gallstones'])).toMatchObject({ view: 'gallbladder', stones: 3, wall: 0 });
+    expect(image(['img.us_gallstones', 'img.us_cholecystitis'])).toMatchObject({ view: 'gallbladder', stones: 3, wall: 0.8 });
     // зерно — от пациента и обследования: тот же пациент — тот же рисунок
-    expect(image(true)!.seed).toBe(image(false)!.seed);
+    expect(image([FINDING])!.seed).toBe(image([])!.seed);
   });
 
   test('кандидаты: в песочнице — врачи УЗД; в главе 1 кабинета УЗИ нет — и врача УЗД нет', () => {
