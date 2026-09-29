@@ -50,6 +50,11 @@ effects:
   - { on: cond.head_bruise, kind: relieve, band: often, days: [0, 1] }
   - { on: cond.hand_wound, kind: relieve, band: often, days: [0, 1] }
   - { on: cond.head_wound, kind: relieve, band: often, days: [0, 1] }
+  # колено (часть 32д): НПВП и парацетамол — мультимодальная анальгезия (691_2, раздел 3.3, УУР A;
+  # критерий качества 3; 970_1, раздел 3.3); при ушибе — как при ушибах конечностей (832_2, раздел 3.1)
+  - { on: cond.knee_contusion, kind: relieve, band: usually, days: [0, 1] }
+  - { on: cond.knee_ligament, kind: relieve, band: usually, days: [0, 1] }
+  - { on: cond.patella_fracture, kind: relieve, band: usually, days: [0, 1] }
 contraindications:
   - { id: risk.allergy_nsaid, level: absolute, reaction: often }
   - { id: risk.pregnancy, level: relative, reaction: never }

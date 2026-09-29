@@ -6,6 +6,7 @@ import { Rng } from '../core/rng';
 import { complaintObservations, examFits, runExam } from './exams';
 import { type Belief, contextOf, expectedGain, knownFacts, likelyParams, paramBeliefs, paramGain, posterior } from './infer';
 import { choiceFor, type Plan, possibleFor, SETTING_ORDER, tacticsFor, type Venue, whenHolds } from './plan';
+import { ruleExams } from './rules';
 import type { Observation, Patient } from './types';
 
 export type Strategy = 'rational' | 'lazy' | 'shotgun';
@@ -105,8 +106,12 @@ export function choosePlan(db: ContentDb, diagnosis: Id, observations: readonly 
 /**
  * Показано ли обследование сейчас: польза по тому, что уже известно, не ниже `MIN_GAIN` — так
  * решает разумный врач, так проверяет назначение страховая (spec 2026-09-own-hospital, часть 9).
+ * Велит его положительное правило решения — показано всегда (часть 32д); отрицательное не
+ * запрещает: «снимок можно не делать» — не «нельзя».
  */
 export function indicated(db: ContentDb, patient: Patient, obs: readonly Observation[], candidates: Id[], examId: Id): boolean {
+  // велит положительное правило решения — показано, какой бы малой ни была польза (часть 32д)
+  if (ruleExams(db, patient, obs).includes(examId)) return true;
   const ctx = contextOf(db, patient, obs);
   const beliefs = posterior(db, candidates, obs, ctx);
   return quantize(expectedGain(db, examId, beliefs, ctx, new Set(obs.map(o => o.f)))) >= quantize(MIN_GAIN);
@@ -225,6 +230,10 @@ export function nextStep(db: ContentDb, patient: Patient, obs: readonly Observat
     // вопросы всем и то, что делают каждому с такой жалобой (часть 32г-2: неврологический осмотр при ране головы)
     const routine = opt.exams.find(id => (db.exams[id].routine || db.exams[id].routineFor?.some(f => patient.complaints.includes(f))) && !done.includes(id));
     if (routine) return { step: { kind: 'exam', exam: routine }, phase: now };
+    // положительное правило решения велит обследование — его делают (часть 32д): оттавские правила
+    // сказали «снимок нужен», и снимок делают, даже почти уверившись в ушибе
+    const ruled = ruleExams(db, patient, obs).find(id => opt.exams.includes(id) && !done.includes(id));
+    if (ruled) return { step: { kind: 'exam', exam: ruled }, phase: now };
     const ctx = contextOf(db, patient, obs);
     const beliefs = posterior(db, opt.candidates, obs, ctx);
     if (beliefs[0].p < opt.threshold) {

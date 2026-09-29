@@ -143,7 +143,7 @@ describe('показана ли КТ — производный параметр
 
   test('доля «КТ нужна» в записи — как у пришедших с сотрясением: 68 %', () => {
     const ps = arrivals(20_000).filter(p => p.truth.conditions[0].id === CONC);
-    expect(ps.length).toBeGreaterThan(700);
+    expect(ps.length).toBeGreaterThan(600);
     const dist = db.conditions[CONC].params!.ct;
     near(share(ps, p => ct(p) === 'yes'), dist.yes / (dist.yes + dist.no), 0.05);
     // правило не применимо — у каждого десятого сотрясения: без потери сознания, амнезии, рвоты, судорог и оглушения

@@ -12,6 +12,11 @@ effects:
   - { on: cond.foot_contusion, kind: cure, band: usually, days: [7, 21] }
   - { on: cond.hip_contusion, kind: cure, band: usually, days: [7, 21] }
   - { on: cond.shoulder_contusion, kind: cure, band: usually, days: [7, 21] }
+  # колено (часть 32д): ушиб — то же; при разрыве связок и переломе надколенника холод и покой
+  # облегчают, но связку и кость не сращивают (691_2, раздел 3.1; 832_2, раздел 3.1)
+  - { on: cond.knee_contusion, kind: cure, band: usually, days: [7, 21] }
+  - { on: cond.knee_ligament, kind: relieve, band: often, days: [1, 5] }
+  - { on: cond.patella_fracture, kind: relieve, band: sometimes, days: [1, 3] }
 texts:
   hint:
     ru: "Первые 3–5 дней беречь конечность, первые сутки прикладывать холод по 15 минут каждый час, наложить эластичный бинт и держать ногу или руку повыше. Так лечат ушибы и растяжения связок."

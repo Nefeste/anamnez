@@ -625,8 +625,8 @@ try {
   await page.goto(`${base}/spikes/bones`);
   await allDrawn(60_000);
   const bones = await drawn('[data-testid^="bone-"] canvas');
-  check(bones.length === 16 && bones.every(Boolean), `П7: рентген костей нарисован — ${bones.filter(Boolean).length} из 16 (смотреть 06-bones-*.png)`);
-  for (const view of ['wrist', 'ankle', 'foot', 'hip', 'clavicle', 'ribs']) {
+  check(bones.length === 20 && bones.every(Boolean), `П7: рентген костей нарисован — ${bones.filter(Boolean).length} из 20 (смотреть 06-bones-*.png)`);
+  for (const view of ['wrist', 'ankle', 'knee', 'foot', 'hip', 'clavicle', 'ribs']) {
     await page.getByTestId(`bones-${view}`).scrollIntoViewIfNeeded();
     await page.waitForTimeout(300);
     await page.getByTestId(`bones-${view}`).screenshot({ path: join(OUT, `06-bones-${view}.png`) });
@@ -1393,6 +1393,17 @@ try {
   const prevent = await page.locator('text=Обязательная профилактика, при укусе').first().isVisible().catch(() => false);
   check((await visibleText(page, 'enc-article-title')) === 'Открытая рана кисти' && tendon && prevent,
     `энциклопедия, рана кисти: ${await visibleText(page, 'enc-article-title')} — перевод при перерезанном сухожилии, профилактика при укусе`);
+  // колено (0.2.3): возраст «55 лет и старше» — признак правила; перелом надколенника со смещением — операция
+  await page.goto(`${base}/encyclopedia/article/rule.ottawa_knee`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const kneeAge = await page.locator('text=Возраст 55 лет и старше — тоже основной признак.').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'Оттавские правила для колена' && kneeAge,
+    `энциклопедия, правило для колена: ${await visibleText(page, 'enc-article-title')} — «возраст 55 лет и старше — тоже основной признак»`);
+  await page.goto(`${base}/encyclopedia/article/cond.patella_fracture`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const patellaOp = await page.locator('text=При смещении — операция.').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'Перелом надколенника' && patellaOp,
+    `энциклопедия, перелом надколенника: ${await visibleText(page, 'enc-article-title')} — «при смещении — операция»`);
 
   // кампания: карьера 1 → глава 1 — письма и задания; письмо наставника; смена открывается;
   // «Продолжить» в меню — карьера (spec 2026-09-campaign)

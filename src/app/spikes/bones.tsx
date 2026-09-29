@@ -7,7 +7,7 @@ import type { BoneView } from '@/render/xray/boneGeometry';
 import { BONE_CASES } from '@/state/imagingCases';
 import { Card, H, P, Screen } from '@/ui/components';
 
-const VIEWS: BoneView[] = ['wrist', 'ankle', 'foot', 'hip', 'clavicle', 'ribs'];
+const VIEWS: BoneView[] = ['wrist', 'ankle', 'knee', 'foot', 'hip', 'clavicle', 'ribs'];
 
 export default function BonesSpike() {
   const { width } = useWindowDimensions();

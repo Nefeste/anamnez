@@ -660,7 +660,7 @@ export const ruleSchema = z.strictObject({
   /** дополнительные признаки: нужно не меньше `count` (часть 32г) */
   minor: z.strictObject({ any: z.array(z.string()).min(1), count: z.number().int().min(2) }).optional(),
   /** возраст: старше `main` — основной признак, в пределах `minor` — дополнительный (часть 32г) */
-  age: z.strictObject({ main: z.number().int().min(1).max(120).optional(), minor: z.tuple([z.number().int().min(0), z.number().int().max(120)]).optional() }).optional(),
+  age: z.strictObject({ main: z.number().int().min(1).max(120).optional(), from: z.number().int().min(1).max(120).optional(), minor: z.tuple([z.number().int().min(0), z.number().int().max(120)]).optional() }).optional(),
   /** применимо, только если есть хоть один из этих признаков (часть 32г: лёгкая ЧМТ) */
   requires: z.array(z.string()).min(1).optional(),
   /** какое обследование правило назначает; пусто — его в игре нет (КТ, часть 32г), тогда `texts.exam` */

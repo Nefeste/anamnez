@@ -11,7 +11,7 @@ import { type Belief, contextOf, knownFacts, posterior } from '@/engine/med/infe
 import type { PlanEval } from '@/engine/med/plan';
 import type { ReviewData } from '@/engine/med/review';
 import type { CaseScore, Grade, ScoreNote } from '@/engine/med/score';
-import { checkRule, knownOf } from '@/engine/med/rules';
+import { checkRule, knownOf, rulesFor } from '@/engine/med/rules';
 import { complaintText, observationText } from '@/engine/med/text';
 import type { Observation, Patient } from '@/engine/med/types';
 import type { Difficulty } from '@/engine/shift/types';
@@ -380,16 +380,19 @@ function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observat
       const key = x.rib !== undefined ? `${x.site}${x.rib}` : x.site;
       if ((bySite.get(key)?.displacement ?? -1) < (x.displacement ?? 0)) bySite.set(key, x);
     }
-    return { kind: 'bone', view: bone.view, side: complaintSide, fractures: [...bySite.values()], seed };
+    // выпот в колене (часть 32д) — если его показал снимок
+    const effusion = bone.effusion !== undefined && shown(bone.effusion) !== undefined;
+    return { kind: 'bone', view: bone.view, side: complaintSide, fractures: [...bySite.values()], ...(effusion ? { effusion } : {}), seed };
   }
   return undefined;
 }
 
 /**
  * Снимки костей (часть 32): вид и что рисует каждая находка — линия перелома, смещение (0–1),
- * нестабильный перелом: у лучевой — сильнее смещение, у голеностопа — обе лодыжки и сдвиг таранной.
+ * нестабильный перелом: у лучевой — сильнее смещение, у голеностопа — обе лодыжки и сдвиг таранной;
+ * `effusion` — находка выпота в суставе (колено, часть 32д).
  */
-const BONE_EXAMS: Record<Id, { view: BoneFindings['view']; fractures: [Id, BoneFracture[]][] }> = {
+const BONE_EXAMS: Record<Id, { view: BoneFindings['view']; fractures: [Id, BoneFracture[]][]; effusion?: Id }> = {
   'exam.xray_wrist': {
     view: 'wrist',
     fractures: [
@@ -405,6 +408,15 @@ const BONE_EXAMS: Record<Id, { view: BoneFindings['view']; fractures: [Id, BoneF
       ['img.xr_ankle_fracture', [{ site: 'fibula', displacement: 0 }]],
       ['img.xr_ankle_unstable', [{ site: 'fibula', displacement: 0.8 }, { site: 'medial_malleolus', displacement: 0.8 }]],
     ],
+  },
+  // часть 32д: надколенник — поперечная линия; разошлись отломки — верхний ушёл вверх; выпот
+  'exam.xray_knee': {
+    view: 'knee',
+    fractures: [
+      ['img.xr_patella_fracture', [{ site: 'patella', displacement: 0 }]],
+      ['img.xr_patella_displaced', [{ site: 'patella', displacement: 0.9 }]],
+    ],
+    effusion: 'img.xr_knee_effusion',
   },
   // часть 32б: основание пятой плюсневой, шейка бедра, ключица — смещение как в прототипах части 31
   'exam.xray_foot': {
@@ -450,19 +462,18 @@ function rulesOf(p: Patient, obs: readonly Observation[]): VisitView['rules'] {
   const t = T.spikes.patient;
   const names = (ids: Id[]) => ids.map(f => lowerFirst(db.findings[f].name.ru));
   const known = knownOf(obs);
-  return Object.values(db.rules)
-    .filter(r => r.complaints.some(f => p.complaints.includes(f)) && p.age >= (r.ageMin ?? 0))
-    .map(r => {
-      const x = checkRule(r, p.age, known);
-      const main = [...names(x.main), ...(x.ageMain && r.age?.main !== undefined ? [t.ruleAgeOver(r.age.main)] : [])];
-      const minor = [...names(x.minor), ...(x.ageMinor && r.age?.minor ? [t.ruleAgeRange(r.age.minor[0], r.age.minor[1])] : [])];
-      const why = main.length > 0 ? main.join(', ') : t.ruleMinor(minor.join(', '));
-      const text =
-        x.verdict === 'yes' ? t.ruleYes(r.texts.yes.ru, why)
-        : x.verdict === 'no' ? (x.applies === false ? r.texts.na?.ru ?? r.texts.no.ru : r.texts.no.ru)
-        : t.ruleCheck(names(x.left).join(', '));
-      return { id: r.id, name: r.name.ru, text };
-    });
+  return rulesFor(db, p).map(r => {
+    const x = checkRule(r, p.age, known);
+    const age = r.age?.main !== undefined ? t.ruleAgeOver(r.age.main) : r.age?.from !== undefined ? t.ruleAgeFrom(r.age.from) : undefined;
+    const main = [...names(x.main), ...(x.ageMain && age ? [age] : [])];
+    const minor = [...names(x.minor), ...(x.ageMinor && r.age?.minor ? [t.ruleAgeRange(r.age.minor[0], r.age.minor[1])] : [])];
+    const why = main.length > 0 ? main.join(', ') : t.ruleMinor(minor.join(', '));
+    const text =
+      x.verdict === 'yes' ? t.ruleYes(r.texts.yes.ru, why)
+      : x.verdict === 'no' ? (x.applies === false ? r.texts.na?.ru ?? r.texts.no.ru : r.texts.no.ru)
+      : t.ruleCheck(names(x.left).join(', '));
+    return { id: r.id, name: r.name.ru, text };
+  });
 }
 
 export function makeCaseView(c: CaseInput): VisitView {

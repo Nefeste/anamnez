@@ -436,7 +436,7 @@ function ruleArticle(db: ContentDb, x: Rule): Article {
     { key: 'when', title: e.ruleWhen, refs: x.complaints.map(id => ref(db, id)), ...(x.ageMin !== undefined ? { note: e.ruleAge(x.ageMin) } : {}) },
     // часть 32г: к кому правило применимо, возраст и дополнительные признаки
     ...(x.requires ? [{ key: 'requires', title: e.ruleRequires, refs: x.requires.map(id => ref(db, id)), text: [x.texts.na?.ru ?? ''] }] : []),
-    { key: 'any', title: e.ruleAny, text: [x.texts.yes.ru, ...(x.age?.main !== undefined ? [e.ruleAgeMain(x.age.main)] : [])], refs: x.any.map(id => ref(db, id)) },
+    { key: 'any', title: e.ruleAny, text: [x.texts.yes.ru, ...(x.age?.main !== undefined ? [e.ruleAgeMain(x.age.main)] : x.age?.from !== undefined ? [e.ruleAgeFrom(x.age.from)] : [])], refs: x.any.map(id => ref(db, id)) },
     ...(x.minor ? [{ key: 'minor', title: e.ruleMinor(x.minor.count), refs: x.minor.any.map(id => ref(db, id)), text: x.age?.minor ? [e.ruleAgeMinor(x.age.minor[0], x.age.minor[1])] : [] }] : []),
     { key: 'none', title: x.minor ? e.ruleNoneMinor : e.ruleNone, text: [x.texts.no.ru] },
     // обследования, которого в игре нет (КТ, часть 32г), — словами
