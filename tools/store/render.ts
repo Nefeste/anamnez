@@ -1,8 +1,8 @@
 // npm run store — иконка, графика и снимки экрана для магазина и сайта (store/README.md,
 // 11-publishing.md §8). Сначала `npm run export:web`: снимки — с настоящей игры в
 // веб-сборке (стенд, ADR 0003) размером телефона 360 × 640 при плотности 3 — 1080 × 1920,
-// шрифтами игры в её двух темах (spec 2026-09-own-look): ЭКГ и итоги дня — в тёмном
-// «Мониторе», остальное — в светлой «Медкарте». Графика магазина — шрифтом Roboto, по
+// шрифтами игры в её двух темах (spec 2026-09-own-look): ЭКГ — в тёмном «Мониторе»,
+// остальное — в светлой «Медкарте». Графика магазина — шрифтом Roboto, по
 // брендбуку студии. Состояния смены пишет движок (tools/store/states.ts).
 //
 // Флаги: --only icons|graphics|shots (по умолчанию — всё).
@@ -12,7 +12,7 @@ import { type Browser, chromium, type Page } from 'playwright';
 import { buildDb } from '../content/load';
 import { BRAND, iconSvg, markSvg } from './art';
 import { CAPTIONS } from './captions';
-import { acsCase, envelope, pneumoniaCase, queueState, sandboxState, summaryState } from './states';
+import { acsCase, emergencyState, envelope, fractureCase, pneumoniaCase, sandboxState } from './states';
 
 const ROOT = join(import.meta.dir, '../..');
 const DIST = join(ROOT, 'dist-web');
@@ -107,7 +107,7 @@ async function graphics(browser: Browser, screens: Record<string, Buffer>) {
     </div>`, join(STORE, 'graphics/feature-1024x500.png'));
   // 1920 × 1080 — обложка для сайта и соцсетей: слева слова, справа два экрана игры
   const a = screens['02-xray.png'];
-  const b = screens['06-outcome.png'];
+  const b = screens['07-outcome.png'];
   await page(browser, 1920, 1080, `
     ${ecgLine(1920, 960, 90)}
     <div style="position:absolute;left:130px;top:230px;width:820px">
@@ -137,6 +137,14 @@ async function openShift(browser: Browser, base: string, save: string, slot = 's
   const p = await ctx.newPage();
   await p.goto(`${base}${path}`);
   await p.evaluate(() => document.fonts.ready);
+  return p;
+}
+
+/** Своя больница из сохранения — как её открывает игрок: «Быстрая игра» → «Песочница» → «Продолжить». */
+async function openSandbox(browser: Browser, base: string, save: string): Promise<Page> {
+  const p = await openShift(browser, base, save, 'sandbox', '/quick');
+  await p.getByTestId('menu-sandbox').click();
+  await p.getByTestId('restart-continue').click();
   return p;
 }
 
@@ -185,14 +193,15 @@ async function shots(browser: Browser): Promise<Record<string, Buffer>> {
   const base = `http://127.0.0.1:${server.port}`;
   const raw: Record<string, Buffer> = {};
   try {
-    // 1. очередь: через минуту приходит «красный» — автопауза и строка «Срочно»
-    let p = await openShift(browser, base, envelope(queueState(db)));
-    await p.getByTestId('shift-pause-reason').waitFor({ timeout: 20_000 });
-    await p.waitForTimeout(400);
-    raw['01-queue.png'] = await snap(p);
+    // 1. своя больница с приёмным: через минуту-две скорая привезёт больного — автопауза, внизу
+    // «сортировать» (открывают, как игрок: «Быстрая игра» → «Песочница» → «Продолжить»)
+    let p = await openSandbox(browser, base, envelope(emergencyState(db)));
+    await p.getByTestId('shift-sort').waitFor({ timeout: 30_000 });
+    await p.waitForTimeout(600);
+    raw['01-emergency.png'] = await snap(p);
     await p.context().close();
 
-    // 2–6. пневмония: снимок пришёл; решение, лечение, итог
+    // 2, 5–7. пневмония: снимок пришёл; решение, лечение, итог
     p = await openShift(browser, base, envelope(pneumoniaCase(db)));
     await p.getByTestId('shift-continue').click();
     await p.getByTestId('result-xray').waitFor({ timeout: 20_000 });
@@ -204,43 +213,44 @@ async function shots(browser: Browser): Promise<Record<string, Buffer>> {
     await p.getByTestId('hint-cond.pneumonia_cap').click();
     await toTop(p);
     await p.waitForTimeout(300);
-    raw['04-diagnosis.png'] = await snap(p);
+    raw['05-diagnosis.png'] = await snap(p);
     await p.getByTestId('decision-to-plan').click();
     await p.getByTestId('tx-tx.amoxicillin').click();
     await p.getByTestId('tx-tx.rest_fluids').click();
     await p.getByTestId('setting-home').click();
     await toTop(p);
     await p.waitForTimeout(300);
-    raw['05-plan.png'] = await snap(p);
+    raw['06-plan.png'] = await snap(p);
     await p.getByTestId('visit-finish').click();
     await p.getByTestId('visit-truth').waitFor({ timeout: 20_000 });
     await p.waitForTimeout(300);
-    raw['06-outcome.png'] = await snap(p);
+    raw['07-outcome.png'] = await snap(p);
     await p.context().close();
 
-    // 3. боль в груди: на ЭКГ подъём ST — в тёмной теме, как на мониторе
+    // 3. травма голеностопа: снимок пришёл — перелом лодыжек со сдвигом таранной кости
+    p = await openSandbox(browser, base, envelope(fractureCase(db)));
+    await p.getByTestId('shift-continue').click();
+    await p.getByTestId('result-xray-bone').waitFor({ timeout: 20_000 });
+    await p.getByTestId('visit-fresh').first().evaluate(el => el.scrollIntoView({ block: 'start' }));
+    await p.mouse.wheel(0, -64);
+    await p.waitForTimeout(700);
+    raw['03-fracture.png'] = await snap(p);
+    await p.context().close();
+
+    // 4. боль в груди: на ЭКГ подъём ST — в тёмной теме, как на мониторе
     p = await openShift(browser, base, envelope(acsCase(db)), 'shift', '/shift', 'dark');
     await p.getByTestId('shift-continue').click();
     await p.getByTestId('result-ecg').waitFor({ timeout: 20_000 });
     await p.getByTestId('visit-fresh').first().evaluate(el => el.scrollIntoView({ block: 'end' }));
     await p.mouse.wheel(0, 24);
     await p.waitForTimeout(500);
-    raw['03-ecg.png'] = await snap(p);
-    await p.context().close();
-
-    // 7. итоги третьего дня — в тёмной теме
-    p = await openShift(browser, base, envelope(summaryState(db)), 'shift', '/shift', 'dark');
-    await p.getByTestId('summary-seen').waitFor({ timeout: 20_000 });
-    await p.waitForTimeout(300);
-    raw['07-summary.png'] = await snap(p);
+    raw['04-ecg.png'] = await snap(p);
     await p.context().close();
 
     // 8. своя больница: готовая амбулатория на участке песочницы — экран стройки, как его
     // открывает игрок: «Быстрая игра» → «Песочница» → «Продолжить» → «Стройка»; призрак
     // второго кабинета врача — на свободном месте справа внизу
-    p = await openShift(browser, base, envelope(sandboxState(db)), 'sandbox', '/quick');
-    await p.getByTestId('menu-sandbox').click();
-    await p.getByTestId('restart-continue').click();
+    p = await openSandbox(browser, base, envelope(sandboxState(db)));
     await p.getByTestId('sandbox-build').click();
     await p.getByTestId('build-map').waitFor({ timeout: 20_000 });
     await p.waitForTimeout(700);
