@@ -13,8 +13,8 @@
 | `screenshots/phone/*.png` | восемь снимков экрана 1080 × 1920 с подписями | RuStore; сайт |
 | `graphics/feature-1024x500.png` | графика 1024 × 500 | Google Play; шапка сайта |
 | `graphics/cover-1920x1080.png` | обложка: название и два экрана игры | сайт, соцсети |
-| [`site/anamnez.ru.md`](site/anamnez.ru.md) | текст страницы игры | gornitsa.games |
-| [`site/press.ru.md`](site/press.ru.md) | коротко для прессы и блогеров | gornitsa.games |
+| [`site/page.ru.md`](site/page.ru.md), [`site/page.en.md`](site/page.en.md) | страница игры и карточка на главной: поля и текст по формату устава студии (`docs/08-publishing.md`, «Сайт»); формат проверяет `tools/test/site.test.ts` | gornitsa.games/anamnez — сайт забирает сам раз в сутки (ADR студии 0015) |
+| [`site/press.ru.md`](site/press.ru.md) | коротко для прессы и блогеров | по запросу; сайт его не читает |
 
 ## Как пересобрать картинки
 
@@ -53,12 +53,12 @@ npm run store -- --only icons            # только иконки (store/icon
 - [ ] проверить название «Анамнез» по ФИПС (классы МКТУ 9 и 41) и по RuStore
 - [x] почта поддержки — support@gornitsa.games, вписана во все тексты (27.09.2026)
 - [ ] раздел «Анамнез» — в единой политике студии https://gornitsa.games/privacy.html (текст —
-      `privacy.ru.md`, `privacy.en.md`); страница игры — https://gornitsa.games/anamnez/ (PR сайта #9)
+      `privacy.ru.md`, `privacy.en.md`); страница игры — https://gornitsa.games/anamnez/, из `site/page.*.md`
 - [ ] в консоли RuStore: новое приложение → тип «Игра», пакет `games.gornitsa.anamnez`,
       категория «Симуляторы», возраст 16+; тексты — из `listing.ru.md`, иконка и снимки —
       из этой папки, анкеты — по `forms.md`
 - [ ] включить предзаказ и указать ожидаемую дату выхода; сверить условия предзаказа в
       консоли (нужна ли сборка, сроки)
-- [ ] карточка появилась — ссылку на неё вписать в `site/anamnez.ru.md` (кнопка
-      «Предзаказ») и в `site/press.ru.md` вместо «⟨ссылка⟩»
+- [ ] карточка появилась — ссылку на неё вписать в `site/page.ru.md` и `site/page.en.md` (поле
+      `links` — кнопка «Предзаказ в RuStore», и `card.links`) и в `site/press.ru.md` вместо «⟨ссылка⟩»
 - [ ] когда будет что выпускать — APK из Releases (подписан постоянным ключом)
