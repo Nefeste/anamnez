@@ -1,0 +1,117 @@
+id: cond.traumatic_hemothorax
+name: { ru: "Травматический гемоторакс" }
+icd10: S27.1
+department: dept.trauma
+system: lungs
+kind: injury
+severity: serious
+epidemiology:
+  # травматический гемоторакс — у 25–59,9 % пострадавших (728_2, раздел 1.3); у больных с
+  # переломами рёбер гемоторакс — 31,8 %, пневмоторакс — 15,6 % (Lin 2016), гемоторакс — 26,8 %,
+  # пневмоторакс — 37,2 % (Sirmali 2003): игровая оценка — столько же, сколько пневмотораксов
+  prevalence: rare
+  # возраст и пол — как у переломов рёбер, игровая оценка
+  age: { min: 18, peak: [30, 75] }
+  sex: { m: 1, f: 0.47 }
+params:
+  # меньше 300 мл снимок не видит (728_2, раздел 2.4) — такие в игре остаются переломом рёбер;
+  # малый и средний — до угла лопатки, большой (тотальный) — больше 1 500 мл, выше угла лопатки
+  # (раздел 1.5). Большой — «у каждого седьмого» (раздел 1.3), а неотложная торакотомия в
+  # операционной нужна 3,1 % больных с тупой травмой груди (Balkan 2002) при гемо- и
+  # гемопневмотораксе у 41,4 % (Lin 2016) — около 8 %; 10 — игровая оценка
+  volume: { moderate: 90, massive: 10 }
+  # сторона — поровну, игровая оценка
+  side: { right: 1, left: 1 }
+course:
+  # свернувшийся гемоторакс формируется за 1–2 суток, фиксируется за 4–14 дней (728_2, разделы
+  # 1.2 и 1.5); сроки — игровая оценка
+  stages:
+    - { id: acute, days: [0, 14] }
+  presentation: [0, 1]
+  untreated: { band: usually, days: [1, 3] }
+  stay: [4, 8]
+# тотальный гемоторакс — неотложная торакотомия (728_2, прил. Г2); на первом уровне оперирует хирург
+# (раздел 6); срока в часах нет; стационар после операции — игровая оценка
+surgery: { tx: tx.thoracotomy, stay: [7, 10] }
+findings:
+  # боль — в 100 % случаев; притупление перкуторного звука и ослабление дыхания на стороне
+  # повреждения; при большом и тотальном — острая кровопотеря и дыхательная недостаточность,
+  # тупой звук со смещением средостения (728_2, раздел 1.6); анемия — повод искать гемоторакс
+  # (разделы 2.3 и 5); частоты не даны — полосы игровые
+  - f: sym.chest_injury_pain
+    band: { pct: 100 }
+    attrs: { side: $side }
+    note: "с этой жалобой приходят все: без неё травмы нет — жалоба травмы, а не признак с частотой"
+  - { f: sym.pleuritic_pain, band: usually, attrs: { side: $side } }
+  - { f: sign.chest_wall_tenderness, band: usually }
+  - { f: sign.rib_crepitus, band: sometimes }
+  - { f: sign.interrupted_inspiration, band: often }
+  - { f: sign.rib_compression_pain, band: often }
+  - { f: sym.dyspnea, band: often, when: { volume: [moderate] } }
+  - { f: sym.dyspnea, band: always, when: { volume: [massive] } }
+  - { f: vital.tachypnea, band: sometimes, when: { volume: [moderate] } }
+  - { f: vital.tachypnea, band: usually, when: { volume: [massive] } }
+  - { f: vital.spo2_low, band: rarely, when: { volume: [moderate] } }
+  - { f: vital.spo2_low, band: often, when: { volume: [massive] } }
+  - { f: vital.tachycardia, band: sometimes, when: { volume: [moderate] } }
+  - { f: vital.tachycardia, band: usually, when: { volume: [massive] } }
+  - { f: sign.pallor, band: rarely, when: { volume: [moderate] } }
+  - { f: sign.pallor, band: usually, when: { volume: [massive] } }
+  - { f: lab.hb_low, band: rarely, when: { volume: [moderate] } }
+  - { f: lab.hb_low, band: often, when: { volume: [massive] } }
+  - { f: sign.breath_sounds_diminished, band: usually, when: { volume: [moderate] }, attrs: { side: $side } }
+  - { f: sign.breath_sounds_diminished, band: always, when: { volume: [massive] }, attrs: { side: $side } }
+  - { f: sign.dullness, band: often, when: { volume: [moderate] }, attrs: { side: $side } }
+  - { f: sign.dullness, band: always, when: { volume: [massive] }, attrs: { side: $side } }
+  - { f: img.xr_rib_fracture, band: usually, attrs: { side: $side } }
+  - { f: img.xr_rib_multiple, band: often }
+  # воздух над кровью — гемопневмоторакс: 39,3 % против 8,1 % без воздуха (728_2, раздел 1.3)
+  - { f: img.cxr_pneumothorax, band: often, attrs: { side: $side } }
+  - f: img.cxr_hemothorax
+    band: { pct: 100 }
+    attrs: { side: $side }
+    note: "кровь в плевральной полости есть у каждого, в игре — от 300 мл; увидит ли её снимок — чувствительность обследования"
+  - f: img.cxr_hemothorax_large
+    band: { pct: 100 }
+    when: { volume: [massive] }
+    note: "выше угла лопатки — у каждого с большим (тотальным) гемотораксом (728_2, раздел 1.5)"
+  - { f: img.cxr_mediastinal_shift, band: usually, when: { volume: [massive] } }
+confirm: [exam.xray_chest]
+redFlags: [img.cxr_hemothorax_large]
+treatment:
+  # всем — плевральная пункция с удалением крови или дренирование, целесообразен дренаж большого
+  # диаметра (728_2, раздел 3, УУР C, УДД 5); анальгезия всем; тугое бинтование противопоказано
+  firstLine: [tx.pleural_drainage]
+  acceptable: [tx.pleural_puncture]
+  supportive: [tx.ibuprofen, tx.paracetamol, tx.breathing_exercises]
+  harmful: [tx.chest_binding]
+  plan: [tx.pleural_drainage, tx.ibuprofen]
+  byParam:
+    # средний — без торакотомии
+    - when: { volume: [moderate] }
+      notIndicated: [tx.thoracotomy]
+    # тотальный — торакотомия (прил. Г2): дренаж только облегчает дыхание, пункции мало
+    - when: { volume: [massive] }
+      supportive: [tx.pleural_drainage]
+      notIndicated: [tx.pleural_puncture]
+      plan: [tx.pleural_drainage]
+  setting:
+    default: ward
+    param: { name: volume, map: { moderate: ward, massive: surgery } }
+    redFlag: surgery
+texts:
+  summary:
+    ru: >-
+      Кровь в плевральной полости после травмы груди — от сломанного ребра, сосудов грудной стенки
+      или лёгкого. Боль, одышка, звук при постукивании глухой, дыхание ослаблено; на снимке снизу
+      однородное затенение. Средний — дренирование плевральной полости или пункция в стационаре.
+      Большой, тотальный — выше угла лопатки, с кровопотерей и смещением средостения: неотложная
+      торакотомия.
+pearls:
+  - ru: "Меньше 300 миллилитров крови обычный снимок не покажет: одышка в первые дни после травмы груди — повод повторить снимок."
+simplified: "Кровь меньше 300 миллилитров, свернувшийся гемоторакс, видеоторакоскопия, темп кровотечения по дренажу и антибиотикопрофилактика при дренаже в игре не моделируются."
+sources:
+  - { kind: guideline, title: "Закрытая травма груди", org: "Минздрав РФ", year: 2025, url: "https://cr.minzdrav.gov.ru/view-cr/728_2", note: "ID 728_2, опубликованы 18.12.2025, применяются; сверено с рубрикатором 29.09.2026; раздел 1.3: гемоторакс — у 25–59,9 % пострадавших, гемопневмоторакс — у 39,3 %, гемоторакс без воздуха — у 8,1 %; большой и тотальный — у каждого седьмого; раздел 1.5: малый — до 500 мл, средний — 500–1 500 мл, до угла лопатки, большой (тотальный) — более 1 500 мл, выше угла лопатки; раздел 1.6: притупление звука, ослабление дыхания, при большом — кровопотеря и смещение средостения; раздел 2.4: менее 300 см³ рентгенография не определяет; раздел 3: пункция или дренирование всем (УУР C, УДД 5); прил. Г2: тотальный гемоторакс — неотложная торакотомия; раздел 6: на первом уровне оперирует хирург; частоты признаков не даны — полосы игровые" }
+  - { kind: paper, title: "Balkan ME, Oktar GL, Kayi-Cangir A, Ergül EG. Emergency thoracotomy for blunt thoracic trauma. Ann Thorac Cardiovasc Surg 2002;8(2):78–82", url: "https://pubmed.ncbi.nlm.nih.gov/12027792/", note: "PMID 12027792, сверено 29.09.2026: 745 больных с тупой травмой груди; экстренная торакотомия — у 29 (3,9 %), в операционной — 23, умерли 2 (8,7 %)" }
+  - { kind: paper, title: "Lin FC, Li RY, Tung YW, Jeng KC, Tsai SC. Morbidity, mortality, associated injuries, and management of traumatic rib fractures. J Chin Med Assoc 2016;79(6):329–334", url: "https://pubmed.ncbi.nlm.nih.gov/27025223/", note: "PMID 27025223, сверено 29.09.2026: 1 621 больной с травмой груди, переломы рёбер — у 78,5 %; гемоторакс — 31,8 %, пневмоторакс — 15,6 %, гемопневмоторакс — 9,6 %; дренаж — 22,7 %" }
+review: draft

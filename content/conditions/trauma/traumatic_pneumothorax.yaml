@@ -1,0 +1,124 @@
+id: cond.traumatic_pneumothorax
+name: { ru: "Травматический пневмоторакс" }
+icd10: S27.0
+department: dept.trauma
+system: lungs
+kind: injury
+severity: serious
+epidemiology:
+  # пневмоторакс при изолированной закрытой травме груди — от 20 до 40 % (728_2, раздел 1.3); у
+  # больных с переломами рёбер воздух или кровь — у 24,9 % с одним-двумя рёбрами и у 81,4 % с тремя и
+  # больше (Liman 2003); доля среди пришедших с травмой — игровая оценка
+  prevalence: rare
+  # возраст и пол — как у переломов рёбер, игровая оценка
+  age: { min: 18, peak: [30, 75] }
+  sex: { m: 1, f: 0.47 }
+params:
+  # напряжённый — у 7 %, у большинства — средний и большой (728_2, раздел 1.3); без дренажа лечили
+  # 45,8 % поступивших, из средних — 36,6 % (Hartman 2026) — малых меньше половины; 40 — игровая
+  # оценка. Малый и большой — меньше и больше 2 см от лёгкого до стенки (раздел 2.4)
+  size: { small: 40, large: 53, tension: 7 }
+  # сторона — поровну, игровая оценка
+  side: { right: 1, left: 1 }
+course:
+  # сроки — игровая оценка: без дренажа средние лежали 4 суток, с дренажом — 5 (Hartman 2026)
+  stages:
+    - { id: acute, days: [0, 4] }
+  presentation: [0, 1]
+  # малый без дыхательной недостаточности дренировать не обязательно (728_2, раздел 3)
+  selfLimiting: { when: { size: [small] } }
+  # большой и напряжённый без дренажа — дыхательная и сердечно-сосудистая недостаточность (раздел
+  # 1.2); на какой день хуже — игровая оценка
+  untreated: { band: usually, days: [0, 2], when: { size: [large, tension] } }
+  # дренаж снимают через 1–2 суток после того, как перестал идти воздух (раздел 3); сроки — игровая оценка
+  stay: [3, 6]
+findings:
+  # боль — в 100 % случаев (728_2, раздел 1.6); малый — без дыхательной недостаточности, ослабленное
+  # дыхание; средний и большой — одышка в покое, значительное ослабление или отсутствие дыхания,
+  # тимпанит; клапанный — тяжёлое состояние, одышка, тахикардия, набухшие шейные вены, нарастающая
+  # подкожная эмфизема, смещение средостения в здоровую сторону (разделы 1.2 и 1.6); гипоксия —
+  # у 50 % дышащих сами (Roberts 2015); остальные частоты не даны — полосы игровые
+  - f: sym.chest_injury_pain
+    band: { pct: 100 }
+    attrs: { side: $side }
+    note: "с этой жалобой приходят все: без неё травмы нет — жалоба травмы, а не признак с частотой"
+  - { f: sym.pleuritic_pain, band: usually, attrs: { side: $side } }
+  - { f: sign.chest_wall_tenderness, band: usually }
+  - { f: sign.rib_crepitus, band: sometimes }
+  - { f: sign.interrupted_inspiration, band: often }
+  - { f: sign.rib_compression_pain, band: often }
+  - { f: sym.dyspnea, band: rarely, when: { size: [small] } }
+  - { f: sym.dyspnea, band: usually, when: { size: [large] } }
+  - { f: sym.dyspnea, band: always, when: { size: [tension] } }
+  - { f: vital.tachypnea, band: rarely, when: { size: [small] } }
+  - { f: vital.tachypnea, band: usually, when: { size: [large] } }
+  - { f: vital.tachypnea, band: always, when: { size: [tension] } }
+  - { f: vital.spo2_low, band: very_rarely, when: { size: [small] } }
+  - { f: vital.spo2_low, band: often, when: { size: [large] } }
+  - f: vital.spo2_low
+    band: { pct: 50 }
+    when: { size: [tension] }
+    note: "гипоксия — у 50 % дышащих сами (Roberts 2015)"
+  - { f: vital.tachycardia, band: often, when: { size: [large] } }
+  - { f: vital.tachycardia, band: usually, when: { size: [tension] } }
+  - { f: sign.subcutaneous_emphysema, band: sometimes, when: { size: [small, large] } }
+  - { f: sign.subcutaneous_emphysema, band: usually, when: { size: [tension] } }
+  - { f: sign.neck_veins_distended, band: usually, when: { size: [tension] } }
+  - { f: sign.breath_sounds_diminished, band: usually, when: { size: [small] }, attrs: { side: $side } }
+  - { f: sign.breath_sounds_diminished, band: always, when: { size: [large, tension] }, attrs: { side: $side } }
+  - { f: sign.percussion_tympany, band: sometimes, when: { size: [small] }, attrs: { side: $side } }
+  - { f: sign.percussion_tympany, band: usually, when: { size: [large] }, attrs: { side: $side } }
+  - { f: sign.percussion_tympany, band: always, when: { size: [tension] }, attrs: { side: $side } }
+  # перелом ребра — у части: пневмоторакс бывает и без перелома (728_2, раздел 1.3; Liman 2003)
+  - { f: img.xr_rib_fracture, band: usually, attrs: { side: $side } }
+  - { f: img.xr_rib_multiple, band: often }
+  - f: img.cxr_pneumothorax
+    band: { pct: 100 }
+    attrs: { side: $side }
+    note: "воздух в плевральной полости есть у каждого; увидит ли его снимок — чувствительность обследования"
+  - f: img.cxr_pneumothorax_large
+    band: { pct: 100 }
+    when: { size: [large, tension] }
+    note: "больше 2 см — у каждого с большим и напряжённым (728_2, раздел 2.4)"
+  - f: img.cxr_mediastinal_shift
+    band: { pct: 100 }
+    when: { size: [tension] }
+    note: "при клапанном — смещение средостения в противоположную сторону (728_2, раздел 1.2)"
+confirm: [exam.xray_chest]
+redFlags: [sign.neck_veins_distended, img.cxr_mediastinal_shift]
+treatment:
+  # дренирование всем, кроме пневмоторакса незначительного объёма без дыхательной недостаточности;
+  # клапанный — экстренная декомпрессия торакоцентезом и дренированием (728_2, раздел 3, УУР C, УДД 5);
+  # анальгезия всем (раздел 3); тугое бинтование противопоказано (раздел 3)
+  firstLine: [tx.pleural_drainage]
+  supportive: [tx.ibuprofen, tx.paracetamol, tx.breathing_exercises]
+  harmful: [tx.chest_binding]
+  plan: [tx.pleural_drainage, tx.ibuprofen]
+  byParam:
+    # малый без дыхательной недостаточности — наблюдение и контрольный снимок (разделы 2.4 и 3)
+    - when: { size: [small] }
+      firstLine: [tx.ibuprofen, tx.paracetamol]
+      acceptable: [tx.pleural_drainage]
+      plan: [tx.ibuprofen]
+  # малый — стационар: наблюдение и контрольный снимок; большой — дренаж в стационаре; напряжённый —
+  # экстренная декомпрессия (728_2, разделы 2.4 и 3)
+  setting:
+    default: ward
+    param: { name: size, map: { small: ward, large: ward, tension: ambulance } }
+    redFlag: ambulance
+texts:
+  summary:
+    ru: >-
+      Воздух в плевральной полости после травмы груди, часто — от сломанного ребра, проколовшего
+      лёгкое. Лёгкое спадается: боль, одышка, дыхание на стороне травмы ослаблено, звук при
+      постукивании звонкий. На снимке край лёгкого отошёл от стенки. Малый — наблюдение в
+      стационаре, большой — дренирование плевральной полости. Напряжённый: воздух под давлением
+      смещает средостение, набухают шейные вены — нужна экстренная декомпрессия.
+pearls:
+  - ru: "Набухшие шейные вены, одышка и тишина при выслушивании на одной стороне после травмы — думайте о напряжённом пневмотораксе: декомпрессию не откладывают."
+simplified: "В игре только пневмоторакс, видный на снимке: скрытый, который находят лишь на КТ, не моделируется. Двустороннего и открытого пневмоторакса, бронхоскопии и КТ нет."
+sources:
+  - { kind: guideline, title: "Закрытая травма груди", org: "Минздрав РФ", year: 2025, url: "https://cr.minzdrav.gov.ru/view-cr/728_2", note: "ID 728_2, опубликованы 18.12.2025, применяются; сверено с рубрикатором 29.09.2026; раздел 1.2: при клапанном пневмотораксе — дыхательная и сердечно-сосудистая недостаточность, смещение средостения в противоположную сторону; раздел 1.3: пневмоторакс при изолированной закрытой травме груди — 20–40 %, у большинства — средний и большой, у 7 % — напряжённый; раздел 1.6: клиника малого, среднего и большого, клапанного пневмоторакса; раздел 2.4: рентгенография всем (УУР C, УДД 5), малые и большие — меньше и больше 2 см; раздел 3: дренирование всем, кроме незначительного объёма без дыхательной недостаточности, клапанный — экстренная декомпрессия (УУР C, УДД 5); частоты признаков, кроме боли, не даны — полосы игровые" }
+  - { kind: paper, title: "Hartman A, Vellekoop L, Van Delft CH, Verhofstad MHJ, Ayez N, Van Lieshout EMM, Wijffels MME. A multicenter retrospective evaluation of treatment variation in patients with a blunt traumatic pneumothorax; noninvasive treatment versus tube thoracostomy (CONSTRAIN-Retro). J Trauma Acute Care Surg 2026", url: "https://pubmed.ncbi.nlm.nih.gov/42468511/", note: "PMID 42468511, сверено 29.09.2026: 275 больных с пневмотораксом после тупой травмы; без дренажа — 45,8 %, дренаж — 54,2 %; из средних (15–50 %) без дренажа — 36,6 %; койко-день — 4 и 5 суток" }
+  - { kind: review, title: "Roberts DJ, Leigh-Smith S, Faris PD, Blackmore C, Ball CG, Robertson HL, Dixon E, James MT, Kirkpatrick AW, Kortbeek JB, Stelfox HT. Clinical presentation of patients with tension pneumothorax: a systematic review. Ann Surg 2015;261(6):1068–1078", url: "https://pubmed.ncbi.nlm.nih.gov/25563887/", note: "PMID 25563887, сверено 29.09.2026: систематический обзор; гипоксия — у 50,0 % дышащих сами и у 91,8 % на ИВЛ; остановка дыхания — у 9,3 % дышащих сами" }
+review: draft

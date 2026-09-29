@@ -35,6 +35,15 @@ effects:
   - { on: cond.hip_contusion, kind: relieve, band: usually, days: [0, 1] }
   - { on: cond.clavicle_fracture, kind: relieve, band: usually, days: [0, 1] }
   - { on: cond.shoulder_contusion, kind: relieve, band: usually, days: [0, 1] }
+  # травма груди (часть 32в): анальгезия всем — НПВП (728_2, раздел 3, УУР C, УДД 5), парацетамол —
+  # в критерии качества 5. При переломе рёбер обезболивание и есть лечение: без него дыхание
+  # поверхностное и развивается пневмония (раздел 1.6); сращение — через 3–4 недели (раздел 7). Три
+  # ребра и больше — «обычно»: пневмония у поступивших — 17 % до 65 лет и 31 % старше (Bulger 2000)
+  - { on: cond.chest_contusion, kind: relieve, band: usually, days: [0, 1] }
+  - { on: cond.rib_fracture, kind: cure, band: always, days: [21, 28], when: { ribs: [one_two] } }
+  - { on: cond.rib_fracture, kind: cure, band: usually, days: [21, 28], when: { ribs: [three_plus, flail] } }
+  - { on: cond.traumatic_pneumothorax, kind: relieve, band: usually, days: [0, 1] }
+  - { on: cond.traumatic_hemothorax, kind: relieve, band: usually, days: [0, 1] }
 contraindications:
   - { id: risk.allergy_nsaid, level: absolute, reaction: often }
   - { id: risk.pregnancy, level: relative, reaction: never }
@@ -47,4 +56,6 @@ sources:
   - { kind: guideline, title: "Почечная колика", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/587_2", note: "ID 587_2, опубликованы 09.12.2024, применяются; сверено с рубрикатором 29.09.2026; раздел 3.1.1: НПВП (M01A), в том числе ибупрофен, — первая линия обезболивания при почечной колике, эффективнее опиоидов; сначала купируют боль" }
   - { kind: guideline, title: "Закрытые повреждения мягких тканей конечностей", org: "Минздрав РФ", year: 2026, url: "https://cr.minzdrav.gov.ru/view-cr/832_2", note: "ID 832_2, опубликованы 13.01.2026, применяются; сверено с рубрикатором 29.09.2026; раздел 3.1: при ушибах и растяжениях — ненаркотические анальгетики (N02) и НПВП (M01A), системные НПВП — до 7 суток" }
   - { kind: guideline, title: "Переломы дистального отдела костей предплечья", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/846_1", note: "ID 846_1, опубликованы 18.12.2024, применяются; сверено с рубрикатором 29.09.2026; раздел 3.1, «Обезболивание»: мультимодальная анальгезия — НПВП, парацетамол, габапентиноиды, опиоиды короткого действия" }
+  - { kind: guideline, title: "Закрытая травма груди", org: "Минздрав РФ", year: 2025, url: "https://cr.minzdrav.gov.ru/view-cr/728_2", note: "ID 728_2, опубликованы 18.12.2025, применяются; сверено с рубрикатором 29.09.2026; раздел 3: всем с закрытой травмой груди — адекватная анальгезия, НПВП (M01A) (УУР C, УДД 5), обезболивание позволяет поддерживать вентиляцию, продуктивный кашель и дыхательные упражнения; критерий качества 5: лечение НПВП и (или) парацетамолом; раздел 7: сращение рёбер — через 3–4 недели" }
+  - { kind: paper, title: "Bulger EM, Arneson MA, Mock CN, Jurkovich GJ. Rib fractures in the elderly. J Trauma 2000;48(6):1040–1046", url: "https://pubmed.ncbi.nlm.nih.gov/10866248/", note: "PMID 10866248, сверено 29.09.2026: 277 больных 65 лет и старше и 187 моложе с переломами рёбер; пневмония — 31 и 17 %, смертность — 22 и 10 %; на каждое сломанное ребро — отношение шансов смерти 1,19, пневмонии — 1,16" }
 review: draft

@@ -5,6 +5,7 @@ import type { HeadFindings } from '@/render/ct/geometry';
 import type { UsFindings } from '@/render/us/geometry';
 import type { AbdomenFindings } from '@/render/xray/abdomenGeometry';
 import type { BoneFindings } from '@/render/xray/boneGeometry';
+import type { XrayFindings } from '@/render/xray/chestGeometry';
 
 export interface HeadCase {
   key: string;
@@ -63,6 +64,26 @@ export const ABDOMEN_CASES: AbdomenCase[] = [
   { key: 'abd-normal', findings: {}, seed: 1, label: a.normal },
   { key: 'abd-free-gas', findings: { freeGas: 0.8 }, seed: 2, label: a.freeGas },
   { key: 'abd-levels', findings: { levels: 0.8 }, seed: 3, label: a.levels },
+];
+
+export interface ChestCase {
+  key: string;
+  findings: XrayFindings;
+  seed: number;
+  label: string;
+}
+
+const ch = T.spikes.imaging.chest;
+
+/** Снимок груди при травме (часть 32в): пневмоторакс малый, большой и напряжённый, кровь, уровень, переломы рёбер. */
+export const CHEST_CASES: ChestCase[] = [
+  { key: 'chest-small', findings: { pneumothorax: { side: 'right', size: 'small' } }, seed: 4, label: ch.small },
+  { key: 'chest-large', findings: { pneumothorax: { side: 'left', size: 'large' } }, seed: 5, label: ch.large },
+  { key: 'chest-tension', findings: { pneumothorax: { side: 'right', size: 'large', tension: true } }, seed: 6, label: ch.tension },
+  { key: 'chest-fluid', findings: { effusion: { side: 'left' } }, seed: 7, label: ch.fluid },
+  { key: 'chest-massive', findings: { effusion: { side: 'right', massive: true } }, seed: 8, label: ch.massive },
+  { key: 'chest-level', findings: { effusion: { side: 'left', air: true }, pneumothorax: { side: 'left', size: 'small' } }, seed: 9, label: ch.level },
+  { key: 'chest-rib', findings: { ribFractures: { side: 'right', ribs: [5, 6, 7] } }, seed: 10, label: ch.rib },
 ];
 
 export interface BoneCase {

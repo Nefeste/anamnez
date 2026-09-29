@@ -10,13 +10,11 @@ import { recordChestXray, XRAY_ASPECT, type XrayFindings } from './xray/chest';
 export type { XrayFindings };
 
 export function Xray({ width, findings, seed = 1, still = false }: { width: number; findings?: XrayFindings; seed?: number; still?: boolean }) {
-  const infiltrate = findings?.infiltrate;
-  const emph = findings?.hyperinflation === true;
+  // находки сравниваются по значению: новый объект с теми же полями не перерисовывает снимок
+  const key = JSON.stringify(findings ?? {});
   const picture = useMemo(
-    () => recordChestXray(width, { infiltrate, hyperinflation: emph }, seed),
-    // находки сравниваются по значению: новый объект с теми же полями не перерисовывает снимок
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [width, seed, emph, infiltrate?.side, infiltrate?.density],
+    () => recordChestXray(width, JSON.parse(key) as XrayFindings, seed),
+    [width, seed, key],
   );
   return (
     <Canvas style={{ width, height: width * XRAY_ASPECT }} __destroyWebGLContextAfterRender={still}>
