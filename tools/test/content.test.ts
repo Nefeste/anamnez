@@ -326,6 +326,20 @@ describe('каталог больницы', () => {
     expect(has(a, 'rule.ct_head: основной возраст (60 и старше) пересекается с дополнительным')).toBe(true);
   });
 
+  test('до приезда скорой (часть 32д-2): операция, не из типичного назначения или при значениях, которые лечат дома, — ошибка', () => {
+    const has = (errors: string[], text: string) => errors.some(e => e.includes(text));
+    const B = 'conditions/trauma/burn.yaml';
+    const a = broken(d => {
+      edit(d, B, 'preHospital: [tx.iv_fluids]', 'preHospital: [tx.appendectomy]');
+      edit(d, B, 'preHospital: [tx.burn_dressing, tx.wound_dressing]', 'preHospital: [tx.ors]');
+      edit(d, B, '      prevent: [tx.tetanus_toxoid]\n', '      prevent: [tx.tetanus_toxoid]\n      preHospital: [tx.burn_dressing]\n');
+    });
+    expect(has(a, 'cond.burn: тактика по параметру №1 — до приезда скорой операцию tx.appendectomy не сделать')).toBe(true);
+    expect(has(a, 'cond.burn: тактика по параметру №2 — в типичном назначении нет ничего из того, что делают до приезда скорой')).toBe(true);
+    expect(has(a, 'cond.burn: тактика по параметру №3 — до приезда скорой: при этих значениях лечат дома')).toBe(true);
+    expect(buildDb().errors).toEqual([]);
+  });
+
   test('смотровая приёмного без мест для скорой; шкала с щелью между полосами или с чужим признаком', () => {
     const bare = broken(d => edit(d, 'hospital/rooms/emergency.yaml', '      - [bed, 2, 2]\n', ''));
     expect(bare.some(e => e.includes('room.emergency S: смотровая приёмного без мест для скорой'))).toBe(true);

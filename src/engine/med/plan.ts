@@ -138,6 +138,18 @@ export function preventOf(t: Tactics | undefined, params?: Record<string, string
 }
 
 /**
+ * Что сделать до приезда скорой (часть 27; 32д-2) — хоть одно из этого: названное в подошедших
+ * записях `byParam` (обширный ожог — капельница до перевода, хотя место по умолчанию — дом); без
+ * них у того, что лечат не дома, — первая линия, кроме операции: её до приезда скорой не сделать.
+ */
+export function preHospitalOf(db: ContentDb, t: Tactics | undefined, params: Record<string, string>): Id[] {
+  if (!t) return [];
+  const own = (t.byParam ?? []).filter(b => whenHolds(b.when, params)).flatMap(b => b.preHospital ?? []);
+  if (own.length > 0) return [...new Set(own)];
+  return t.setting.default !== 'home' ? tacticsFor(t, params).firstLine.filter(tx => db.treatments[tx]?.kind !== 'surgery') : [];
+}
+
+/**
  * Роль назначения при состоянии. `params` — скрытые параметры болезни у этого больного (часть 32):
  * тактика по ним сильнее общей — у перелома со смещением репозиция — первая линия.
  */
@@ -196,7 +208,11 @@ export function tacticsFor(t: Tactics, params: Record<string, string> = {}): Tac
   const lists = Object.fromEntries(ROLES.map(role => [role, [...new Set([...over.flatMap(b => b[role]), ...t[role].filter(id => !named.has(id))])]])) as Record<ListRole, Id[]>;
   const plan = over.find(b => b.plan)?.plan ?? t.plan?.filter(id => lists.firstLine.includes(id) || lists.acceptable.includes(id) || lists.supportive.includes(id));
   const prevent = preventOf(t, params);
-  return { ...lists, setting: t.setting, ...(plan && plan.length > 0 ? { plan } : {}), ...(prevent.length > 0 ? { prevent } : {}) };
+  const preHospital = [...new Set(over.flatMap(b => b.preHospital ?? []))];
+  return {
+    ...lists, setting: t.setting, ...(plan && plan.length > 0 ? { plan } : {}), ...(prevent.length > 0 ? { prevent } : {}),
+    ...(preHospital.length > 0 ? { preHospital } : {}),
+  };
 }
 
 /** Где на самом деле надо лечить: место по умолчанию, по тяжести случая, при красном флаге. */
@@ -262,8 +278,7 @@ export function evaluatePlan(db: ContentDb, patient: Patient, plan: Plan, observ
     effective,
     unaskedRisk: unaskedRisk.sort(),
     firstLineBlocked,
-    // до приезда скорой операцию не сделать
-    preHospital: tactics && tactics.setting.default !== 'home' ? tactics.firstLine.filter(tx => db.treatments[tx]?.kind !== 'surgery') : [],
+    preHospital: preHospitalOf(db, base, params),
     // профилактику, противопоказанную тем, о чём врач знает (аллергия на пенициллины), в вину не ставим
     preventMissing: preventOf(base, params).filter(tx => !plan.treatments.includes(tx) && !db.treatments[tx]?.contraindications.some(k => knownIds.has(k.id))).sort(),
   };

@@ -138,15 +138,36 @@ const SIMILAR_MAX = 3;
 const similarCache = new WeakMap<ContentDb, Map<Id, Id[]>>();
 
 /**
+ * Параметры болезни, от которых зависит только обязательная профилактика (часть 32г-2): прививки
+ * от столбняка у раны и ожога — о человеке, а не о болезни, и признаки по ним болезни не различают.
+ */
+function preventOnly(c: Condition): Set<string> {
+  const t = c.treatment;
+  const other = new Set([...(t?.setting.param ? [t.setting.param.name] : []), ...(c.surgery?.byParam ?? []).flatMap(b => Object.keys(b.when))]);
+  const prevent = new Set<string>();
+  for (const b of t?.byParam ?? []) {
+    const only = !b.plan && !b.preHospital && [b.firstLine, b.acceptable, b.supportive, b.notIndicated, b.harmful].every(l => l.length === 0);
+    for (const k of Object.keys(b.when)) (only ? prevent : other).add(k);
+  }
+  return new Set([...prevent].filter(k => !other.has(k)));
+}
+
+/**
  * С чем спутать: болезни с похожим набором признаков (05-content.md §4). Сходство — взвешенный
- * Жаккар по частотам признаков: сумма меньших частот к сумме больших.
+ * Жаккар по частотам признаков: сумма меньших частот к сумме больших. Признаки, которые зависят
+ * только от прививок (`preventOnly`), не считаются: иначе рана «похожа» на ожог по записям о
+ * прививках от столбняка (часть 32д-2).
  */
 export function similar(db: ContentDb, id: Id): Id[] {
   let cache = similarCache.get(db);
   if (!cache) {
     cache = new Map();
     const all = Object.values(db.conditions).filter(c => c.presenting);
-    const vec = new Map(all.map(c => [c.id, new Map(strongest(c.findings).map(l => [l.f, l.p]))]));
+    const own = (c: Condition) => {
+      const skip = preventOnly(c);
+      return c.findings.filter(l => !l.when || !Object.keys(l.when).every(k => skip.has(k)));
+    };
+    const vec = new Map(all.map(c => [c.id, new Map(strongest(own(c)).map(l => [l.f, l.p]))]));
     for (const c of all) {
       const a = vec.get(c.id)!;
       const scored = all
@@ -173,7 +194,7 @@ export function similar(db: ContentDb, id: Id): Id[] {
 // --- статьи -------------------------------------------------------------------------------
 
 /** Тактика: подпись в статье болезни и, если есть, в статье лечения («первая линия при …»). */
-const TACTICS: { key: keyof Omit<Tactics, 'setting' | 'byParam'>; label: 'firstLine' | 'plan' | 'acceptable' | 'supportive' | 'notIndicated' | 'harmful' | 'prevent'; forLabel?: 'firstLineFor' | 'planFor' | 'acceptableFor' | 'supportiveFor' | 'harmfulFor' | 'preventFor' }[] = [
+const TACTICS: { key: keyof Omit<Tactics, 'setting' | 'byParam'>; label: 'firstLine' | 'plan' | 'acceptable' | 'supportive' | 'notIndicated' | 'harmful' | 'prevent' | 'preHospital'; forLabel?: 'firstLineFor' | 'planFor' | 'acceptableFor' | 'supportiveFor' | 'harmfulFor' | 'preventFor' | 'preHospitalFor' }[] = [
   { key: 'firstLine', label: 'firstLine', forLabel: 'firstLineFor' },
   { key: 'plan', label: 'plan', forLabel: 'planFor' },
   { key: 'acceptable', label: 'acceptable', forLabel: 'acceptableFor' },
@@ -184,6 +205,8 @@ const TACTICS: { key: keyof Omit<Tactics, 'setting' | 'byParam'>; label: 'firstL
   { key: 'harmful', label: 'harmful', forLabel: 'harmfulFor' },
   // обязательная профилактика (часть 32г-2): анатоксин столбнячный при просроченной прививке
   { key: 'prevent', label: 'prevent', forLabel: 'preventFor' },
+  // до приезда скорой (часть 32д-2): при обширном ожоге — капельница до перевода
+  { key: 'preHospital', label: 'preHospital', forLabel: 'preHospitalFor' },
 ];
 
 function whereLines(db: ContentDb, c: Condition, t: Tactics): string[] {

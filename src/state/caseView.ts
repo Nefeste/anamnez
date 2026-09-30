@@ -248,7 +248,9 @@ const TX_GROUPS: [string, string[]][] = [
   ['breathing', ['bronchodilator', 'asthma', 'steroid.systemic']],
   ['nose', ['nasal', 'steroid.intranasal', 'antihistamine']],
   ['heart', ['antihypertensive', 'antiplatelet', 'antianginal']],
-  ['digestive', ['acid', 'rehydration']],
+  ['digestive', ['acid']],
+  // растворы для питья и капельница (часть 32д-2): и при кишечной инфекции, и при обширном ожоге
+  ['fluids', ['rehydration']],
   ['metabolic', ['antidiabetic', 'hormone', 'mineral']],
   // травма (часть 32): гипсовая лонгета и закрытая репозиция
   ['trauma', ['immobilization']],

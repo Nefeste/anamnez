@@ -287,6 +287,20 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
         for (const id of x.plan ?? []) if (treatments[id]?.kind === 'surgery') errors.push(`${owner}: ${what} — операцию ${id} выбирают «В операционную», а не в назначении`);
         const curesHere = (id: string) => treatments[id]?.effects.some(e => e.on === owner && e.kind === 'cure' && overlaps(e.when, x.when)) === true;
         for (const id of [...x.notIndicated, ...x.harmful]) if (curesHere(id)) errors.push(`${owner}: ${what} — ${id} при этих значениях действует на причину, а стоит «не показано» или «вредно»`);
+        // до приезда скорой (часть 32д-2): показанное при этих значениях, не операция, есть в
+        // типичном назначении — и только там, где лечат не дома
+        if (x.preHospital) {
+          for (const id of x.preHospital) {
+            if (!(id in treatments)) errors.push(`${owner}: ${what} — до приезда скорой: лечение ${id} не найдено`);
+            else if (treatments[id].kind === 'surgery') errors.push(`${owner}: ${what} — до приезда скорой операцию ${id} не сделать`);
+            else if (!shown(id)) errors.push(`${owner}: ${what} — до приезда скорой: ${id} не из первой линии, допустимых или облегчающих`);
+          }
+          const planHere = x.plan ?? t.plan ?? t.firstLine;
+          if (!x.preHospital.some(id => planHere.includes(id))) errors.push(`${owner}: ${what} — в типичном назначении нет ничего из того, что делают до приезда скорой`);
+          const p = t.setting.param;
+          const away = p !== undefined && (x.when[p.name] ?? []).length > 0 && x.when[p.name].every(v => (p.map[v] ?? t.setting.default) !== 'home');
+          if (!away && t.setting.default === 'home') errors.push(`${owner}: ${what} — до приезда скорой: при этих значениях лечат дома`);
+        }
       }
       // обязательная профилактика (часть 32г-2): лечение есть; роль у него одна — «профилактика»,
       // ни в каком списке тактики его нет, иначе роль при одних значениях спорила бы с другой

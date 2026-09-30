@@ -1,7 +1,7 @@
 ---
 name: Anamnesis
 title: Anamnesis — a doctor simulator with honest diagnostics
-description: "A doctor simulator for Android: take a history, examine, order tests and X-rays, make a diagnosis and treat. 35 conditions and 21 injuries, X-rays, ultrasound and ECGs, a review of every visit. Offline and ad-free."
+description: "A doctor simulator for Android: take a history, examine, order tests and X-rays, make a diagnosis and treat. 35 conditions and 22 injuries, X-rays, ultrasound and ECGs, a review of every visit. Offline and ad-free."
 kind: Doctor simulator
 status: dev
 lead: "Every patient is a puzzle: ask, examine, order tests and X-rays, make a diagnosis and treat."
@@ -36,7 +36,7 @@ shots:
 card:
   text: Patients come to you with real illnesses and injuries, and almost every sign stays hidden until you ask, examine or order a test. Make a diagnosis, choose a treatment and see the outcome — and between shifts, build your own hospital.
   points:
-    - 35 conditions and 21 injuries; each patient’s own X-rays, ultrasound and ECGs
+    - 35 conditions and 22 injuries; each patient’s own X-rays, ultrasound and ECGs
     - Your own hospital with an emergency department, wards and an operating room
     - A review of every visit, a campaign with a mentor and a case of the day
     - Free, offline and ad-free
@@ -80,13 +80,14 @@ in Russian.
 
 ## What’s inside
 
-- 35 conditions and 21 injuries. At the clinic — 25 conditions a general practitioner sees: from
+- 35 conditions and 22 injuries. At the clinic — 25 conditions a general practitioner sees: from
   colds and flu to pneumonia, heart attack and appendicitis. In a hospital with an emergency
   department — 10 more surgical ones, from biliary colic to a perforated ulcer and bowel obstruction,
-  and injuries: fractures, knee ligament tears, hand and scalp wounds, chest trauma, concussion.
-- Wounds as in a real emergency department: stitch now or delay the stitches, check the finger
-  tendons, tetanus shots by vaccination records, and after a dog bite, a rabies vaccine with
-  immunoglobulin.
+  and injuries: fractures, knee ligament tears, hand and scalp wounds, burns, chest trauma,
+  concussion.
+- Wounds and burns as in a real emergency department: stitch now or delay the stitches, check the
+  finger tendons, measure a burn with the patient’s palms and its depth with a pinprick, tetanus
+  shots by vaccination records, and after a dog bite, a rabies vaccine with immunoglobulin.
 - The images are drawn by the program and differ for every patient: chest, abdominal and bone X-rays
   with the fracture line and displaced fragments, air and blood in the chest after trauma,
   ultrasound and ECG strips.
@@ -127,6 +128,6 @@ see a doctor; in an emergency, call your local emergency number (112 in Russia a
 
 ## What’s next
 
-Coming up: burns, vascular conditions and emergencies, a campaign chapter about a district hospital, and then new departments: cardiology, neurology, CT and MRI. The game is
+Coming up: vascular conditions and emergencies, a campaign chapter about a district hospital, and then new departments: cardiology, neurology, CT and MRI. The game is
 being prepared for release in RuStore for Android, in Russian first. Questions:
 support@gornitsa.games.

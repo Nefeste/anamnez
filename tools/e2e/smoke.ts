@@ -54,6 +54,20 @@ async function runClockUntil(page: Page, done: () => Promise<boolean>, ms = 60_0
 }
 
 /**
+ * «Пропустить» до первого в очереди. Часы идут с открытия смены: пациент может встать в очередь
+ * раньше нажатия, и кнопка на том же месте станет «Пригласить» — нажатие позвало бы его (так упал
+ * прогон 0.2.4 в песочнице). На паузе очередь сама не меняется, «Пропустить» снова пускает часы.
+ * Вернёт, пришлось ли пропускать.
+ */
+async function skipToFirst(page: Page): Promise<boolean> {
+  await page.getByTestId('tab-pause').click();
+  const skip = (await page.getByTestId('shift-call').count()) === 0;
+  if (skip) await page.getByTestId('shift-skip').click();
+  await page.getByTestId('shift-call').waitFor({ timeout: 5_000 });
+  return skip;
+}
+
+/**
  * Сохранение смены в конце дня 1 — из движка, как его записала бы игра: двое приняты утром,
  * остальные к 15:00 приняты или ушли. Чтение его — сценарий сохранения (spec first-shift).
  */
@@ -657,10 +671,9 @@ try {
   check((await page.getByTestId('difficulty-student').getAttribute('aria-selected')) === 'true' && (await text(page, 'difficulty-text')).startsWith('Подсказки'), 'смена: сложность по умолчанию — «Студент»');
   await page.getByTestId('shift-start').click();
   // в очереди никого — «промотать до следующего» (отзыв на 0.0.7: ждали 40 секунд)
-  await page.getByTestId('shift-skip').click();
-  await page.getByTestId('shift-call').waitFor({ timeout: 5_000 });
+  const skipped = await skipToFirst(page);
   const opened = await text(page, 'shift-clock');
-  check(/^\d\d:\d\d$/.test(opened) && opened > '08:00', `смена: «промотать до следующего» — пришёл первый (${opened})`);
+  check(/^\d\d:\d\d$/.test(opened) && (!skipped || opened > '08:00'), `смена: «промотать до следующего» — пришёл первый (${opened})`);
   await page.getByTestId('tab-x4').click();
   await page.waitForTimeout(1500);
   const ticking = await text(page, 'shift-clock');
@@ -893,8 +906,7 @@ try {
   await page.getByTestId('sandbox-open').waitFor({ timeout: 5000 });
   check(!(await page.getByTestId('sandbox-open').isDisabled()), 'песочница: регистратура, зона ожидания и кабинет у коридора, регистратор на месте — смену можно открыть');
   await page.getByTestId('sandbox-open').click();
-  await page.getByTestId('shift-skip').click();
-  await page.getByTestId('shift-call').waitFor({ timeout: 5000 });
+  await skipToFirst(page);
   await page.getByTestId('shift-call').click();
   await page.getByTestId('exam-exam.ask_complaints').waitFor({ timeout: 10_000 });
   await page.getByTestId('exam-exam.ask_complaints').click();
@@ -936,8 +948,7 @@ try {
   await page.getByTestId('build-done').click();
   await page.getByTestId('sandbox-open').waitFor({ timeout: 5000 });
   await page.getByTestId('sandbox-open').click();
-  await page.getByTestId('shift-skip').click();
-  await page.getByTestId('shift-call').waitFor({ timeout: 5000 });
+  await skipToFirst(page);
   check(await page.getByTestId('clinic-map').isVisible(), 'песочница: смена открыта — карта своей больницы');
   // касание помещения мимо людей — что это, работает ли, кто в нём (план тот же, что в практике)
   const ownMap = page.getByTestId('clinic-map');
@@ -1404,6 +1415,13 @@ try {
   const patellaOp = await page.locator('text=При смещении — операция.').first().isVisible().catch(() => false);
   check((await visibleText(page, 'enc-article-title')) === 'Перелом надколенника' && patellaOp,
     `энциклопедия, перелом надколенника: ${await visibleText(page, 'enc-article-title')} — «при смещении — операция»`);
+  // ожог (0.2.4): при обширном — перевод в центр, до приезда скорой — капельница
+  await page.goto(`${base}/encyclopedia/article/cond.burn`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const burnWhere = await page.locator('text=При обширном ожоге — скорая, перевод в центр.').first().isVisible().catch(() => false);
+  const burnDrip = await page.locator('text=До приезда скорой, при обширном ожоге').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'Термический ожог' && burnWhere && burnDrip,
+    `энциклопедия, ожог: ${await visibleText(page, 'enc-article-title')} — перевод при обширном, «до приезда скорой» — капельница`);
 
   // кампания: карьера 1 → глава 1 — письма и задания; письмо наставника; смена открывается;
   // «Продолжить» в меню — карьера (spec 2026-09-campaign)
@@ -1426,8 +1444,7 @@ try {
   await page.waitForTimeout(500);
   await page.screenshot({ path: join(OUT, '15-campaign-chapter.png'), fullPage: true });
   await page.getByTestId('sandbox-open').click();
-  await page.getByTestId('shift-skip').click();
-  await page.getByTestId('shift-call').waitFor({ timeout: 5000 });
+  await skipToFirst(page);
   check(await page.getByTestId('clinic-map').isVisible(), 'кампания: смена в амбулатории посёлка');
   // первая смена главы — с наставником: подсказки по одной, в первой — «Без подсказок»
   const gotIt = async () => {
