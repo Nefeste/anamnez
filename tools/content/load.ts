@@ -35,7 +35,7 @@ export const NO_ECONOMY: ContentDb['economy'] = {
   interest: 0,
   ward: { bedDay: 0, interrupted: 0 },
   ambulance: { perDay: [0, 0], weight: { minor: 0, moderate: 0, serious: 0, critical: 0 }, severe: 0 },
-  reputation: { start: 50, pull: 1, waitShort: 0, waitShortMin: 0, waitLong: 0, waitLongMin: 0, noToilet: 0 },
+  reputation: { start: 50, pull: 1, waitShort: 0, waitShortMin: 0, waitLong: 0, waitLongMin: 0, noToilet: 0, died: 0 },
   flow: 0,
   sandbox: { plot: [8, 8], entrance: [0, 1], corridor: [], budgets: { modest: 0, normal: 0, generous: 0 }, clinicShare: 0 },
 };

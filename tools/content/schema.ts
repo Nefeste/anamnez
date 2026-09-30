@@ -533,6 +533,7 @@ export const economySchema = z.strictObject({
   reputation: z.strictObject({
     start: pct, pull: z.number().int().min(1).max(100),
     waitShort: z.number().int(), waitShortMin: int, waitLong: z.number().int(), waitLongMin: int, noToilet: z.number().int(),
+    died: z.number().int().max(0),
   }),
   /** поток пациентов от репутации: ± % при 0 и 100 */
   flow: z.number().int().min(0).max(90),

@@ -4,8 +4,9 @@
 // условие не выполнится ни на одном, инструмент скажет об этом, а не снимет что попало.
 import type { ContentDb, Id } from '../../src/content/types';
 import { choosePlan } from '../../src/engine/med/policy';
-import { apply, current, newSandbox, newShift, observationsOf } from '../../src/engine/shift/engine';
+import { apply, current, freeBeds, inpatientsOf, newCampaign, newSandbox, newShift, observationsOf } from '../../src/engine/shift/engine';
 import { type Command, DAY, SHIFT_END, SHIFT_SCHEMA_VERSION, type ShiftState } from '../../src/engine/shift/types';
+import { daysIn, wardState } from '../../src/engine/shift/ward';
 
 const MIN = 60;
 const SEEDS = 3000;
@@ -115,42 +116,77 @@ function erHospital(db: ContentDb, seed: number): ShiftState | undefined {
   return s;
 }
 
-/** Принять первого из очереди быстро: жалобы, диагноз — настоящий, лечение и место — разумные. */
-function seeFirst(db: ContentDb, s: ShiftState) {
+/** Привезённых — отсортировать, как их цвет по шкале с листа передачи. */
+function sortAll(db: ContentDb, s: ShiftState) {
+  for (const p of Object.values(s.patients)) if (p.kind === 'ambulance' && !p.sorted && p.status === 'waiting') apply(db, s, { kind: 'sort', id: p.id, triage: p.scale!.triage });
+}
+
+/**
+ * Принять первого из очереди быстро в больнице с палатами и операционной: жалобы, диагноз —
+ * настоящий, лечение и место — по плану, со своей койкой и операционной; операционная не берёт —
+ * скорая.
+ */
+function seeHere(db: ContentDb, s: ShiftState) {
   const id = s.queue[0];
   const truth = truthOf(s, id);
   run(db, s, [{ kind: 'call', id }, { kind: 'exam', exam: 'exam.ask_complaints' }, { kind: 'diagnose', id: truth }]);
   const p = current(s)!;
-  const chosen = choosePlan(db, truth, observationsOf(p), p.patient.age);
+  const chosen = choosePlan(db, truth, observationsOf(p), p.patient.age, { ward: freeBeds(db, s).length > 0, or: true });
   run(db, s, [...chosen.treatments.map(tx => ({ kind: 'toggleTreatment', id: tx }) as Command), { kind: 'setting', setting: chosen.setting }, { kind: 'finish' }]);
+  if (current(s)?.id === id) run(db, s, [{ kind: 'setting', setting: 'ambulance' }, { kind: 'finish' }]);
+}
+
+/** Утренний обход: выписать, кому можно; хуже — перевести. */
+function rounds(db: ContentDb, s: ShiftState) {
+  for (const p of inpatientsOf(s)) {
+    if (p.stay!.op && !p.stay!.op.done) continue;
+    const state = wardState(p.stay!, daysIn(p.stay!, s.day));
+    if (state === 'ready') apply(db, s, { kind: 'discharge', id: p.id });
+    else if (state === 'worse' || state === 'reaction') apply(db, s, { kind: 'transfer', id: p.id });
+  }
 }
 
 /**
- * Своя больница с приёмным в разгаре дня: несколько приняты, в очереди трое и больше разной
+ * Районная больница главы 2 «Приёмное» (spec 2026-09-chapter-2, часть 35) на третий день главы —
+ * подсказки первой смены позади. Два дня врач принимает всех (`seeHere`), утром — обход. На
+ * третий — в разгаре: несколько приняты, в палатах лежат, в очереди трое и больше разной
  * срочности, врач свободен — и через минуту-две скорая привезёт больного (на снимке —
- * автопауза и внизу «сортировать»). Привезённых раньше отсортировали, как их цвет по шкале.
+ * автопауза и внизу «сортировать»).
  */
-export function emergencyState(db: ContentDb): ShiftState {
+export function districtState(db: ContentDb): ShiftState {
   for (let seed = 1; seed <= SEEDS; seed++) {
-    const s = erHospital(db, seed);
-    if (!s) continue;
+    const s = newCampaign(db, { seed, ...winter, career: 1, chapter: 'chapter.hospital' });
+    for (let d = 1; d <= 2; d++) {
+      apply(db, s, { kind: 'nextDay' });
+      rounds(db, s);
+      for (let guard = 0; guard < 2000; guard++) {
+        sortAll(db, s);
+        const waiting = Object.values(s.patients).some(p => p.status === 'away' || p.status === 'coming' || (p.kind === 'ambulance' && p.status === 'waiting' && !p.sorted));
+        if (s.t % DAY >= SHIFT_END && s.queue.length === 0 && !current(s) && !waiting) break;
+        if (!current(s) && s.queue.length > 0) seeHere(db, s);
+        else apply(db, s, { kind: 'advance', seconds: MIN });
+      }
+      apply(db, s, { kind: 'closeDay' });
+    }
+    apply(db, s, { kind: 'nextDay' });
+    rounds(db, s);
     let seen = 0;
     for (let m = 0; m < 5 * 60 && s.t % DAY < SHIFT_END; m++) {
-      for (const p of Object.values(s.patients)) if (p.kind === 'ambulance' && !p.sorted && p.status === 'waiting') apply(db, s, { kind: 'sort', id: p.id, triage: p.scale!.triage });
+      sortAll(db, s);
       const mixed = new Set(s.queue.map(id => s.patients[id].triage)).size >= 2;
-      if (!current(s) && seen >= 3 && s.queue.length >= 3 && mixed) {
+      if (!current(s) && seen >= 3 && s.queue.length >= 3 && mixed && inpatientsOf(s).length >= 4) {
         const probe = clone(s);
         const notices = apply(db, probe, { kind: 'advance', seconds: 2 * MIN });
         if (notices.some(n => n.kind === 'ambulance')) return s;
       }
       if (!current(s) && s.queue.length >= 4) {
-        seeFirst(db, s);
+        seeHere(db, s);
         seen++;
       }
       apply(db, s, { kind: 'advance', seconds: MIN });
     }
   }
-  throw new Error('emergencyState: не нашлось дня, когда скорая везёт больного к очереди');
+  throw new Error('districtState: не нашлось дня, когда скорая везёт больного к очереди, а в палатах лежат');
 }
 
 /**

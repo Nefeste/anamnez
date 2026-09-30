@@ -11,7 +11,7 @@ og: graphics/cover-1920x1080.png
 shots:
   - file: screenshots/phone/01-emergency.png
     caption: Emergency room
-    alt: "Your own hospital: a plan with the emergency room and the operating theatre; an ambulance has brought a patient, the Sort button is at the bottom"
+    alt: "Chapter 2 district hospital: emergency room, two wards and the operating theatre; an ambulance has brought a patient, the Sort button is at the bottom"
   - file: screenshots/phone/02-xray.png
     caption: X-ray
     alt: "A visit: a chest X-ray with a finding in the lower right lung"

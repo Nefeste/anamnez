@@ -507,6 +507,8 @@ function planDay(db: ContentDb, s: ShiftState) {
       id, patient, arriveT: a.t, kind: a.kind, triage: 'green', status: 'coming', queuedT: 0, wait: 0, patience: 0,
       results: [], pending: [], done: [], step: 0, spent: { seconds: 0, money: 0 }, draft: { treatments: [], setting: 'home' },
       ...(a.ret ? { returnOf: a.ret.of, returnReason: a.ret.reason } : {}),
+      // выписали из палаты недолеченным — вернулся хуже: новый случай стационара не оплатят (часть 35)
+      ...(a.ret && s.patients[a.ret.of]?.closed?.stay?.end === 'early' ? { afterEarly: true as const } : {}),
       ...(own.length > 1 ? { departments: own } : {}),
       // скорая не платит отдельно: привезённый — случай ОМС (spec 2026-09-chapter-2, «Баланс»;
       // скорую и экстренную помощь оказывают бесплатно — 323-ФЗ, ст. 11 и 35)
@@ -612,6 +614,8 @@ function settle(db: ContentDb, s: ShiftState) {
     returned: today.filter(p => p.kind === 'return' && (p.returnReason === 'worse' || p.returnReason === 'reaction')).length,
     ...(waits.length > 0 ? { meanWait: waits.reduce((a, b) => a + b, 0) / waits.length } : {}),
     toilet: ctx.plan.rooms.some(r => r.type === 'room.toilet' && ctx.plan.connected[r.id]),
+    died: s.summary.ward?.died ?? 0,
+    severe: s.summary.ward?.severe ?? 0,
   });
   e.reputation = change.to;
   s.summary.economy = {
@@ -1249,8 +1253,9 @@ function leaveWard(db: ContentDb, s: ShiftState, id: string, how: 'discharge' | 
 
 /**
  * Случай стационара кончился: срок — у выписанных, касса — по тому, как кончился. Без показаний
- * — то, что разбор приёма счёл лишним: по нужде пациента, как оценка «где лечить»; умер —
- * страховая платит за случай, как за законченный (часть 28б).
+ * — то, что разбор приёма счёл лишним: по нужде пациента, как оценка «где лечить»; повторный —
+ * вернулся хуже после ранней выписки (часть 35); умер — страховая платит за случай, как за
+ * законченный (часть 28б).
  */
 function closeStay(db: ContentDb, s: ShiftState, p: ShiftPatient, end: StayEnd, days: number) {
   const stay = p.stay!;
@@ -1265,13 +1270,15 @@ function closeStay(db: ContentDb, s: ShiftState, p: ShiftPatient, end: StayEnd, 
   p.status = 'done';
   if (s.economy) {
     const chosen = stay.plan.setting === 'surgery' ? 'surgery' : 'admit';
-    const close: WardClose = settingFit(recommendedSetting(db, p.patient), chosen, alsoSettings(db, p.patient)) === 'over' ? 'unindicated' : end === 'discharged' || end === 'died' ? 'full' : 'interrupted';
+    const over = settingFit(recommendedSetting(db, p.patient), chosen, alsoSettings(db, p.patient)) === 'over';
+    const close: WardClose = over ? 'unindicated' : p.afterEarly ? 'repeat' : end === 'discharged' || end === 'died' ? 'full' : 'interrupted';
     const ledger = ledgerOf(s);
     ledger.ward ??= { cases: 0, income: 0, interrupted: 0, unindicated: 0 };
     ledger.ward.cases++;
-    ledger.ward.income += wardIncome(db, closed.diagnosis, closed.grades.defensibility, close, stay.op?.done === true);
+    ledger.ward.income += wardIncome(db, closed.diagnosis, closed.grades.defensibility, close, stay.op?.done ? stay.op.tx : undefined);
     if (close === 'interrupted') ledger.ward.interrupted++;
     if (close === 'unindicated') ledger.ward.unindicated++;
+    if (close === 'repeat') ledger.ward.repeat = (ledger.ward.repeat ?? 0) + 1;
   }
 }
 
@@ -1289,6 +1296,7 @@ function nightDeaths(db: ContentDb, s: ShiftState) {
     if (s.meta.soft) {
       p.closed.outcome = { kind: 'transferred', day: days, cured: false, severe: true };
       ward.transferred++;
+      ward.severe = (ward.severe ?? 0) + 1;
       closeStay(db, s, p, 'transferred', days);
     } else {
       p.closed.outcome = { kind: 'died', day: days, cured: false };

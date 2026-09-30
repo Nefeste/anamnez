@@ -537,10 +537,10 @@ export interface Economy {
   ward: { bedDay: number; interrupted: number };
   /** скорая: машин за смену; вес болезни по тяжести; доля тяжёлых, % (часть 27) */
   ambulance: { perDay: [number, number]; weight: Record<'minor' | 'moderate' | 'serious' | 'critical', number>; severe: number };
-  /** репутация 0–100: начало, на сколько % вечером сдвигается к оценке дня, поправки оценки */
+  /** репутация 0–100: начало, на сколько % вечером сдвигается к оценке дня, поправки оценки; `died` — за каждого умершего в стационаре (часть 35) */
   reputation: {
     start: number; pull: number;
-    waitShort: number; waitShortMin: number; waitLong: number; waitLongMin: number; noToilet: number;
+    waitShort: number; waitShortMin: number; waitLong: number; waitLongMin: number; noToilet: number; died: number;
   };
   /** поток пациентов от репутации: ± % при 0 и 100 */
   flow: number;
