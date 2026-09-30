@@ -10,7 +10,7 @@ import {
   caseIncome, consumablesOf, emptyLedger, expensesOf, flowOf, incomeOf, interestOf, type Ledger, levelOf, payerOf, reputationAfter, salariesOf, upkeepOf,
   type WardClose, wardIncome,
 } from '../economy/economy';
-import { campaignEvening, chapterOf, startChapter } from '../campaign/campaign';
+import { campaignEvening, chapterOf, nextChapterOf, startChapter } from '../campaign/campaign';
 import { build, emptyPlot, type HospitalState, type Plan, planOf, presetHospital, UNDO_DEPTH } from '../hospital/build';
 import { DOCTOR, doctorRoom, examWhere, openBlocks, type Problem, problemsOf, type Staffing, workingRooms } from '../hospital/requirements';
 import { applicantsOf, doctorOf, grow, memberAt, presetStaff, readingOf, type StaffMember, speedOf, staffingOf } from '../hospital/staff';
@@ -241,6 +241,32 @@ export function newCampaign(db: ContentDb, opts: { seed: number; season: Season;
 }
 
 /**
+ * Следующая глава карьеры (spec 2026-09-chapter-2, часть 34): основные задания главы выполнены,
+ * день закрыт — врач переходит в готовую больницу следующей главы. Врач, сложность, итоги дней и
+ * подсказки — прежние; больница, штат, кандидаты, касса (бюджет главы) и репутация — новые. Кто
+ * должен был вернуться — вернётся в прежнюю больницу: его возврат снят.
+ */
+function nextChapter(db: ContentDb, s: ShiftState) {
+  const c = s.campaign;
+  const next = c ? nextChapterOf(db, c) : undefined;
+  // лежащих в главе 1 нет — палат там не строят; с палатами прежней главы переход подождёт выписки
+  if (!c || !next || c.complete === undefined || s.dayOpen || Object.values(s.patients).some(p => p.status === 'admitted')) return;
+  const preset = db.presets[next.preset];
+  const hired = applicantsOf(db, s.meta.seed, s.day, s.nextStaff ?? 1, builtIn(db, next.build, next.preset));
+  s.meta.department = next.department;
+  s.hospital = presetHospital(db, preset, db.economy.sandbox.plot).hospital;
+  s.staff = presetStaff(db, preset);
+  s.candidates = hired.list;
+  s.nextStaff = hired.next;
+  s.economy = { cash: next.budget, reputation: db.economy.reputation.start, ledger: emptyLedger() };
+  s.undo = [];
+  s.rooms = {};
+  s.returns = [];
+  delete s.desk;
+  s.campaign = { ...startChapter(db, next.id, s.day), ...(c.tips ? { tips: c.tips } : {}) };
+}
+
+/**
  * Действие врача или ход времени. Недопустимая команда ничего не меняет (но пишется в журнал).
  * Ходы времени подряд журнал сливает в один: прожить a, затем b — то же, что прожить a + b,
  * а часы на карте тикают по четыре раза в секунду.
@@ -330,6 +356,9 @@ export function apply(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
     case 'soft':
       if (cmd.on) s.meta.soft = true;
       else delete s.meta.soft;
+      return [];
+    case 'nextChapter':
+      nextChapter(db, s);
       return [];
   }
 }
@@ -1081,6 +1110,8 @@ function finishOperation(db: ContentDb, s: ShiftState, p: ShiftPatient | undefin
   if (complicated) {
     op.complicated = true;
     day.complicated = (day.complicated ?? 0) + 1;
+    // осложнилось после поступления — пока ждал в больнице (задание главы 2, часть 34)
+    if (at > onset) day.waited = (day.waited ?? 0) + 1;
     p.closed!.notes.push({ code: 'op.complicated', tx: op.tx, of: truth, hours: Math.round(hours), before: at <= onset });
   }
   if (branch(s, `surgery:${p.id}`).chance(complicationsOf(db, op.tx, surgeon, complicated))) {
@@ -1091,6 +1122,7 @@ function finishOperation(db: ContentDb, s: ShiftState, p: ShiftPatient | undefin
   }
   // умер после операции — решено сейчас, случится ночью (часть 28б): доля — по стадии
   if (branch(s, `surgery:${p.id}:death`).chance(deathsOf(db, op.tx, complicated, (op.start - p.arriveT) / 3600))) stay.dies = daysIn(stay, s.day);
+  if (!op.complication && stay.dies === undefined) day.good = (day.good ?? 0) + 1;
   // срок — от решения положить: наблюдали, потом оперировали — считается от поступления; у
   // холецистита — от начала болезни (часть 30): пришедшему на третьи сутки оперировать уже поздно
   const plan = db.conditions[p.closed!.diagnosis]?.surgery;

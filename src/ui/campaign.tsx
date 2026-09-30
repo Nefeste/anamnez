@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { View } from 'react-native';
 import { T } from '@/i18n';
 import { Portrait } from '@/render/Portrait';
-import { type CampaignView, type MissionView, readLetter, seenTip, tipsOff, useTip } from '@/state/session';
+import { type CampaignView, type MissionView, moveToNextChapter, readLetter, seenTip, tipsOff, useTip } from '@/state/session';
 import type { TipScreen } from '@/state/tips';
 import { Button, Card, H, P, Sheet } from './components';
 import { Text } from './text';
@@ -18,7 +18,9 @@ export function ChapterCard({ c }: { c: CampaignView }) {
   const styles = useStyles();
   const t = T.campaign;
   const [open, setOpen] = useState<string>();
+  const [move, setMove] = useState(false);
   const letter = c.letters.find(l => l.id === open);
+  const next = c.next;
   const read = (id: string) => {
     setOpen(id);
     readLetter(id);
@@ -28,7 +30,16 @@ export function ChapterCard({ c }: { c: CampaignView }) {
       <Card testID="chapter">
         <H>{c.title}</H>
         <P muted testID="chapter-day">{`${c.place} · ${t.day(c.day)}`}</P>
-        {c.complete && <P testID="chapter-complete">{t.complete}</P>}
+        {c.after && <P testID="chapter-complete">{c.after}</P>}
+        {next && (
+          <Button
+            testID="chapter-next"
+            title={next.move}
+            hint={next.ready ? `${next.title} · ${next.place}` : t.moveHint}
+            disabled={!next.ready}
+            onPress={() => setMove(true)}
+          />
+        )}
         <Text style={styles.label}>{t.letters}</Text>
         {c.letters.length === 0 && <P muted>{t.noLetters}</P>}
         {c.letters.map(l => (
@@ -46,6 +57,24 @@ export function ChapterCard({ c }: { c: CampaignView }) {
         {c.missions.some(m => !m.main) && <Text style={styles.label}>{t.optional}</Text>}
         {c.missions.filter(m => !m.main).map(m => <Mission key={m.id} m={m} />)}
       </Card>
+      {/* переход в следующую главу (spec 2026-09-chapter-2, часть 34): что останется, что будет новым */}
+      <Sheet visible={move && !!next} onClose={() => setMove(false)} closeTitle={t.cancel} testID="chapter-next-sheet">
+        {next && (
+          <>
+            <H>{t.moveTitle(next.move)}</H>
+            <P muted>{`${next.title} · ${next.place}`}</P>
+            <P testID="chapter-next-text">{next.text}</P>
+            <Button
+              testID="chapter-next-yes"
+              title={t.move}
+              onPress={() => {
+                setMove(false);
+                moveToNextChapter();
+              }}
+            />
+          </>
+        )}
+      </Sheet>
       <Sheet visible={!!letter} onClose={() => setOpen(undefined)} closeTitle={t.close} testID="letter-sheet">
         {letter && (
           <>

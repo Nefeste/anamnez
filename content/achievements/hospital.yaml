@@ -1,0 +1,7 @@
+id: ach.hospital
+order: 22
+category: campaign
+name: { ru: "Приёмное" }
+need: { ru: "Выполнить основные задания главы 2 «Приёмное»." }
+kind: chapter
+chapter: chapter.hospital

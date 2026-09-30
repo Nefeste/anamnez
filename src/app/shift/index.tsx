@@ -29,6 +29,7 @@ import { makeStyles, space, touch, useTheme } from '@/ui/theme';
 
 export default function ShiftScreen() {
   const v = useShift();
+  const c = useCampaign();
   useEffect(() => {
     loadShift();
   }, []);
@@ -48,9 +49,10 @@ export default function ShiftScreen() {
     return v.mode === 'single' ? <NoSingle /> : <NewPractice />;
   }
   // своя больница между сменами — песочница и глава кампании: стройка, персонал, «Открыть
-  // смену» (spec 2026-09-own-hospital, 2026-09-campaign)
+  // смену» (spec 2026-09-own-hospital, 2026-09-campaign); глава только началась — и после
+  // перехода из прежней (spec 2026-09-chapter-2, часть 34): её больница, а не итоги прежней
   const own = v.mode === 'sandbox' || v.mode === 'campaign';
-  if (own && !v.dayOpen && v.day === 0) return <Evening v={v} />;
+  if (own && !v.dayOpen && (v.day === 0 || (v.mode === 'campaign' && c?.day === 0))) return <Evening v={v} />;
   return (
     <>
       {own && <OwnTitle mode={v.mode} />}
@@ -103,7 +105,7 @@ function Evening({ v }: { v: ShiftView }) {
       <Stack.Screen options={{ title: v.mode === 'campaign' ? (c?.title ?? T.campaign.title) : t.title }} />
       {v.mode === 'campaign' && c && <ChapterCard c={c} />}
       <Card>
-        <H>{v.day === 0 ? t.beforeOpening : t.day(v.day)}</H>
+        <H>{v.day === 0 || (v.mode === 'campaign' && c?.day === 0) ? t.beforeOpening : t.day(v.day)}</H>
         <P testID="sandbox-summary">{`${t.cash(T.common.rub(v.cash ?? 0))} · ${t.rooms(b.plan.rooms.length)}`}</P>
         <P muted testID="sandbox-reputation">{t.reputation(b.reputation)}</P>
         <P muted testID="sandbox-level">{b.level}</P>

@@ -564,7 +564,9 @@ export const characterSchema = z.strictObject({
 });
 
 /** Условие дня для заданий «N дней»: без непоказанного антибиотика, без ушедших, касса в плюсе. */
-const dayKind = z.enum(['noNeedlessAntibiotic', 'noLeft', 'cashPositive']);
+// noWaitComplication (spec 2026-09-chapter-2, часть 34): операции были, и ни у кого болезнь не
+// осложнилась, пока он ждал в больнице
+const dayKind = z.enum(['noNeedlessAntibiotic', 'noLeft', 'cashPositive', 'noWaitComplication']);
 
 /** Задание главы: вид — в движке, числа и текст — здесь. */
 const missionSchema = z.discriminatedUnion('kind', [
@@ -572,6 +574,11 @@ const missionSchema = z.discriminatedUnion('kind', [
   z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('roomWorks'), room: roomId, text }),
   z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('streak'), days: count, day: dayKind, text }),
   z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('days'), days: count, day: dayKind, text }),
+  // глава 2 (spec 2026-09-chapter-2, часть 34): смена без ошибок сортировки со столькими пациентами
+  // скорой; столько операций без осложнения; столько выписанных подряд со сроком не выше обычного
+  z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('triage'), count, text }),
+  z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('operations'), count, text }),
+  z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('stay'), count, text }),
 ]);
 
 /** Письмо: от кого, когда — в начале главы, после дня N, при задании, в конце главы. */
@@ -588,6 +595,8 @@ export const chapterSchema = z.strictObject({
   order: count,
   name: text,
   place: text,
+  /** кнопка перехода в главу в конце прежней: «Перейти в районную больницу» (часть 34) */
+  move: text.optional(),
   preset: z.string().regex(/^preset\.[a-z0-9_]+$/),
   budget: int,
   department: z.string().regex(/^dept\.[a-z0-9_]+$/),

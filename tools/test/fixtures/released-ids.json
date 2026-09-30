@@ -1,6 +1,6 @@
 {
-  "version": "0.2.6",
-  "base": 38,
+  "version": "0.2.7",
+  "base": 39,
   "ids": {
     "achievements": [
       "ach.allergy_10",
@@ -11,6 +11,7 @@
       "ach.first_patient",
       "ach.first_shift",
       "ach.grade_a_10",
+      "ach.hospital",
       "ach.lab",
       "ach.month",
       "ach.no_left",
@@ -26,7 +27,8 @@
       "ach.xray"
     ],
     "chapters": [
-      "chapter.district"
+      "chapter.district",
+      "chapter.hospital"
     ],
     "chapters.letters": [
       "chapter.district/antibioticsDone",
@@ -35,18 +37,33 @@
       "chapter.district/grant",
       "chapter.district/hello",
       "chapter.district/labDone",
-      "chapter.district/seenDone"
+      "chapter.district/seenDone",
+      "chapter.hospital/end",
+      "chapter.hospital/firstDay",
+      "chapter.hospital/hello",
+      "chapter.hospital/mentor",
+      "chapter.hospital/operationDone",
+      "chapter.hospital/stayDone",
+      "chapter.hospital/surgeon",
+      "chapter.hospital/triageDone",
+      "chapter.hospital/ultrasoundDone"
     ],
     "chapters.missions": [
       "chapter.district/antibiotics",
       "chapter.district/cash",
       "chapter.district/lab",
       "chapter.district/noLeft",
-      "chapter.district/seen"
+      "chapter.district/seen",
+      "chapter.hospital/onTime",
+      "chapter.hospital/operation",
+      "chapter.hospital/stay",
+      "chapter.hospital/triage",
+      "chapter.hospital/ultrasound"
     ],
     "characters": [
       "char.chief",
-      "char.mentor"
+      "char.mentor",
+      "char.surgeon"
     ],
     "conditions": [
       "cond.acs",
@@ -615,6 +632,7 @@
     ],
     "presets": [
       "preset.clinic",
+      "preset.district",
       "preset.village"
     ],
     "risks": [

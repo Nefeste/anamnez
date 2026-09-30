@@ -566,13 +566,17 @@ export interface Character {
 }
 
 /** Условие дня для заданий «N дней». */
-export type DayKind = 'noNeedlessAntibiotic' | 'noLeft' | 'cashPositive';
+export type DayKind = 'noNeedlessAntibiotic' | 'noLeft' | 'cashPositive' | 'noWaitComplication';
 
 export type Mission = { id: string; main: boolean; text: Text } & (
   | { kind: 'seen'; count: number; accuracy: number }
   | { kind: 'roomWorks'; room: Id }
   | { kind: 'streak'; days: number; day: DayKind }
   | { kind: 'days'; days: number; day: DayKind }
+  /** глава 2 (spec 2026-09-chapter-2, часть 34): сортировка скорой, операции, сроки стационара */
+  | { kind: 'triage'; count: number }
+  | { kind: 'operations'; count: number }
+  | { kind: 'stay'; count: number }
 );
 
 export type LetterWhen = 'start' | 'end' | { afterDay: number } | { mission: string };
@@ -590,6 +594,8 @@ export interface Chapter {
   order: number;
   name: Text;
   place: Text;
+  /** кнопка перехода в главу в конце прежней (часть 34) */
+  move?: Text;
   preset: Id;
   budget: number;
   department: Id;

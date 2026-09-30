@@ -33,9 +33,21 @@ export const campaign = {
   optional: 'Дополнительные',
   seenProgress: (seen: number, of: number, accuracy: number) => `${seen} из ${of}, точность ${accuracy}\u00a0%`,
   dayProgress: (n: number, of: number) => `${n} из ${of}\u00a0${pluralRu(of, 'дня', 'дней', 'дней')}`,
+  // глава 2 (spec 2026-09-chapter-2, часть 34)
+  triageProgress: (n: number, of: number) => `лучшая смена: ${n} из ${of}\u00a0${pluralRu(of, 'пациента', 'пациентов', 'пациентов')} скорой`,
+  operationsProgress: (n: number, of: number) => `${n} из ${of}\u00a0${pluralRu(of, 'операции', 'операций', 'операций')}`,
+  stayProgress: (n: number, of: number, stay?: { days: number; norm: number }) =>
+    `${n} из ${of}\u00a0${pluralRu(of, 'выписанного', 'выписанных', 'выписанных')} подряд${stay ? ` · в среднем ${String(stay.days).replace('.', ',')}\u00a0сут. при обычных ${String(stay.norm).replace('.', ',')}` : ''}`,
   notYet: 'пока нет',
   doneOn: (day: number) => `выполнено, день ${day}`,
-  complete: 'Основные задания главы выполнены. Глава 2 — в следующей версии; работать здесь можно и дальше.',
+  completeLater: (next: number) => `Основные задания главы выполнены. Глава ${next} — в следующей версии; работать здесь можно и дальше.`,
+  completeNext: 'Основные задания главы выполнены. Работать здесь можно и дальше — или перейти в следующую главу.',
+  moveTo: (order: number) => `Перейти в главу ${order}`,
+  moveHint: 'между сменами',
+  moveTitle: (move: string) => `${move}?`,
+  moveText: (from: string) =>
+    `Больница, штат и касса будут новыми; врач, сложность, достижения и энциклопедия — прежними. Прежняя больница — ${from} — останется в «Смене» быстрой игры.`,
+  move: 'Перейти',
   close: 'Закрыть',
 
   // подсказки наставника в первую смену главы

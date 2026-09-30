@@ -8,7 +8,7 @@
 // тестах — память. Модуль, как и saves.ts, не знает про платформу.
 import { useSyncExternalStore } from 'react';
 import { db } from '@/content';
-import type { Id, Season, Setting } from '@/content/types';
+import type { Id, Mission, Season, Setting } from '@/content/types';
 import { complaintObservations } from '@/engine/med/exams';
 import { evaluatePlan, primaryOf } from '@/engine/med/plan';
 import type { Grade } from '@/engine/med/score';
@@ -17,7 +17,7 @@ import { build, type BuildCommand, type BuildError, type HospitalState, type Pla
 import { type Block, doctorRoom, examWhere, openBlocks, type Problem, problemsOf, standInOf, workingRooms } from '@/engine/hospital/requirements';
 import { type ClinicLayout, cropPlan, layoutOf } from '@/engine/hospital/clinic';
 import { memberAt, type StaffMember, staffingOf } from '@/engine/hospital/staff';
-import { missionProgress } from '@/engine/campaign/campaign';
+import { type MissionProgress, missionProgress, nextChapterOf } from '@/engine/campaign/campaign';
 import { levelOf } from '@/engine/economy/economy';
 import {
   apply, atDoorOf, current, freeBeds, type HospitalCtx, hospitalCtx, inpatientsOf, newCampaign, newSandbox, newShift, newSingle, observationsOf, operationOf,
@@ -1009,7 +1009,8 @@ export async function savedGames(): Promise<GameSummary[]> {
     const ch = s.campaign ? db.chapters[s.campaign.chapter] : undefined;
     const mains = ch?.missions.filter(x => x.main) ?? [];
     out.push({
-      mode: m, savedAt: r.envelope.savedAt, day: s.day, clock: hhmm(minuteOfDay(s.t)), difficulty: s.meta.difficulty ?? 'doctor',
+      // у карьеры — день главы: во второй главе счёт с её начала (spec 2026-09-chapter-2, часть 34)
+      mode: m, savedAt: r.envelope.savedAt, day: s.day - (s.campaign?.since ?? 0), clock: hhmm(minuteOfDay(s.t)), difficulty: s.meta.difficulty ?? 'doctor',
       ...(s.economy ? { cash: s.economy.cash } : {}),
       ...(ch && s.campaign ? { career: c, chapter: ch.id, mains: { done: mains.filter(x => s.campaign!.done[x.id] !== undefined).length, of: mains.length } } : {}),
       ...(m === 'single' ? { venue: venueName(s.meta.venue ?? 'preset.clinic') } : {}),
@@ -1040,6 +1041,20 @@ export interface MissionView {
   done?: number;
 }
 
+/**
+ * Следующая глава, когда эта выполнена (spec 2026-09-chapter-2, часть 34): кнопка перехода, лист
+ * подтверждения; перейти можно между сменами.
+ */
+export interface NextChapterView {
+  title: string;
+  /** кнопка: «Перейти в районную больницу» */
+  move: string;
+  place: string;
+  /** что останется и что будет новым — в листе подтверждения */
+  text: string;
+  ready: boolean;
+}
+
 /** Глава для экрана между сменами и для итогов дня. */
 export interface CampaignView {
   version: number;
@@ -1051,6 +1066,29 @@ export interface CampaignView {
   missions: MissionView[];
   /** все основные задания выполнены */
   complete: boolean;
+  /** выполнена: что дальше — следующая глава или «в следующей версии» */
+  after?: string;
+  next?: NextChapterView;
+}
+
+/** Ход задания словами: принято и точность, дни, скорая, операции, выписанные подряд. */
+function missionText(m: Mission, p: MissionProgress): string {
+  const t = T.campaign;
+  switch (m.kind) {
+    case 'seen':
+      return t.seenProgress(p.value, p.target, p.accuracy ?? 0);
+    case 'roomWorks':
+      return t.notYet;
+    case 'triage':
+      return t.triageProgress(p.value, p.target);
+    case 'operations':
+      return t.operationsProgress(p.value, p.target);
+    case 'stay':
+      return t.stayProgress(p.value, p.target, p.stay ? { days: Math.round(p.stay.days * 10) / 10, norm: Math.round(p.stay.norm * 10) / 10 } : undefined);
+    case 'streak':
+    case 'days':
+      return t.dayProgress(p.value, p.target);
+  }
 }
 
 function buildCampaignView(): CampaignView | undefined {
@@ -1071,11 +1109,22 @@ function buildCampaignView(): CampaignView | undefined {
     const done = c.done[m.id];
     return {
       id: m.id, text: m.text.ru, main: m.main,
-      progress: done !== undefined ? t.doneOn(done - c.since) : m.kind === 'seen' ? t.seenProgress(p.value, p.target, p.accuracy ?? 0) : m.kind === 'roomWorks' ? t.notYet : t.dayProgress(p.value, p.target),
+      progress: done !== undefined ? t.doneOn(done - c.since) : missionText(m, p),
       ...(done !== undefined ? { done: done - c.since } : {}),
     };
   });
-  return { version, title: t.chapter(ch.order, ch.name.ru), place: ch.place.ru, day: s.day - c.since, letters, missions, complete: c.complete !== undefined };
+  const complete = c.complete !== undefined;
+  const next = complete ? nextChapterOf(db, c) : undefined;
+  return {
+    version, title: t.chapter(ch.order, ch.name.ru), place: ch.place.ru, day: s.day - c.since, letters, missions, complete,
+    ...(complete ? { after: next ? t.completeNext : t.completeLater(ch.order + 1) } : {}),
+    ...(next ? {
+      next: {
+        title: t.chapter(next.order, next.name.ru), move: next.move?.ru ?? t.moveTo(next.order), place: next.place.ru, text: t.moveText(ch.place.ru),
+        ready: !s.dayOpen && !Object.values(s.patients).some(p => p.status === 'admitted'),
+      },
+    } : {}),
+  };
 }
 
 let campaignCache: { version: number; view: CampaignView | undefined } | null = null;
@@ -1087,6 +1136,21 @@ export function campaignView(): CampaignView | undefined {
 
 export function useCampaign(): CampaignView | undefined {
   return useSyncExternalStore(subscribe, campaignView, campaignView);
+}
+
+/**
+ * «Перейти в районную больницу» (spec 2026-09-chapter-2, часть 34): глава выполнена, день закрыт —
+ * карьера идёт в следующей главе. Движок не перейдёт раньше — тогда ничего не меняется.
+ */
+export function moveToNextChapter() {
+  const sess = session;
+  if (!sess || sess.s.meta.mode !== 'campaign' || sess.s.dayOpen) return;
+  const was = sess.s.campaign?.chapter;
+  run(sess, { kind: 'nextChapter' });
+  if (sess.s.campaign?.chapter === was) return;
+  sess.focus = undefined;
+  save();
+  changed();
 }
 
 /** Письмо прочитано — отметка в сохранении карьеры, не ход игры. */

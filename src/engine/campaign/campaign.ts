@@ -27,11 +27,15 @@ export interface CampaignProgress {
   tips?: { shown: Id[]; off?: boolean };
 }
 
-/** Ход задания: сколько есть, сколько нужно; у «принять N» — ещё точность, %. */
+/**
+ * Ход задания: сколько есть, сколько нужно; у «принять N» — ещё точность, %; у сроков стационара
+ * (часть 34) — суток в среднем и обычных в среднем у выписанных подряд.
+ */
 export interface MissionProgress {
   value: number;
   target: number;
   accuracy?: number;
+  stay?: { days: number; norm: number };
   done: boolean;
 }
 
@@ -45,6 +49,12 @@ export interface CampaignView {
 
 export const chapterOf = (db: ContentDb, c: CampaignProgress): Chapter | undefined => db.chapters[c.chapter];
 
+/** Следующая глава по порядку (spec 2026-09-chapter-2, часть 34); последняя — undefined. */
+export function nextChapterOf(db: ContentDb, c: CampaignProgress): Chapter | undefined {
+  const ch = chapterOf(db, c);
+  return ch ? Object.values(db.chapters).find(x => x.order === ch.order + 1) : undefined;
+}
+
 /** Дни этой главы — закрытые после её начала. */
 const chapterDays = (v: CampaignView) => v.history.filter(h => h.day > v.campaign.since);
 
@@ -57,6 +67,8 @@ export function dayOk(kind: DayKind, h: DaySummary): boolean {
       return h.arrived > 0 && h.left === 0;
     case 'cashPositive':
       return !!h.economy && incomeOf(h.economy.ledger) - expensesOf(h.economy.ledger) >= 0;
+    case 'noWaitComplication':
+      return (h.surgery?.done ?? 0) > 0 && !h.surgery?.waited;
   }
 }
 
@@ -88,6 +100,35 @@ export function missionProgress(db: ContentDb, v: CampaignView, m: Mission): Mis
     case 'days': {
       const n = days.filter(h => dayOk(m.day, h)).length;
       return { value: Math.min(n, m.days), target: m.days, done: was || n >= m.days };
+    }
+    // глава 2 (spec 2026-09-chapter-2, часть 34): лучшая смена, где всех привезённых
+    // отсортировали без ошибки; операции без осложнения и без смерти после них
+    case 'triage': {
+      const best = Math.max(0, ...days.map(h => (h.ambulance && h.ambulance.under + h.ambulance.over === 0 ? h.ambulance.sorted : 0)));
+      return { value: Math.min(best, m.count), target: m.count, done: was || best >= m.count };
+    }
+    case 'operations': {
+      const n = days.reduce((a, h) => a + (h.surgery?.good ?? 0), 0);
+      return { value: Math.min(n, m.count), target: m.count, done: was || n >= m.count };
+    }
+    // выписанные подряд — от последнего дня назад; день с выпиской раньше срока рвёт серию: так
+    // средний срок не сократить, выписывая недолеченных
+    case 'stay': {
+      let n = 0;
+      let sum = 0;
+      let norm = 0;
+      for (let i = days.length - 1; i >= 0 && n < m.count; i--) {
+        const w = days[i].ward;
+        if (!w || w.discharged === 0) continue;
+        if (w.early > 0) break;
+        n += w.discharged;
+        sum += w.stayDays;
+        norm += w.stayNorm;
+      }
+      return {
+        value: Math.min(n, m.count), target: m.count, done: was || (n >= m.count && sum <= norm),
+        ...(n > 0 ? { stay: { days: sum / n, norm: norm / n } } : {}),
+      };
     }
   }
 }

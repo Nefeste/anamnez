@@ -5,7 +5,7 @@ import { extname, join } from 'node:path';
 import { chromium, type Page } from 'playwright';
 import { clinicLayout } from '../../src/engine/hospital/clinic';
 import { generatePatient } from '../../src/engine/med/generate';
-import { apply, newSandbox, newShift, newSingle } from '../../src/engine/shift/engine';
+import { apply, newCampaign, newSandbox, newShift, newSingle } from '../../src/engine/shift/engine';
 import { DAY, SHIFT_END, SHIFT_SCHEMA_VERSION } from '../../src/engine/shift/types';
 import { buildDb } from '../content/load';
 
@@ -344,6 +344,33 @@ function gallSave(): { save: string; id: string } {
 }
 
 /** Песочница до открытия: готовая амбулатория, бюджет «обычный» — экран «Перед открытием». */
+/**
+ * Карьера 2, у которой глава 1 выполнена к концу дня 3 (spec 2026-09-chapter-2, часть 34): переход
+ * в районную больницу — без сорока приёмов. Итоги трёх дней, задания и письма — как их записала бы
+ * игра; день закрыт.
+ */
+function chapterDoneSave(): string {
+  const { db } = buildDb();
+  const s = newCampaign(db, { seed: 8, season: 'winter', difficulty: 'student', career: 2 });
+  const ch = db.chapters['chapter.district'];
+  // по дню на основное задание: лаборатория, сорок приёмов, три дня без лишнего антибиотика
+  const done: [string, string[]][] = [['lab', ['firstDay', 'labDone']], ['seen', ['seenDone']], ['antibiotics', ['antibioticsDone', 'end']]];
+  s.day = 3;
+  s.history = done.map(([mission, letters], i) => ({
+    day: i + 1, arrived: 15, seen: 15, left: 0, unseen: 0, correct: 13, partly: 1, wrong: 1, grades: { A: 9, B: 4, C: 2, D: 0 }, money: 0, returnsPlanned: 0, returnsToday: 0,
+    campaign: { done: [mission], letters },
+  }));
+  done.forEach(([mission, letters], i) => {
+    s.campaign!.done[mission] = i + 1;
+    s.campaign!.letters.push(...letters.map(id => ({ id, day: i + 1, read: true })));
+  });
+  s.summary = { ...s.history[2], grades: { ...s.history[2].grades } };
+  s.campaign!.complete = 3;
+  s.campaign!.tips = { shown: [], off: true };
+  if (!ch.missions.filter(m => m.main).every(m => s.campaign!.done[m.id])) throw new Error('глава 1: не все основные задания в сохранении');
+  return JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: '2026-09-30T00:00:00.000Z', data: s });
+}
+
 function sandboxFreshSave(): string {
   const { db } = buildDb();
   const s = newSandbox(db, { seed: 5, season: 'winter', difficulty: 'student', start: 'clinic', budget: db.economy.sandbox.budgets.normal });
@@ -1514,6 +1541,50 @@ try {
   await page.getByTestId('menu-continue').waitFor({ timeout: 10_000 });
   check((await text(page, 'menu-continue')).includes('Карьера 1: Глава 1. Участок'), `меню: «Продолжить» — ${(await text(page, 'menu-continue')).replace(/\n/g, ' · ')}`);
 
+  // глава 2 (spec 2026-09-chapter-2, часть 34): карьера 2 с выполненной главой 1 — «Перейти в
+  // районную больницу», лист перехода; глава 2 — письма и задания; смена — в районной больнице
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/campaign-2.json', chapterDoneSave()]);
+  await page.goto(base);
+  await page.getByTestId('menu-campaign').click();
+  await page.getByTestId('career-2').waitFor({ timeout: 10_000 });
+  check((await text(page, 'career-2')).includes('Глава 1. Участок · день 3 · основные задания: 3 из 3'), `глава 2: карьера 2 — ${(await text(page, 'career-2')).replace(/\n/g, ' · ')}`);
+  await page.getByTestId('career-2').click();
+  await page.getByTestId('career-continue').click();
+  // итоги дня 3 — «Выполнено» и глава с кнопкой перехода
+  await page.getByTestId('chapter-next').waitFor({ timeout: 10_000 });
+  check((await text(page, 'summary-campaign')).includes('Выполнено: Три дня подряд без антибиотика'), 'глава 1: в итогах дня — выполненное задание');
+  check((await text(page, 'chapter-complete')).includes('или перейти в следующую главу') && (await text(page, 'chapter-next')).startsWith('Перейти в районную больницу'),
+    `глава 1 выполнена: ${(await text(page, 'chapter-next')).replace(/\n/g, ' · ')}`);
+  await page.getByTestId('chapter-next').click();
+  await page.getByTestId('chapter-next-text').waitFor({ timeout: 5000 });
+  check((await text(page, 'chapter-next-text')).includes('амбулатория в посёлке Заречный — останется в «Смене»'), 'глава 2: лист перехода — что будет новым, что останется');
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(OUT, '15-chapter2-move.png') });
+  await page.getByTestId('chapter-next-yes').click();
+  await page.getByTestId('chapter-next-sheet').waitFor({ state: 'detached', timeout: 5000 });
+  await page.waitForTimeout(500);
+  check((await text(page, 'chapter')).startsWith('Глава 2. Приёмное') && (await text(page, 'chapter-day')).startsWith('районная больница в Нижнеборске · перед первой сменой')
+    && (await page.locator('[data-testid^="mission-"]').count()) === 5 && (await page.getByTestId('chapter-next').count()) === 0,
+    `глава 2: ${(await text(page, 'chapter-day'))}, заданий ${await page.locator('[data-testid^="mission-"]').count()}`);
+  check((await text(page, 'mission-triage')).includes('лучшая смена: 0 из 4') && (await text(page, 'mission-stay')).includes('0 из 10'), 'глава 2: ход заданий — скорая, выписанные подряд');
+  // после перехода — экран главы с новой больницей, а не итоги прежней
+  check((await page.getByTestId('summary-seen').count()) === 0 && (await text(page, 'sandbox-summary')).includes('600\u00a0000'),
+    `глава 2: перед первой сменой — ${(await text(page, 'sandbox-summary'))}`);
+  await page.getByTestId('letter-surgeon').click();
+  await page.getByTestId('letter-text').waitFor({ timeout: 5000 });
+  check((await text(page, 'letter-text')).startsWith('Здравствуйте. Я заведую хирургией') && (await text(page, 'letter-sheet')).includes('А. И. Зорин'), 'глава 2: письмо заведующего хирургией');
+  await page.screenshot({ path: join(OUT, '15-chapter2-letter.png') });
+  await page.getByTestId('letter-sheet-close').click();
+  await page.getByTestId('letter-sheet').waitFor({ state: 'detached', timeout: 5000 });
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(OUT, '15-chapter2.png'), fullPage: true });
+  await page.getByTestId('sandbox-open').click();
+  await page.getByTestId('clinic-map').waitFor({ timeout: 10_000 });
+  await page.getByTestId('tab-pause').click();
+  check(await page.getByTestId('clinic-map').isVisible(), 'глава 2: смена в районной больнице');
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(OUT, '15-chapter2-shift.png') });
+
   // «Случай дня»: последние 30 дней, приём, разбор, отметка в списке (spec 2026-09-campaign, часть 14)
   await page.goto(base);
   await page.getByTestId('menu-quick').click();
@@ -1544,8 +1615,10 @@ try {
   await page.getByTestId('menu-quick').click();
   await page.getByTestId('menu-single').click();
   await page.getByTestId('venue-preset.clinic').waitFor({ timeout: 10_000 });
-  check(!(await page.getByTestId('venue-preset.village').isDisabled()) && (await page.locator('[data-testid^="venue-"]').count()) === 3,
-    `смена: больницы — практика, посёлок, своя (${(await text(page, 'venue-sandbox')).replace(/\n/g, ' · ')})`);
+  // районная больница — с тех пор как карьера 2 перешла в главу 2
+  check(!(await page.getByTestId('venue-preset.village').isDisabled()) && !(await page.getByTestId('venue-preset.district').isDisabled())
+    && (await page.locator('[data-testid^="venue-"]').count()) === 4,
+    `смена: больницы — практика, посёлок, районная, своя (${(await text(page, 'venue-sandbox')).replace(/\n/g, ' · ')})`);
   await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/single.json', singleEndOfDaySave()]);
   await page.goto(base);
   await page.getByTestId('menu-continue').waitFor({ timeout: 10_000 });

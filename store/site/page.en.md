@@ -68,7 +68,8 @@ in Russian.
 - **Review.** What it really was, a score for accuracy, justification, thrift and safety, and how
   an experienced doctor would have reasoned. Patients sent home sometimes get worse and come back,
   and the end-of-day summary tells you what happened to earlier patients.
-- **Campaign.** A young doctor at a village clinic. The first shift is with a mentor; after that
+- **Campaign.** A young doctor at a village clinic, and then at a district hospital with an
+  emergency department, wards and an operating room. The first shift is with a mentor; after that
   come letters and tasks without deadlines.
 - **Your own hospital.** Offices, a lab, X-ray and ultrasound rooms, an emergency department, wards
   and an operating room, hiring, the cash desk. Doctors you hire see patients on their own. Insurance
@@ -130,6 +131,6 @@ see a doctor; in an emergency, call your local emergency number (112 in Russia a
 
 ## What’s next
 
-Coming up: a campaign chapter about a district hospital, and then new departments: cardiology, neurology, CT and MRI. The game is
+Coming up: new campaign chapters and departments: cardiology, neurology, CT and MRI. The game is
 being prepared for release in RuStore for Android, in Russian first. Questions:
 support@gornitsa.games.
