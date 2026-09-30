@@ -588,6 +588,19 @@ export interface Letter {
   text: Text;
 }
 
+/**
+ * Заданный пациент первой смены главы: болезнь, привезёт ли его скорая, какие скрытые параметры
+ * заданы и в каком он возрасте (часть 34б: тяжёлая пневмония, стабильный перелом лодыжек,
+ * аппендицит у молодого).
+ */
+export interface TutorialPatient {
+  condition: Id;
+  ambulance?: boolean;
+  params?: Record<string, string>;
+  /** возраст, лет: от и до — аппендицит у молодого (часть 34б) */
+  age?: [number, number];
+}
+
 /** Глава кампании: больница, бюджет, что можно строить, задания и письма. */
 export interface Chapter {
   id: Id;
@@ -600,19 +613,24 @@ export interface Chapter {
   budget: number;
   department: Id;
   build: Id[];
-  tutorial: Id[];
+  tutorial: TutorialPatient[];
   missions: Mission[];
   letters: Letter[];
 }
 
-/** Когда подсказка наставника к месту: открылась карта, после первых вопросов, у пациента с болезнью, «Решение», разбор. */
-export type TipWhen = 'caseOpen' | 'afterAsk' | 'decision' | 'review' | { condition: Id };
+/**
+ * Когда подсказка наставника к месту: открылась карта, после первых вопросов, у пациента с
+ * болезнью, «Решение», разбор; ждёт сортировки привезённый скорой, обход (часть 34б).
+ */
+export type TipWhen = 'caseOpen' | 'afterAsk' | 'decision' | 'review' | 'ambulance' | 'rounds' | { condition: Id };
 
 /** Подсказка наставника в первую смену главы (spec 2026-09-campaign). */
 export interface Tip {
   id: Id;
   order: number;
   from: Id;
+  /** только в этой главе (часть 34б) */
+  chapter?: Id;
   name: Text;
   when: TipWhen;
   text: Text;

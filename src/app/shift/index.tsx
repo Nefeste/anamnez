@@ -23,7 +23,7 @@ import { CaseRow } from '@/ui/case/CaseRow';
 import { gradeColor } from '@/ui/case/OutcomeScreen';
 import { Button, Card, Chip, Chips, H, Lamp, P, Screen, Sheet, Tabs, Urgency } from '@/ui/components';
 import { DifficultyChoice } from '@/ui/difficulty';
-import { ChapterCard } from '@/ui/campaign';
+import { ChapterCard, MentorTip } from '@/ui/campaign';
 import { NewSandbox } from '@/ui/sandbox';
 import { makeStyles, space, touch, useTheme } from '@/ui/theme';
 
@@ -367,6 +367,8 @@ function Queue({ v }: { v: ShiftView }) {
       )}
 
       <Handover row={v.ambulance.find(a => a.id === handover)} onClose={() => setHandover(undefined)} />
+      {/* первая смена главы 2 (spec 2026-09-chapter-2, часть 34б): привезённый ждёт сортировки — подсказка; не поверх листа передачи */}
+      {handover === undefined && <MentorTip screen="queue" />}
     </Screen>
   );
 }

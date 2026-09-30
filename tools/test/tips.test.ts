@@ -14,6 +14,7 @@ import {
 import { momentKey, type TipMoment, tipFor } from '../../src/state/tips';
 
 const ch = db.chapters['chapter.district'];
+const taught = ch.tutorial.map(t => t.condition);
 const firstDay = (seed: number) => {
   const s = newCampaign(db, { seed, season: 'winter', career: 1 });
   apply(db, s, { kind: 'nextDay' });
@@ -24,10 +25,10 @@ const primary = (p: ShiftPatient) => p.patient.truth.conditions[0].id;
 
 describe('первые пациенты главы 1', () => {
   test('первые трое пришедших — ОРВИ, ангина, цистит; цистит — у женщины', () => {
-    expect(ch.tutorial).toEqual(['cond.arvi', 'cond.strep_pharyngitis', 'cond.cystitis']);
+    expect(ch.tutorial).toEqual([{ condition: 'cond.arvi' }, { condition: 'cond.strep_pharyngitis' }, { condition: 'cond.cystitis' }]);
     for (const seed of [1, 2, 3, 42, 777, 2026]) {
       const ps = byArrival(firstDay(seed));
-      expect(ps.slice(0, 3).map(primary)).toEqual(ch.tutorial);
+      expect(ps.slice(0, 3).map(primary)).toEqual(taught);
       expect(ps[2].patient.sex).toBe('f');
     }
   });
@@ -37,7 +38,7 @@ describe('первые пациенты главы 1', () => {
     const gen = { department: s.meta.department, season: s.meta.season };
     const free = (p: ShiftPatient) => expect(p.patient).toEqual(generatePatient(db, p.patient.seed, gen));
     const [a, b, c, ...rest] = byArrival(s);
-    for (const [p, cond] of [[a, ch.tutorial[0]], [b, ch.tutorial[1]], [c, ch.tutorial[2]]] as const) {
+    for (const [p, cond] of [[a, taught[0]], [b, taught[1]], [c, taught[2]]] as const) {
       expect(p.patient).toEqual(generatePatient(db, p.patient.seed, { ...gen, primary: cond }));
     }
     rest.forEach(free);

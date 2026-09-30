@@ -601,8 +601,19 @@ export const chapterSchema = z.strictObject({
   budget: int,
   department: z.string().regex(/^dept\.[a-z0-9_]+$/),
   build: z.array(roomId).min(1),
-  /** первые пациенты главы — заданные болезни (обучение с наставником) */
-  tutorial: z.array(z.string().regex(/^cond\.[a-z0-9_]+$/)).default([]),
+  /**
+   * первые пациенты главы — заданные болезни (обучение с наставником): строкой — пришедший сам;
+   * с часть 34б — и привезённый скорой (`ambulance`), и с заданными скрытыми параметрами
+   */
+  tutorial: z.array(z.union([
+    z.string().regex(/^cond\.[a-z0-9_]+$/),
+    z.strictObject({
+      condition: z.string().regex(/^cond\.[a-z0-9_]+$/),
+      ambulance: z.literal(true).optional(),
+      params: z.record(z.string(), z.string()).optional(),
+      age: z.tuple([z.number().int().min(0).max(110), z.number().int().min(0).max(110)]).optional(),
+    }),
+  ])).default([]),
   missions: z.array(missionSchema).min(1),
   letters: z.array(letterSchema).default([]),
 });
@@ -616,9 +627,12 @@ export const tipSchema = z.strictObject({
   /** порядок: какая первой, если подходят две */
   order: count,
   from: z.string().regex(/^char\.[a-z0-9_]+$/),
+  /** только в этой главе (часть 34б); нет — в первую смену любой главы с обучением */
+  chapter: z.string().regex(/^chapter\.[a-z0-9_]+$/).optional(),
   name: text,
+  // ambulance — ждёт сортировки привезённый скорой; rounds — обход (часть 34б)
   when: z.union([
-    z.literal('caseOpen'), z.literal('afterAsk'), z.literal('decision'), z.literal('review'),
+    z.literal('caseOpen'), z.literal('afterAsk'), z.literal('decision'), z.literal('review'), z.literal('ambulance'), z.literal('rounds'),
     z.strictObject({ condition: z.string().regex(/^cond\.[a-z0-9_]+$/) }),
   ]),
   text,

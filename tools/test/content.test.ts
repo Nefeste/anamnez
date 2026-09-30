@@ -467,6 +467,22 @@ describe('кампания', () => {
     expect(chronic.some(e => e.includes('chapter.district: болезнь обучения cond.copd — не из приёма отделения dept.therapy'))).toBe(true);
   });
 
+  test('заданные пациенты по скорой (часть 34б): скорая — со смотровой приёмного, параметры — из записи; подсказки о скорой и обходе — с главой', () => {
+    const noEr = broken(d => edit(d, 'campaign/chapters/district.yaml', 'tutorial: [cond.arvi,', 'tutorial: [{ condition: cond.arvi, ambulance: true },'));
+    expect(noEr.some(e => e.includes('chapter.district: болезнь обучения cond.arvi: скорая, а смотровой приёмного в больнице главы нет'))).toBe(true);
+    const param = broken(d => edit(d, 'campaign/chapters/hospital.yaml', 'params: { stability: stable }', 'params: { stability: loose }'));
+    expect(param.some(e => e.includes('chapter.hospital: болезнь обучения cond.ankle_fracture: параметра stability со значением loose у болезни нет'))).toBe(true);
+    // травма — из приёма смотровой: в главе 1 её нет
+    const trauma = broken(d => edit(d, 'campaign/chapters/district.yaml', 'tutorial: [cond.arvi,', 'tutorial: [cond.ankle_fracture,'));
+    expect(trauma.some(e => e.includes('chapter.district: болезнь обучения cond.ankle_fracture — не из приёма отделения dept.therapy'))).toBe(true);
+    const scope = broken(d => edit(d, 'campaign/tips/handover.yaml', 'chapter: chapter.hospital\n', ''));
+    expect(scope.some(e => e.includes('tip.handover: подсказка «ambulance» — только с главой (chapter)'))).toBe(true);
+    const old = broken(d => edit(d, 'campaign/chapters/hospital.yaml', 'age: [18, 40]', 'age: [5, 12]'));
+    expect(old.some(e => e.includes('chapter.hospital: болезнь обучения cond.appendicitis: возраст 5–12 — мимо возраста болезни'))).toBe(true);
+    const lost = broken(d => edit(d, 'campaign/tips/rounds.yaml', 'chapter: chapter.hospital', 'chapter: chapter.city'));
+    expect(lost.some(e => e.includes('tip.rounds: глава chapter.city не найдена'))).toBe(true);
+  });
+
   test('подсказка: от персонажа игры, о болезни, с которой приходят, со ссылками на статьи; порядок не повторяется', () => {
     const who = broken(d => edit(d, 'campaign/tips/start.yaml', 'from: char.mentor', 'from: char.nurse'));
     expect(who.some(e => e.includes('tip.start: персонаж char.nurse не найден'))).toBe(true);

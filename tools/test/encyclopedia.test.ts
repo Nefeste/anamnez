@@ -4,6 +4,7 @@
 // поиск находит и с «е» вместо «ё».
 import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
+import { T } from '../../src/i18n';
 import { article, bandOf, SECTIONS, search, sectionOf, sectionsOf, sectionView, similar } from '../../src/state/encyclopedia';
 
 const ids = () => [db.conditions, db.findings, db.exams, db.treatments, db.risks, db.rooms, db.equipment, db.roles, db.tips].flatMap(t => Object.keys(t));
@@ -118,9 +119,15 @@ describe('энциклопедия', () => {
   });
 
   test('подсказки наставника: по порядку, в каком подсказывает; совет, когда и о чём', () => {
-    expect(sectionView(db, 'tips').groups.flatMap(g => g.items.map(i => i.id))).toEqual(['tip.start', 'tip.examine', 'tip.strep', 'tip.decision', 'tip.urine', 'tip.review']);
+    expect(sectionView(db, 'tips').groups.flatMap(g => g.items.map(i => i.id))).toEqual([
+      'tip.start', 'tip.examine', 'tip.strep', 'tip.decision', 'tip.urine', 'tip.review', 'tip.handover', 'tip.appendicitis', 'tip.rounds',
+    ]);
     const strep = article(db, 'tip.strep')!;
-    expect([strep.section, strep.subtitle]).toEqual(['tips', 'Подсказка наставника · Анна Сергеевна']);
+    expect([strep.section, strep.subtitle]).toEqual(['tips', 'Подсказка · Анна Сергеевна']);
+    // глава 2 (часть 34б): подсказывает и заведующий хирургией; когда — на экране смены и на обходе
+    expect(article(db, 'tip.appendicitis')!.subtitle).toBe('Подсказка · А. И. Зорин');
+    expect(article(db, 'tip.handover')!.blocks.find(b => b.key === 'when')!.text).toEqual([T.encyclopedia.tipWhen.ambulance]);
+    expect(article(db, 'tip.rounds')!.blocks.find(b => b.key === 'when')!.text).toEqual([T.encyclopedia.tipWhen.rounds]);
     expect(strep.blocks.map(b => b.key)).toEqual(['text', 'when', 'see']);
     expect(strep.blocks.find(b => b.key === 'when')!.text![0]).toContain('«Острый стрептококковый тонзиллофарингит»');
     expect(strep.blocks.find(b => b.key === 'see')!.refs!.map(r => r.id)).toEqual(['exam.strep_rapid', 'cond.strep_pharyngitis']);

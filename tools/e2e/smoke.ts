@@ -366,7 +366,8 @@ function chapterDoneSave(): string {
   });
   s.summary = { ...s.history[2], grades: { ...s.history[2].grades } };
   s.campaign!.complete = 3;
-  s.campaign!.tips = { shown: [], off: true };
+  // подсказки главы 1 показаны в ней; подсказки главы 2 — впереди
+  s.campaign!.tips = { shown: Object.values(db.tips).filter(t => !t.chapter).map(t => t.id) };
   if (!ch.missions.filter(m => m.main).every(m => s.campaign!.done[m.id])) throw new Error('глава 1: не все основные задания в сохранении');
   return JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: '2026-09-30T00:00:00.000Z', data: s });
 }
@@ -1580,10 +1581,52 @@ try {
   await page.screenshot({ path: join(OUT, '15-chapter2.png'), fullPage: true });
   await page.getByTestId('sandbox-open').click();
   await page.getByTestId('clinic-map').waitFor({ timeout: 10_000 });
-  await page.getByTestId('tab-pause').click();
   check(await page.getByTestId('clinic-map').isVisible(), 'глава 2: смена в районной больнице');
+  // первая смена с наставником (часть 34б), сценарий chapter2: скорая → подсказка → сортировка →
+  // смотровая → подсказка заведующего хирургией → «В операционную» → палата → обход с подсказкой
+  const tipShown = async () => (await page.getByTestId('tip-text').count()) > 0;
+  const gotTip = async () => {
+    await page.getByTestId('tip-sheet-close').click();
+    await page.getByTestId('tip-sheet').waitFor({ state: 'detached', timeout: 5000 });
+  };
+  await page.getByTestId('tab-x4').click();
+  check(await runClockUntil(page, tipShown), 'глава 2: первая скорая — в первые минуты смены');
+  check((await text(page, 'tip-text')).startsWith('Скорая привезла человека — сначала лист передачи'), 'глава 2: привезли — подсказка «Лист передачи»');
+  await page.waitForTimeout(700);
+  await page.screenshot({ path: join(OUT, '15-chapter2-tip.png') });
+  await gotTip();
+  await page.getByTestId('tab-pause').click();
+  // привезённого зовём по имени в очереди: пришедший сам «красный» мог встать раньше
+  const ambId = (await page.locator('[data-testid^="ambulance-"]').first().getAttribute('data-testid'))!.replace('ambulance-', '');
+  await page.getByTestId(`ambulance-${ambId}`).click();
+  await page.getByTestId('handover-reason').waitFor({ timeout: 5000 });
+  await page.getByTestId('sort-red').click();
+  await page.getByTestId('handover-sheet').waitFor({ state: 'detached', timeout: 5000 });
+  await page.getByTestId(`queue-${ambId}`).waitFor({ timeout: 10_000 });
+  await page.getByTestId(`queue-${ambId}`).click();
+  await page.getByTestId('exam-exam.ask_onset').waitFor({ timeout: 30_000 });
+  await page.getByTestId('exam-exam.ask_onset').click();
+  await page.getByTestId('tip-text').waitFor({ timeout: 5000 });
+  check((await text(page, 'tip-text')).startsWith('При подозрении на аппендицит решает время') && (await text(page, 'tip-sheet')).includes('А. И. Зорин'),
+    'глава 2: у привезённого с аппендицитом — подсказка заведующего хирургией');
+  await gotTip();
+  await visible(page, 'visit-decide').click();
+  await page.getByTestId('dx-cond.appendicitis').click();
+  await page.getByTestId('decision-to-plan').click();
+  await page.getByTestId('setting-surgery').click();
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-outcome').waitFor({ timeout: 10_000 });
+  check((await text(page, 'visit-outcome')).includes('В операционную, после операции — в палату'), 'глава 2: аппендицит — в операционную, после операции — в палату');
+  await page.getByTestId('shift-to-queue').click();
+  await page.getByTestId('rounds-open').waitFor({ timeout: 10_000 });
   await page.waitForTimeout(500);
   await page.screenshot({ path: join(OUT, '15-chapter2-shift.png') });
+  await page.getByTestId('rounds-open').click();
+  await page.getByTestId('tip-text').waitFor({ timeout: 10_000 });
+  check((await text(page, 'tip-text')).startsWith('На обходе смотрите не на число суток'), 'глава 2: первый обход — подсказка «Обход»');
+  await gotTip();
+  check((await page.locator('[data-testid^="round-op-"]').count()) === 1, 'глава 2: на обходе — оперированный');
+  await page.goBack();
 
   // «Случай дня»: последние 30 дней, приём, разбор, отметка в списке (spec 2026-09-campaign, часть 14)
   await page.goto(base);

@@ -6,6 +6,7 @@ import { router } from 'expo-router';
 import { Text } from '@/ui/text';
 import { T } from '@/i18n';
 import { dischargePatient, operatePatient, transferPatient, useRounds } from '@/state/session';
+import { MentorTip } from '@/ui/campaign';
 import { Button, Card, H, P, Screen } from '@/ui/components';
 import { makeStyles, space } from '@/ui/theme';
 
@@ -48,6 +49,8 @@ export default function Rounds() {
           <Button testID={`round-transfer-${c.id}`} kind="plain" title={t.transfer} disabled={!c.canTransfer} onPress={() => transferPatient(c.id)} />
         </Card>
       ))}
+      {/* первый обход главы 2 (часть 34б): подсказка наставника */}
+      <MentorTip screen="rounds" />
     </Screen>
   );
 }

@@ -40,6 +40,10 @@ const PATIENCE: Record<Exclude<Triage, 'red'>, [number, number]> = { yellow: [12
 const SLOTS = 18;
 const SLOT_MIN = 20;
 const SLOT_BOOKED = 6000;
+/** первая скорая в первую смену главы с обучением по скорой — не позже стольких минут (часть 34б) */
+const TUTORIAL_AMBULANCE_MIN = 20;
+/** сколько зёрен перебрать, чтобы заданная болезнь была у человека обычной (и в заданном возрасте) */
+const TUTORIAL_TRIES = 16;
 /** Без записи — 2–6 человек, больше утром. */
 const WALK_INS: [number, number] = [2, 6];
 
@@ -463,36 +467,40 @@ function planDay(db: ContentDb, s: ShiftState) {
   for (const ret of s.returns.filter(x => x.day === d)) {
     plan.push({ t: base + SHIFT_START + r.fork(`return:${ret.of}`).range(0, 120) * MIN, kind: 'return', key: `return:${ret.of}`, ret });
   }
+  // кампания: в первый день главы первые пришедшие — с болезнями, заданными главой (обучение
+  // с наставником); человек — тот же, что пришёл бы, если болезнь у него обычна
+  const tutorial = s.campaign && d === s.campaign.since + 1 ? (chapterOf(db, s.campaign)?.tutorial ?? []) : [];
   // скорая (spec 2026-09-chapter-2, часть 27): работает смотровая приёмного — машины в любое
   // время смены, из своей ветви дня; без смотровой день прежний
   if (emergencyBays(db, s).length > 0) {
     const a = db.economy.ambulance;
     const ar = r.fork('ambulance');
     const cars = ar.range(a.perDay[0], a.perDay[1]);
+    // обучение со скорой (часть 34б): первая машина — в первые двадцать минут смены
+    const early = tutorial.some(x => x.ambulance);
     for (let i = 0; i < cars; i++) {
       const minute = ar.fork(`amb:${i}`).range(0, (SHIFT_END - SHIFT_START) / MIN - 30);
-      plan.push({ t: base + SHIFT_START + minute * MIN, kind: 'ambulance', key: `amb:${i}` });
+      plan.push({ t: base + SHIFT_START + (early && i === 0 ? Math.min(minute, TUTORIAL_AMBULANCE_MIN) : minute) * MIN, kind: 'ambulance', key: `amb:${i}` });
     }
   }
   plan.sort((a, b) => a.t - b.t || (a.key < b.key ? -1 : 1));
-  // кампания: в первый день главы первые пришедшие — с болезнями, заданными главой (обучение
-  // с наставником); человек — тот же, что пришёл бы, если болезнь у него обычна
-  const tutorial = s.campaign && d === s.campaign.since + 1 ? (chapterOf(db, s.campaign)?.tutorial ?? []) : [];
-  let taught = 0;
+  // заданного пациента получает первый пришедший того же вида: скорая — скорая (часть 34б)
+  const taught = new Set<number>();
   // какие отделения больница принимает сегодня (часть 30): с работающей смотровой приёмного — и хирургию
   const departments = departmentsOf(db, s);
   plan.forEach((a, i) => {
     const id = `${d}-${String(i + 1).padStart(2, '0')}`;
     const gen = { department: s.meta.department, departments, season: s.meta.season };
-    const primary = a.ret || a.kind === 'ambulance' ? undefined : tutorial[taught];
-    if (primary) taught++;
+    const k = a.ret ? -1 : tutorial.findIndex((x, j) => !taught.has(j) && !!x.ambulance === (a.kind === 'ambulance'));
+    const teach = k >= 0 ? tutorial[k] : undefined;
+    if (teach) taught.add(k);
     const patient = a.ret
       ? returningPatient(db, s, a.ret)
-      : a.kind === 'ambulance'
-        ? ambulancePatient(db, s, d, a.key, departments)
-        : primary
-        ? typicalPatient(db, k => fnv1a(`${s.meta.seed}:${d}:${a.key}${k ? `:${k}` : ''}`), { ...gen, primary })
-        : generatePatient(db, fnv1a(`${s.meta.seed}:${d}:${a.key}`), gen);
+      : teach
+        ? typicalPatient(db, n => fnv1a(`${s.meta.seed}:${d}:${a.key}${n ? `:${n}` : ''}`), { ...gen, primary: teach.condition, ...(teach.params ? { params: teach.params } : {}) }, TUTORIAL_TRIES, teach.age)
+        : a.kind === 'ambulance'
+          ? ambulancePatient(db, s, d, a.key, departments)
+          : generatePatient(db, fnv1a(`${s.meta.seed}:${d}:${a.key}`), gen);
     // вернувшийся — и с теми отделениями, с какими его приняли в первый раз
     const own = a.ret ? [...new Set([...(s.patients[a.ret.of]?.departments ?? []), ...departments])] : departments;
     s.patients[id] = {

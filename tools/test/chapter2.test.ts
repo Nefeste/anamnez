@@ -10,11 +10,15 @@ import { type CampaignView, dayOk, missionProgress, nextChapterOf, startChapter 
 import { generatePatient } from '../../src/engine/med/generate';
 import type { Patient } from '../../src/engine/med/types';
 import { apply, current, departmentsOf, emergencyBays, freeBeds, hospitalCtx, newCampaign } from '../../src/engine/shift/engine';
+import { primaryOf } from '../../src/engine/med/plan';
 import { complicationAt, onsetHours } from '../../src/engine/shift/surgery';
-import { type DaySummary, SHIFT_SCHEMA_VERSION, type ShiftPatient, type ShiftState } from '../../src/engine/shift/types';
+import { DAY, type DaySummary, SHIFT_SCHEMA_VERSION, SHIFT_START, type ShiftPatient, type ShiftState } from '../../src/engine/shift/types';
 import { T } from '../../src/i18n';
 import { memoryStore, saveSlot } from '../../src/state/saves';
-import { campaignView, forgetShift, loadShift, moveToNextChapter, savedGames, setStore, shiftState, singleVenues } from '../../src/state/session';
+import {
+  callPatient, campaignView, chooseDiagnosis, chooseSetting, closeDay, examine, finishCase, forgetShift, loadShift, moveToNextChapter, nextDay, savedGames, seenTip,
+  setStore, shiftState, singleVenues, sortAmbulance, tipView,
+} from '../../src/state/session';
 
 const ch1 = db.chapters['chapter.district'];
 const ch2 = db.chapters['chapter.hospital'];
@@ -295,3 +299,89 @@ describe('глава между сменами', () => {
     expect(c.missions.find(m => m.id === 'stay')!.progress).toBe('3 из 10 выписанных подряд · в среднем 3,3 сут. при обычных 5');
   });
 });
+
+describe('первая смена главы 2 с наставником (часть 34б)', () => {
+  /** Первый день главы 2 после перехода; подсказки главы 1 уже показаны. */
+  function firstShift(seed: number): ShiftState {
+    const s = doneChapter1(seed);
+    s.campaign!.tips = { shown: Object.values(db.tips).filter(t => !t.chapter).map(t => t.id) };
+    apply(db, s, { kind: 'nextChapter' });
+    apply(db, s, { kind: 'nextDay' });
+    return s;
+  }
+  const byArrival = (s: ShiftState) => Object.values(s.patients).sort((a, b) => a.arriveT - b.arriveT || (a.id < b.id ? -1 : 1));
+  const waiting = (s: ShiftState) => Object.values(s.patients).find(p => p.kind === 'ambulance' && p.status === 'waiting' && !p.sorted);
+
+  test('первая скорая — в первые двадцать минут, с аппендицитом; первый пришедший сам — перелом лодыжек без смещения; вторая скорая — тяжёлая пневмония', () => {
+    expect(ch2.tutorial.map(t => t.condition)).toEqual(['cond.appendicitis', 'cond.ankle_fracture', 'cond.pneumonia_cap']);
+    for (const seed of [71, 72, 73, 74, 75, 76]) {
+      const s = firstShift(seed);
+      const ps = byArrival(s);
+      const amb = ps.filter(p => p.kind === 'ambulance');
+      const walk = ps.filter(p => p.kind !== 'ambulance' && !p.returnOf);
+      expect(amb[0].arriveT - ((s.day - 1) * DAY + SHIFT_START)).toBeLessThanOrEqual(20 * 60);
+      expect(primaryOf(amb[0].patient).id).toBe('cond.appendicitis');
+      // аппендицит — у молодого: так его и учат узнавать
+      expect(amb[0].patient.age).toBeGreaterThanOrEqual(18);
+      expect(amb[0].patient.age).toBeLessThanOrEqual(40);
+      expect(primaryOf(walk[0].patient)).toMatchObject({ id: 'cond.ankle_fracture', params: { stability: 'stable' } });
+      expect(primaryOf(amb[1].patient)).toMatchObject({ id: 'cond.pneumonia_cap', params: { severity: 'severe' } });
+      // остальные — не заданные: заданных ровно трое
+      const taught = ps.filter(p => p === amb[0] || p === amb[1] || p === walk[0]);
+      expect(taught.length).toBe(3);
+    }
+  });
+
+  test('второй день главы — как обычно; те же зерно и команды — те же заданные пациенты', () => {
+    const s = firstShift(77);
+    const first = byArrival(s).filter(p => p.kind === 'ambulance').map(p => p.patient);
+    expect(byArrival(firstShift(77)).filter(p => p.kind === 'ambulance').map(p => p.patient)).toEqual(first);
+    apply(db, s, { kind: 'closeDay' });
+    apply(db, s, { kind: 'nextDay' });
+    const second = Object.values(s.patients).filter(p => p.id.startsWith(`${s.day}-`) && p.kind === 'ambulance');
+    expect(second.some(p => primaryOf(p.patient).id === 'cond.appendicitis' && p.arriveT - ((s.day - 1) * DAY + SHIFT_START) <= 20 * 60)).toBe(false);
+  });
+
+  test('подсказки главы 2 — только в ней: в главе 1 при аппендиците заведующий хирургией не подсказывает', () => {
+    const scoped = Object.values(db.tips).filter(t => t.chapter === ch2.id).map(t => t.id).sort();
+    expect(scoped).toEqual(['tip.appendicitis', 'tip.handover', 'tip.rounds']);
+    expect(db.tips['tip.appendicitis'].from).toBe('char.surgeon');
+  });
+
+  test('скорая ждёт сортировки — «Лист передачи»; у аппендицита — заведующий хирургией; утром — «Обход»', async () => {
+    const s = firstShift(78);
+    for (let i = 0; i < 40 && !waiting(s); i++) apply(db, s, { kind: 'advance', seconds: 60 });
+    const amb = waiting(s)!;
+    expect(primaryOf(amb.patient).id).toBe('cond.appendicitis');
+    const store = memoryStore();
+    setStore(store);
+    forgetShift();
+    await saveSlot(store, 'campaign-1', s, SHIFT_SCHEMA_VERSION, 'x');
+    await loadShift('campaign', 1);
+    expect([tipView('queue')?.id, tipView('queue')?.from]).toEqual(['tip.handover', db.characters['char.mentor'].short.ru]);
+    seenTip('tip.handover', 'queue');
+    expect(tipView('queue')).toBeUndefined();
+    sortAmbulance(amb.id, 'red');
+    expect(callPatient(amb.id)).toBe(true);
+    expect(tipView('card')).toBeUndefined();
+    examine('exam.ask_onset');
+    expect([tipView('card')?.id, tipView('card')?.from]).toEqual(['tip.appendicitis', db.characters['char.surgeon'].short.ru]);
+    seenTip('tip.appendicitis', 'card');
+    chooseDiagnosis('cond.appendicitis');
+    chooseSetting('surgery');
+    finishCase();
+    expect(shiftState()!.patients[amb.id].status).toBe('admitted');
+    // в первую смену обхода нет: лежащий — только что положенный; утром — подсказка
+    closeDay();
+    nextDay();
+    expect(shiftState()!.day).toBe(shiftState()!.campaign!.since + 2);
+    expect(tipView('rounds')?.id).toBe('tip.rounds');
+    seenTip('tip.rounds', 'rounds');
+    expect(tipView('rounds')).toBeUndefined();
+    // на третий день подсказок нет
+    closeDay();
+    nextDay();
+    expect(tipView('queue')).toBeUndefined();
+  });
+});
+

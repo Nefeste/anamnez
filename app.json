@@ -3,7 +3,7 @@
     "name": "Анамнез",
     "slug": "anamnez",
     "scheme": "anamnez",
-    "version": "0.2.7",
+    "version": "0.2.8",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "icon": "./assets/icon.png",
@@ -14,7 +14,7 @@
     },
     "android": {
       "package": "games.gornitsa.anamnez",
-      "versionCode": 63,
+      "versionCode": 64,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundImage": "./assets/adaptive-icon-background.png",

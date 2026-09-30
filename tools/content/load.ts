@@ -470,7 +470,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   const db: ContentDb = {
     contentVersion, hash: '', conditions: {}, findings: {}, exams: {}, risks: {}, treatments: {}, rooms: {}, equipment: {}, roles: {}, presets: {},
     characters: Object.fromEntries(Object.values(characters).sort((a, b) => (a.id < b.id ? -1 : 1)).map(c => [c.id, c])),
-    chapters: Object.fromEntries(Object.values(chapters).sort((a, b) => a.order - b.order).map(c => [c.id, c])),
+    // заданный пациент строкой — пришедший сам с этой болезнью
+    chapters: Object.fromEntries(Object.values(chapters).sort((a, b) => a.order - b.order).map(c => [c.id, { ...c, tutorial: c.tutorial.map(t => (typeof t === 'string' ? { condition: t } : t)) }])),
     tips: Object.fromEntries(Object.values(tips).sort((a, b) => a.order - b.order).map(t => [t.id, t])),
     achievements: Object.fromEntries(Object.values(achievements).sort((a, b) => a.order - b.order).map(a => [a.id, a])),
     scores: Object.fromEntries(Object.values(scores).sort((a, b) => (a.id < b.id ? -1 : 1)).map(x => [x.id, x])),
@@ -685,10 +686,24 @@ function checkCampaign(db: ContentDb, errors: string[]) {
     if (!db.presets[c.preset]) at(`готовая больница ${c.preset} не найдена`);
     for (const r of c.build) if (!db.rooms[r]) at(`помещение ${r} не найдено`);
     if (!Object.values(db.conditions).some(x => x.presenting && x.department === c.department)) at(`в отделении ${c.department} нет болезней`);
+    // заданные пациенты — из отделений больницы главы: своё и то, что принимают её помещения
+    // (смотровая приёмного — хирургию и травму); скорая — если есть смотровая; параметры — из записи
+    const preset = db.presets[c.preset];
+    const departments = [c.department, ...new Set((preset?.rooms ?? []).flatMap(r => db.rooms[r.type]?.admits ?? []))];
+    const emergency = (preset?.rooms ?? []).some(r => db.rooms[r.type]?.emergency);
     for (const t of c.tutorial) {
-      const cond = db.conditions[t];
-      if (!cond) at(`болезнь обучения ${t} не найдена`);
-      else if (!cond.presenting || cond.department !== c.department) at(`болезнь обучения ${t} — не из приёма отделения ${c.department}`);
+      const cond = db.conditions[t.condition];
+      if (!cond) at(`болезнь обучения ${t.condition} не найдена`);
+      else if (!cond.presenting || !departments.includes(cond.department)) at(`болезнь обучения ${t.condition} — не из приёма отделения ${departments.join(', ')}`);
+      if (t.ambulance && !emergency) at(`болезнь обучения ${t.condition}: скорая, а смотровой приёмного в больнице главы нет`);
+      for (const [name, value] of Object.entries(t.params ?? {})) {
+        if (cond && cond.params?.[name]?.[value] === undefined) at(`болезнь обучения ${t.condition}: параметра ${name} со значением ${value} у болезни нет`);
+      }
+      // возраст — внутри возраста болезни
+      const age = cond?.age;
+      if (t.age && (t.age[0] > t.age[1] || (age && (t.age[1] < age.min || (age.max !== undefined && t.age[0] > age.max))))) {
+        at(`болезнь обучения ${t.condition}: возраст ${t.age.join('–')} — мимо возраста болезни`);
+      }
     }
     const missions = new Set<string>();
     for (const m of c.missions) {
@@ -713,6 +728,9 @@ function checkCampaign(db: ContentDb, errors: string[]) {
     if (tipOrders.has(t.order)) at(`порядок ${t.order} уже у другой подсказки`);
     tipOrders.add(t.order);
     if (!db.characters[t.from]) at(`персонаж ${t.from} не найден`);
+    if (t.chapter && !db.chapters[t.chapter]) at(`глава ${t.chapter} не найдена`);
+    // подсказка о скорой и об обходе — в главе, где они есть
+    if ((t.when === 'ambulance' || t.when === 'rounds') && !t.chapter) at(`подсказка «${t.when}» — только с главой (chapter)`);
     if (typeof t.when === 'object' && !db.conditions[t.when.condition]?.presenting) at(`болезнь ${t.when.condition} не найдена или с ней не приходят`);
     for (const id of t.see) if (!(db.conditions[id] || db.findings[id] || db.exams[id] || db.treatments[id] || db.risks[id] || db.rooms[id] || db.equipment[id] || db.roles[id])) at(`статья ${id} не найдена`);
   }

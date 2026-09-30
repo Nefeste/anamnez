@@ -1174,13 +1174,24 @@ export interface TipView {
   first: boolean;
 }
 
-/** Приём сейчас — только в первую смену главы с обучением (до «Открыть смену» следующего дня). */
+/**
+ * Приём сейчас — только в первую смену главы с обучением (до «Открыть смену» следующего дня), а
+ * обход — и утром после неё: лежат те, кого положили в первую смену (часть 34б). На экране смены
+ * момент — привезённый скорой, который ждёт сортировки; на обходе — первый лежащий.
+ */
 function tipMoment(screen: TipScreen): TipMoment | undefined {
   const s = session?.s;
   const c = s?.campaign;
   const ch = c ? db.chapters[c.chapter] : undefined;
-  if (!s || !c || !ch || ch.tutorial.length === 0 || s.day !== c.since + 1) return undefined;
-  const id = screen === 'review' ? (session?.focus ?? s.current) : s.current;
+  if (!s || !c || !ch || ch.tutorial.length === 0) return undefined;
+  if (!(s.day === c.since + 1 || (screen === 'rounds' && s.day === c.since + 2))) return undefined;
+  const id = screen === 'review'
+    ? (session?.focus ?? s.current)
+    : screen === 'queue'
+      ? (s.current ? undefined : Object.values(s.patients).find(p => p.kind === 'ambulance' && p.status === 'waiting' && !p.sorted)?.id)
+      : screen === 'rounds'
+        ? inpatientsOf(s)[0]?.id
+        : s.current;
   const p = id ? s.patients[id] : undefined;
   return p ? momentOf(db, screen, p) : undefined;
 }
@@ -1190,7 +1201,7 @@ function buildTipView(screen: TipScreen): TipView | undefined {
   const m = tipMoment(screen);
   if (!c || !m) return undefined;
   const st = c.tips ?? { shown: [] };
-  const tip = tipFor(db, st, m, tipHold);
+  const tip = tipFor(db, st, m, tipHold, c.chapter);
   const who = tip ? db.characters[tip.from] : undefined;
   if (!tip || !who) return undefined;
   return {
