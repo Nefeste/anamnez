@@ -136,6 +136,11 @@ export const conditionSchema = z.strictObject({
       plan: z.array(txId).min(1).optional(),
       /** обязательная профилактика при этих значениях — вдобавок к общей */
       prevent: z.array(txId).min(1).optional(),
+      /**
+       * что сделать до приезда скорой при этих значениях — хоть одно (часть 32д-2): обширный ожог
+       * лечат не дома, хотя место по умолчанию — дом, и до перевода ставят капельницу
+       */
+      preHospital: z.array(txId).min(1).optional(),
     })).min(1).optional(),
     setting: z.strictObject({
       default: setting,

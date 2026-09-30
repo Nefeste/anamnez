@@ -57,6 +57,10 @@ export const encyclopedia = {
     'form:abscess_small': 'при абсцессе до 3\u00a0см',
     'form:abscess_large': 'при абсцессе больше 3\u00a0см',
     'form:peritonitis': 'при перитоните',
+    // ожог (часть 32д-2): небольшой поверхностный, обширный, глубокий
+    'form:minor': 'при небольшом поверхностном ожоге',
+    'form:extensive': 'при обширном ожоге',
+    'form:deep': 'при глубоком ожоге',
     // переломы (часть 32): смещение отломков и стабильность
     'displacement:none': 'без смещения',
     'displacement:displaced': 'при смещении',
@@ -126,6 +130,7 @@ export const encyclopedia = {
   notIndicated: 'Не нужно',
   harmful: 'Опасно',
   prevent: 'Обязательная профилактика',
+  preHospital: 'До приезда скорой',
   setting: { home: 'дома', ward: 'в стационаре', ambulance: 'скорая, больница', admit: 'в стационаре', surgery: 'операция', transfer: 'скорая, перевод в центр' },
   whereTitle: 'Где лечить',
   whereDefault: (s: string) => `Обычно — ${s}.`,
@@ -195,6 +200,7 @@ export const encyclopedia = {
   supportiveFor: 'Облегчает при',
   harmfulFor: 'Опасно при',
   preventFor: 'Профилактика при',
+  preHospitalFor: 'До приезда скорой при',
   contraindications: 'Противопоказания',
   level: { absolute: 'нельзя', relative: 'с осторожностью' },
 

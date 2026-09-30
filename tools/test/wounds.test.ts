@@ -236,7 +236,8 @@ describe('на экране и в энциклопедии', () => {
     const titles = treatmentGroupsFor([]).map(g => g.title);
     expect(titles).toEqual(expect.arrayContaining(['Раны и повязки', 'Прививки и сыворотки']));
     const groups = Object.fromEntries(treatmentGroupsFor([]).map(g => [g.key, g.items.map(x => x.id)]));
-    expect(groups.wounds.sort()).toEqual([OPEN, DRESSING, SUTURE].sort());
+    // и туалет ожоговой раны с повязкой (часть 32д-2)
+    expect(groups.wounds.sort()).toEqual([OPEN, DRESSING, SUTURE, 'tx.burn_dressing'].sort());
     expect(groups.vaccines.sort()).toEqual([RIG, RABIES, TIG, TOXOID].sort());
   });
 
@@ -251,9 +252,9 @@ describe('на экране и в энциклопедии', () => {
     expect(a.subtitle).toContain('Кожа и раны');
   });
 
-  test('статья анатоксина: «Профилактика при» — обе раны с условием', () => {
+  test('статья анатоксина: «Профилактика при» — обе раны и ожог с условием', () => {
     const rows = article(db, TOXOID)!.blocks.find(b => b.key === 'usedAs')!.rows!;
     const prevent = rows.find(r => r.label === 'Профилактика при')!;
-    expect(prevent.refs!.map(r => r.id).sort()).toEqual([HAND, HAND, HEAD, HEAD].sort());
+    expect(prevent.refs!.map(r => r.id).sort()).toEqual([HAND, HAND, HEAD, HEAD, 'cond.burn', 'cond.burn'].sort());
   });
 });
