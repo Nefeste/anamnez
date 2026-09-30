@@ -228,7 +228,7 @@ interface Treatment {
   id: Id; name: Text;                    // МНН или группа, без доз (ADR 0012)
   kind: 'drug' | 'regimen' | 'procedure' | 'surgery'; // операция — с 0.0.45
   class?: string;                        // 'antibiotic.penicillin'
-  route?: 'oral' | 'inhaled' | 'nasal' | 'iv' | 'im';
+  route?: 'oral' | 'inhaled' | 'nasal' | 'iv' | 'im' | 'sc'; // sc — под кожу, с 0.2.5
   cost: number;
   // cure — на причину: к выздоровлению с вероятностью p за days дней; relieve — облегчает
   effects: { on: Id; kind: 'cure' | 'relieve'; p: P; days: [number, number]; when?: Record<string, string[]> }[]; // when — только при таких значениях параметров болезни (0.0.50)
@@ -430,6 +430,12 @@ interface Patient {
   `taken`, сколько его пациентов вы забрали. Приём с `from` — ваш: в прежних строках итогов,
   в профиле и оценке «Смены».
 
+- С 0.2.5 — вены ног (часть 33а): у правила решения — `excludes` (признаки, при которых его не
+  применяют: известен хоть один — вывод «не применяется», не проверенные вывод не держат); путь
+  введения `sc` (под кожу); вид УЗИ `vein` — у `ResultImage` поля `deep`, `superficial`, `tear`, у
+  рисовальщика — `VeinFindings` (`src/render/us/veinGeometry.ts`), `UsImage` — объединение
+  секторного и линейного снимка; группа лечения «Сердце и сосуды» — и классы `anticoagulant.*`,
+  `vascular.*`. Схема сохранения прежняя.
 - С 0.2.4 — ожоги (часть 32д-2): у записи тактики по параметру — `preHospital` (что сделать до
   приезда скорой при этих значениях, хоть одно; `tacticsFor` собирает его в тактику, оценка плана
   берёт его через `preHospitalOf` вместо первой линии); группа лечения «Растворы и капельницы»

@@ -274,7 +274,8 @@ export const treatmentSchema = z.strictObject({
   kind: z.enum(['drug', 'regimen', 'procedure', 'surgery']),
   /** класс для аллергий и статистики: antibiotic.penicillin, antibiotic.macrolide… */
   class: z.string().regex(/^[a-z_]+(\.[a-z_]+)*$/).optional(),
-  route: z.enum(['oral', 'inhaled', 'nasal', 'iv', 'im']).optional(),
+  /** как вводят; `sc` — под кожу (часть 33а: низкомолекулярный гепарин, фондапаринукс натрия) */
+  route: z.enum(['oral', 'inhaled', 'nasal', 'iv', 'im', 'sc']).optional(),
   cost: z.number().int().min(0),
   /** cure — действует на причину: переводит болезнь к выздоровлению с вероятностью за столько дней */
   effects: z.array(z.strictObject({
@@ -654,7 +655,8 @@ export const scoreSchema = z.strictObject({
 /**
  * Правило решения (spec 2026-09-chapter-2, часть 32): оттавские правила — при жалобе `complaints`
  * обследования `exams` нужны, если есть хоть один признак из `any`; проверили все — и ни одного,
- * перелом маловероятен. Правило проверено у тех, кому не меньше `ageMin` лет.
+ * перелом маловероятен. Правило проверено у тех, кому не меньше `ageMin` лет. С части 33а — и
+ * признаки, при которых правило не применяют (`excludes`).
  */
 export const ruleSchema = z.strictObject({
   id: z.string().regex(/^rule\.[a-z0-9_]+$/),
@@ -668,6 +670,11 @@ export const ruleSchema = z.strictObject({
   age: z.strictObject({ main: z.number().int().min(1).max(120).optional(), from: z.number().int().min(1).max(120).optional(), minor: z.tuple([z.number().int().min(0), z.number().int().max(120)]).optional() }).optional(),
   /** применимо, только если есть хоть один из этих признаков (часть 32г: лёгкая ЧМТ) */
   requires: z.array(z.string()).min(1).optional(),
+  /**
+   * не применяется, если есть хоть один из этих признаков (часть 33а): тяж по ходу подкожной вены —
+   * тромбофлебит, УЗИ нужно всем и без шкалы; при беременности D-димер не используют
+   */
+  excludes: z.array(z.string()).min(1).optional(),
   /** какое обследование правило назначает; пусто — его в игре нет (КТ, часть 32г), тогда `texts.exam` */
   exams: z.array(z.string().regex(/^exam\.[a-z0-9_]+$/)).default([]),
   ageMin: z.number().int().min(0).max(120).optional(),

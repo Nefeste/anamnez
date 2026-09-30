@@ -2,7 +2,7 @@
 // что нарисовано, а не диагноз. Их же рисует `npm run imaging` без экрана.
 import { T } from '@/i18n';
 import type { HeadFindings } from '@/render/ct/geometry';
-import type { UsFindings } from '@/render/us/geometry';
+import type { UsImage } from '@/render/us/sector';
 import type { AbdomenFindings } from '@/render/xray/abdomenGeometry';
 import type { BoneFindings } from '@/render/xray/boneGeometry';
 import type { XrayFindings } from '@/render/xray/chestGeometry';
@@ -29,7 +29,7 @@ export const HEAD_CASES: HeadCase[] = [
 
 export interface UsCase {
   key: string;
-  findings: UsFindings;
+  findings: UsImage;
   seed: number;
   label: string;
 }
@@ -48,6 +48,11 @@ export const US_CASES: UsCase[] = [
   { key: 'us-appendix-fluid', findings: { view: 'appendix', appendix: 0.9, fluid: 0.6 }, seed: 8, label: u.appendixFluid },
   { key: 'us-colon', findings: { view: 'colon' }, seed: 10, label: u.colon },
   { key: 'us-colon-diverticulum', findings: { view: 'colon', diverticulum: 0.8 }, seed: 11, label: u.colonDiverticulum },
+  // вены ноги линейным датчиком (часть 33а)
+  { key: 'us-vein', findings: { view: 'vein' }, seed: 12, label: u.vein },
+  { key: 'us-vein-deep', findings: { view: 'vein', deep: 1 }, seed: 13, label: u.veinDeep },
+  { key: 'us-vein-superficial', findings: { view: 'vein', superficial: 1 }, seed: 14, label: u.veinSuperficial },
+  { key: 'us-vein-tear', findings: { view: 'vein', tear: 0.8 }, seed: 15, label: u.veinTear },
 ];
 
 export interface AbdomenCase {

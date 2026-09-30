@@ -11,7 +11,7 @@ import { runExam } from '../../src/engine/med/exams';
 import { generatePatient, presentingWeight } from '../../src/engine/med/generate';
 import { likelyParams } from '../../src/engine/med/infer';
 import { alsoSettings, evaluatePlan, recommendedSetting, settingFit, surgeriesOf, surgeryFor, txRole } from '../../src/engine/med/plan';
-import { choosePlan, runDoctor, tacticParams } from '../../src/engine/med/policy';
+import { choosePlan, indicated, runDoctor, tacticParams } from '../../src/engine/med/policy';
 import type { Observation, Patient } from '../../src/engine/med/types';
 import { candidatesOf, operationOf } from '../../src/engine/shift/engine';
 import type { ShiftPatient } from '../../src/engine/shift/types';
@@ -114,6 +114,18 @@ describe('операция по скрытому параметру', () => {
       if (r.plan.setting === 'surgery') expect(r.exams).toContain('exam.xray_hip');
     }
     expect(share(ps, p => runDoctor(db, p, 'rational', Rng.seeded(p.seed).fork('doctor'), { candidates, exams, threshold: 0.9 }).exams.includes('exam.xray_hip'))).toBeGreaterThan(0.95);
+  });
+
+  test('снимок таза и бедра — каждому с болью в бедре, и при ушибе (980_1, раздел 2.4, критерий 1); страховая его оплачивает', () => {
+    // прежде врач, уверенный в ушибе, снимка не делал у 6–8 % переломов шейки бедра
+    expect(db.exams['exam.xray_hip'].routineFor).toEqual(['sym.hip_pain']);
+    for (const id of [HIP, HIP_BRUISE]) {
+      const ps = elderly(id, 30, 900);
+      for (const p of ps) {
+        expect(runDoctor(db, p, 'rational', Rng.seeded(p.seed).fork('doctor'), { candidates, exams, threshold: 0.9 }).exams).toContain('exam.xray_hip');
+        expect(indicated(db, p, [], candidates, 'exam.xray_hip')).toBe(true);
+      }
+    }
   });
 });
 

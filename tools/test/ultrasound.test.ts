@@ -85,7 +85,7 @@ describe('кабинет УЗИ: где можно сделать', () => {
       callPatient(shiftView().queue[0].id);
       const v = shiftCaseView()!;
       // УЗИ почек (часть 30г) — в том же кабинете
-      expect(v.unavailable).toEqual({ [US]: T.sandbox.examBlock.none('кабинета УЗИ'), 'exam.us_kidney': T.sandbox.examBlock.none('кабинета УЗИ') });
+      expect(v.unavailable).toEqual({ [US]: T.sandbox.examBlock.none('кабинета УЗИ'), 'exam.us_kidney': T.sandbox.examBlock.none('кабинета УЗИ'), 'exam.us_leg_veins': T.sandbox.examBlock.none('кабинета УЗИ') });
     });
   });
 });

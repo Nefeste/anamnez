@@ -142,7 +142,8 @@ describe('показана ли КТ — производный параметр
   });
 
   test('доля «КТ нужна» в записи — как у пришедших с сотрясением: 68 %', () => {
-    const ps = arrivals(20_000).filter(p => p.truth.conditions[0].id === CONC);
+    // с венами ног (часть 33а) сотрясений среди пришедших чуть меньше — берём больше пришедших
+    const ps = arrivals(22_000).filter(p => p.truth.conditions[0].id === CONC);
     expect(ps.length).toBeGreaterThan(600);
     const dist = db.conditions[CONC].params!.ct;
     near(share(ps, p => ct(p) === 'yes'), dist.yes / (dist.yes + dist.no), 0.05);

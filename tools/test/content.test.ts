@@ -169,7 +169,7 @@ describe('каталог больницы', () => {
     expect(db.rooms['room.lab'].exams).toContain('exam.cbc');
     expect(db.rooms['room.procedure'].collects).toContain('exam.cbc');
     expect(db.rooms['room.lab'].equipment).toContain('eq.biochem_analyzer');
-    expect(db.equipment['eq.immuno_analyzer'].exams).toEqual(['exam.tsh']);
+    expect(db.equipment['eq.immuno_analyzer'].exams).toEqual(['exam.d_dimer', 'exam.tsh']);
     expect(db.equipment['eq.xray_digital'].upgradeOf).toBe('eq.xray_analog');
     expect(db.roles['role.nurse'].rooms).toEqual(['room.ecg', 'room.emergency', 'room.procedure', 'room.triage', 'room.ward']);
     // палата (spec 2026-09-chapter-2, часть 26): койки — места лежащих
@@ -189,8 +189,9 @@ describe('каталог больницы', () => {
     // перфорация (часть 28б): Bickell 2006 — 2 % за первые 36 ч, дальше 5 % за 12 ч
     expect(db.conditions['cond.appendicitis'].complication).toEqual({ name: { ru: 'перфорация' }, early: { hours: 36, p: 200 }, later: { every: 12, p: 500 }, stay: [3, 5] });
     // кабинет УЗИ (часть 29): врач УЗД сам делает и сам описывает; экспертный аппарат — улучшение базового
-    expect(db.rooms['room.ultrasound']).toMatchObject({ needsEquipment: true, staff: ['role.sonographer'], equipment: ['eq.us_basic', 'eq.us_expert'], exams: ['exam.us_abdomen', 'exam.us_kidney'] });
-    expect(db.equipment['eq.us_expert']).toMatchObject({ upgradeOf: 'eq.us_basic', speed: 0.85, quality: { sens: 5, spec: 1 }, exams: ['exam.us_abdomen', 'exam.us_kidney'] });
+    // с частью 33а — и УЗИ вен ног
+    expect(db.rooms['room.ultrasound']).toMatchObject({ needsEquipment: true, staff: ['role.sonographer'], equipment: ['eq.us_basic', 'eq.us_expert'], exams: ['exam.us_abdomen', 'exam.us_kidney', 'exam.us_leg_veins'] });
+    expect(db.equipment['eq.us_expert']).toMatchObject({ upgradeOf: 'eq.us_basic', speed: 0.85, quality: { sens: 5, spec: 1 }, exams: ['exam.us_abdomen', 'exam.us_kidney', 'exam.us_leg_veins'] });
     expect(db.exams['exam.us_abdomen']).toMatchObject({ kind: 'imaging', radiation: 'none' });
     // отросток — WSES 2020; камни — точность порядка 95 % (877_1); холецистит — 81 и 83 % (819_1, часть 30)
     expect(db.exams['exam.us_abdomen'].checks).toEqual([
@@ -340,6 +341,22 @@ describe('каталог больницы', () => {
     expect(buildDb().errors).toEqual([]);
   });
 
+  test('когда правило не применяют (часть 33а): признак есть в базе и не выполняет правило; без исключений текст «не применяется» лишний', () => {
+    const W = 'rules/wells_dvt.yaml';
+    const has = (errors: string[], text: string) => errors.some(e => e.includes(text));
+    const excludes = 'excludes: [sign.superficial_cord, hx.pregnancy]';
+    const a = broken(d => {
+      edit(d, W, excludes, 'excludes: [sign.superficial_vein_cord, hx.leg_cast]');
+      const p = join(d, W);
+      writeFileSync(p, readFileSync(p, 'utf8').split('\n').filter(l => !l.startsWith('  na: ')).join('\n'));
+    });
+    expect(has(a, 'rule.wells_dvt: признак sign.superficial_vein_cord не найден')).toBe(true);
+    expect(has(a, 'rule.wells_dvt: hx.leg_cast — и в правиле, и среди признаков, при которых его не применяют')).toBe(true);
+    expect(has(a, 'rule.wells_dvt: у правила с кругом применимости нужен текст «не применяется» (texts.na)')).toBe(true);
+    const b = broken(d => edit(d, W, `${excludes}\n`, ''));
+    expect(has(b, 'rule.wells_dvt: текст «не применяется» без круга применимости (requires или excludes)')).toBe(true);
+  });
+
   test('смотровая приёмного без мест для скорой; шкала с щелью между полосами или с чужим признаком', () => {
     const bare = broken(d => edit(d, 'hospital/rooms/emergency.yaml', '      - [bed, 2, 2]\n', ''));
     expect(bare.some(e => e.includes('room.emergency S: смотровая приёмного без мест для скорой'))).toBe(true);
@@ -378,7 +395,11 @@ describe('каталог больницы', () => {
   test('обследование с неизвестным аппаратом или аппаратом из чужого помещения', () => {
     const unknown = broken(d => edit(d, 'exams/tsh.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.immuno]'));
     expect(unknown.some(e => e.includes('exam.tsh: аппарат eq.immuno не найден'))).toBe(true);
-    const foreign = broken(d => edit(d, 'exams/tsh.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.ecg]'));
+    const foreign = broken(d => {
+      edit(d, 'exams/tsh.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.ecg]');
+      // D-димер (часть 33а) — и на биохимическом анализаторе
+      edit(d, 'exams/d_dimer.yaml', 'equipment: [eq.biochem_analyzer, eq.immuno_analyzer]', 'equipment: [eq.biochem_analyzer]');
+    });
     expect(foreign.some(e => e.includes('exam.tsh: аппарат eq.ecg стоит в room.ecg'))).toBe(true);
     // и тогда иммунохимическим анализатором ничего не делают
     expect(foreign.some(e => e.includes('eq.immuno_analyzer: ни одно обследование и ни одна операция им не делают'))).toBe(true);

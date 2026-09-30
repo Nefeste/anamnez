@@ -627,8 +627,8 @@ try {
   // снимок груди при травме (часть 32в): воздух, кровь, переломы рёбер
   const chest = await drawn('[data-testid^="chest-"] canvas');
   const allImages = await drawn('canvas');
-  check(heads.length === 7 && heads.every(Boolean) && us.length === 11 && us.every(Boolean) && abd.length === 3 && abd.every(Boolean) && chest.length === 7 && chest.every(Boolean) && allImages.every(Boolean),
-    `П5: срезы головы нарисованы — ${heads.filter(Boolean).length} из 7, УЗИ — ${us.filter(Boolean).length} из 11, снимки живота — ${abd.filter(Boolean).length} из 3, груди при травме — ${chest.filter(Boolean).length} из 7; все рисунки экрана — ${allImages.filter(Boolean).length} из ${allImages.length} (смотреть 06-head-*.png, 06-us.png, 06-abdomen.png, 06-chest.png)`);
+  check(heads.length === 7 && heads.every(Boolean) && us.length === 15 && us.every(Boolean) && abd.length === 3 && abd.every(Boolean) && chest.length === 7 && chest.every(Boolean) && allImages.every(Boolean),
+    `П5: срезы головы нарисованы — ${heads.filter(Boolean).length} из 7, УЗИ — ${us.filter(Boolean).length} из 15 (с венами ног), снимки живота — ${abd.filter(Boolean).length} из 3, груди при травме — ${chest.filter(Boolean).length} из 7; все рисунки экрана — ${allImages.filter(Boolean).length} из ${allImages.length} (смотреть 06-head-*.png, 06-us.png, 06-abdomen.png, 06-chest.png)`);
   for (const id of ['head-ct', 'head-mri', 'us', 'abdomen', 'chest']) {
     await page.getByTestId(id).scrollIntoViewIfNeeded();
     await page.waitForTimeout(300);
@@ -1422,6 +1422,19 @@ try {
   const burnDrip = await page.locator('text=До приезда скорой, при обширном ожоге').first().isVisible().catch(() => false);
   check((await visibleText(page, 'enc-article-title')) === 'Термический ожог' && burnWhere && burnDrip,
     `энциклопедия, ожог: ${await visibleText(page, 'enc-article-title')} — перевод при обширном, «до приезда скорой» — капельница`);
+  // вены ног (0.2.5): правило Уэллса — когда его не применяют; ТГВ — перевод при подвздошно-бедренном
+  // и антикоагулянт до приезда скорой
+  await page.goto(`${base}/encyclopedia/article/rule.wells_dvt`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const wellsNa = await page.locator('text=Не применяют, если есть').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'Шкала Уэллса и D-димер при боли в ноге' && wellsNa,
+    `энциклопедия, шкала Уэллса: ${await visibleText(page, 'enc-article-title')} — «не применяют, если есть»`);
+  await page.goto(`${base}/encyclopedia/article/cond.dvt`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const dvtWhere = await page.locator('text=При подвздошно-бедренном тромбозе — скорая, перевод в центр.').first().isVisible().catch(() => false);
+  const dvtPre = await page.locator('text=До приезда скорой, при подвздошно-бедренном тромбозе').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'Тромбоз глубоких вен ноги' && dvtWhere && dvtPre,
+    `энциклопедия, ТГВ: ${await visibleText(page, 'enc-article-title')} — перевод при подвздошно-бедренном, «до приезда скорой» — антикоагулянт`);
 
   // кампания: карьера 1 → глава 1 — письма и задания; письмо наставника; смена открывается;
   // «Продолжить» в меню — карьера (spec 2026-09-campaign)

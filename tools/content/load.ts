@@ -417,7 +417,9 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     for (const f of x.complaints) if (!findings[f]?.texts.complaint) errors.push(`${x.id}: жалоба ${f} не найдена или без текста жалобы`);
     for (const f of x.any) if (!hasF(f)) errors.push(`${x.id}: признак ${f} не найден`);
     // часть 32г: дополнительные признаки, возраст и круг применимости
-    for (const f of [...(x.minor?.any ?? []), ...(x.requires ?? [])]) if (!hasF(f)) errors.push(`${x.id}: признак ${f} не найден`);
+    for (const f of [...(x.minor?.any ?? []), ...(x.requires ?? []), ...(x.excludes ?? [])]) if (!hasF(f)) errors.push(`${x.id}: признак ${f} не найден`);
+    // часть 33а: признак, при котором правило не применяют, не может его же и выполнять
+    for (const f of x.excludes ?? []) if (x.any.includes(f) || (x.minor?.any ?? []).includes(f) || (x.requires ?? []).includes(f)) errors.push(`${x.id}: ${f} — и в правиле, и среди признаков, при которых его не применяют`);
     for (const f of x.minor?.any ?? []) if (x.any.includes(f)) errors.push(`${x.id}: ${f} — и основной, и дополнительный признак`);
     if (x.minor && x.minor.count > x.minor.any.length + (x.age?.minor ? 1 : 0)) errors.push(`${x.id}: дополнительных признаков меньше, чем их нужно (${x.minor.count})`);
     if (x.age?.minor && !(x.age.minor[0] < x.age.minor[1])) errors.push(`${x.id}: возраст дополнительного признака — от меньшего к большему`);
@@ -426,8 +428,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     // часть 32д: «55 лет и старше» — `from`; «старше 60» — `main`; вместе — нет
     if (x.age?.main !== undefined && x.age.from !== undefined) errors.push(`${x.id}: возраст — либо «старше» (main), либо «и старше» (from)`);
     if (x.age?.from !== undefined && x.age.minor && x.age.from <= x.age.minor[1]) errors.push(`${x.id}: основной возраст (${x.age.from} и старше) пересекается с дополнительным`);
-    if (x.requires && !x.texts.na) errors.push(`${x.id}: у правила с кругом применимости нужен текст «не применяется» (texts.na)`);
-    if (!x.requires && x.texts.na) errors.push(`${x.id}: текст «не применяется» без круга применимости (requires)`);
+    if ((x.requires || x.excludes) && !x.texts.na) errors.push(`${x.id}: у правила с кругом применимости нужен текст «не применяется» (texts.na)`);
+    if (!x.requires && !x.excludes && x.texts.na) errors.push(`${x.id}: текст «не применяется» без круга применимости (requires или excludes)`);
     if (x.exams.length === 0 && !x.texts.exam) errors.push(`${x.id}: обследования правила в игре нет — нужен текст о нём (texts.exam)`);
     if (x.exams.length > 0 && x.texts.exam) errors.push(`${x.id}: текст об обследовании (texts.exam) — только если его в игре нет`);
     for (const id of x.about) if (!conditions[id]?.presenting) errors.push(`${x.id}: болезнь ${id} не найдена или с ней не приходят`);

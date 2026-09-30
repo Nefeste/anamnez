@@ -335,7 +335,7 @@ function findingArticle(db: ContentDb, f: Finding): Article {
   const flagFor = Object.values(db.conditions).filter(c => c.redFlags?.includes(f.id)).map(c => ref(db, c.id)).sort(byTitle);
   if (flagFor.length > 0) blocks.push({ key: 'redFlagFor', title: e.redFlagFor, refs: flagFor });
   const inRules = Object.values(db.rules)
-    .filter(r => r.any.includes(f.id) || r.complaints.includes(f.id) || (r.minor?.any ?? []).includes(f.id) || (r.requires ?? []).includes(f.id))
+    .filter(r => r.any.includes(f.id) || r.complaints.includes(f.id) || (r.minor?.any ?? []).includes(f.id) || (r.requires ?? []).includes(f.id) || (r.excludes ?? []).includes(f.id))
     .map(r => ref(db, r.id))
     .sort(byTitle);
   if (inRules.length > 0) blocks.push({ key: 'inRules', title: e.inRules, refs: inRules });
@@ -459,6 +459,8 @@ function ruleArticle(db: ContentDb, x: Rule): Article {
     { key: 'when', title: e.ruleWhen, refs: x.complaints.map(id => ref(db, id)), ...(x.ageMin !== undefined ? { note: e.ruleAge(x.ageMin) } : {}) },
     // часть 32г: к кому правило применимо, возраст и дополнительные признаки
     ...(x.requires ? [{ key: 'requires', title: e.ruleRequires, refs: x.requires.map(id => ref(db, id)), text: [x.texts.na?.ru ?? ''] }] : []),
+    // часть 33а: при тромбофлебите и беременности шкалу Уэллса и D-димер не применяют
+    ...(x.excludes ? [{ key: 'excludes', title: e.ruleExcludes, refs: x.excludes.map(id => ref(db, id)), ...(x.requires ? {} : { text: [x.texts.na?.ru ?? ''] }) }] : []),
     { key: 'any', title: e.ruleAny, text: [x.texts.yes.ru, ...(x.age?.main !== undefined ? [e.ruleAgeMain(x.age.main)] : x.age?.from !== undefined ? [e.ruleAgeFrom(x.age.from)] : [])], refs: x.any.map(id => ref(db, id)) },
     ...(x.minor ? [{ key: 'minor', title: e.ruleMinor(x.minor.count), refs: x.minor.any.map(id => ref(db, id)), text: x.age?.minor ? [e.ruleAgeMinor(x.age.minor[0], x.age.minor[1])] : [] }] : []),
     { key: 'none', title: x.minor ? e.ruleNoneMinor : e.ruleNone, text: [x.texts.no.ru] },

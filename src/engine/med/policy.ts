@@ -6,7 +6,7 @@ import { Rng } from '../core/rng';
 import { complaintObservations, examFits, runExam } from './exams';
 import { type Belief, contextOf, expectedGain, knownFacts, likelyParams, paramBeliefs, paramGain, posterior } from './infer';
 import { choiceFor, type Plan, possibleFor, SETTING_ORDER, tacticsFor, type Venue, whenHolds } from './plan';
-import { ruleExams } from './rules';
+import { openRuleExams, ruleExams } from './rules';
 import type { Observation, Patient } from './types';
 
 export type Strategy = 'rational' | 'lazy' | 'shotgun';
@@ -107,11 +107,18 @@ export function choosePlan(db: ContentDb, diagnosis: Id, observations: readonly 
  * Показано ли обследование сейчас: польза по тому, что уже известно, не ниже `MIN_GAIN` — так
  * решает разумный врач, так проверяет назначение страховая (spec 2026-09-own-hospital, часть 9).
  * Велит его положительное правило решения — показано всегда (часть 32д); отрицательное не
- * запрещает: «снимок можно не делать» — не «нельзя».
+ * запрещает: «снимок можно не делать» — не «нельзя». Правило ещё не решено, и обследование узнает
+ * то, что для него осталось, — тоже показано (часть 33а: шкала Уэллса меньше двух — D-димер).
  */
 export function indicated(db: ContentDb, patient: Patient, obs: readonly Observation[], candidates: Id[], examId: Id): boolean {
+  // рекомендация велит его каждому с такой жалобой (часть 33а: снимок груди при травме груди, таза и
+  // бедра — при боли в бедре) — показано
+  const e = db.exams[examId];
+  if (e?.routine || e?.routineFor?.some(f => patient.complaints.includes(f))) return true;
   // велит положительное правило решения — показано, какой бы малой ни была польза (часть 32д)
   if (ruleExams(db, patient, obs).includes(examId)) return true;
+  // правило ещё не решено — узнать, что осталось (часть 33а)
+  if (openRuleExams(db, patient, obs).includes(examId)) return true;
   const ctx = contextOf(db, patient, obs);
   const beliefs = posterior(db, candidates, obs, ctx);
   return quantize(expectedGain(db, examId, beliefs, ctx, new Set(obs.map(o => o.f)))) >= quantize(MIN_GAIN);
@@ -217,8 +224,9 @@ function confirmBeforeInvasive(db: ContentDb, diagnosis: Id, obs: readonly Obser
 /**
  * Шаг разумного врача по тому, что уже известно: следующее обследование или решение. Сначала —
  * вопросы, которые задают всем: польза вопроса о хронических болезнях в модели не видна
- * (сопутствующие считаются известными), а без него обострение ХОБЛ не узнать. Потом, пока
- * уверенность ниже порога, — самое полезное на единицу цены. Решив, — вопросы о
+ * (сопутствующие считаются известными), а без него обострение ХОБЛ не узнать. Затем — что велят
+ * правила решения и что нужно, чтобы они решились (часть 33а). Потом, пока уверенность ниже
+ * порога, — самое полезное на единицу цены. Решив, — вопросы о
  * противопоказаниях к лечению (об аллергиях — перед антибиотиком; о беременности не
  * спрашивают мужчину и женщину 64 лет), и план.
  */
@@ -234,6 +242,11 @@ export function nextStep(db: ContentDb, patient: Patient, obs: readonly Observat
     // сказали «снимок нужен», и снимок делают, даже почти уверившись в ушибе
     const ruled = ruleExams(db, patient, obs).find(id => opt.exams.includes(id) && !done.includes(id));
     if (ruled) return { step: { kind: 'exam', exam: ruled }, phase: now };
+    // правило к жалобе ещё не решено — узнать, что осталось (часть 33а): то, что проверит больше
+    // оставшихся признаков, поровну — дешевле; при шкале Уэллса меньше двух — D-димер, и только
+    // повышенный ведёт на УЗИ
+    const open = openRuleExams(db, patient, obs, id => examCost(db, id)).find(id => opt.exams.includes(id) && !done.includes(id));
+    if (open) return { step: { kind: 'exam', exam: open }, phase: now };
     const ctx = contextOf(db, patient, obs);
     const beliefs = posterior(db, opt.candidates, obs, ctx);
     if (beliefs[0].p < opt.threshold) {
