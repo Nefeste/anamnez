@@ -151,7 +151,7 @@ describe('шкала Уэллса и D-димер', () => {
     const pregnant = at([...with_(), ob('exam.ask_pregnancy', 'hx.pregnancy', true)], 30);
     expect(pregnant.applies).toBe(false);
     expect(at([]).applies).toBe(true);
-    expect(rule.excludes).toEqual(['sign.superficial_cord', 'hx.pregnancy']);
+    expect(rule.excludes).toEqual(['sign.superficial_cord', 'hx.pregnancy', 'sign.foot_pulse_absent']);
   });
 
   test('правило не решено — узнать, что осталось: шкала меньше двух — D-димер; решено или не применяют — ничего', () => {
@@ -338,7 +338,7 @@ describe('на экране и в энциклопедии', () => {
   test('статья правила: когда не применяют; статья ТГВ: до приезда скорой — НМГ при подвздошно-бедренном', () => {
     const a = article(db, RULE)!;
     const ex = a.blocks.find(b => b.key === 'excludes')!;
-    expect(ex.refs!.map(r => r.id)).toEqual(['sign.superficial_cord', 'hx.pregnancy']);
+    expect(ex.refs!.map(r => r.id)).toEqual(['sign.superficial_cord', 'hx.pregnancy', 'sign.foot_pulse_absent']);
     expect(ex.text).toEqual([rule.texts.na!.ru]);
     const d = article(db, DVT)!;
     const rows = d.blocks.find(b => b.key === 'treatment')!.rows!;

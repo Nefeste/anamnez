@@ -201,6 +201,11 @@ export const conditionSchema = z.strictObject({
   findings: z.array(link).min(1),
   confirm: z.union([z.array(z.string()).min(1), z.literal('clinical')]),
   redFlags: z.array(z.string()).optional(),
+  /**
+   * с чем спутать по рекомендации (часть 33б) — вдобавок к похожим по признакам: острую ишемию ноги
+   * отличают от тромбоза глубоких вен (1006_1, раздел 2.2), хотя признаки у них разные
+   */
+  differential: z.array(z.string().regex(/^cond\.[a-z0-9_]+$/)).min(1).optional(),
   texts: z.strictObject({ summary: text }),
   pearls: z.array(text).optional(),
   simplified: z.string().optional(),
@@ -225,6 +230,11 @@ export const findingSchema = z.strictObject({
     decimals: z.number().int().min(0).max(3),
     /** производные числа для шаблона: {dia} = значение × множитель (давление: нижнее из верхнего) */
     derived: z.record(z.string().regex(/^[a-z]+$/), z.number().positive()).optional(),
+    /**
+     * порог на измерении другого признака (часть 33б): число одно на двоих — низкое давление меряют
+     * тем же тонометром, что высокое; «есть» — значение в диапазоне `present`
+     */
+    of: z.string().optional(),
   }).optional(),
   texts: z.strictObject({ complaint: texts.optional(), present: texts, absent: texts.optional(), hint }),
   sources: z.array(source).optional(),

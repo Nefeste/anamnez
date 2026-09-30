@@ -95,7 +95,7 @@ export function generatePatient(db: ContentDb, seed: number, ctx: GenContext): P
     return { id, role: id === primaryId ? 'primary' : 'comorbid', day, stage, params };
   });
 
-  const findings = realizeFindings(db, again('findings'), conditions, risks);
+  const findings = oneMeasure(db, realizeFindings(db, again('findings'), conditions, risks));
   deriveParams(db, conditions, age, findings);
   const values = realizeValues(db, again('values'), findings);
   const complaints = pickComplaints(db, findings);
@@ -284,14 +284,36 @@ function realizeAttrs(db: ContentDb, rng: Rng, f: Id, link: Link | undefined, co
   return attrs;
 }
 
-/** Истинные значения числовых показателей: из диапазона «есть» или «нет». */
+/**
+ * Одно измерение — одно число (часть 33б): есть порог на чужом измерении — низкое давление, — и
+ * того, чьё это измерение, нет: давление не бывает сразу высоким и низким.
+ */
+function oneMeasure(db: ContentDb, findings: TrueFinding[]): TrueFinding[] {
+  const taken = new Set(findings.flatMap(x => { const of = db.findings[x.f]?.value?.of; return of ? [of] : []; }));
+  return taken.size > 0 ? findings.filter(x => !taken.has(x.f)) : findings;
+}
+
+/**
+ * Истинные значения числовых показателей: из диапазона «есть» или «нет». У порога на чужом
+ * измерении (часть 33б) число то же: есть порог — общее число из его диапазона «есть».
+ */
 function realizeValues(db: ContentDb, rng: Rng, findings: TrueFinding[]): Record<Id, number> {
   const present = new Set(findings.map(x => x.f));
   const values: Record<Id, number> = {};
+  const shared: Id[] = [];
   for (const id of Object.keys(db.findings).sort()) {
     const spec = db.findings[id].value;
     if (!spec) continue;
+    if (spec.of) {
+      shared.push(id);
+      continue;
+    }
     values[id] = sampleRange(rng.fork(id), present.has(id) ? spec.present : spec.absent, spec.decimals);
+  }
+  for (const id of shared) {
+    const spec = db.findings[id].value!;
+    if (present.has(id)) values[spec.of!] = sampleRange(rng.fork(id), spec.present, spec.decimals);
+    values[id] = values[spec.of!];
   }
   return values;
 }

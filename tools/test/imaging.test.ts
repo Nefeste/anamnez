@@ -374,7 +374,7 @@ describe('сектор УЗИ: рисунок без экрана', () => {
     const a = await draw({ view: 'kidney', fluid: 0.5 }, 9);
     const b = await draw({ view: 'kidney', fluid: 0.5 }, 9);
     expect(Buffer.from(a.png).equals(Buffer.from(b.png))).toBe(true);
-    expect(US_CASES.length).toBe(15);
+    expect(US_CASES.length).toBe(16);
     for (const k of US_CASES) expect((await draw(k.findings, k.seed)).png.length).toBeGreaterThan(1000);
   });
 
@@ -398,6 +398,22 @@ describe('сектор УЗИ: рисунок без экрана', () => {
     const torn = (await draw({ view: 'vein', tear: 0.8 }, 15)).rgba;
     const intact = (await draw({ view: 'vein' }, 15)).rgba;
     expect(at(torn, tear.c)).toBeLessThan(at(intact, tear.c) - 20);
+  });
+
+  // артерия ноги (часть 33б): закрыта тромбом или эмболом — внутри серое, вена рядом сжимается
+  test('артерия закрыта: в обоих кадрах внутри серое светлее здоровой; вена сжимается, как у здоровой ноги', async () => {
+    const shut = veinGeometry({ view: 'vein', arterial: 1 }, 16).panels;
+    const open = veinGeometry({ view: 'vein' }, 16).panels;
+    expect(shut.map(p => p.artery.clot)).toEqual([true, true]);
+    expect(open.map(p => p.artery.clot)).toEqual([false, false]);
+    expect(shut[1].vein.ry).toBeCloseTo(open[1].vein.ry, 9);
+    expect(shut[1].vein.clot).toBe(false);
+    const a = (await draw({ view: 'vein', arterial: 1 }, 16)).rgba;
+    const b = (await draw({ view: 'vein' }, 16)).rgba;
+    for (const p of shut) {
+      expect(at(a, p.artery.c)).toBeGreaterThan(at(b, p.artery.c) + 20);
+      expect(at(a, p.artery.c)).toBeLessThan(110);
+    }
   });
 });
 

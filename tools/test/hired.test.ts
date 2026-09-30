@@ -227,8 +227,8 @@ describe('забрать себе (часть 19)', () => {
   });
 
   test('вы заняты — он в вашей очереди по времени прихода; ушедший на обследования вернётся к вам', () => {
-    // зерно, при котором забранный — «зелёный» и позже пришли «зелёные» (с 0.0.48 — новые признаки хирургии)
-    const busy = withBusyColleague(12, 'inRoom', true);
+    // зерно, при котором забранный — «зелёный» и позже пришли «зелёные» (с 0.2.6 — новые болезни в очереди)
+    const busy = withBusyColleague(13, 'inRoom', true);
     const mine = busy.s.current!;
     expect(mine).toBeDefined();
     apply(db, busy.s, { kind: 'takeOver', id: busy.p.id });
@@ -301,7 +301,9 @@ describe('«У врачей» и разбор приёма врача (част�
     const v = shiftCaseView()!;
     const now = shiftState()!.t;
     const asking = shiftState()!.patients[row.id].results.filter(r => r.at > now).length;
-    expect(v.results.length).toBe(shiftState()!.patients[row.id].results.filter(r => r.at <= now).reduce((n, r) => n + r.obs.length, 0));
+    // в карте — то, что показано, и «нет» у признаков с таким текстом (часть 33б: «давление низкое» без «нет»)
+    const told = (o: Observation) => o.shown || (db.findings[o.f]?.texts.absent?.length ?? 0) > 0;
+    expect(v.results.length).toBe(shiftState()!.patients[row.id].results.filter(r => r.at <= now).reduce((n, r) => n + r.obs.filter(told).length, 0));
     expect(v.pending.length).toBe(asking + shiftState()!.patients[row.id].pending.length);
     expect(v.colleague?.id).toBe(row.id);
     expect(v.colleague?.doctor).toMatch(/^терапевт /);

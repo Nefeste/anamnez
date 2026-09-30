@@ -53,6 +53,8 @@ export const US_CASES: UsCase[] = [
   { key: 'us-vein-deep', findings: { view: 'vein', deep: 1 }, seed: 13, label: u.veinDeep },
   { key: 'us-vein-superficial', findings: { view: 'vein', superficial: 1 }, seed: 14, label: u.veinSuperficial },
   { key: 'us-vein-tear', findings: { view: 'vein', tear: 0.8 }, seed: 15, label: u.veinTear },
+  // артерия закрыта (часть 33б): острая ишемия ноги
+  { key: 'us-artery', findings: { view: 'vein', arterial: 1 }, seed: 16, label: u.veinArtery },
 ];
 
 export interface AbdomenCase {

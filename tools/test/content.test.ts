@@ -190,8 +190,8 @@ describe('каталог больницы', () => {
     expect(db.conditions['cond.appendicitis'].complication).toEqual({ name: { ru: 'перфорация' }, early: { hours: 36, p: 200 }, later: { every: 12, p: 500 }, stay: [3, 5] });
     // кабинет УЗИ (часть 29): врач УЗД сам делает и сам описывает; экспертный аппарат — улучшение базового
     // с частью 33а — и УЗИ вен ног
-    expect(db.rooms['room.ultrasound']).toMatchObject({ needsEquipment: true, staff: ['role.sonographer'], equipment: ['eq.us_basic', 'eq.us_expert'], exams: ['exam.us_abdomen', 'exam.us_kidney', 'exam.us_leg_veins'] });
-    expect(db.equipment['eq.us_expert']).toMatchObject({ upgradeOf: 'eq.us_basic', speed: 0.85, quality: { sens: 5, spec: 1 }, exams: ['exam.us_abdomen', 'exam.us_kidney', 'exam.us_leg_veins'] });
+    expect(db.rooms['room.ultrasound']).toMatchObject({ needsEquipment: true, staff: ['role.sonographer'], equipment: ['eq.us_basic', 'eq.us_expert'], exams: ['exam.us_abdomen', 'exam.us_kidney', 'exam.us_leg_arteries', 'exam.us_leg_veins'] });
+    expect(db.equipment['eq.us_expert']).toMatchObject({ upgradeOf: 'eq.us_basic', speed: 0.85, quality: { sens: 5, spec: 1 }, exams: ['exam.us_abdomen', 'exam.us_kidney', 'exam.us_leg_arteries', 'exam.us_leg_veins'] });
     expect(db.exams['exam.us_abdomen']).toMatchObject({ kind: 'imaging', radiation: 'none' });
     // отросток — WSES 2020; камни — точность порядка 95 % (877_1); холецистит — 81 и 83 % (819_1, часть 30)
     expect(db.exams['exam.us_abdomen'].checks).toEqual([
@@ -344,7 +344,7 @@ describe('каталог больницы', () => {
   test('когда правило не применяют (часть 33а): признак есть в базе и не выполняет правило; без исключений текст «не применяется» лишний', () => {
     const W = 'rules/wells_dvt.yaml';
     const has = (errors: string[], text: string) => errors.some(e => e.includes(text));
-    const excludes = 'excludes: [sign.superficial_cord, hx.pregnancy]';
+    const excludes = 'excludes: [sign.superficial_cord, hx.pregnancy, sign.foot_pulse_absent]';
     const a = broken(d => {
       edit(d, W, excludes, 'excludes: [sign.superficial_vein_cord, hx.leg_cast]');
       const p = join(d, W);
@@ -355,6 +355,27 @@ describe('каталог больницы', () => {
     expect(has(a, 'rule.wells_dvt: у правила с кругом применимости нужен текст «не применяется» (texts.na)')).toBe(true);
     const b = broken(d => edit(d, W, `${excludes}\n`, ''));
     expect(has(b, 'rule.wells_dvt: текст «не применяется» без круга применимости (requires или excludes)')).toBe(true);
+  });
+
+  test('порог на чужом измерении (часть 33б): измерение есть, число то же, «есть» — вне его диапазонов; в осмотре — только с ним и с его точностью', () => {
+    const L = 'findings/vital/bp_low.yaml';
+    const has = (errors: string[], text: string) => errors.some(e => e.includes(text));
+    expect(has(broken(d => edit(d, L, 'of: vital.bp_high', 'of: vital.bp_middle')), 'vital.bp_low: измерение vital.bp_middle не найдено или без числа')).toBe(true);
+    expect(has(broken(d => edit(d, L, 'of: vital.bp_high', 'of: vital.fever')), 'vital.bp_low: единица и точность числа — не те, что у vital.fever')).toBe(true);
+    expect(has(broken(d => edit(d, L, 'present: [62, 88]', 'present: [62, 110]')), 'vital.bp_low: диапазон «есть» пересекается с диапазонами vital.bp_high')).toBe(true);
+    const V = 'exams/vitals.yaml';
+    const own = broken(d => edit(d, V, '{ f: vital.bp_low, sens: 95, spec: 100 }', '{ f: vital.bp_low, sens: 90, spec: 99 }'));
+    expect(has(own, 'exam.vitals: у vital.bp_low точность — из измерения vital.bp_high: чувствительность 95, специфичность 100')).toBe(true);
+    const alone = broken(d => edit(d, 'exams/general_exam.yaml', '  - { f: sign.angioedema, sens: 95, spec: 99 }\n', '  - { f: sign.angioedema, sens: 95, spec: 99 }\n  - { f: vital.bp_low, sens: 95, spec: 100 }\n'));
+    expect(has(alone, 'exam.general_exam: vital.bp_low — только вместе с vital.bp_high: число одно')).toBe(true);
+  });
+
+  test('с чем спутать по рекомендации (часть 33б): то, с чем приходят, и не сама болезнь', () => {
+    const e = broken(d => edit(d, 'conditions/surgery/limb_ischemia.yaml', 'differential: [cond.dvt]', 'differential: [cond.limb_ischemia, cond.cholelithiasis, cond.dvt]'));
+    expect(e.filter(x => x.includes('cond.limb_ischemia: с чем спутать')).sort()).toEqual([
+      'cond.limb_ischemia: с чем спутать — cond.cholelithiasis не найдено, не приходят с ним или это оно само',
+      'cond.limb_ischemia: с чем спутать — cond.limb_ischemia не найдено, не приходят с ним или это оно само',
+    ]);
   });
 
   test('смотровая приёмного без мест для скорой; шкала с щелью между полосами или с чужим признаком', () => {

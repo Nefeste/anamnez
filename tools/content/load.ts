@@ -232,6 +232,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     for (const r of c.epidemiology.excludes ?? []) if (!conditions[r]?.epidemiology.chronic) errors.push(`${owner}: исключающее ${r} не найдено или не хроническое`);
     if (c.confirm !== 'clinical') for (const e of c.confirm) if (!(e in exams)) errors.push(`${owner}: подтверждающее обследование ${e} не найдено`);
     for (const f of c.redFlags ?? []) if (!hasF(f)) errors.push(`${owner}: красный флаг ${f} не найден`);
+    // с чем спутать по рекомендации (часть 33б): то, с чем приходят, и не сама болезнь
+    for (const d of c.differential ?? []) if (d === c.id || !conditions[d]?.presenting) errors.push(`${owner}: с чем спутать — ${d} не найдено, не приходят с ним или это оно само`);
     if (!c.presenting && !c.epidemiology.chronic) errors.push(`${owner}: не бывает ни основным, ни хроническим`);
     // тактика: у всего, с чем приходят, и только из существующих лечений, без повторов
     const t = c.treatment;
@@ -404,6 +406,26 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     }
     if (!(x.levels.medium < x.levels.high)) errors.push(`${x.id}: средний уровень ответа должен быть ниже высокого`);
   }
+  // порог на чужом измерении (часть 33б): то измерение — число, само не порог, в тех же единицах и с
+  // той же точностью; диапазон «есть» — вне его диапазонов; в обследовании — только вместе с ним, и
+  // точность выведена из его измерения: чувствительность — его специфичность, специфичность — 100
+  for (const f of Object.values(findings)) {
+    const of = f.value?.of;
+    if (!of) continue;
+    const base = findings[of]?.value;
+    if (!base) { errors.push(`${f.id}: измерение ${of} не найдено или без числа`); continue; }
+    if (base.of) errors.push(`${f.id}: ${of} — сам порог на чужом измерении`);
+    if (base.unit !== f.value!.unit || base.decimals !== f.value!.decimals) errors.push(`${f.id}: единица и точность числа — не те, что у ${of}`);
+    const [lo, hi] = f.value!.present;
+    if ([base.present, base.absent].some(([a, b]) => lo <= b && a <= hi)) errors.push(`${f.id}: диапазон «есть» пересекается с диапазонами ${of}`);
+    for (const e of Object.values(exams)) {
+      const mine = e.checks.find(c => c.f === f.id);
+      if (!mine) continue;
+      const theirs = e.checks.find(c => c.f === of);
+      if (!theirs) errors.push(`${e.id}: ${f.id} — только вместе с ${of}: число одно`);
+      else if (mine.sens !== theirs.spec || mine.spec !== 100) errors.push(`${e.id}: у ${f.id} точность — из измерения ${of}: чувствительность ${theirs.spec}, специфичность 100`);
+    }
+  }
   // обследование только при жалобе (часть 32г): жалоба — признак с текстом жалобы
   for (const x of Object.values(exams)) for (const f of x.complaints ?? []) if (!findings[f]?.texts.complaint) errors.push(`${x.id}: жалоба ${f} не найдена или без текста жалобы`);
   // каждому с жалобой (часть 32г-2): жалоба есть, и обследование ей предлагается
@@ -481,6 +503,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (c.derived) out.derived = c.derived;
     if (c.course.presentation) out.presentation = c.course.presentation;
     if (c.redFlags) out.redFlags = c.redFlags;
+    if (c.differential) out.differential = c.differential;
     if (c.course.selfLimiting) {
       out.selfLimiting = true;
       if (typeof c.course.selfLimiting === 'object') out.selfLimitingWhen = c.course.selfLimiting.when;

@@ -26,7 +26,7 @@ const BOTH = ['dept.therapy', 'dept.surgery'];
 /** смотровая приёмного принимает и хирургию, и травму (часть 32) */
 const ED = [...BOTH, 'dept.trauma'];
 // с частью 33а — и вены ног: тромбоз глубоких вен и тромбофлебит лечит хирург
-const SURGICAL = ['cond.adhesive_sbo', 'cond.biliary_colic', 'cond.cholecystitis', 'cond.diverticulitis', 'cond.dvt', 'cond.pancreatitis', 'cond.paraproctitis', 'cond.perforated_ulcer', 'cond.renal_colic', 'cond.strangulated_hernia', 'cond.superficial_thrombophlebitis', 'cond.ulcer_bleeding'];
+const SURGICAL = ['cond.adhesive_sbo', 'cond.biliary_colic', 'cond.cholecystitis', 'cond.diverticulitis', 'cond.dvt', 'cond.limb_ischemia', 'cond.pancreatitis', 'cond.paraproctitis', 'cond.perforated_ulcer', 'cond.renal_colic', 'cond.strangulated_hernia', 'cond.superficial_thrombophlebitis', 'cond.ulcer_bleeding'];
 const OP = 'tx.cholecystectomy';
 
 /** Песочница с готовой амбулаторией и смотровой приёмного справа; медсестра ЭКГ — в смотровую. */
@@ -362,12 +362,13 @@ describe('идеальный врач: неизвестное о пациент�
 });
 
 describe('экраны', () => {
-  test('диагнозы: в больнице с приёмным — и хирургические, среди болезней пищеварения, колика — мочевой системы, вены ног — сердца и сосудов; в амбулатории — нет', () => {
+  test('диагнозы: в больнице с приёмным — и хирургические, среди болезней пищеварения, колика — мочевой системы, сосуды ног — сердца и сосудов; в амбулатории — нет', () => {
     const ids = (g: ReturnType<typeof diagnosisGroups>) => g.flatMap(x => x.items.map(i => i.id));
     expect(ids(diagnosisGroups()).some(id => SURGICAL.includes(id))).toBe(false);
     const both = diagnosisGroups(BOTH);
     const group = (key: string) => both.find(g => g.key === key)!.items.map(i => i.id);
-    const VEINS = ['cond.dvt', 'cond.superficial_thrombophlebitis'];
+    // вены (часть 33а) и артерии ног (часть 33б) — в «Сердце и сосуды»
+    const VEINS = ['cond.dvt', 'cond.superficial_thrombophlebitis', 'cond.limb_ischemia'];
     expect(group('digestive')).toEqual(expect.arrayContaining(SURGICAL.filter(id => id !== 'cond.renal_colic' && !VEINS.includes(id))));
     expect(group('urinary')).toEqual(expect.arrayContaining(['cond.renal_colic', 'cond.pyelonephritis']));
     expect(group('heart')).toEqual(expect.arrayContaining([...VEINS, 'cond.acs']));

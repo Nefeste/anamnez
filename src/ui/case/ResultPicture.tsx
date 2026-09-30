@@ -15,7 +15,7 @@ const DENSITY = 0.75;
 /** Что рисует УЗИ по результату: вид и что нашли; вены ноги — линейным датчиком (часть 33а). */
 function usImageOf(image: Extract<ResultImage, { kind: 'us' }>): UsImage {
   if (image.view === 'appendix') return { view: 'appendix', appendix: image.appendix ?? 0 };
-  if (image.view === 'vein') return { view: 'vein', deep: image.deep ?? 0, superficial: image.superficial ?? 0, tear: image.tear ?? 0 };
+  if (image.view === 'vein') return { view: 'vein', deep: image.deep ?? 0, superficial: image.superficial ?? 0, tear: image.tear ?? 0, arterial: image.arterial ?? 0 };
   if (image.view === 'kidney') return { view: 'kidney', pelvis: image.pelvis ?? 0 };
   if (image.view === 'colon') return { view: 'colon', diverticulum: image.diverticulum ?? 0 };
   return { view: 'gallbladder', foci: { count: image.stones ?? 0, size: 0.5 }, wall: image.wall ?? 0, fluid: image.wall ? 0.4 : 0 };
@@ -64,7 +64,7 @@ export function ResultPicture({ image }: { image: ResultImage }) {
   return (
     <View testID="result-ecg" style={{ borderRadius: 6, overflow: 'hidden' }}>
       {/* четыре секунды — крупно: подъём ST на телефоне должен быть виден глазом */}
-      <Ecg width={w} height={Math.round(w * 0.45)} spec={{ rhythm: 'sinus', rate: image.rate, seconds: 4, seed: image.seed, st: image.st, rScale: image.rScale }} />
+      <Ecg width={w} height={Math.round(w * 0.45)} spec={{ rhythm: image.af ? 'af' : 'sinus', rate: image.rate, seconds: 4, seed: image.seed, st: image.st, rScale: image.rScale }} />
     </View>
   );
 }

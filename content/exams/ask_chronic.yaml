@@ -15,6 +15,8 @@ checks:
   - { f: hx.hernia, sens: 95, spec: 99 }
   - { f: hx.abdominal_surgery, sens: 95, spec: 99 }
   - { f: hx.kidney_stones, sens: 95, spec: 99 }
+  # мерцательная аритмия (часть 33б) — источник эмболии артерий ноги (1006_1, раздел 1.2)
+  - { f: hx.atrial_fibrillation, sens: 95, spec: 99 }
 texts:
   hint:
     ru: "Хронические болезни меняют картину: у человека с ХОБЛ или астмой одышка может быть обострением, а не новой болезнью."

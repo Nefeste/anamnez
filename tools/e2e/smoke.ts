@@ -627,8 +627,8 @@ try {
   // снимок груди при травме (часть 32в): воздух, кровь, переломы рёбер
   const chest = await drawn('[data-testid^="chest-"] canvas');
   const allImages = await drawn('canvas');
-  check(heads.length === 7 && heads.every(Boolean) && us.length === 15 && us.every(Boolean) && abd.length === 3 && abd.every(Boolean) && chest.length === 7 && chest.every(Boolean) && allImages.every(Boolean),
-    `П5: срезы головы нарисованы — ${heads.filter(Boolean).length} из 7, УЗИ — ${us.filter(Boolean).length} из 15 (с венами ног), снимки живота — ${abd.filter(Boolean).length} из 3, груди при травме — ${chest.filter(Boolean).length} из 7; все рисунки экрана — ${allImages.filter(Boolean).length} из ${allImages.length} (смотреть 06-head-*.png, 06-us.png, 06-abdomen.png, 06-chest.png)`);
+  check(heads.length === 7 && heads.every(Boolean) && us.length === 16 && us.every(Boolean) && abd.length === 3 && abd.every(Boolean) && chest.length === 7 && chest.every(Boolean) && allImages.every(Boolean),
+    `П5: срезы головы нарисованы — ${heads.filter(Boolean).length} из 7, УЗИ — ${us.filter(Boolean).length} из 16 (с венами и артерией ног), снимки живота — ${abd.filter(Boolean).length} из 3, груди при травме — ${chest.filter(Boolean).length} из 7; все рисунки экрана — ${allImages.filter(Boolean).length} из ${allImages.length} (смотреть 06-head-*.png, 06-us.png, 06-abdomen.png, 06-chest.png)`);
   for (const id of ['head-ct', 'head-mri', 'us', 'abdomen', 'chest']) {
     await page.getByTestId(id).scrollIntoViewIfNeeded();
     await page.waitForTimeout(300);
@@ -1435,6 +1435,24 @@ try {
   const dvtPre = await page.locator('text=До приезда скорой, при подвздошно-бедренном тромбозе').first().isVisible().catch(() => false);
   check((await visibleText(page, 'enc-article-title')) === 'Тромбоз глубоких вен ноги' && dvtWhere && dvtPre,
     `энциклопедия, ТГВ: ${await visibleText(page, 'enc-article-title')} — перевод при подвздошно-бедренном, «до приезда скорой» — антикоагулянт`);
+  // неотложное (0.2.6): ишемия ноги — путают с тромбозом вен, первая линия — гепарин; анафилактический
+  // шок — эпинефрин; носовое кровотечение — при заднем источнике перевод
+  await page.goto(`${base}/encyclopedia/article/cond.limb_ischemia`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const aliDvt = await page.locator('text=Тромбоз глубоких вен ноги').first().isVisible().catch(() => false);
+  const aliHeparin = await page.locator('text=Гепарин натрия в вену').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'Острая ишемия ноги' && aliDvt && aliHeparin,
+    `энциклопедия, ишемия ноги: ${await visibleText(page, 'enc-article-title')} — «с чем спутать» — тромбоз вен, первая линия — гепарин`);
+  await page.goto(`${base}/encyclopedia/article/cond.anaphylaxis`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const anaEpi = await page.locator('text=Эпинефрин в мышцу бедра').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'Анафилактический шок' && anaEpi,
+    `энциклопедия, анафилактический шок: ${await visibleText(page, 'enc-article-title')} — эпинефрин в мышцу бедра`);
+  await page.goto(`${base}/encyclopedia/article/cond.epistaxis`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const noseWhere = await page.locator('text=При источнике в задних отделах носа — скорая, перевод в центр.').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'Носовое кровотечение' && noseWhere,
+    `энциклопедия, носовое кровотечение: ${await visibleText(page, 'enc-article-title')} — при заднем источнике перевод`);
 
   // кампания: карьера 1 → глава 1 — письма и задания; письмо наставника; смена открывается;
   // «Продолжить» в меню — карьера (spec 2026-09-campaign)

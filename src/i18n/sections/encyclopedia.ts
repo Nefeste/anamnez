@@ -106,6 +106,14 @@ export const encyclopedia = {
     'risk:low': 'при тромбе только в притоках',
     'risk:moderate': 'при тромбе в стволе дальше 3\u00a0см от соустья',
     'risk:high': 'при тромбе в 3\u00a0см от соустья или ближе',
+    // неотложное (часть 33б): причина анафилактического шока, источник носового кровотечения
+    'trigger:drug': 'при реакции на лекарство',
+    'trigger:food': 'при реакции на пищу',
+    'trigger:sting': 'при реакции на ужаление',
+    'trigger:unknown': 'при неясной причине реакции',
+    'source:anterior_visible': 'при видимом источнике спереди',
+    'source:anterior_hidden': 'при невидимом источнике спереди',
+    'source:posterior': 'при источнике в задних отделах носа',
   } as Record<string, string>,
   /** несколько условий одной фразой (часть 30д): «при» — один раз, последнее — через «и» */
   whenList: (words: string[]) => {
@@ -180,8 +188,9 @@ export const encyclopedia = {
   selfLimiting: 'Обычно проходит само.',
   // по скрытому параметру (часть 30д): «При неосложнённом — обычно проходит само.»
   selfLimitingIf: (when: string) => `${when[0].toUpperCase()}${when.slice(1)} — обычно проходит само.`,
+  // срок одним днём (часть 33б: анафилактический шок — в тот же день)
   untreated: (band: string, from: number, to: number, when?: string) =>
-    `${when ? `${when[0].toUpperCase()}${when.slice(1)} без` : 'Без'} действенного лечения ${band.toLowerCase()} становится хуже — на ${from}–${to}-й день.`,
+    `${when ? `${when[0].toUpperCase()}${when.slice(1)} без` : 'Без'} действенного лечения ${band.toLowerCase()} становится хуже — ${from !== to ? `на ${from}–${to}-й день` : from === 0 ? 'в тот же день' : `на ${from}-й день`}.`,
   redFlags: 'Красные флаги',
   redFlagsNote: 'Признаки опасного течения: с ними тактика другая.',
   pearls: 'Что запомнить',

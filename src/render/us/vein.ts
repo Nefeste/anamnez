@@ -74,7 +74,7 @@ export function recordUsVein(width: number, findings: VeinFindings, seed: number
 
     // 4. Просветы: артерия и здоровые вены — чёрные, с тромбом — серые
     c.drawOval(oval(p.gsv), paint(p.gsv.clot ? CLOT : FLUID, { blur: 0.002 }));
-    c.drawOval(oval(p.artery), paint(FLUID, { blur: 0.002 }));
+    c.drawOval(oval(p.artery), paint(p.artery.clot ? CLOT : FLUID, { blur: 0.002 }));
     c.drawOval(oval(p.vein), paint(p.vein.clot ? CLOT : FLUID, { blur: 0.002 }));
 
     // 5. Зернистость — серая, поперёк луча вытянута; на чёрном остаётся чёрным
