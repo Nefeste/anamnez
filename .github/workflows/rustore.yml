@@ -1,0 +1,64 @@
+# из votchina: .github/workflows/rustore.yml @ 0605847
+name: RuStore
+
+# Выкладывает APK из релиза в черновик новой версии RuStore (docs/08-process.md, «Выкладывание
+# в RuStore»).
+# Запускается только руками: Actions → RuStore → Run workflow. На модерацию черновик уходит,
+# только если отмечено «submit»; иначе владелец проверяет его в консоли и отправляет сам.
+#
+# Нужны секрет RUSTORE_API_TOKEN (приватный ключ из «API RuStore» в консоли) и переменная
+# или секрет RUSTORE_KEY_ID (номер этого ключа из таблицы ключей). Первую версию приложения
+# RuStore принимает только через консоль — этот запуск для второй и следующих.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Тег релиза (пусто — последний vX.Y.Z)'
+        required: false
+        default: ''
+      submit:
+        description: 'Сразу отправить на модерацию'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  upload:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: APK из релиза
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -e
+          if [ -z "$TAG" ]; then
+            TAG="$(gh release list --exclude-drafts --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName')"
+          fi
+          echo "Релиз: $TAG"
+          gh release download "$TAG" --pattern 'anamnez-*.apk' --dir dist
+          ls -l dist
+          echo "APK=$(ls dist/anamnez-*.apk | head -1)" >> "$GITHUB_ENV"
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+
+      - name: В RuStore
+        env:
+          RUSTORE_KEY_ID: ${{ vars.RUSTORE_KEY_ID || secrets.RUSTORE_KEY_ID }}
+          RUSTORE_API_TOKEN: ${{ secrets.RUSTORE_API_TOKEN }}
+        run: |
+          node tools/store/rustore.mjs "$APK" ${{ inputs.submit && '--submit' || '' }}
+          {
+            echo "### RuStore"
+            echo ""
+            echo "Загружен \`$(basename "$APK")\` из релиза \`$TAG\`."
+            echo "${{ inputs.submit && 'Черновик отправлен на модерацию.' || 'Черновик ждёт в консоли: проверить «Что нового» и отправить на модерацию.' }}"
+          } >> "$GITHUB_STEP_SUMMARY"
