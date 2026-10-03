@@ -104,6 +104,15 @@ export function choosePlan(db: ContentDb, diagnosis: Id, observations: readonly 
 }
 
 /**
+ * Обследования сроков по жалобам пациента (spec 2026-10-chapter-3, часть 37): ЭКГ при давящей боли
+ * в груди — в первые 10 минут от первого контакта с медиком, где бы он ни был (`157_5`, раздел 2.4).
+ * Срок оценивается только у лежащих в смотровой приёмного (`shift/targets.ts`), а делают первым везде.
+ */
+export function targetExams(db: ContentDb, patient: Patient): Id[] {
+  return [...new Set(Object.values(db.targets).filter(t => t.complaints.some(f => patient.complaints.includes(f))).flatMap(t => t.exams))].sort();
+}
+
+/**
  * Показано ли обследование сейчас: польза по тому, что уже известно, не ниже `MIN_GAIN` — так
  * решает разумный врач, так проверяет назначение страховая (spec 2026-09-own-hospital, часть 9).
  * Велит его положительное правило решения — показано всегда (часть 32д); отрицательное не
@@ -115,6 +124,8 @@ export function indicated(db: ContentDb, patient: Patient, obs: readonly Observa
   // бедра — при боли в бедре) — показано
   const e = db.exams[examId];
   if (e?.routine || e?.routineFor?.some(f => patient.complaints.includes(f))) return true;
+  // срок по жалобе (часть 37): ЭКГ при давящей боли в груди — показана всегда
+  if (targetExams(db, patient).includes(examId)) return true;
   // велит положительное правило решения — показано, какой бы малой ни была польза (часть 32д)
   if (ruleExams(db, patient, obs).includes(examId)) return true;
   // правило ещё не решено — узнать, что осталось (часть 33а)
@@ -235,6 +246,9 @@ export function nextStep(db: ContentDb, patient: Patient, obs: readonly Observat
   const opt = { ...options, exams: options.exams.filter(id => examFits(db.exams[id], patient)) };
   let now = phase;
   if (now.diagnosis === undefined) {
+    // срок по жалобе (часть 37) — первым делом: при давящей боли в груди ЭКГ, ещё до расспроса
+    const urgent = targetExams(db, patient).find(id => opt.exams.includes(id) && !done.includes(id));
+    if (urgent) return { step: { kind: 'exam', exam: urgent }, phase: now };
     // вопросы всем и то, что делают каждому с такой жалобой (часть 32г-2: неврологический осмотр при ране головы)
     const routine = opt.exams.find(id => (db.exams[id].routine || db.exams[id].routineFor?.some(f => patient.complaints.includes(f))) && !done.includes(id));
     if (routine) return { step: { kind: 'exam', exam: routine }, phase: now };

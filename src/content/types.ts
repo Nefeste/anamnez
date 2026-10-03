@@ -339,6 +339,11 @@ export interface Exam {
   /** кому делают: только пришедшим с одной из этих жалоб — о травме головы спрашивают при травме головы (часть 32г) */
   complaints?: Id[];
   checks: ExamCheck[];
+  /**
+   * у постели (spec 2026-10-chapter-3, часть 37): лежащему в смотровой приёмного, где есть аппарат
+   * из списка, — на месте, врачом, за `time.procedure` минут, без очереди в кабинет и без описания
+   */
+  bedside?: { room: Id; equipment: Id[]; time: { procedure: number } };
   /** summary — как делают; hint — что показывает, простыми словами */
   texts: { summary: Text; hint?: Text };
   sources: Source[];
@@ -713,6 +718,23 @@ export interface Rule {
   review: Review;
 }
 
+/**
+ * Срок (spec 2026-10-chapter-3, часть 37): кому с жалобой из `complaints` при поступлении —
+ * лежащему в помещении вида `room`, если он задан, — сделать одно из `exams` за `minutes` минут от
+ * прихода; сделано — пришёл результат.
+ */
+export interface Target {
+  id: Id;
+  name: Text;
+  complaints: Id[];
+  room?: Id;
+  exams: Id[];
+  minutes: number;
+  texts: { hint: Text };
+  sources: Source[];
+  review: Review;
+}
+
 export interface ContentDb {
   contentVersion: number;
   hash: string;
@@ -734,6 +756,8 @@ export interface ContentDb {
   scores: Record<Id, Score>;
   /** правила решения: оттавские (часть 32) */
   rules: Record<Id, Rule>;
+  /** сроки: ЭКГ при боли в груди за 10 минут (spec 2026-10-chapter-3, часть 37) */
+  targets: Record<Id, Target>;
   /** производное: какие обследования проверяют признак */
   revealedBy: Record<Id, Id[]>;
 }

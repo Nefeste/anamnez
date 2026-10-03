@@ -555,6 +555,13 @@ function Summary({ v }: { v: ShiftView }) {
         </Card>
       )}
 
+      {s.targetLines && (
+        <Card testID="summary-targets">
+          <Text style={styles.label}>{t.targets.title}</Text>
+          {s.targetLines.map(line => <P key={line}>{line}</P>)}
+        </Card>
+      )}
+
       {s.wardLines && (
         <Card testID="summary-ward">
           <Text style={styles.label}>{t.ward.title}</Text>

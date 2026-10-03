@@ -10,6 +10,8 @@
 // меньше, чем стоят их койко-дни и расходники операций, палаты и операционная (содержание,
 // аппараты) и люди в них. Койко-дни и расходники — у закрытых случаев: кто ещё лежит на 30-й день,
 // тот ещё не оплачен, и его траты — вместе с его оплатой, после (для сведения — и всё подряд).
+// С 0.3.2 (spec 2026-10-chapter-3, часть 37) — и сроки: разумный лежащему в смотровой с болью в
+// груди первым делом снимает ЭКГ у постели — в первые 10 минут от прихода.
 // И карьера с начала (критерий этапа 4: обе главы проходятся от начала до конца): разумный в
 // главе 1 открывает лабораторию, как велит задание, принимает, пока основные задания не выполнены,
 // переходит в главу 2 и принимает, пока не выполнены и её.
@@ -23,7 +25,10 @@ import { examWhere } from '../../src/engine/hospital/requirements';
 import { contextOf, posterior } from '../../src/engine/med/infer';
 import { alsoSettings, recommendedSetting, settingFit } from '../../src/engine/med/plan';
 import { choosePlan, runDoctor, type Strategy } from '../../src/engine/med/policy';
-import { apply, candidatesOf, current, freeBeds, hospitalCtx, inpatientsOf, newCampaign, observationsOf, operationOf } from '../../src/engine/shift/engine';
+import {
+  apply, candidatesOf, current, freeBeds, hospitalCtx, inpatientsOf, moreUrgent, newCampaign, observationsOf, operationOf, targetPlace,
+} from '../../src/engine/shift/engine';
+import { targetsFor } from '../../src/engine/shift/targets';
 import { type Command, DAY, SHIFT_END, type ShiftPatient, type ShiftState } from '../../src/engine/shift/types';
 import { daysIn, wardState } from '../../src/engine/shift/ward';
 import { buildDb } from '../content/load';
@@ -78,6 +83,8 @@ interface Run {
   missions: Record<string, number | undefined>;
   /** стало хуже: вернулись хуже или с реакцией на лечение, умерли в стационаре */
   harmed: number;
+  /** сроки (часть 37): у скольких приёмов срок был и у скольких выполнен */
+  targets: { onTime: number; total: number };
 }
 
 /** Что стоят за день палаты и операционная: содержание помещений и аппаратов и зарплаты людей в них. */
@@ -134,8 +141,9 @@ function playDay(s: ShiftState, player: Player) {
   rounds(s, player, step);
   const ctx = hospitalCtx(db, s);
   const exams = Object.keys(db.exams).sort().filter(id => !('block' in examWhere(db, ctx.plan, ctx.working, ctx.staffed, id)));
-  const started = new Set<string>();
-  for (let guard = 0; guard < 8000; guard++) {
+  /** что врач ещё сделает у пациента: план — при первом вызове, дальше по одному обследованию */
+  const todo = new Map<string, Id[]>();
+  for (let guard = 0; guard < 20000; guard++) {
     // привезённых — сортировать: разумный — по шкале, ленивый — всех «зелёными»
     for (const p of Object.values(s.patients)) {
       if (p.kind !== 'ambulance' || p.status !== 'waiting' || p.sorted || !p.scale) continue;
@@ -150,19 +158,40 @@ function playDay(s: ShiftState, player: Player) {
       continue;
     }
     const candidates = candidatesOf(db, p.departments ?? s.meta.department);
-    if (!started.has(p.id)) {
-      started.add(p.id);
+    if (!todo.has(p.id)) {
+      const list: Id[] = [];
+      // срок (часть 37): разумный первым делом делает то, что надо успеть, — ЭКГ у постели
+      if (player === 'rational') {
+        for (const t of targetsFor(db, p, targetPlace(db, s, p))) {
+          const e = t.exams.find(x => exams.includes(x) && !p.done.includes(x));
+          if (e && !list.includes(e)) list.push(e);
+        }
+      }
       const plan = runDoctor(db, p.patient, player, Rng.seeded(s.meta.seed).fork(`sim:${p.id}`), { candidates, exams });
-      const todo = plan.exams.filter(e => !p.done.includes(e));
-      for (const e of todo.filter(x => !delayed(x))) step({ kind: 'exam', exam: e });
-      for (const e of todo.filter(delayed)) step({ kind: 'exam', exam: e });
+      const rest = plan.exams.filter(e => !p.done.includes(e) && !list.includes(e));
+      list.push(...rest.filter(x => !delayed(x)), ...rest.filter(delayed));
+      todo.set(p.id, list);
+    }
+    // привезли срочнее — разумный просит подождать того, кто в кабинете, и идёт к привезённому
+    // (часть 37: ЭКГ при боли в груди — в первые 10 минут, а опрос может идти и полчаса)
+    if (player === 'rational' && p.pending.length === 0 && moreUrgent(s, p)) {
+      step({ kind: 'sendAway' });
+      continue;
+    }
+    const next = todo.get(p.id)!.shift();
+    if (next) {
+      step({ kind: 'exam', exam: next });
+      continue;
     }
     if (p.pending.length > 0) {
       if (s.queue.length > 0) {
         step({ kind: 'sendAway' });
         continue;
       }
-      while (p.pending.length > 0) step({ kind: 'waitResults' });
+      // ждать — до результатов или до приезда скорой (часть 37): тогда — к началу, сортировать
+      // привезённого и отпустить ждать того, кто в кабинете
+      step({ kind: 'waitResults' });
+      if (p.pending.length > 0) continue;
     }
     const { obs, beliefs } = beliefsOf(s, p);
     const dx = beliefs[0].id;
@@ -190,7 +219,7 @@ function run(seed: number, player: Player): Run {
     ward: { admitted: 0, discharged: 0, early: 0, transferred: 0, died: 0, stayDays: 0, stayNorm: 0, returnsWorse: 0 },
     ops: { done: 0, onTime: 0, late: 0, complicated: 0, waited: 0, complications: 0, good: 0 },
     money: { income: 0, opIncome: 0, bedDays: 0, opConsumables: 0, closedBedDays: 0, closedOpCost: 0, opCases: 0, opCasesBedDays: 0, wardUpkeep: 0, wardStaff: 0, orUpkeep: 0, orStaff: 0 },
-    missions: {}, harmed: 0,
+    missions: {}, harmed: 0, targets: { onTime: 0, total: 0 },
   };
   const operated = new Set<string>();
   const closedStays = new Set<string>();
@@ -209,6 +238,10 @@ function run(seed: number, player: Player): Run {
     out.correct += h.correct;
     out.wrong += h.wrong;
     for (const k of Object.keys(out.ambulance) as (keyof Run['ambulance'])[]) out.ambulance[k] += h.ambulance?.[k] ?? 0;
+    for (const t of Object.values(h.targets ?? {})) {
+      out.targets.onTime += t.onTime;
+      out.targets.total += t.total;
+    }
     const w = h.ward;
     if (w) {
       out.ward.admitted += w.admitted;
@@ -360,6 +393,8 @@ function summarize(rs: Run[]) {
     returnsWorse: sum(rs, r => r.ward.returnsWorse) / Math.max(1, rs.length),
     died: sum(rs, r => r.ward.died) / Math.max(1, rs.length),
     harmed: pct(sum(rs, r => r.harmed), sum(rs, r => r.seen)),
+    targetsOnTime: pct(sum(rs, r => r.targets.onTime), sum(rs, r => r.targets.total)),
+    targetsTotal: sum(rs, r => r.targets.total),
   };
 }
 const summary: Record<Player, ReturnType<typeof summarize>> = { rational: summarize(results.rational), lazy: summarize(results.lazy) };
@@ -374,6 +409,8 @@ const criteria = {
   waitedRare: { ok: ra.waited <= 5, text: `осложнились, пока ждали операции, — не больше 5 %: ${ra.waited.toFixed(1)} %` },
   stayWithinNorm: { ok: ra.stayRatio <= 1, text: `средний срок стационара — не выше обычного: ${(100 * ra.stayRatio).toFixed(0)} % обычного` },
   triageClean: { ok: ra.triageErrors <= 5, text: `ошибок сортировки скорой — не больше 5 %: ${ra.triageErrors.toFixed(1)} %` },
+  // часть 37: ЭКГ при боли в груди в первые 10 минут
+  targetsOnTime: { ok: ra.targetsTotal > 0 && ra.targetsOnTime >= 90, text: `сроки выполнены — не меньше 90 %: ${ra.targetsOnTime.toFixed(1)} % из ${ra.targetsTotal} (у ленивого ${la.targetsOnTime.toFixed(1)} %)` },
   // ленивый — с осложнениями и ранними выписками
   lazyEarly: { ok: la.early >= 50 && la.returnsWorse > ra.returnsWorse, text: `у ленивого ранние выписки — ${la.early.toFixed(0)} % выписанных, вернулись после них хуже — ${la.returnsWorse.toFixed(1)} за ${DAYS} дней (у разумного ${ra.returnsWorse.toFixed(1)})` },
   lazyComplications: { ok: la.harmed >= 2 * ra.harmed, text: `у ленивого хуже стало хотя бы вдвое чаще, чем у разумного: ${la.harmed.toFixed(1)} против ${ra.harmed.toFixed(1)} на 100 принятых` },
@@ -406,6 +443,7 @@ for (const pl of PLAYERS) {
   const depts = [...new Set(rs.flatMap(r => Object.keys(r.departments)))].sort();
   console.log(`  верно по отделениям: ${depts.map(d => `${d.replace('dept.', '')} ${pct(f(r => r.departments[d]?.correct ?? 0), f(r => r.departments[d]?.seen ?? 0)).toFixed(1)} % из ${f(r => r.departments[d]?.seen ?? 0)}`).join(', ')}`);
   console.log(`  скорая: ${(f(r => r.ambulance.arrived) / n).toFixed(1)} в день; ошибок сортировки ${x.triageErrors.toFixed(1)} % (недооценили ${f(r => r.ambulance.under)}, переоценили ${f(r => r.ambulance.over)} из ${f(r => r.ambulance.sorted)})`);
+  console.log(`  сроки: в срок ${x.targetsOnTime.toFixed(1)} % из ${x.targetsTotal}`);
   console.log(`  стационар: положили ${f(r => r.ward.admitted)}, выписали ${f(r => r.ward.discharged)} (рано ${x.early.toFixed(1)} %, вернулись хуже ${f(r => r.ward.returnsWorse)}), перевели ${f(r => r.ward.transferred)}, умерли ${f(r => r.ward.died)}; срок ${(100 * x.stayRatio).toFixed(0)} % обычного`);
   console.log(`  операции: ${f(r => r.ops.done)}, в срок ${x.opsOnTime.toFixed(1)} %, осложнённых на столе ${x.complicated.toFixed(1)} % (из них — пока ждали ${x.waited.toFixed(1)} % всех операций), осложнений после ${pct(f(r => r.ops.complications), f(r => r.ops.done)).toFixed(1)} %`);
   const per = (g: (r: Run) => number) => rub(f(g) / rs.length);
@@ -417,6 +455,6 @@ for (const pl of PLAYERS) {
   console.log(`  основные задания, день главы: ${main.map(id => `${id} ${rs.map(r => r.missions[id] ?? '—').join('/')}`).join('; ')}`);
 }
 console.log(`\nКарьера разумного с начала: ${careers.map(c => `глава 1 — ${c.chapter1 ?? '—'} дн., глава 2 — ${c.chapter2 ?? '—'} дн., касса не ниже ${rub(c.minCash)}`).join('; ')}`);
-console.log('\nКритерии (spec 2026-09-chapter-2, приёмка 3 и 4; этап 4 — 10-roadmap.md):');
+console.log('\nКритерии (spec 2026-09-chapter-2, приёмка 3 и 4; этап 4 — 10-roadmap.md; сроки — spec 2026-10-chapter-3, часть 37):');
 for (const c of Object.values(criteria)) console.log(`  ${c.ok ? 'да ' : 'НЕТ'} ${c.text}`);
 process.exit(passed ? 0 : 1);

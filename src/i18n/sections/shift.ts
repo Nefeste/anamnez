@@ -99,6 +99,11 @@ export const shift = {
         `Со шкалой совпало: ${right}. Недооценили: ${under}, переоценили: ${over}.`,
       unsorted: (n: number) => `Не отсортировали до конца дня: ${n}.`,
     },
+    // сроки по рекомендации за день (spec 2026-10-chapter-3, часть 37): ваши приёмы
+    targets: {
+      title: 'Сроки',
+      line: (name: string, onTime: number, total: number) => `${name} в срок: ${onTime} из ${total}.`,
+    },
     ward: {
       title: 'Стационар',
       moves: (admitted: number, discharged: number, transferred: number, lying: number) =>

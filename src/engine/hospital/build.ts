@@ -280,12 +280,15 @@ export function build(db: ContentDb, s: Built, cmd: BuildCommand): BuildResult {
     const eq = db.equipment[cmd.equipment];
     if (!eq) return fail({ kind: 'unknown' });
     if (eq.room !== room.type) return fail({ kind: 'wrongRoom' });
+    // места — по нынешнему размеру: у смотровой приёмного из сохранений до 0.3.2 места под
+    // монитор ещё нет (часть 37)
+    const slots = z.slots.map((_, i) => room.equipment[i] ?? null);
     // у аппарата может быть своё место: стол операционной — под пациентом (часть 28)
-    const own = eq.slot !== undefined && room.equipment[eq.slot] === null ? eq.slot : -1;
-    const slot = own >= 0 ? own : room.equipment.indexOf(null);
+    const own = eq.slot !== undefined && slots[eq.slot] === null ? eq.slot : -1;
+    const slot = own >= 0 ? own : slots.indexOf(null);
     if (slot < 0) return fail({ kind: 'noSlot' });
     if (s.cash < eq.price) return fail({ kind: 'money', need: eq.price - s.cash });
-    const equipment = room.equipment.map((x, i) => (i === slot ? eq.id : x));
+    const equipment = slots.map((x, i) => (i === slot ? eq.id : x));
     return done({ ...hs, rooms: replace({ ...room, equipment }) }, s.cash - eq.price);
   }
 
