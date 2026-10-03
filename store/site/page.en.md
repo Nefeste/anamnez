@@ -1,7 +1,7 @@
 ---
 name: Anamnesis
-title: Anamnesis — a doctor simulator with honest diagnostics
-description: "A doctor simulator for Android: take a history, examine, order tests and X-rays, make a diagnosis and treat. 40 conditions and 23 injuries, X-rays, ultrasound and ECGs, a review of every visit. Offline and ad-free."
+title: "Anamnesis — doctor simulator: diagnose and treat patients"
+description: "A doctor simulator for Android: take the history, examine, order tests, X-rays and ECGs, and make the diagnosis. Works offline, no ads."
 kind: Doctor simulator
 status: dev
 lead: "Every patient is a puzzle: ask, examine, order tests and X-rays, make a diagnosis and treat."
