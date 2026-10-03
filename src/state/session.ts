@@ -21,8 +21,8 @@ import { memberAt, type StaffMember, staffingOf } from '@/engine/hospital/staff'
 import { type MissionProgress, missionProgress, nextChapterOf } from '@/engine/campaign/campaign';
 import { levelOf } from '@/engine/economy/economy';
 import {
-  apply, atDoorOf, bedsideOf, current, freeBeds, freeIcuBeds, type HospitalCtx, hospitalCtx, icuBeds, inIcu, inpatientsOf, moreUrgent, newCampaign, newSandbox,
-  newShift, newSingle, observationsOf, operationOf, type OrBlock, orBlock, orQueueOf, reviewFor, SANDBOX_VENUE, targetPlace, wardBeds,
+  apply, atDoorOf, bedsideEquipment, bedsideOf, current, freeBeds, freeIcuBeds, type HospitalCtx, hospitalCtx, icuBeds, inIcu, inpatientsOf, moreUrgent, newCampaign, newSandbox,
+  newShift, newSingle, observationsOf, operationOf, type OrBlock, orBlock, orQueueOf, reviewFor, SANDBOX_VENUE, stayEquipment, targetPlace, wardBeds,
 } from '@/engine/shift/engine';
 import { minutesTo, targetsFor } from '@/engine/shift/targets';
 import {
@@ -1696,10 +1696,11 @@ export function useRounds(): RoundCard[] {
   return useSyncExternalStore(subscribe, roundsCached, roundsCached);
 }
 
-/** Лечение по группам для смены плана лежащего — с тем, что о нём известно. */
+/** Лечение по группам для смены плана лежащего — с тем, что о нём известно, и аппаратами у его койки (часть 39а). */
 export function replanChoices(id: string): ReturnType<typeof treatmentGroupsFor> {
-  const p = session?.s.patients[id];
-  return p ? treatmentGroupsFor(observationsOf(p)) : [];
+  const s = session?.s;
+  const p = s?.patients[id];
+  return s && p ? treatmentGroupsFor(observationsOf(p), stayEquipment(db, s, p)) : [];
 }
 
 function wardAct(cmd: Command) {
@@ -1785,7 +1786,8 @@ function decisionFor(meta: Pick<ShiftState['meta'], 'seed' | 'department'>, p: S
   const key = `${meta.seed}:${p.id}:${known}:${c.outcome.kind}`;
   const cached = decisions.get(key);
   if (cached) return cached;
-  const ev = evaluatePlan(db, p.patient, c.plan, observationsOf(p));
+  // аппараты у постели в момент решения (часть 39а): разбор помнит, был ли тромболизис возможен
+  const ev = evaluatePlan(db, p.patient, c.plan, observationsOf(p), { bedside: c.bedside ?? [] });
   const review = reviewFor(db, meta, p, c.diagnosis);
   const d = decisionOf({
     patient: p.patient, arrived, diagnosis: c.diagnosis, verdict: c.verdict, confidence: c.confidence, plan: c.plan, ev, outcome: c.outcome,
@@ -1934,6 +1936,8 @@ function buildCaseView(): VisitView | undefined {
     // и в практике: кабинета УЗИ в амбулатории нет (часть 29)
     unavailable,
     ...(Object.keys(bedside).length > 0 ? { bedside } : {}),
+    // лечение у постели (часть 39а): тромболизис — лежащему под монитором
+    bedsideEquipment: bedsideEquipment(db, s, p),
     ...(p.by ? {} : { targets: targetLines(s, p) }),
     // с какими отделениями его приняли (часть 30): с приёмным — и хирургия
     ...(p.departments ? { departments: p.departments } : {}),

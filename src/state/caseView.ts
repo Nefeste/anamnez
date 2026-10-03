@@ -8,7 +8,7 @@ import { fnv1a } from '@/engine/core/hash';
 import type { Outcome } from '@/engine/med/course';
 import { complaintObservations, examFits } from '@/engine/med/exams';
 import { type Belief, contextOf, knownFacts, posterior } from '@/engine/med/infer';
-import type { PlanEval } from '@/engine/med/plan';
+import { bedsideLack, type PlanEval } from '@/engine/med/plan';
 import type { ReviewData } from '@/engine/med/review';
 import { type CaseScore, type Grade, type ScoreNote, worstGrade } from '@/engine/med/score';
 import { checkRule, knownOf, rulesFor } from '@/engine/med/rules';
@@ -151,8 +151,11 @@ export interface VisitView {
   rules: { id: Id; name: string; text: string }[];
   /** из чего выбирают диагноз — болезни отделений этой больницы по системам органов */
   diagnoses: DiagnosisGroup[];
-  /** всё лечение базы по алфавиту; warning — противопоказание, о котором врач уже знает */
-  treatments: { id: Id; name: string; warning?: string }[];
+  /**
+   * всё лечение базы по алфавиту; warning — противопоказание, о котором врач уже знает; disabled —
+   * здесь не назначить (часть 39а: тромболизис без монитора у постели), warning — почему
+   */
+  treatments: { id: Id; name: string; warning?: string; disabled?: boolean }[];
   /** то же лечение — по группам (антибиотики, обезболивающие…) для экрана решения */
   treatmentGroups: { key: string; title: string; items: VisitView['treatments'] }[];
   draft: Draft;
@@ -211,6 +214,8 @@ export interface CaseInput {
   canSendAway?: boolean;
   canStepOut?: boolean;
   bedside?: Record<Id, number>;
+  /** аппараты у постели (часть 39а): лежит в смотровой приёмного — монитор; нет — в кабинете врача ничего */
+  bedsideEquipment?: readonly Id[];
   targets?: string[];
   returnNote?: string;
   /** сложность: «Похоже на» — только у «Студента» (03-game-design.md §14); нет — «Студент» (прототип П4) */
@@ -269,8 +274,9 @@ const TX_GROUPS: [string, string[]][] = [
   ['oxygen', ['oxygen']],
   ['nose', ['nasal', 'steroid.intranasal', 'antihistamine']],
   // сердце и сосуды: с частью 33а — антикоагулянты, компрессионный трикотаж и гель при тромбофлебите;
-  // с частью 33б — эпинефрин при анафилактическом шоке (АТХ C01CA24 — сердечно-сосудистая система)
-  ['heart', ['antihypertensive', 'antiplatelet', 'antianginal', 'anticoagulant', 'vascular', 'adrenergic']],
+  // с частью 33б — эпинефрин при анафилактическом шоке (АТХ C01CA24 — сердечно-сосудистая система);
+  // с частью 39а — тромболизис при инфаркте
+  ['heart', ['antihypertensive', 'antiplatelet', 'antianginal', 'anticoagulant', 'vascular', 'adrenergic', 'thrombolytic']],
   ['digestive', ['acid']],
   // растворы для питья и капельница (часть 32д-2): и при кишечной инфекции, и при обширном ожоге
   ['fluids', ['rehydration']],
@@ -304,9 +310,12 @@ function groupTreatments(items: VisitView['treatments']): VisitView['treatmentGr
     .filter(g => g.items.length > 0);
 }
 
-/** Лечение по группам с предупреждениями о том, что уже известно, — для смены плана на обходе. */
-export function treatmentGroupsFor(obs: readonly Observation[]): VisitView['treatmentGroups'] {
-  return groupTreatments(treatmentChoices(obs));
+/**
+ * Лечение по группам с предупреждениями о том, что уже известно, — для смены плана на обходе;
+ * `bedside` — аппараты у его койки (часть 39а): в палате монитора нет, в ПИТ — у каждой койки.
+ */
+export function treatmentGroupsFor(obs: readonly Observation[], bedside: readonly Id[] = []): VisitView['treatmentGroups'] {
+  return groupTreatments(treatmentChoices(obs, bedside));
 }
 
 export function conditionChoices(departments?: readonly Id[]): { id: Id; name: string }[] {
@@ -323,14 +332,19 @@ export function diagnosisGroups(departments?: readonly Id[]): DiagnosisGroup[] {
     .filter(g => g.items.length > 0);
 }
 
-/** Выбор лечения: противопоказание, о котором пациент сказал, — предупреждение (`04` §8). */
-function treatmentChoices(obs: readonly Observation[]): VisitView['treatments'] {
+/**
+ * Выбор лечения: противопоказание, о котором пациент сказал, — предупреждение (`04` §8); лечению
+ * у постели нужен его аппарат у постели (часть 39а) — без него кнопка серая, и сказано почему.
+ */
+function treatmentChoices(obs: readonly Observation[], bedside: readonly Id[] = []): VisitView['treatments'] {
   const known = knownFacts(db, obs);
   const knownIds = new Set([...known.risks, ...known.conditions]);
   // операцию выбирают не здесь, а «В операционную»: какая — по диагнозу (часть 28)
   return Object.values(db.treatments)
     .filter(x => x.kind !== 'surgery')
     .map(x => {
+      const lack = bedsideLack(db, x.id, { bedside });
+      if (lack) return { id: x.id, name: x.name.ru, warning: T.spikes.patient.noBedside(db.equipment[lack].gen.ru), disabled: true };
       const by = x.contraindications.find(k => knownIds.has(k.id));
       return { id: x.id, name: x.name.ru, warning: by ? T.spikes.patient.contraindicated(riskName(by.id)) : undefined };
     })
@@ -338,11 +352,12 @@ function treatmentChoices(obs: readonly Observation[]): VisitView['treatments'] 
 }
 
 /**
- * Стенка инфаркта на ленте — из атрибута находки; без него — нижняя: текст находки в базе называет
- * II, III, aVF, и лента должна показывать то же (стенку база узнает с частью 39).
+ * Стенка инфаркта на ленте — из атрибута находки, как в её строке (часть 39а); у записи до появления
+ * стенки — та, что строка называла тогда (`fallback` признака): нижняя.
  */
 function wallOf(attr: string | undefined): Wall {
-  return attr === 'anterior' || attr === 'lateral' ? attr : 'inferior';
+  const wall = attr ?? db.findings['ecg.st_elevation']?.fallback?.wall;
+  return wall === 'anterior' || wall === 'lateral' ? wall : 'inferior';
 }
 
 /**
@@ -534,7 +549,7 @@ export function makeCaseView(c: CaseInput): VisitView {
   // «нет» — «пневмоторакса нет» скажет основной признак, а «средостение не смещено» уже лишнее
   const visible = (o: Observation) => o.shown || (db.findings[o.f]?.texts.absent?.length ?? 0) > 0;
   const obs = observationsOfCase(p, c.arrived);
-  const treatments = treatmentChoices(obs);
+  const treatments = treatmentChoices(obs, c.bedsideEquipment);
   return {
     version: c.version,
     title: `${patientName(p)}, ${T.spikes.patient.years(p.age)}, ${p.sex === 'm' ? T.spikes.patient.male : T.spikes.patient.female}`,
@@ -663,6 +678,9 @@ export function noteText(n: ScoreNote): string {
     case 'tx.preventMissing': return t.preventMissing(tx(n.tx));
     // обязательное при лечении здесь (часть 38б): «обязательно при сатурации ниже 90 %»
     case 'tx.requireMissing': return t.requireMissing(tx(n.tx), whenText(n.when));
+    // обязательное и при переводе (часть 39а): «при инфаркте с подъёмом ST в первые 12 часов»
+    case 'tx.beforeTransferMissing': return t.beforeTransferMissing(tx(n.tx), whenText(n.when));
+    case 'tx.companionMissing': return t.companionMissing(tx(n.tx), tx(n.of));
     case 'setting.under': return t.settingUnder(n.recommended);
     case 'setting.over': return t.settingOver(n.recommended);
     case 'safety.knownViolation': return t.knownViolation(tx(n.tx), riskName(n.by));

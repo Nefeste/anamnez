@@ -10,6 +10,7 @@ import { planOf, presetHospital } from '../../src/engine/hospital/build';
 import { problemsOf } from '../../src/engine/hospital/requirements';
 import { ALLERGY_EXAM } from '../../src/engine/career/achievements';
 import { fingerprint } from '../../src/engine/core/hash';
+import { P_ONE } from '../../src/engine/core/rng';
 import { findBrand } from './brands';
 import {
   BANDS, type ChapterSrc, chapterSchema, type CharacterSrc, characterSchema, type ConditionSrc, conditionSchema, type EconomySrc, economySchema, type EquipmentSrc, equipmentSchema, type ExamSrc, examSchema, type FindingSrc, findingSchema,
@@ -242,12 +243,30 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
         if (Object.values(l.attrs ?? {}).includes(`$${name}`)) errors.push(`${owner}: атрибут признака ${l.f} — из производного параметра ${name}, а тот — от признаков`);
       }
     }
+    // часы от начала (часть 39а): число — у признака в часах, который есть у каждого такого больного,
+    // интервалы — по возрастанию, внутри его диапазона «есть», и в каждом есть целый час от одного
+    const onset = c.course.onset;
+    if (onset) {
+      const v = findings[onset.f]?.value;
+      if (!v || v.unit !== 'ч') errors.push(`${owner}: часы от начала — на ${onset.f}, а у него нет числа в часах`);
+      else if (onset.hours.some(([h], i) => h <= (i === 0 ? v.present[0] : onset.hours[i - 1][0])) || onset.hours[onset.hours.length - 1][0] > v.present[1]) {
+        errors.push(`${owner}: интервалы часов от начала — по возрастанию и внутри ${v.present[0]}–${v.present[1]} ч`);
+      } else if (onset.hours.some(([h], i) => h - 1 < Math.max(1, i === 0 ? 0 : onset.hours[i - 1][0]))) {
+        errors.push(`${owner}: в интервале часов от начала нет целого часа от одного — больной назвал бы «0 ч»`);
+      }
+      if (!c.findings.some(l => l.f === onset.f && prob(l.band) === P_ONE && !l.when && !l.stages)) errors.push(`${owner}: часы от начала — на ${onset.f}, а он есть не у каждого такого больного`);
+    }
     for (const r of c.epidemiology.risks ?? []) if (!(r.id in risks) && !(r.id in conditions)) errors.push(`${owner}: фактор ${r.id} не найден`);
     for (const r of c.epidemiology.chronic?.risks ?? []) if (!(r.id in risks)) errors.push(`${owner}: фактор ${r.id} не найден`);
     for (const r of c.epidemiology.requires ?? []) if (!conditions[r]?.epidemiology.chronic) errors.push(`${owner}: требуемое ${r} не найдено или не хроническое`);
     for (const r of c.epidemiology.excludes ?? []) if (!conditions[r]?.epidemiology.chronic) errors.push(`${owner}: исключающее ${r} не найдено или не хроническое`);
     if (c.confirm !== 'clinical') for (const e of c.confirm) if (!(e in exams)) errors.push(`${owner}: подтверждающее обследование ${e} не найдено`);
     for (const f of c.redFlags ?? []) if (!hasF(f)) errors.push(`${owner}: красный флаг ${f} не найден`);
+    // чего при состоянии не бывает (часть 39а): признак есть в базе, а сама запись его не вызывает
+    for (const f of c.masks ?? []) {
+      if (!hasF(f)) errors.push(`${owner}: гасит признак ${f}, а его нет`);
+      else if (c.findings.some(l => l.f === f)) errors.push(`${owner}: признак ${f} и вызывает, и гасит`);
+    }
     // с чем спутать по рекомендации (часть 33б): то, с чем приходят, и не сама болезнь
     for (const d of c.differential ?? []) if (d === c.id || !conditions[d]?.presenting) errors.push(`${owner}: с чем спутать — ${d} не найдено, не приходят с ним или это оно само`);
     if (!c.presenting && !c.epidemiology.chronic) errors.push(`${owner}: не бывает ни основным, ни хроническим`);
@@ -333,8 +352,14 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       // обязательное при лечении здесь (часть 38б): лечение есть и не операция; общее — ни в каком
       // списке тактики, по параметру — не в списках той же записи (при других значениях роль своя:
       // кислород при сатурации от 90 % у ОКС — «не нужно»)
-      const requires = [['обязательное', t.require ?? [], roled] as const, ...(t.byParam ?? []).map((x, i) =>
-        [`обязательное тактики по параметру №${i + 1}`, x.require ?? [], new Set([x.firstLine, x.acceptable, x.supportive, x.notIndicated, x.harmful].flat())] as const)];
+      // обязательное и при переводе (часть 39а) — так же: тромболизис при инфаркте в окне
+      const requires = [['обязательное', t.require ?? [], roled] as const, ...(t.byParam ?? []).flatMap((x, i) => {
+        const own = new Set([x.firstLine, x.acceptable, x.supportive, x.notIndicated, x.harmful].flat());
+        return [
+          [`обязательное тактики по параметру №${i + 1}`, x.require ?? [], own] as const,
+          [`обязательное до перевода тактики по параметру №${i + 1}`, x.beforeTransfer ?? [], own] as const,
+        ];
+      })];
       for (const [what, ids, other] of requires) {
         for (const id of ids) {
           if (!(id in treatments)) errors.push(`${owner}: ${what} — лечение ${id} не найдено`);
@@ -406,6 +431,15 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       if (room && room.sizes.some(z => z.slots.length < t.surgery!.equipment.length)) errors.push(`${t.id}: в ${t.surgery.room} не у всех размеров хватит мест под аппараты операции`);
     }
     for (const k of t.contraindications) if (!(k.id in risks) && !(k.id in conditions)) errors.push(`${t.id}: противопоказание ${k.id} не найдено`);
+    // у постели (часть 39а): аппараты есть в каталоге больницы
+    for (const id of t.bedside?.equipment ?? []) if (!equipment[id]) errors.push(`${t.id}: аппарат у постели ${id} не найден`);
+    // спутники (часть 39а): есть, не операции, не само лечение и без повторов
+    const companions = (t.companions ?? []).flat();
+    for (const id of companions) {
+      if (!(id in treatments)) errors.push(`${t.id}: спутник ${id} не найден`);
+      else if (id === t.id || treatments[id].kind === 'surgery') errors.push(`${t.id}: спутник ${id} — само лечение или операция`);
+    }
+    if (new Set(companions).size !== companions.length) errors.push(`${t.id}: спутники повторяются`);
   }
   for (const r of Object.values(risks)) checkLinks(r.id, r.findings);
   const revealedBy: Record<string, string[]> = {};
@@ -455,6 +489,15 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       else if (mine.sens !== theirs.spec || mine.spec !== 100) errors.push(`${e.id}: у ${f.id} точность — из измерения ${of}: чувствительность ${theirs.spec}, специфичность 100`);
     }
   }
+  // атрибут для старых записей (часть 39а): у признака такой атрибут есть, и значение в нём описано
+  for (const f of Object.values(findings)) for (const [attr, v] of Object.entries(f.fallback ?? {})) {
+    if (!f.attrs?.[attr]?.[v]) errors.push(`${f.id}: для старых записей ${attr}=${v}, а в атрибутах признака такого нет`);
+  }
+  // признак-последователь (часть 39а): ведущие есть, это не он сам и не другие последователи
+  for (const f of Object.values(findings)) for (const id of f.follows ?? []) {
+    if (!findings[id]) errors.push(`${f.id}: следует за признаком ${id}, а его нет`);
+    else if (id === f.id || findings[id].follows) errors.push(`${f.id}: следует за ${id} — сам за собой или за последователем`);
+  }
   // обследование только при жалобе (часть 32г): жалоба — признак с текстом жалобы
   for (const x of Object.values(exams)) for (const f of x.complaints ?? []) if (!findings[f]?.texts.complaint) errors.push(`${x.id}: жалоба ${f} не найдена или без текста жалобы`);
   // каждому с жалобой (часть 32г-2): жалоба есть, и обследование ей предлагается
@@ -472,6 +515,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     // часть 33а: признак, при котором правило не применяют, не может его же и выполнять
     for (const f of x.excludes ?? []) if (x.any.includes(f) || (x.minor?.any ?? []).includes(f) || (x.requires ?? []).includes(f)) errors.push(`${x.id}: ${f} — и в правиле, и среди признаков, при которых его не применяют`);
     for (const f of x.minor?.any ?? []) if (x.any.includes(f)) errors.push(`${x.id}: ${f} — и основной, и дополнительный признак`);
+    // часть 39а: «только применимым» — без круга применимости ждать нечего
+    if (x.onlyIfApplies && !x.requires) errors.push(`${x.id}: пункты проверяют только применимым, а круга применимости (requires) нет`);
     if (x.minor && x.minor.count > x.minor.any.length + (x.age?.minor ? 1 : 0)) errors.push(`${x.id}: дополнительных признаков меньше, чем их нужно (${x.minor.count})`);
     if (x.age?.minor && !(x.age.minor[0] < x.age.minor[1])) errors.push(`${x.id}: возраст дополнительного признака — от меньшего к большему`);
     if (x.age?.minor && !x.minor) errors.push(`${x.id}: возраст как дополнительный признак без дополнительных признаков`);
@@ -481,7 +526,10 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (x.age?.from !== undefined && x.age.minor && x.age.from <= x.age.minor[1]) errors.push(`${x.id}: основной возраст (${x.age.from} и старше) пересекается с дополнительным`);
     if ((x.requires || x.excludes) && !x.texts.na) errors.push(`${x.id}: у правила с кругом применимости нужен текст «не применяется» (texts.na)`);
     if (!x.requires && !x.excludes && x.texts.na) errors.push(`${x.id}: текст «не применяется» без круга применимости (requires или excludes)`);
-    if (x.exams.length === 0 && !x.texts.exam) errors.push(`${x.id}: обследования правила в игре нет — нужен текст о нём (texts.exam)`);
+    if (x.exams.length === 0 && !x.texts.exam && !x.decides) errors.push(`${x.id}: обследования правила в игре нет — нужен текст о нём (texts.exam)`);
+    // правило о лечении (часть 39а): лечение есть, обследования и текста о нём нет
+    if (x.decides && !(x.decides in treatments)) errors.push(`${x.id}: лечение ${x.decides} не найдено`);
+    if (x.decides && (x.exams.length > 0 || x.texts.exam)) errors.push(`${x.id}: правило о лечении ${x.decides} — без обследования`);
     if (x.exams.length > 0 && x.texts.exam) errors.push(`${x.id}: текст об обследовании (texts.exam) — только если его в игре нет`);
     for (const id of x.about) if (!conditions[id]?.presenting) errors.push(`${x.id}: болезнь ${id} не найдена или с ней не приходят`);
     for (const id of x.exams) {
@@ -544,7 +592,9 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (c.params) out.params = c.params;
     if (c.derived) out.derived = c.derived;
     if (c.course.presentation) out.presentation = c.course.presentation;
+    if (c.course.onset) out.onset = c.course.onset;
     if (c.redFlags) out.redFlags = c.redFlags;
+    if (c.masks) out.masks = c.masks;
     if (c.differential) out.differential = c.differential;
     if (c.course.selfLimiting) {
       out.selfLimiting = true;
@@ -586,6 +636,9 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (f.redFlag) out.redFlag = true;
     if (f.triage) out.triage = f.triage;
     if (f.attrs) out.attrs = f.attrs;
+    if (f.fallback) out.fallback = f.fallback;
+    if (f.follows) out.follows = f.follows;
+    if (f.evidence === false) out.evidence = false;
     if (f.value) out.value = f.value;
     db.findings[f.id] = out;
   }
@@ -623,6 +676,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     };
     if (t.class) out.class = t.class;
     if (t.route) out.route = t.route;
+    if (t.bedside) out.bedside = t.bedside;
+    if (t.companions) out.companions = t.companions;
     if (t.surgery) {
       const x = t.surgery;
       out.surgery = {

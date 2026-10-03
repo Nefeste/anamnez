@@ -36,7 +36,8 @@ export default function Replan() {
         <Card key={g.key}>
           <H>{g.title}</H>
           {g.items.map(x => (
-            <Button key={x.id} testID={`replan-${x.id}`} kind={chosen.includes(x.id) ? 'primary' : 'plain'} title={x.name} hint={x.warning} onPress={() => toggle(x.id)} />
+            <Button key={x.id} testID={`replan-${x.id}`} kind={chosen.includes(x.id) ? 'primary' : 'plain'} title={x.name} hint={x.warning}
+              disabled={x.disabled && !chosen.includes(x.id)} onPress={() => toggle(x.id)} />
           ))}
         </Card>
       ))}

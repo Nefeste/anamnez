@@ -262,29 +262,40 @@ describe('ЭКГ в карте пациента: лента и строки на
     }
     return out;
   };
-  const card = (seed: number, shown: Record<string, boolean>) => {
+  /** Карта с лентой: `attrs` — атрибуты строк (стенка инфаркта, часть 39а); нет — запись до них. */
+  const card = (seed: number, shown: Record<string, boolean>, attrs: Record<string, Record<string, string>> = {}) => {
     const patient = generatePatient(db, seed, { department: 'dept.therapy', departments: ED, season: 'summer', primary: 'cond.acs' });
-    const obs: Observation[] = Object.entries(shown).map(([f, on]) => ({ f, shown: on, exam: ECG }));
+    const obs: Observation[] = Object.entries(shown).map(([f, on]) => ({ f, shown: on, exam: ECG, ...(attrs[f] ? { attrs: attrs[f] } : {}) }));
     const g = makeCaseView({
       version: 0, patient, clock: 600, minutesSpent: 0, money: 0, step: 1,
       arrived: [{ exam: ECG, step: 1, at: 600, obs }], pending: [], meanwhile: [], done: [ECG],
       draft: { treatments: [], setting: 'home' }, departments: ED,
     }).groups.find(x => x.exam === ECG)!;
     if (g.image?.kind !== 'ecg') throw new Error('нет ленты');
-    return { image: g.image, tr: synthEcg12(g.image.ecg, g.image.seed, 10) };
+    return { image: g.image, tr: synthEcg12(g.image.ecg, g.image.seed, 10), line: (f: string) => g.lines.find(l => l.f === f)!.text };
   };
   const text = (f: string, k: 'present' | 'absent') => db.findings[f].texts[k]![0].ru;
 
-  test('подъём ST: отведения из строки находки подняты у каждого пациента, V4–V6 — на изолинии', () => {
-    const up = leadsIn(text('ecg.st_elevation', 'present'));
-    expect(up).toEqual(['II', 'III', 'aVF']);
+  test('подъём ST: отведения из строки находки подняты у каждого пациента — у каждой стенки (часть 39а)', () => {
+    const walls = Object.keys(db.findings['ecg.st_elevation'].attrs!.wall).sort();
+    expect(walls).toEqual(['anterior', 'inferior', 'lateral']);
     expect(leadsIn(text('ecg.st_depression', 'absent'))).toEqual(['V4', 'V5', 'V6']);
-    for (const seed of SEEDS) {
-      const { image, tr } = card(seed, { 'ecg.st_elevation': true, 'ecg.st_depression': false, 'ecg.lvh': false, 'ecg.af': false });
-      expect(image.ecg).toMatchObject({ stemi: 'inferior' });
+    for (const wall of walls) for (const seed of SEEDS) {
+      const { image, tr, line } = card(seed, { 'ecg.st_elevation': true, 'ecg.st_depression': false, 'ecg.lvh': false, 'ecg.af': false }, { 'ecg.st_elevation': { wall } });
+      expect(image.ecg).toMatchObject({ stemi: wall });
+      const up = leadsIn(line('ecg.st_elevation'));
+      expect(up.length).toBeGreaterThanOrEqual(3);
       for (const lead of up) expect(measure(tr, lead).st).toBeGreaterThan(0.1);
-      for (const lead of ['V4', 'V5', 'V6'] as const) expect(Math.abs(measure(tr, lead).st)).toBeLessThan(0.05);
+      // нижняя: рядом строка «Депрессии ST и инверсии T в V4–V6 нет» — там изолиния
+      if (wall === 'inferior') for (const lead of ['V4', 'V5', 'V6'] as const) expect(Math.abs(measure(tr, lead).st)).toBeLessThan(0.05);
     }
+  });
+
+  test('запись до стенки (сохранение до 0.3.5): строка называет II, III, aVF, лента — нижняя стенка', () => {
+    const { image, tr, line } = card(5, { 'ecg.st_elevation': true });
+    expect(line('ecg.st_elevation')).toBe('Подъём сегмента ST в отведениях II, III, aVF');
+    expect(image.ecg).toMatchObject({ stemi: 'inferior' });
+    for (const lead of leadsIn(line('ecg.st_elevation'))) expect(measure(tr, lead).st).toBeGreaterThan(0.1);
   });
 
   test('депрессия ST: в отведениях из строки находки ST опущен и T отрицательный; подъёма нет', () => {

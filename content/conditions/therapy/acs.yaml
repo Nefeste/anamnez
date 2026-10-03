@@ -16,18 +16,33 @@ epidemiology:
     - { id: cond.hypertension, x: 1.5 }
     - { id: cond.diabetes2, x: 1.5 }
 params:
+  # с подъёмом ST — около трети (157_5, раздел 1.3: в 2022 г. 150 845 случаев ОКСпST из 438 315 ОКС)
   type: { stemi: 35, nste: 65 }
+  # стенка инфаркта с подъёмом ST — по ней лента и отведения подъёма (часть 39а); доли — игровая
+  # оценка: в 157_5 их нет
+  wall: { inferior: 45, anterior: 40, lateral: 15 }
+  # в окне тромболизиса — меньше 12 часов от начала боли (часть 39а; 157_5, раздел 3.1.3); доли —
+  # по часам от начала ниже, для вывода, пока о начале не спросили
+  early: { yes: 85, no: 15 }
   # сатурация ниже 90 % — производный параметр по числу (часть 38б); доли — для вывода, пока сатурацию
   # не мерили: игровая оценка по прогону генератора
   spo2_below90: { no: 96, yes: 4 }
 derived:
   # гипоксемия — SpO2 < 90 % (157_5 и 154_4: коррекция гипоксемии)
   spo2_below90: { f: vital.spo2_low, below: 90 }
+  # окно тромболизиса — не больше 12 часов от начала симптомов (157_5, раздел 3.1.3)
+  early: { f: hx.onset_hours, below: 12 }
 course:
   stages:
     - { id: acute, days: [0, 1] }
   presentation: [0, 0]
   untreated: { band: usually, days: [0, 1] }
+  # часов от начала боли до прихода (часть 39а), целыми часами — игровая оценка: в 157_5 долей нет, а
+  # медиана от начала симптомов до первичного ЧКВ — 315 минут (раздел 1.3, регистр РЕГИОН-ИМ);
+  # значит, приходят чаще всего в первые часы, а через 12 часов и позже — каждый седьмой
+  onset:
+    f: hx.onset_hours
+    hours: [[2, 30], [6, 35], [12, 20], [24, 10], [48, 5]]
 findings:
   - { f: sym.chest_pain_pressing, band: usually }
   - { f: sym.pain_radiation, band: often }
@@ -40,21 +55,43 @@ findings:
   - { f: vital.bp_high, band: sometimes }
   - { f: vital.spo2_low, band: rarely }
   - { f: sign.crackles_local, band: rarely, attrs: { side: { both: 80, right: 10, left: 10 } } }
-  - { f: ecg.st_elevation, band: always, when: { type: [stemi] } }
+  - f: ecg.st_elevation
+    band: { pct: 100 }
+    when: { type: [stemi] }
+    attrs: { wall: $wall }
+    note: "инфаркт с подъёмом ST — по определению подъём ST (157_5, раздел 1.1): у каждого такого больного, а на ленте его может пропустить ЭКГ"
+  - f: hx.onset_hours
+    band: { pct: 100 }
+    note: "когда стало плохо, больной говорит при расспросе: время — у каждого, и без боли в груди"
   - { f: ecg.st_depression, band: often, when: { type: [nste] } }
 confirm: [exam.ecg]
 redFlags: [sym.chest_pain_pressing, ecg.st_elevation, ecg.st_depression]
 treatment:
   firstLine: [tx.aspirin_acs, tx.nitroglycerin]
+  # антитромботическое лечение (часть 39а; 157_5, разделы 3.2.3.1–3.2.3.2): парентеральный антикоагулянт —
+  # всем с ИМпST при любой стратегии (ЕОК IA), ингибитор P2Y12 до вмешательства — не ошибка ни так, ни
+  # так; при тромболизисе — его обязательные спутники
+  supportive: [tx.clopidogrel, tx.enoxaparin_acs, tx.fondaparinux, tx.heparin_iv]
   harmful: [tx.ibuprofen]
   notIndicated: [tx.ppi, tx.antacid, tx.amoxicillin, tx.amoxicillin_clavulanate, tx.macrolide]
-  # кислород (часть 38б): при SpO2 < 90 % — обязательно (157_5 и 154_4: ЕОК IC), при 90 % и выше —
-  # не нужен (ЕОК IIIB: «не рекомендуется», пользы нет)
   byParam:
+    # кислород (часть 38б): при SpO2 < 90 % — обязательно (157_5 и 154_4: ЕОК IC), при 90 % и выше —
+    # не нужен (ЕОК IIIB: «не рекомендуется», пользы нет)
     - when: { spo2_below90: [yes] }
       require: [tx.oxygen_mask]
     - when: { spo2_below90: [no] }
       notIndicated: [tx.oxygen_mask]
+    # тромболизис (часть 39а; 157_5, раздел 3.1.3, ЕОК IA): сосудистый центр в двух часах — до
+    # вмешательства дальше 120 минут, и в первые 12 часов тромб растворяют здесь, а потом везут
+    - when: { type: [stemi], early: [yes] }
+      beforeTransfer: [tx.thrombolysis]
+    # позже 12 часов — перевод без тромболизиса: пользы уже нет, а риск кровотечения остаётся
+    # (12–24 часа — только у отдельных больных; в игре — нет)
+    - when: { type: [stemi], early: [no] }
+      notIndicated: [tx.thrombolysis]
+    # без подъёма ST тромболизис не рекомендуется (154_4)
+    - when: { type: [nste] }
+      harmful: [tx.thrombolysis]
   setting: { default: transfer }
 texts:
   summary:
@@ -71,5 +108,6 @@ simplified: "Тропонин и коронарография — в стаци�
 sources:
   - { kind: guideline, title: "2023 ESC Guidelines for the management of acute coronary syndromes. Eur Heart J 2023;44(38):3720–3826", note: "частоты — черновик" }
   - { kind: guideline, title: "Острый коронарный синдром без подъема сегмента ST электрокардиограммы", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/154_4", note: "ID 154_4, опубликованы 23.10.2024, применяются; сверено с рубрикатором 28.09.2026" }
+  - { kind: guideline, title: "Острый инфаркт миокарда с подъемом сегмента ST электрокардиограммы", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/157_5", note: "ID 157_5, опубликованы 25.11.2024, применяются; сверено с рубрикатором 03.10.2026; раздел 1.3 — доля ИМпST и медиана от начала симптомов до ЧКВ (РЕГИОН-ИМ); раздел 1.5 — локализация по отведениям; раздел 3.1.3 — тромболизис в первые 12 часов, если до ЧКВ дальше 120 минут; разделы 3.2.3.1–3.2.3.2 — АСК, клопидогрел и антикоагулянт" }
   - { kind: paper, title: "Swap CJ, Nagurney JT. Value and limitations of chest pain history in the evaluation of patients with suspected acute coronary syndromes. JAMA 2005;294(20):2623–2629" }
 review: draft

@@ -190,7 +190,8 @@ describe('приём', () => {
     let told = false;
     for (let i = 0; i < 200 && !told; i++) {
       nextPatient();
-      expect(visitView().treatments.every(x => x.warning === undefined)).toBe(true); // пока не спросили
+      // пока не спросили; серое без монитора у постели (часть 39а) — со своей причиной
+      expect(visitView().treatments.every(x => x.disabled || x.warning === undefined)).toBe(true);
       act('exam.ask_allergies');
       told = visitView().results.some(l => l.f === 'hx.allergy_penicillin' && l.shown);
     }
