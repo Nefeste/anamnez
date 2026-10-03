@@ -187,7 +187,11 @@ export function similar(db: ContentDb, id: Id): Id[] {
 // --- статьи -------------------------------------------------------------------------------
 
 /** Тактика: подпись в статье болезни и, если есть, в статье лечения («первая линия при …»). */
-const TACTICS: { key: keyof Omit<Tactics, 'setting' | 'byParam'>; label: 'firstLine' | 'plan' | 'acceptable' | 'supportive' | 'notIndicated' | 'harmful' | 'prevent' | 'require' | 'preHospital'; forLabel?: 'firstLineFor' | 'planFor' | 'acceptableFor' | 'supportiveFor' | 'harmfulFor' | 'preventFor' | 'requireFor' | 'preHospitalFor' }[] = [
+const TACTICS: {
+  key: keyof Omit<Tactics, 'setting' | 'byParam'>;
+  label: 'firstLine' | 'plan' | 'acceptable' | 'supportive' | 'notIndicated' | 'harmful' | 'prevent' | 'require' | 'beforeTransfer' | 'preHospital';
+  forLabel?: 'firstLineFor' | 'planFor' | 'acceptableFor' | 'supportiveFor' | 'harmfulFor' | 'preventFor' | 'requireFor' | 'beforeTransferFor' | 'preHospitalFor';
+}[] = [
   { key: 'firstLine', label: 'firstLine', forLabel: 'firstLineFor' },
   { key: 'plan', label: 'plan', forLabel: 'planFor' },
   { key: 'acceptable', label: 'acceptable', forLabel: 'acceptableFor' },
@@ -200,6 +204,8 @@ const TACTICS: { key: keyof Omit<Tactics, 'setting' | 'byParam'>; label: 'firstL
   { key: 'prevent', label: 'prevent', forLabel: 'preventFor' },
   // обязательное при лечении здесь (часть 38б): кислород через маску при сатурации ниже порога
   { key: 'require', label: 'require', forLabel: 'requireFor' },
+  // обязательное и при переводе (часть 39а): тромболизис при инфаркте с подъёмом ST в окне
+  { key: 'beforeTransfer', label: 'beforeTransfer', forLabel: 'beforeTransferFor' },
   // до приезда скорой (часть 32д-2): при обширном ожоге — капельница до перевода
   { key: 'preHospital', label: 'preHospital', forLabel: 'preHospitalFor' },
 ];
@@ -384,6 +390,20 @@ function treatmentArticle(db: ContentDb, x: Treatment): Article {
   if (x.contraindications.length > 0) {
     blocks.push({ key: 'contraindications', title: e.contraindications, refs: x.contraindications.map(k => ref(db, k.id, e.level[k.level])) });
   }
+  // лечение у постели (часть 39а): только под своим аппаратом — и где он стоит
+  if (x.bedside) {
+    const rooms = [...new Set(x.bedside.equipment.flatMap(id => db.equipment[id]?.rooms ?? []))];
+    blocks.push({ key: 'where', title: e.whereDone, text: [e.bedsideOnly], refs: [...x.bedside.equipment, ...rooms].map(id => ref(db, id)) });
+  }
+  // спутники (часть 39а): каждое — обязательно, из группы — одно
+  if (x.companions?.length) {
+    const each = x.companions.filter((g): g is Id => typeof g === 'string');
+    const rows = [
+      ...(each.length > 0 ? [{ label: e.companionsEach, refs: each.map(id => ref(db, id)) }] : []),
+      ...x.companions.filter((g): g is Id[] => typeof g !== 'string').map(g => ({ label: e.companionsOneOf, refs: g.map(id => ref(db, id)) })),
+    ];
+    blocks.push({ key: 'companions', title: e.companions, text: [e.companionsNote], rows });
+  }
   // операция (часть 28): что ею лечат и в какой срок, где делают и какая бригада
   const op = x.surgery;
   if (op) {
@@ -461,8 +481,10 @@ function ruleArticle(db: ContentDb, x: Rule): Article {
     { key: 'any', title: e.ruleAny, text: [x.texts.yes.ru, ...(x.age?.main !== undefined ? [e.ruleAgeMain(x.age.main)] : x.age?.from !== undefined ? [e.ruleAgeFrom(x.age.from)] : [])], refs: x.any.map(id => ref(db, id)) },
     ...(x.minor ? [{ key: 'minor', title: e.ruleMinor(x.minor.count), refs: x.minor.any.map(id => ref(db, id)), text: x.age?.minor ? [e.ruleAgeMinor(x.age.minor[0], x.age.minor[1])] : [] }] : []),
     { key: 'none', title: x.minor ? e.ruleNoneMinor : e.ruleNone, text: [x.texts.no.ru] },
-    // обследования, которого в игре нет (КТ, часть 32г), — словами
-    { key: 'exams', title: e.ruleExams, refs: x.exams.map(id => ref(db, id)), ...(x.texts.exam ? { text: [x.texts.exam.ru] } : {}) },
+    // обследования, которого в игре нет (КТ, часть 32г), — словами; правило о лечении (часть 39а) — лечение
+    x.decides
+      ? { key: 'decides', title: e.ruleDecides, refs: [ref(db, x.decides)] }
+      : { key: 'exams', title: e.ruleExams, refs: x.exams.map(id => ref(db, id)), ...(x.texts.exam ? { text: [x.texts.exam.ru] } : {}) },
     { key: 'about', title: e.ruleAbout, refs: x.about.map(id => ref(db, id)).sort(byTitle) },
     sources(db, x),
   ];
@@ -500,8 +522,9 @@ function equipmentArticle(db: ContentDb, x: Equipment): Article {
   const e = T.encyclopedia;
   const rub = T.common.rub;
   const blocks: Block[] = [{ key: 'what', title: e.what, text: [x.texts.hint.ru] }];
-  // аппаратом делают обследования или операции (операционный стол — часть 28)
-  const ops = Object.values(db.treatments).filter(t => t.surgery?.equipment.includes(x.id)).map(t => ref(db, t.id));
+  // аппаратом делают обследования или операции (операционный стол — часть 28); под ним — лечение у
+  // постели (тромболизис под монитором, часть 39а)
+  const ops = Object.values(db.treatments).filter(t => t.surgery?.equipment.includes(x.id) || t.bedside?.equipment.includes(x.id)).map(t => ref(db, t.id));
   const by = [...x.exams.map(id => ref(db, id)), ...ops].sort(byTitle);
   if (by.length > 0) blocks.push({ key: 'examsBy', title: e.examsBy, refs: by });
   // монитор с дефибриллятором — в смотровой приёмного и в ПИТ (часть 38а)

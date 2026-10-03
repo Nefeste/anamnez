@@ -82,6 +82,7 @@ export function DecisionScreen({ view: v, actions }: { view: VisitView; actions:
               <Text style={styles.label}>{g.title}</Text>
               {g.items.map(x => (
                 <Button key={x.id} testID={`tx-${x.id}`} kind={v.draft.treatments.includes(x.id) ? 'primary' : 'plain'} title={x.name} hint={x.warning}
+                  disabled={x.disabled && !v.draft.treatments.includes(x.id)}
                   onPress={() => actions.toggleTreatment(x.id)} onInfo={() => setTerm(treatmentTerm(x.id))} infoLabel={t.whatIsIt} />
               ))}
             </Card>

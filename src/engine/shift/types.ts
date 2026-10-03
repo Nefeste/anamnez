@@ -151,6 +151,8 @@ export interface ClosedCase {
   stay?: StayResult;
   /** сроки приёма (spec 2026-10-chapter-3, часть 37): ЭКГ при боли в груди — через сколько минут от прихода */
   targets?: TargetResult[];
+  /** аппараты у постели в момент решения (часть 39а): под монитором тромболизис был возможен — разбор это помнит */
+  bedside?: Id[];
 }
 
 export type ShiftEvent =

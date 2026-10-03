@@ -13,10 +13,11 @@ export interface Plan {
 /**
  * Роль назначения при состоянии; не названное в тактике — «не показано». `prevent` — обязательная
  * профилактика (часть 32г-2): анатоксин столбнячный, вакцина от бешенства; `require` — обязательно
- * при лечении здесь (часть 38б): кислород через маску при сатурации ниже порога рекомендации.
+ * при лечении здесь (часть 38б): кислород через маску при сатурации ниже порога рекомендации;
+ * `beforeTransfer` — обязательно и при переводе, до него (часть 39а): тромболизис в окне.
  */
-export type TxRole = 'firstLine' | 'acceptable' | 'supportive' | 'notIndicated' | 'harmful' | 'prevent' | 'require';
-type ListRole = Exclude<TxRole, 'prevent' | 'require'>;
+export type TxRole = 'firstLine' | 'acceptable' | 'supportive' | 'notIndicated' | 'harmful' | 'prevent' | 'require' | 'beforeTransfer';
+type ListRole = Exclude<TxRole, 'prevent' | 'require' | 'beforeTransfer'>;
 const ROLES: ListRole[] = ['firstLine', 'acceptable', 'supportive', 'notIndicated', 'harmful'];
 
 /** Насколько серьёзна помощь: чем выше, тем срочнее и сложнее. */
@@ -57,6 +58,21 @@ export interface Venue {
   ward?: boolean;
   or?: boolean;
   icu?: boolean;
+  /**
+   * аппараты у постели этого больного (spec 2026-10-chapter-3, часть 39а): лежит в смотровой
+   * приёмного под монитором с дефибриллятором — тромболизис можно; нет — в кабинете врача его нет
+   */
+  bedside?: readonly Id[];
+}
+
+/** Какого аппарата у постели не хватает лечению у постели (часть 39а); всё есть — undefined. */
+export function bedsideLack(db: ContentDb, tx: Id, venue: Venue = {}): Id | undefined {
+  return db.treatments[tx]?.bedside?.equipment.find(e => venue.bedside?.includes(e) !== true);
+}
+
+/** Можно ли назначить здесь: лечению у постели (часть 39а) нужны его аппараты у постели больного. */
+export function txAvailable(db: ContentDb, tx: Id, venue: Venue = {}): boolean {
+  return bedsideLack(db, tx, venue) === undefined;
 }
 
 /**
@@ -104,6 +120,15 @@ export interface PlanEval {
   requireMissing: Id[];
   /** при каких значениях оно обязательно — для строки разбора: «при сатурации ниже 90 %» */
   requireWhen: Record<Id, Record<string, string[]>>;
+  /**
+   * обязательное и при переводе, чего нет в плане, хотя здесь оно было возможно (часть 39а):
+   * тромболизис при инфаркте с подъёмом ST в первые 12 часов, если больной лежит под монитором
+   */
+  beforeTransferMissing: Id[];
+  /** при каких значениях оно обязательно — для строки разбора */
+  beforeTransferWhen: Record<Id, Record<string, string[]>>;
+  /** назначено без своих спутников (часть 39а): тромболизис — без клопидогрела или эноксапарина */
+  companionsMissing: { tx: Id; of: Id }[];
 }
 
 export function primaryOf(patient: Patient) {
@@ -160,6 +185,16 @@ export function requireOf(t: Tactics | undefined, params?: Record<string, string
 }
 
 /**
+ * Обязательное и при переводе (часть 39а): общее и из подошедших записей `byParam`; без параметров —
+ * только общее, как у `requireOf`.
+ */
+export function beforeTransferOf(t: Tactics | undefined, params?: Record<string, string>): Id[] {
+  if (!t) return [];
+  const over = params ? (t.byParam ?? []).filter(b => whenHolds(b.when, params)) : [];
+  return [...new Set([...(t.beforeTransfer ?? []), ...over.flatMap(b => b.beforeTransfer ?? [])])];
+}
+
+/**
  * Что сделать до приезда скорой (часть 27; 32д-2) — хоть одно из этого: названное в подошедших
  * записях `byParam` (обширный ожог — капельница до перевода, хотя место по умолчанию — дом); без
  * них у того, что лечат не дома, — первая линия, кроме операции: её до приезда скорой не сделать.
@@ -179,6 +214,7 @@ export function txRole(db: ContentDb, condId: Id, tx: Id, params?: Record<string
   const t = db.conditions[condId]?.treatment;
   if (preventOf(t, params).includes(tx)) return 'prevent';
   if (requireOf(t, params).includes(tx)) return 'require';
+  if (beforeTransferOf(t, params).includes(tx)) return 'beforeTransfer';
   const x = params && t?.byParam?.find(b => whenHolds(b.when, params) && ROLES.some(role => b[role].includes(tx)));
   if (x) return ROLES.find(role => x[role].includes(tx))!;
   // своя операция болезни — первая линия (часть 28); в тактике её нет: до приезда скорой её не сделать.
@@ -227,16 +263,17 @@ export function alsoSettings(db: ContentDb, patient: Patient): Setting[] {
 export function tacticsFor(t: Tactics, params: Record<string, string> = {}): Tactics {
   const over = (t.byParam ?? []).filter(b => whenHolds(b.when, params));
   if (over.length === 0) return t;
-  // обязательное по параметру (часть 38б) тоже названо: из общих списков оно уходит
-  const named = new Set(over.flatMap(b => [...ROLES.flatMap(role => b[role]), ...(b.require ?? [])]));
+  // обязательное по параметру (часть 38б) и до перевода (часть 39а) тоже названо: из общих списков оно уходит
+  const named = new Set(over.flatMap(b => [...ROLES.flatMap(role => b[role]), ...(b.require ?? []), ...(b.beforeTransfer ?? [])]));
   const lists = Object.fromEntries(ROLES.map(role => [role, [...new Set([...over.flatMap(b => b[role]), ...t[role].filter(id => !named.has(id))])]])) as Record<ListRole, Id[]>;
   const plan = over.find(b => b.plan)?.plan ?? t.plan?.filter(id => lists.firstLine.includes(id) || lists.acceptable.includes(id) || lists.supportive.includes(id));
   const prevent = preventOf(t, params);
   const require = requireOf(t, params);
+  const beforeTransfer = beforeTransferOf(t, params);
   const preHospital = [...new Set(over.flatMap(b => b.preHospital ?? []))];
   return {
     ...lists, setting: t.setting, ...(plan && plan.length > 0 ? { plan } : {}), ...(prevent.length > 0 ? { prevent } : {}),
-    ...(require.length > 0 ? { require } : {}), ...(preHospital.length > 0 ? { preHospital } : {}),
+    ...(require.length > 0 ? { require } : {}), ...(beforeTransfer.length > 0 ? { beforeTransfer } : {}), ...(preHospital.length > 0 ? { preHospital } : {}),
   };
 }
 
@@ -273,7 +310,7 @@ function tellingFindings(db: ContentDb, id: Id): Id[] {
   return (db.risks[id]?.findings ?? db.conditions[id]?.findings ?? []).map(l => l.f).filter(f => f.startsWith('hx.'));
 }
 
-export function evaluatePlan(db: ContentDb, patient: Patient, plan: Plan, observations: readonly Observation[]): PlanEval {
+export function evaluatePlan(db: ContentDb, patient: Patient, plan: Plan, observations: readonly Observation[], venue: Venue = {}): PlanEval {
   const primary = primaryOf(patient).id;
   const known = knownFacts(db, observations);
   const knownIds = new Set([...known.risks, ...known.conditions]);
@@ -308,5 +345,16 @@ export function evaluatePlan(db: ContentDb, patient: Patient, plan: Plan, observ
     preventMissing: preventOf(base, params).filter(tx => !plan.treatments.includes(tx) && !db.treatments[tx]?.contraindications.some(k => knownIds.has(k.id))).sort(),
     requireMissing: requireOf(base, params).filter(tx => !plan.treatments.includes(tx) && !db.treatments[tx]?.contraindications.some(k => knownIds.has(k.id))).sort(),
     requireWhen: Object.fromEntries((base?.byParam ?? []).filter(b => whenHolds(b.when, params)).flatMap(b => (b.require ?? []).map(tx => [tx, b.when] as const)).reverse()),
+    // до перевода (часть 39а) — то, что здесь можно было сделать: тромболизис у постели под монитором
+    beforeTransferMissing: beforeTransferOf(base, params)
+      .filter(tx => !plan.treatments.includes(tx) && txAvailable(db, tx, venue) && !db.treatments[tx]?.contraindications.some(k => knownIds.has(k.id))).sort(),
+    beforeTransferWhen: Object.fromEntries((base?.byParam ?? []).filter(b => whenHolds(b.when, params)).flatMap(b => (b.beforeTransfer ?? []).map(tx => [tx, b.when] as const)).reverse()),
+    // спутники (часть 39а): тромболизис без клопидогрела и антикоагулянта — неполное лечение; из группы
+    // хватит одного, а противопоказанное тем, о чём врач знает, в вину не ставим
+    companionsMissing: plan.treatments.flatMap(of => (db.treatments[of]?.companions ?? []).flatMap(g => {
+      const group = typeof g === 'string' ? [g] : g;
+      const can = group.filter(tx => !db.treatments[tx]?.contraindications.some(k => knownIds.has(k.id)));
+      return can.length > 0 && !group.some(tx => plan.treatments.includes(tx)) ? [{ tx: can[0], of }] : [];
+    })),
   };
 }

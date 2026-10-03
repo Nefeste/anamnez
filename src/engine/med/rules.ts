@@ -65,12 +65,14 @@ export function checkRule(rule: Rule, age: number, known: Known): RuleCheck {
   const minorCanReach = count + minorOpen.length >= need;
   const canHit = hit || mainOpen.length > 0 || minorCanReach;
   const verdict: RuleVerdict = applies === false || !canHit ? 'no' : hit && applies === true ? 'yes' : 'unknown';
+  // пункты правила, которое проверяют только применимым (часть 39а), ждут, пока оно применится
+  const waits = rule.onlyIfApplies === true && applies !== true;
   const left =
     verdict !== 'unknown'
       ? []
       : [
           ...(applies === undefined ? req.filter(f => known(f) === undefined) : []),
-          ...(hit ? [] : [...mainOpen, ...(minorCanReach ? minorOpen : [])]),
+          ...(hit || waits ? [] : [...mainOpen, ...(minorCanReach ? minorOpen : [])]),
         ];
   return { verdict, applies, main, ageMain, minor, ageMinor, left: [...new Set(left)] };
 }

@@ -26,6 +26,9 @@ describe('у каждого признака есть причина', () => {
       const conds = new Set(p.truth.conditions.map(c => c.id));
       const risks = new Set(p.truth.risks);
       for (const f of p.truth.findings) {
+        // признак-последователь (часть 39а) — от того же, от чего его ведущий
+        const leaders = db.findings[f.f].follows;
+        if (leaders && p.truth.findings.some(x => leaders.includes(x.f) && x.cause === f.cause)) continue;
         if (f.cause === 'leak') {
           if (!(db.findings[f.f].leak > 0)) bad.push(`${p.seed}: ${f.f} от фона, а фон у признака нулевой`);
           continue;
@@ -41,7 +44,10 @@ describe('у каждого признака есть причина', () => {
   test('связь с частотой «никогда» не срабатывает: у пневмонии нет «против»-признаков от неё самой', () => {
     for (const p of patients) for (const f of p.truth.findings) {
       const c = db.conditions[f.cause];
-      if (c) expect(c.findings.filter(l => l.f === f.f).some(l => l.p > 0)).toBe(true);
+      // последователь (часть 39а) — по своему ведущему с той же причиной
+      const leaders = db.findings[f.f].follows;
+      const lead = leaders ? p.truth.findings.find(x => leaders.includes(x.f) && x.cause === f.cause) : undefined;
+      if (c) expect(c.findings.filter(l => l.f === (lead?.f ?? f.f)).some(l => l.p > 0)).toBe(true);
     }
   });
 });

@@ -34,7 +34,8 @@ export function renderTemplate(db: ContentDb, template: string, o: Observation, 
     // производное число: нижнее давление из верхнего — только для показа, в вывод не идёт
     const k = f.value?.derived?.[token];
     if (k !== undefined && o.value !== undefined) return formatNumber(Math.round(o.value * k), 0, lang);
-    const attr = o.attrs?.[token];
+    // запись до появления атрибута (часть 39а) — значение, что строка называла тогда
+    const attr = o.attrs?.[token] ?? f.fallback?.[token];
     const label = attr ? f.attrs?.[token]?.[attr] : undefined;
     return label ? (label[lang] ?? label.ru) : '';
   }).replace(/\s{2,}/g, ' ').replace(/\s+([,.])/g, '$1').trim();

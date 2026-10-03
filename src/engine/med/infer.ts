@@ -85,6 +85,8 @@ export function findingProbability(db: ContentDb, f: Id, conditions: readonly Id
   let miss = (1 - (db.findings[f]?.leak ?? 0) / P_ONE) * unknown;
   for (const id of conditions) {
     const c = db.conditions[id];
+    // чего при состоянии не бывает (часть 39а), того нет, откуда бы оно ни шло
+    if (c?.masks?.includes(f)) return 0;
     if (c) miss *= 1 - causeOf(c.findings, f, c);
   }
   for (const id of risks) {
@@ -296,7 +298,8 @@ function combosOf(c: Condition): Combo[] {
  * признаки одного значения считаются вместе, а не порознь.
  */
 export function posterior(db: ContentDb, candidates: readonly Id[], observations: readonly Observation[], ctx: InferContext): Belief[] {
-  const grouped = [...byFinding(observations)].map(([f, obs]) => ({ f, e: evidenceOf(db, obs) }));
+  // не улика (часть 39а): «плохо стало N ч назад» о болезни не говорит — только число для окна
+  const grouped = [...byFinding(observations)].filter(([f]) => db.findings[f]?.evidence !== false).map(([f, obs]) => ({ f, e: evidenceOf(db, obs) }));
   const scored = candidates.map(id => {
     const c = db.conditions[id];
     const shares = sharesFor(db, id, ctx);
@@ -347,7 +350,7 @@ export function expectedGain(db: ContentDb, examId: Id, beliefs: readonly Belief
   const shares = beliefs.map(b => sharesFor(db, b.id, ctx));
   let gain = 0;
   for (const check of exam.checks) {
-    if (observed.has(check.f)) continue;
+    if (observed.has(check.f) || db.findings[check.f]?.evidence === false) continue;
     const sens = check.sens / P_ONE;
     const spec = check.spec / P_ONE;
     // P(«есть» | кандидат) для каждого кандидата

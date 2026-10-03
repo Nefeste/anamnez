@@ -122,6 +122,8 @@ export const spikes = {
     finish: 'Завершить приём',
     finishNeedsDx: 'Выберите диагноз, чтобы завершить приём',
     contraindicated: (by: string) => `Противопоказано: ${lowerFirst(by)}`,
+    // часть 39а: тромболизис — только лежащему под монитором с дефибриллятором
+    noBedside: (gen: string) => `У постели нет ${gen}`,
     setting: { home: 'Дома', ward: 'В стационар', ambulance: 'Вызвать скорую', admit: 'В палату', surgery: 'В операционную', transfer: 'Перевести', icu: 'В ПИТ' } as Record<string, string>,
     role: {
       firstLine: 'препарат выбора',
@@ -132,6 +134,8 @@ export const spikes = {
       prevent: 'профилактика',
       // часть 38б: кислород при низкой сатурации
       require: 'обязательно',
+      // часть 39а: тромболизис в окне — и при переводе
+      beforeTransfer: 'обязательно до перевода',
     } as Record<string, string>,
     // не лекарство (часть 32): гипсовая лонгета, репозиция, операция — «лечение выбора»
     roleTx: { firstLine: 'лечение выбора' } as Record<string, string>,
@@ -199,6 +203,10 @@ export const spikes = {
       preventMissing: (tx: string) => `Не назначено: ${lowerFirst(tx)} — без этой профилактики лечение неполное`,
       // обязательное при лечении здесь (часть 38б): «обязательно при сатурации ниже 90 %»
       requireMissing: (tx: string, when?: string) => `Не назначено: ${lowerFirst(tx)} — ${when ? `обязательно ${when}` : 'без этого лечение неполное'}`,
+      // обязательное и при переводе (часть 39а): тромболизис при инфаркте в окне
+      beforeTransferMissing: (tx: string, when?: string) => `Не сделано до перевода: ${lowerFirst(tx)} — ${when ? `обязательно ${when}` : 'без этого лечение неполное'}`,
+      // спутник (часть 39а): тромболизис без клопидогрела
+      companionMissing: (tx: string, of: string) => `${of} без обязательного спутника — не назначено: ${lowerFirst(tx)}`,
       settingUnder: (should: string) => `Недооценили тяжесть: нужно было ${UNDER[should] ?? UNDER.ambulance}`,
       settingOver: (should: string) => `Перестраховка: хватило бы ${OVER[should] ?? OVER.ward}`,
       knownViolation: (tx: string, by: string) => `${tx}: противопоказано (${lowerFirst(by)}), и вы об этом знали`,

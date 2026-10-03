@@ -14,6 +14,10 @@ export type ScoreNote =
   | { code: 'tx.preventMissing'; tx: Id }
   /** не назначено обязательное при лечении здесь (часть 38б): кислород при низкой сатурации; `when` — при каких значениях */
   | { code: 'tx.requireMissing'; tx: Id; when?: Record<string, string[]> }
+  /** не сделано обязательное и при переводе (часть 39а): тромболизис при инфаркте в окне; `when` — при каких значениях */
+  | { code: 'tx.beforeTransferMissing'; tx: Id; when?: Record<string, string[]> }
+  /** назначено без своего спутника (часть 39а): тромболизис без клопидогрела */
+  | { code: 'tx.companionMissing'; tx: Id; of: Id }
   /** `recommended` — что надо было выбрать здесь: в амбулатории «вызвать скорую», со своей палатой — «в палату» */
   | { code: 'setting.under' | 'setting.over'; recommended: Setting }
   | { code: 'safety.knownViolation' | 'safety.unaskedViolation'; tx: Id; by: Id }
@@ -117,6 +121,19 @@ export function scoreCase(x: CaseInput): CaseScore {
       const when = x.plan.requireWhen[tx];
       notes.push({ code: 'tx.requireMissing', tx, ...(when ? { when } : {}) });
     }
+  }
+  // обязательное и при переводе (часть 39а): тромболизис в окне, если больной лежал под монитором, —
+  // без него лечение неполное и опасное, куда бы больного ни везли
+  for (const tx of x.plan.beforeTransferMissing) {
+    treatment = worst(treatment, 'C');
+    safety0 = worst(safety0, 'C');
+    const when = x.plan.beforeTransferWhen[tx];
+    notes.push({ code: 'tx.beforeTransferMissing', tx, ...(when ? { when } : {}) });
+  }
+  // спутники (часть 39а): тромболизис сопровождают АСК, клопидогрел и эноксапарин (157_5, раздел 3.2.3.1)
+  for (const m of x.plan.companionsMissing) {
+    treatment = worst(treatment, 'C');
+    notes.push({ code: 'tx.companionMissing', tx: m.tx, of: m.of });
   }
   if (x.plan.effective && !roles.some(r => r.role === 'firstLine')) {
     // замена препарата выбора оправдана, если о противопоказании к нему врач знал

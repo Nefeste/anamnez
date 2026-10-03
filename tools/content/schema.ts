@@ -113,6 +113,14 @@ export const conditionSchema = z.strictObject({
     untreated: z.strictObject({ band: probability, days: z.tuple([z.number().int().min(0), z.number().int().min(0)]), when: z.record(z.string(), z.array(z.string())).optional() }).optional(),
     /** в стационаре при действенном лечении: через сколько суток можно выписывать (spec 2026-09-chapter-2, часть 26) */
     stay: z.tuple([z.number().int().min(1), z.number().int().min(1)]).optional(),
+    /**
+     * часов от начала до прихода (spec 2026-10-chapter-3, часть 39а): интервалы — верхняя граница в
+     * часах и доля; число — у признака `f` (`hx.*`), его больной называет при расспросе
+     */
+    onset: z.strictObject({
+      f: z.string().regex(/^hx\.[a-z0-9_]+$/),
+      hours: z.array(z.tuple([z.number().positive(), z.number().int().positive()])).min(1),
+    }).optional(),
   }),
   /** тактика (`04-medical-model.md` §8): пять списков и где лечить */
   treatment: z.strictObject({
@@ -156,6 +164,8 @@ export const conditionSchema = z.strictObject({
        * лечат не дома, хотя место по умолчанию — дом, и до перевода ставят капельницу
        */
       preHospital: z.array(txId).min(1).optional(),
+      /** обязательно и при переводе — сделать до него (часть 39а): тромболизис в окне 12 часов */
+      beforeTransfer: z.array(txId).min(1).optional(),
     })).min(1).optional(),
     setting: z.strictObject({
       default: setting,
@@ -214,6 +224,8 @@ export const conditionSchema = z.strictObject({
   }).optional(),
   /** у того, с чем приходят, — не меньше трёх (валидатор); у хронического фона хватит одного */
   findings: z.array(link).min(1),
+  /** признаки, которых при этом состоянии не бывает, откуда бы ни пришли (часть 39а): шок гасит высокое давление */
+  masks: z.array(z.string()).min(1).optional(),
   confirm: z.union([z.array(z.string()).min(1), z.literal('clinical')]),
   redFlags: z.array(z.string()).optional(),
   /**
@@ -237,6 +249,12 @@ export const findingSchema = z.strictObject({
   /** срочность на сортировке, если медсестра видит признак (жалоба, витальные): красный — сразу к врачу */
   triage: z.enum(['red', 'yellow']).optional(),
   attrs: z.record(z.string(), z.record(z.string(), text)).optional(),
+  /** атрибут для записей до его появления (часть 39а): старые сохранения — без него */
+  fallback: z.record(z.string(), z.string()).optional(),
+  /** признак-последователь (часть 39а): есть, когда есть хоть один из этих */
+  follows: z.array(z.string().regex(/^(sym|sign|vital|lab|img|ecg|hx)\.[a-z0-9_]+$/)).min(1).optional(),
+  /** не улика (часть 39а): вывод его не учитывает, нужно только его число */
+  evidence: z.literal(false).optional(),
   value: z.strictObject({
     unit: z.string(),
     ref: z.tuple([z.number(), z.number()]),
@@ -326,6 +344,10 @@ export const treatmentSchema = z.strictObject({
     level: z.enum(['relative', 'absolute']),
     reaction: probability,
   })).default([]),
+  /** только у постели с этими аппаратами (часть 39а): тромболизис — под монитором с дефибриллятором */
+  bedside: z.strictObject({ equipment: z.array(eqId).min(1) }).optional(),
+  /** назначают только вместе с этим (часть 39а); группа — хоть одно из неё, первое — выбора */
+  companions: z.array(z.union([txId, z.array(txId).min(2)])).min(1).optional(),
   /**
    * операция (часть 28): в каком помещении, какая бригада — по человеку на должность, какие
    * аппараты — все сразу, сколько минут идёт; осложнений после неё при среднем навыке хирурга
@@ -738,6 +760,8 @@ export const ruleSchema = z.strictObject({
   age: z.strictObject({ main: z.number().int().min(1).max(120).optional(), from: z.number().int().min(1).max(120).optional(), minor: z.tuple([z.number().int().min(0), z.number().int().max(120)]).optional() }).optional(),
   /** применимо, только если есть хоть один из этих признаков (часть 32г: лёгкая ЧМТ) */
   requires: z.array(z.string()).min(1).optional(),
+  /** пункты проверяют, только когда правило уже применимо (часть 39а: тромболизис — при подъёме ST) */
+  onlyIfApplies: z.literal(true).optional(),
   /**
    * не применяется, если есть хоть один из этих признаков (часть 33а): тяж по ходу подкожной вены —
    * тромбофлебит, УЗИ нужно всем и без шкалы; при беременности D-димер не используют
@@ -745,6 +769,8 @@ export const ruleSchema = z.strictObject({
   excludes: z.array(z.string()).min(1).optional(),
   /** какое обследование правило назначает; пусто — его в игре нет (КТ, часть 32г), тогда `texts.exam` */
   exams: z.array(z.string().regex(/^exam\.[a-z0-9_]+$/)).default([]),
+  /** о каком лечении правило решает, а не об обследовании (часть 39а): «Можно ли тромболизис» */
+  decides: z.string().regex(/^tx\.[a-z0-9_]+$/).optional(),
   ageMin: z.number().int().min(0).max(120).optional(),
   /** о каких болезнях — для энциклопедии */
   about: z.array(z.string().regex(/^cond\.[a-z0-9_]+$/)).min(1),
