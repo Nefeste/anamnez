@@ -49,10 +49,12 @@ describe('workflow', () => {
     }
   });
 
-  test('APK и AAB — только по тегу v*, без ручного запуска', () => {
+  test('APK — только по тегу v*, без ручного запуска; AAB не собирается (решение владельца 03.10.2026)', () => {
     const on = wf('android.yml').on;
     expect(Object.keys(on)).toEqual(['push']);
     expect(on.push).toEqual({ tags: ['v*'] });
+    const src = readFileSync(join(root, '.github', 'workflows', 'android.yml'), 'utf8');
+    expect(src).not.toContain('bundleRelease');
   });
 
   test('PR: база, типы, линтер и тесты без сборки, на каждом PR; имя проверки — то, что ждёт автослияние', () => {
