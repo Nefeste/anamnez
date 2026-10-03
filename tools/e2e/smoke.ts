@@ -381,7 +381,8 @@ function gallSave(): { save: string; id: string } {
   apply(db, s, { kind: 'call', id });
   apply(db, s, { kind: 'exam', exam: 'exam.vitals' });
   apply(db, s, { kind: 'exam', exam: 'exam.us_abdomen' });
-  apply(db, s, { kind: 'waitResults' });
+  // привезла скорая — ожидание кончается с её приездом (часть 37): ждать снова, пока не придёт УЗИ
+  for (let i = 0; i < 20 && s.patients[id].pending.length > 0; i++) apply(db, s, { kind: 'waitResults' });
   return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s }), id };
 }
 
