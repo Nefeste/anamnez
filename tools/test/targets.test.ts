@@ -71,7 +71,7 @@ describe('оценка срока', () => {
     // верно, уверенно, бережливо, препарат выбора, дома, как рекомендовано: всё A
     const plan: PlanEval = {
       primary: 'cond.arvi', roles: [{ tx: 'tx.paracetamol', role: 'firstLine' }], setting: { chosen: 'home', recommended: 'home' },
-      violations: [], effective: true, unaskedRisk: [], firstLineBlocked: false, preHospital: [], preventMissing: [],
+      violations: [], effective: true, unaskedRisk: [], firstLineBlocked: false, preHospital: [], preventMissing: [], requireMissing: [], requireWhen: {},
     };
     const base: CaseInput = {
       verdict: 'correct', confidence: 0.9, cost: 100, rationalCost: 100, selfLimiting: false, redFlags: [], plan, outcome: { kind: 'improved', day: 7, cured: true },

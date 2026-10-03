@@ -17,6 +17,12 @@ epidemiology:
     - { id: cond.diabetes2, x: 1.5 }
 params:
   type: { stemi: 35, nste: 65 }
+  # сатурация ниже 90 % — производный параметр по числу (часть 38б); доли — для вывода, пока сатурацию
+  # не мерили: игровая оценка по прогону генератора
+  spo2_below90: { no: 96, yes: 4 }
+derived:
+  # гипоксемия — SpO2 < 90 % (157_5 и 154_4: коррекция гипоксемии)
+  spo2_below90: { f: vital.spo2_low, below: 90 }
 course:
   stages:
     - { id: acute, days: [0, 1] }
@@ -42,6 +48,13 @@ treatment:
   firstLine: [tx.aspirin_acs, tx.nitroglycerin]
   harmful: [tx.ibuprofen]
   notIndicated: [tx.ppi, tx.antacid, tx.amoxicillin, tx.amoxicillin_clavulanate, tx.macrolide]
+  # кислород (часть 38б): при SpO2 < 90 % — обязательно (157_5 и 154_4: ЕОК IC), при 90 % и выше —
+  # не нужен (ЕОК IIIB: «не рекомендуется», пользы нет)
+  byParam:
+    - when: { spo2_below90: [yes] }
+      require: [tx.oxygen_mask]
+    - when: { spo2_below90: [no] }
+      notIndicated: [tx.oxygen_mask]
   setting: { default: transfer }
 texts:
   summary:

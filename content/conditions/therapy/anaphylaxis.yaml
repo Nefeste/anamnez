@@ -74,6 +74,8 @@ treatment:
   supportive: [tx.iv_fluids, tx.steroid_iv, tx.antihistamine_parenteral, tx.salbutamol]
   notIndicated: [tx.antihistamine, tx.steroid_systemic_short]
   plan: [tx.epinephrine_im, tx.iv_fluids, tx.steroid_iv]
+  # кислород через лицевую маску — всем (263_2, рек. 22, часть 38б): обязательно, когда лечат здесь
+  require: [tx.oxygen_mask]
   # вне больницы — вызвать скорую (рек. 7, критерий качества 3); госпитализация — в стационар с
   # реанимацией, в ней не меньше 24 ч (раздел 6): своя палата интенсивной терапии — в неё (часть
   # 38а), нет её — перевод

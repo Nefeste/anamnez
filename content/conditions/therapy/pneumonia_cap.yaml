@@ -15,6 +15,12 @@ epidemiology:
 params:
   side: { right: 55, left: 35, both: 10 }
   severity: { mild: 55, moderate: 35, severe: 10 }
+  # сатурация ниже 90 % — производный параметр по числу (часть 38б); доли — для вывода, пока сатурацию
+  # не мерили: игровая оценка по прогону генератора
+  spo2_below90: { no: 92, yes: 8 }
+derived:
+  # гипоксемия — SpO2 < 90 % (654_2: стандартная оксигенотерапия первой линии)
+  spo2_below90: { f: vital.spo2_low, below: 90 }
 course:
   stages:
     - { id: onset, days: [0, 2] }
@@ -54,6 +60,13 @@ treatment:
   acceptable: [tx.amoxicillin_clavulanate, tx.macrolide]
   supportive: [tx.paracetamol, tx.rest_fluids]
   notIndicated: [tx.oseltamivir, tx.steroid_systemic_short]
+  # кислород (часть 38б): при SpO2 < 90 % — обязательно (654_2; критерий качества — «назначена
+  # оксигенотерапия при SpO2 <90%»), выше — не нужен
+  byParam:
+    - when: { spo2_below90: [yes] }
+      require: [tx.oxygen_mask]
+    - when: { spo2_below90: [no] }
+      notIndicated: [tx.oxygen_mask]
   setting: { default: home, param: { name: severity, map: { mild: home, moderate: home, severe: ward } }, redFlag: ward }
 texts:
   summary:

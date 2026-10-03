@@ -14,6 +14,12 @@ epidemiology:
     - { id: risk.sick_contact, x: 1.5 }
 params:
   severity: { mild: 50, moderate: 40, severe: 10 }
+  # сатурация ниже 93 % — производный параметр по числу (часть 38б); доли — для вывода, пока сатурацию
+  # не мерили: игровая оценка по прогону генератора
+  spo2_below93: { no: 87, yes: 13 }
+derived:
+  # 359_3: кислород при снижении насыщения, чтобы держать 93–95 % у взрослых — ниже 93 % он нужен
+  spo2_below93: { f: vital.spo2_low, below: 93 }
 course:
   stages:
     - { id: onset, days: [0, 1] }
@@ -45,6 +51,13 @@ treatment:
   firstLine: [tx.salbutamol, tx.steroid_systemic_short]
   acceptable: [tx.ics_laba]
   notIndicated: [tx.amoxicillin, tx.amoxicillin_clavulanate, tx.macrolide, tx.oseltamivir, tx.antihistamine]
+  # кислород (часть 38б): при SpO2 < 93 % — обязательно (359_3: среди препаратов первой линии
+  # обострения; цель 93–95 %), выше — не нужен
+  byParam:
+    - when: { spo2_below93: [yes] }
+      require: [tx.oxygen_mask]
+    - when: { spo2_below93: [no] }
+      notIndicated: [tx.oxygen_mask]
   setting: { default: home, param: { name: severity, map: { mild: home, moderate: home, severe: ambulance } }, redFlag: ward }
 texts:
   summary:

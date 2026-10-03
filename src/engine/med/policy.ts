@@ -89,6 +89,8 @@ export function choosePlan(db: ContentDb, diagnosis: Id, observations: readonly 
   }
   // обязательная профилактика по вероятным значениям (часть 32г-2): о прививках спрашивает, пока не уверен
   treatments.push(...(t.prevent ?? []).filter(ok));
+  // обязательное по вероятным значениям (часть 38б): кислород, если измеренная сатурация ниже порога
+  treatments.push(...(t.require ?? []).filter(ok).filter(tx => !treatments.includes(tx)));
   const seen = new Set(observations.filter(o => o.shown).map(o => o.f));
   let setting = t.setting.default;
   const raise = (s: Setting) => {

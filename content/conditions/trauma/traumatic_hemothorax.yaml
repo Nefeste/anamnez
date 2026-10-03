@@ -83,7 +83,10 @@ treatment:
   # диаметра (728_2, раздел 3, УУР C, УДД 5); анальгезия всем; тугое бинтование противопоказано
   firstLine: [tx.pleural_drainage]
   acceptable: [tx.pleural_puncture]
-  supportive: [tx.ibuprofen, tx.paracetamol, tx.breathing_exercises]
+  # кислород через маску (часть 38б) — первая ступень дыхательной поддержки при острой дыхательной
+  # недостаточности (728_2: «последовательно увеличивать степень инвазивности дыхательной поддержки» —
+  # от инсуфляции кислорода); числа сатурации в рекомендации нет — облегчает, не обязателен
+  supportive: [tx.ibuprofen, tx.paracetamol, tx.breathing_exercises, tx.oxygen_mask]
   harmful: [tx.chest_binding]
   plan: [tx.pleural_drainage, tx.ibuprofen]
   byParam:

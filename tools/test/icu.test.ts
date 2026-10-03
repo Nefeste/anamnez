@@ -33,7 +33,7 @@ function withIcu(monitors: number, seed = 21): { s: ShiftState; icu: string } {
   return { s, icu };
 }
 
-/** Первый в очереди — с анафилактическим шоком, вызван; диагноз и эпинефрин — как у разумного врача. */
+/** Первый в очереди — с анафилактическим шоком, вызван; диагноз, эпинефрин и кислород — как у разумного врача. */
 function shock(s: ShiftState): ShiftPatient {
   for (let i = 0; i < 60 && s.queue.length === 0; i++) apply(db, s, { kind: 'advance', seconds: 10 * 60 });
   const id = s.queue[0];
@@ -42,7 +42,7 @@ function shock(s: ShiftState): ShiftPatient {
   apply(db, s, { kind: 'call', id });
   apply(db, s, { kind: 'exam', exam: 'exam.vitals' });
   apply(db, s, { kind: 'diagnose', id: ANAPHYLAXIS });
-  for (const tx of ['tx.epinephrine_im', 'tx.iv_fluids', 'tx.steroid_iv']) apply(db, s, { kind: 'toggleTreatment', id: tx });
+  for (const tx of ['tx.epinephrine_im', 'tx.iv_fluids', 'tx.steroid_iv', 'tx.oxygen_mask']) apply(db, s, { kind: 'toggleTreatment', id: tx });
   return p;
 }
 

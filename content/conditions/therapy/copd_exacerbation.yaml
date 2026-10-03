@@ -12,6 +12,13 @@ epidemiology:
   season: { winter: 1.5, spring: 1.0, summer: 0.7, autumn: 1.2 }
   risks:
     - { id: risk.smoking, x: 1.2 }
+params:
+  # сатурация 92 % и ниже — производный параметр по числу (часть 38б); доли — для вывода, пока
+  # сатурацию не мерили: игровая оценка по прогону генератора
+  spo2_le92: { no: 60, yes: 40 }
+derived:
+  # 603_3: «Кислородотерапия показана пациентам при значении SрO2 ≤92%» — ниже 93 % в целых числах
+  spo2_le92: { f: vital.spo2_low, below: 93 }
 course:
   stages:
     - { id: onset, days: [0, 2] }
@@ -40,6 +47,12 @@ treatment:
   acceptable: [tx.amoxicillin_clavulanate, tx.macrolide]
   supportive: [tx.rest_fluids]
   notIndicated: [tx.oseltamivir]
+  # кислород (часть 38б): при SpO2 ≤ 92 % — обязательно, цель 88–92 % (603_3), выше — не нужен
+  byParam:
+    - when: { spo2_le92: [yes] }
+      require: [tx.oxygen_mask]
+    - when: { spo2_le92: [no] }
+      notIndicated: [tx.oxygen_mask]
   setting: { default: home, redFlag: ward }
 texts:
   summary:

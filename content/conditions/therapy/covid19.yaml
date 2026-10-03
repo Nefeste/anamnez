@@ -14,6 +14,13 @@ epidemiology:
     - { id: risk.sick_contact, x: 2 }
 params:
   severity: { mild: 85, moderate: 12, severe: 3 }
+  # сатурация ниже 95 % — производный параметр по числу (часть 38б); доли — для вывода, пока сатурацию
+  # не мерили: игровая оценка по прогону генератора
+  spo2_below95: { no: 95, yes: 5 }
+derived:
+  # 1024_1: низкопоточный кислород через лицевую маску — при лёгкой и средней гипоксемии; среднетяжёлое
+  # течение — SpO2 < 95 %
+  spo2_below95: { f: vital.spo2_low, below: 95 }
 course:
   stages:
     - { id: onset, days: [0, 2] }
@@ -53,6 +60,12 @@ treatment:
   firstLine: [tx.rest_fluids]
   supportive: [tx.paracetamol, tx.ibuprofen, tx.nasal_saline]
   notIndicated: [tx.amoxicillin, tx.amoxicillin_clavulanate, tx.macrolide, tx.oseltamivir, tx.steroid_systemic_short, tx.antihistamine]
+  # кислород (часть 38б): при SpO2 < 95 % — обязательно (1024_1), выше — не нужен
+  byParam:
+    - when: { spo2_below95: [yes] }
+      require: [tx.oxygen_mask]
+    - when: { spo2_below95: [no] }
+      notIndicated: [tx.oxygen_mask]
   setting: { default: home, param: { name: severity, map: { mild: home, moderate: home, severe: ward } }, redFlag: ward }
 texts:
   summary:

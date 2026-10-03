@@ -10,8 +10,10 @@ import { surgeriesOf } from '@/engine/med/plan';
 import { formatNumber } from '@/engine/med/text';
 import { T } from '@/i18n';
 import { lowerFirst } from '@/i18n/case';
-import { TX_GROUP_ORDER, txGroupOfClass } from './caseView';
+import { TX_GROUP_ORDER, txGroupOfClass, whenText } from './caseView';
 import { sourceLine } from './sources';
+
+export { whenText };
 
 export type Section = 'conditions' | 'findings' | 'exams' | 'treatments' | 'risks' | 'scores' | 'hospital' | 'tips';
 export const SECTIONS: Section[] = ['conditions', 'findings', 'exams', 'treatments', 'risks', 'scores', 'hospital', 'tips'];
@@ -106,17 +108,6 @@ function strongest(links: readonly Link[]): Link[] {
   return [...best.values()];
 }
 
-/**
- * Условие по скрытому параметру словами: «при тяжёлом течении», «при ишемии кишки». Подпись —
- * по паре «параметр:значение», иначе по значению (тяжесть одна у многих болезней); без подписи
- * значение не показываем — «yes» в статье хуже, чем ничего.
- */
-export function whenText(when: Record<string, string[]> | undefined): string | undefined {
-  if (!when) return undefined;
-  const words = Object.entries(when).flatMap(([name, values]) => values.map(v => T.encyclopedia.when[`${name}:${v}`] ?? T.encyclopedia.when[v])).filter((w): w is string => w !== undefined);
-  // несколько значений (часть 30д): «при инфильтрате, абсцессе и перитоните» — «при» один раз
-  return words.length <= 1 ? words[0] : T.encyclopedia.whenList(words);
-}
 
 /** Ряды «почти всегда / обычно / … / не бывает»; внутри ряда — по алфавиту. */
 function byBand(db: ContentDb, items: { id: Id; p: P; note?: string }[]): Row[] {
@@ -196,7 +187,7 @@ export function similar(db: ContentDb, id: Id): Id[] {
 // --- статьи -------------------------------------------------------------------------------
 
 /** Тактика: подпись в статье болезни и, если есть, в статье лечения («первая линия при …»). */
-const TACTICS: { key: keyof Omit<Tactics, 'setting' | 'byParam'>; label: 'firstLine' | 'plan' | 'acceptable' | 'supportive' | 'notIndicated' | 'harmful' | 'prevent' | 'preHospital'; forLabel?: 'firstLineFor' | 'planFor' | 'acceptableFor' | 'supportiveFor' | 'harmfulFor' | 'preventFor' | 'preHospitalFor' }[] = [
+const TACTICS: { key: keyof Omit<Tactics, 'setting' | 'byParam'>; label: 'firstLine' | 'plan' | 'acceptable' | 'supportive' | 'notIndicated' | 'harmful' | 'prevent' | 'require' | 'preHospital'; forLabel?: 'firstLineFor' | 'planFor' | 'acceptableFor' | 'supportiveFor' | 'harmfulFor' | 'preventFor' | 'requireFor' | 'preHospitalFor' }[] = [
   { key: 'firstLine', label: 'firstLine', forLabel: 'firstLineFor' },
   { key: 'plan', label: 'plan', forLabel: 'planFor' },
   { key: 'acceptable', label: 'acceptable', forLabel: 'acceptableFor' },
@@ -207,6 +198,8 @@ const TACTICS: { key: keyof Omit<Tactics, 'setting' | 'byParam'>; label: 'firstL
   { key: 'harmful', label: 'harmful', forLabel: 'harmfulFor' },
   // обязательная профилактика (часть 32г-2): анатоксин столбнячный при просроченной прививке
   { key: 'prevent', label: 'prevent', forLabel: 'preventFor' },
+  // обязательное при лечении здесь (часть 38б): кислород через маску при сатурации ниже порога
+  { key: 'require', label: 'require', forLabel: 'requireFor' },
   // до приезда скорой (часть 32д-2): при обширном ожоге — капельница до перевода
   { key: 'preHospital', label: 'preHospital', forLabel: 'preHospitalFor' },
 ];

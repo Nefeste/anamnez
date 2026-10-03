@@ -55,7 +55,9 @@ confirm: [exam.lipase]
 redFlags: [sign.peritoneal_signs]
 treatment:
   firstLine: [tx.iv_fluids]
-  supportive: [tx.ibuprofen]
+  # кислород через маску (часть 38б) — при гипоксемии первым делом (903_1: ИВЛ — если, «несмотря на
+  # ингаляцию кислорода», тахипноэ и гипоксемия нарастают); числа сатурации нет — облегчает
+  supportive: [tx.ibuprofen, tx.oxygen_mask]
   notIndicated: [tx.amoxicillin, tx.amoxicillin_clavulanate, tx.cephalosporin_oral, tx.fluoroquinolone, tx.macrolide, tx.antacid]
   plan: [tx.iv_fluids, tx.ibuprofen]
   # лёгкий — в районной больнице (МО первого уровня), средний и тяжёлый — второго и третьего,

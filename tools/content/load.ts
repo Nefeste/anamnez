@@ -220,12 +220,23 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     const owner = c.id;
     checkLinks(owner, c.findings, c.params, c.course.stages.map(s => s.id));
     // производные параметры (часть 32г): значения «no» и «yes», правило есть, а признаки от
-    // параметра не зависят — он сам считается по признакам
-    for (const [name, ruleId] of Object.entries(c.derived ?? {})) {
+    // параметра не зависят — он сам считается по признакам; порог на измерении (часть 38б) — на
+    // числе признака, и порог внутри его диапазонов, иначе ответ всегда один
+    for (const [name, d] of Object.entries(c.derived ?? {})) {
       const p = c.params?.[name];
       if (!p) errors.push(`${owner}: производный параметр ${name} не объявлен в params — нужны доли для вывода`);
       else if (Object.keys(p).sort().join() !== 'no,yes') errors.push(`${owner}: у производного параметра ${name} значения — no и yes`);
-      if (!rules[ruleId]) errors.push(`${owner}: правило ${ruleId} параметра ${name} не найдено`);
+      if (typeof d === 'string') {
+        if (!rules[d]) errors.push(`${owner}: правило ${d} параметра ${name} не найдено`);
+      } else {
+        const v = findings[d.f]?.value;
+        if (!v) errors.push(`${owner}: порог параметра ${name} — на ${d.f}, а у него нет числа`);
+        else {
+          const lo = Math.min(v.present[0], v.absent[0]);
+          const hi = Math.max(v.present[1], v.absent[1]);
+          if (d.below <= lo || d.below > hi) errors.push(`${owner}: порог ${d.below} параметра ${name} вне диапазонов ${d.f} (${lo}–${hi})`);
+        }
+      }
       for (const l of c.findings) {
         if (l.when?.[name]) errors.push(`${owner}: признак ${l.f} зависит от производного параметра ${name}, а тот — от признаков`);
         if (Object.values(l.attrs ?? {}).includes(`$${name}`)) errors.push(`${owner}: атрибут признака ${l.f} — из производного параметра ${name}, а тот — от признаков`);
@@ -316,6 +327,19 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
         for (const id of ids) {
           if (!(id in treatments)) errors.push(`${owner}: ${what} — лечение ${id} не найдено`);
           if (roled.has(id)) errors.push(`${owner}: ${what} — ${id} стоит и в списке тактики`);
+        }
+        if (new Set(ids).size !== ids.length) errors.push(`${owner}: ${what} — лечение повторяется`);
+      }
+      // обязательное при лечении здесь (часть 38б): лечение есть и не операция; общее — ни в каком
+      // списке тактики, по параметру — не в списках той же записи (при других значениях роль своя:
+      // кислород при сатурации от 90 % у ОКС — «не нужно»)
+      const requires = [['обязательное', t.require ?? [], roled] as const, ...(t.byParam ?? []).map((x, i) =>
+        [`обязательное тактики по параметру №${i + 1}`, x.require ?? [], new Set([x.firstLine, x.acceptable, x.supportive, x.notIndicated, x.harmful].flat())] as const)];
+      for (const [what, ids, other] of requires) {
+        for (const id of ids) {
+          if (!(id in treatments)) errors.push(`${owner}: ${what} — лечение ${id} не найдено`);
+          else if (treatments[id].kind === 'surgery') errors.push(`${owner}: ${what} — операцию ${id} выбирают местом, а не назначением`);
+          if (other.has(id)) errors.push(`${owner}: ${what} — ${id} стоит и в списке тактики`);
         }
         if (new Set(ids).size !== ids.length) errors.push(`${owner}: ${what} — лечение повторяется`);
       }

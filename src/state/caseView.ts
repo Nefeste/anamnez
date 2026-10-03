@@ -265,6 +265,8 @@ const TX_GROUPS: [string, string[]][] = [
   ['antivirals', ['antiviral']],
   ['pain', ['analgesic', 'antimigraine']],
   ['breathing', ['bronchodilator', 'asthma', 'steroid.systemic']],
+  // кислород через маску (spec 2026-10-chapter-3, часть 38б): при низкой сатурации
+  ['oxygen', ['oxygen']],
   ['nose', ['nasal', 'steroid.intranasal', 'antihistamine']],
   // сердце и сосуды: с частью 33а — антикоагулянты, компрессионный трикотаж и гель при тромбофлебите;
   // с частью 33б — эпинефрин при анафилактическом шоке (АТХ C01CA24 — сердечно-сосудистая система)
@@ -636,6 +638,18 @@ export function outcomeText(outcome: Outcome, setting: Setting, female: boolean)
   }
 }
 
+/**
+ * Условие по скрытому параметру словами: «при тяжёлом течении», «при ишемии кишки». Подпись —
+ * по паре «параметр:значение», иначе по значению (тяжесть одна у многих болезней); без подписи
+ * значение не показываем — «yes» в статье хуже, чем ничего.
+ */
+export function whenText(when: Record<string, string[]> | undefined): string | undefined {
+  if (!when) return undefined;
+  const words = Object.entries(when).flatMap(([name, values]) => values.map(v => T.encyclopedia.when[`${name}:${v}`] ?? T.encyclopedia.when[v])).filter((w): w is string => w !== undefined);
+  // несколько значений (часть 30д): «при инфильтрате, абсцессе и перитоните» — «при» один раз
+  return words.length <= 1 ? words[0] : T.encyclopedia.whenList(words);
+}
+
 export function noteText(n: ScoreNote): string {
   const t = T.spikes.patient.note;
   const tx = (id: Id) => db.treatments[id].name.ru;
@@ -647,6 +661,8 @@ export function noteText(n: ScoreNote): string {
     case 'tx.none': return t.none;
     case 'tx.preHospitalMissing': return t.preHospitalMissing(tx(n.tx));
     case 'tx.preventMissing': return t.preventMissing(tx(n.tx));
+    // обязательное при лечении здесь (часть 38б): «обязательно при сатурации ниже 90 %»
+    case 'tx.requireMissing': return t.requireMissing(tx(n.tx), whenText(n.when));
     case 'setting.under': return t.settingUnder(n.recommended);
     case 'setting.over': return t.settingOver(n.recommended);
     case 'safety.knownViolation': return t.knownViolation(tx(n.tx), riskName(n.by));

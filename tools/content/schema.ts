@@ -93,9 +93,13 @@ export const conditionSchema = z.strictObject({
   /**
    * производные параметры (часть 32г): «yes», если правило решения выполнено на настоящих
    * признаках и возрасте, иначе «no»; доли того же параметра в `params` — для вывода, пока
-   * признаки правила не известны
+   * признаки правила не известны. Порог на измерении (часть 38б): «yes», если число признака `f`
+   * у пациента ниже `below` — сатурация ниже 90 %
    */
-  derived: z.record(z.string(), z.string().regex(/^rule\.[a-z0-9_]+$/)).optional(),
+  derived: z.record(z.string(), z.union([
+    z.string().regex(/^rule\.[a-z0-9_]+$/),
+    z.strictObject({ f: z.string().regex(/^[a-z]+\.[a-z0-9_]+$/), below: z.number() }),
+  ])).optional(),
   course: z.strictObject({
     stages: z.array(z.strictObject({ id: z.string(), days: z.tuple([z.number(), z.number()]), needs: z.literal('treatment').optional() })).min(1),
     /** в какие дни болезни обычно обращаются */
@@ -126,6 +130,11 @@ export const conditionSchema = z.strictObject({
      */
     prevent: z.array(txId).min(1).optional(),
     /**
+     * обязательно при лечении здесь (часть 38б): без этого лечение неполное — кислород через
+     * маску при сатурации ниже порога рекомендации
+     */
+    require: z.array(txId).min(1).optional(),
+    /**
      * тактика по скрытому параметру (spec 2026-09-chapter-2, часть 32): при таких значениях у
      * названных здесь лечений — эта роль, у остальных — из общих списков; своё типичное назначение
      * (перелом со смещением — репозиция, без смещения — лонгета)
@@ -140,6 +149,8 @@ export const conditionSchema = z.strictObject({
       plan: z.array(txId).min(1).optional(),
       /** обязательная профилактика при этих значениях — вдобавок к общей */
       prevent: z.array(txId).min(1).optional(),
+      /** обязательно при этих значениях — вдобавок к общему (часть 38б) */
+      require: z.array(txId).min(1).optional(),
       /**
        * что сделать до приезда скорой при этих значениях — хоть одно (часть 32д-2): обширный ожог
        * лечат не дома, хотя место по умолчанию — дом, и до перевода ставят капельницу
