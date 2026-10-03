@@ -2,11 +2,6 @@ This is an Expo/React Native mobile game (Android first). Prioritize mobile-firs
 smoothness on modern Android phones (no freezes; budget phones are not a target), and a pure,
 deterministic game engine.
 
-**Current stage: stage 3 — own hospital** (`docs/specs/2026-09-own-hospital.md`): building,
-equipment, hiring and money between shifts (ADR 0016). Stage 2 — the first shift
-(`docs/specs/2026-09-first-shift.md`) — waits for the owner's live test; the stage 1 spikes
-(`docs/specs/2026-09-spikes.md`) are done and stay in the menu as prototypes.
-
 ## Studio charter — read first
 
 This project belongs to the «Горница» studio. Studio-wide rules live only in the public
@@ -15,6 +10,8 @@ keeps only what is specific to the project. Before changing anything — and aft
 reset — read the charter's `AGENTS.md`, then `docs/05-rules.md` (hard rules for every game)
 and `docs/04-process.md` (how work is done). Raw files:
 `https://raw.githubusercontent.com/Nefeste/gornitsa/main/<path>`.
+
+Current state of this project: `STATUS.md` (it is not repeated here).
 
 Precedence: the owner's recorded decision → the charter → this project's documents. A project
 rule may narrow a charter rule, never weaken it. If a document here restates or contradicts
@@ -113,6 +110,11 @@ Studio-wide hard rules — generated `ios/`/`android/`, no React Native `Alert`,
 only in `src/i18n/` and `content/`, a permanent signing key, no generated images — are in the
 charter's `docs/05-rules.md` and are not repeated here. Project rules:
 
+- Merging and releases (studio ADR 0018, 0019): agents act through the owner's GitHub account,
+  so branch protection and its bypass cannot tell an agent from the owner. Never merge, never
+  enable auto-merge by hand (API, MCP tool or UI) and never create a `vX.Y.Z` tag: classes 1–2
+  are merged by `automerge.yml` after the Reviewer's `ревью: ок`; PRs touching
+  `.github/CODEOWNERS` paths and release tags are the owner's (`docs/08-process.md`, «Слияние»).
 - The release build has **no `INTERNET` permission** (ADR 0006); it is removed from the release
   manifest by a config plugin, debug keeps it for Metro. Any new permission must be added to the
   CI whitelist consciously.

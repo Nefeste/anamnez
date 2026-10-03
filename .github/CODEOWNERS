@@ -1,0 +1,12 @@
+# Пути владельца (ADR студии 0018, класс 3): PR, который их трогает, сливает только владелец —
+# защита main требует его ревью как владельца кода. Остальное сливается само после зелёных
+# проверок на PR и метки «ревью: ок» от Ревьюера (.github/workflows/automerge.yml).
+# Проект может добавить свои пути, но не убрать эти.
+/deploy/          @Nefeste
+/.github/         @Nefeste
+/server/          @Nefeste
+/src/money/       @Nefeste
+/store/forms.md   @Nefeste
+/store/privacy*   @Nefeste
+/app.json         @Nefeste
+/eas.json         @Nefeste

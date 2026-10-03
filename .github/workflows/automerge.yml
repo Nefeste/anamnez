@@ -1,0 +1,138 @@
+# Автослияние безопасных PR (ADR студии 0018, классы 1 и 2). Включает auto-merge GitHub
+# (squash), когда сошлось всё:
+#   - на PR стоит метка «ревью: ок» — её ставит Ревьюер, другая сессия, чем исполнитель;
+#   - «Проверки PR» (pr.yml) зелёные на последнем коммите PR, а других красных или
+#     незаконченных проверок на нём нет;
+#   - в PR нет путей владельца из .github/CODEOWNERS — их сливает только владелец.
+# Новый коммит снимает метку и выключает автослияние: Ревьюер смотрел прежний код. Снятая
+# метка тоже выключает автослияние.
+#
+# pull_request_target и workflow_run берут этот файл из main, CODEOWNERS и разбор путей
+# (.github/scripts/owned.mjs) тоже выгружаются из main: PR не может переписать правила своего
+# слияния. Код PR здесь не выгружается и не запускается.
+# Последнее слово — за защитой ветки main: обязательные проверки и ревью владельца кода
+# включает владелец в настройках репозитория (docs/08-process.md, «Слияние»).
+name: Автослияние
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [labeled, unlabeled, synchronize, reopened, ready_for_review]
+  workflow_run:
+    workflows: [PR]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+  checks: read
+  statuses: read
+
+concurrency:
+  group: automerge-${{ github.event.pull_request.number || github.event.workflow_run.head_branch }}
+  cancel-in-progress: false
+
+jobs:
+  automerge:
+    name: Автослияние
+    if: github.event_name == 'pull_request_target' || github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      # только правила из main — CODEOWNERS и разбор путей, без кода PR
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: .github
+          persist-credentials: false
+      - uses: actions/github-script@v8
+        env:
+          LABEL: 'ревью: ок'
+          CHECK: 'Проверки PR'
+        with:
+          script: |
+            const { readFileSync } = require('node:fs');
+            const { ownedFiles, ownedPatterns } = await import(`${process.env.GITHUB_WORKSPACE}/.github/scripts/owned.mjs`);
+            const { owner, repo } = context.repo;
+            const { LABEL, CHECK } = process.env;
+            const main = context.payload.repository.default_branch;
+
+            // какой PR: из события PR или из законченного запуска проверок
+            let number;
+            if (context.eventName === 'pull_request_target') {
+              number = context.payload.pull_request.number;
+            } else {
+              const run = context.payload.workflow_run;
+              if (run.conclusion !== 'success') return core.info(`Проверки PR: ${run.conclusion} — не сливаю.`);
+              number = run.pull_requests?.[0]?.number;
+              if (!number) {
+                const open = await github.paginate(github.rest.pulls.list, { owner, repo, state: 'open', head: `${owner}:${run.head_branch}`, per_page: 100 });
+                number = open.find(p => p.head.sha === run.head_sha)?.number;
+              }
+              if (!number) return core.info('Открытого PR с этим коммитом нет.');
+            }
+            const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: number });
+            if (pr.state !== 'open') return core.info(`PR #${number} закрыт.`);
+            if (pr.head.repo?.full_name !== `${owner}/${repo}` || pr.base.ref !== main) return core.info(`PR #${number} — из форка или не в ${main}: не трогаю.`);
+            const action = context.eventName === 'pull_request_target' ? context.payload.action : 'checks';
+            const labeled = pr.labels.some(l => l.name === LABEL);
+            const say = body => github.rest.issues.createComment({ owner, repo, issue_number: number, body: `${body}\n\n---\n_Автослияние, \`.github/workflows/automerge.yml\`_` });
+            const disable = async () => {
+              if (pr.auto_merge) await github.graphql('mutation($id: ID!) { disablePullRequestAutoMerge(input: { pullRequestId: $id }) { clientMutationId } }', { id: pr.node_id });
+            };
+
+            // новый коммит после ревью — метку снять, автослияние выключить
+            if (action === 'synchronize') {
+              if (!labeled) return core.info('Метки нет — снимать нечего.');
+              await github.rest.issues.removeLabel({ owner, repo, issue_number: number, name: LABEL });
+              await disable();
+              await say(`Новый коммит после ревью: метка «${LABEL}» снята, автослияние выключено. Ревьюер смотрел прежний код — нужен повторный просмотр.`);
+              return;
+            }
+            // метки нет, а её сняли — выключить автослияние, если оно было
+            if (!labeled) {
+              if (action === 'unlabeled') await disable();
+              return core.info(`Метки «${LABEL}» нет.`);
+            }
+            if (pr.draft) return core.info(`PR #${number} — черновик.`);
+
+            // пути владельца — по CODEOWNERS из main; старое имя переименованного файла — тоже правка
+            const files = await github.paginate(github.rest.pulls.listFiles, { owner, repo, pull_number: number, per_page: 100 });
+            const owned = ownedFiles(files.flatMap(f => [f.filename, f.previous_filename].filter(Boolean)), ownedPatterns(readFileSync('.github/CODEOWNERS', 'utf8')));
+            if (owned.length > 0) {
+              core.notice(`PR #${number} трогает пути владельца (${owned.join(', ')}) — его сливает владелец.`);
+              if (action === 'labeled' && context.payload.label?.name === LABEL) {
+                await say(`PR трогает пути владельца из \`.github/CODEOWNERS\`, поэтому сам не сливается — его сливает владелец:\n${owned.slice(0, 20).map(f => `- \`${f}\``).join('\n')}`);
+              }
+              return;
+            }
+
+            // проверки на последнем коммите PR: «Проверки PR» зелёные, других красных и незаконченных нет
+            const runs = (await github.paginate(github.rest.checks.listForRef, { owner, repo, ref: pr.head.sha, filter: 'latest', per_page: 100 }))
+              .filter(r => r.name !== 'Автослияние');
+            const required = runs.filter(r => r.name === CHECK);
+            const red = runs.filter(r => r.status === 'completed' && ['failure', 'cancelled', 'timed_out', 'action_required', 'stale', 'startup_failure'].includes(r.conclusion));
+            const pending = runs.filter(r => r.status !== 'completed');
+            const { data: statuses } = await github.rest.repos.getCombinedStatusForRef({ owner, repo, ref: pr.head.sha });
+            const statusesOk = statuses.total_count === 0 || statuses.state === 'success';
+            if (required.length === 0 || required.some(r => r.conclusion !== 'success') || red.length > 0 || pending.length > 0 || !statusesOk) {
+              return core.info(`${pr.head.sha.slice(0, 7)}: «${CHECK}» — ${required.map(r => r.conclusion ?? r.status).join(', ') || 'нет'}; красные — ${red.map(r => r.name).join(', ') || 'нет'}; идут — ${pending.length}; статусы — ${statuses.total_count ? statuses.state : 'нет'}. Жду.`);
+            }
+
+            if (pr.auto_merge) return core.info(`PR #${number}: автослияние уже включено.`);
+            // включить auto-merge на проверенный коммит; если ждать нечего, GitHub его не включает —
+            // тогда сливаем сами ровно этот коммит
+            try {
+              await github.graphql('mutation($id: ID!, $sha: GitObjectID!) { enablePullRequestAutoMerge(input: { pullRequestId: $id, mergeMethod: SQUASH, expectedHeadOid: $sha }) { clientMutationId } }', { id: pr.node_id, sha: pr.head.sha });
+              core.notice(`PR #${number}: автослияние (squash) включено.`);
+            } catch (e) {
+              if (/clean status/i.test(String(e.message))) {
+                await github.rest.pulls.merge({ owner, repo, pull_number: number, merge_method: 'squash', sha: pr.head.sha });
+                core.notice(`PR #${number}: ждать было нечего — слит (squash).`);
+              } else if (/auto.?merge is not allowed|not enabled/i.test(String(e.message))) {
+                core.warning('Автослияние выключено в настройках: Settings → General → Pull Requests → Allow auto-merge.');
+                if (action === 'labeled') await say('Автослияние выключено в настройках репозитория (Settings → General → Pull Requests → Allow auto-merge) — PR ждёт владельца.');
+              } else {
+                throw e;
+              }
+            }
