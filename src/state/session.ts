@@ -20,8 +20,8 @@ import { memberAt, type StaffMember, staffingOf } from '@/engine/hospital/staff'
 import { type MissionProgress, missionProgress, nextChapterOf } from '@/engine/campaign/campaign';
 import { levelOf } from '@/engine/economy/economy';
 import {
-  apply, atDoorOf, bedsideOf, current, freeBeds, type HospitalCtx, hospitalCtx, inpatientsOf, moreUrgent, newCampaign, newSandbox, newShift, newSingle,
-  observationsOf, operationOf, type OrBlock, orBlock, orQueueOf, reviewFor, SANDBOX_VENUE, targetPlace, wardBeds,
+  apply, atDoorOf, bedsideOf, current, freeBeds, freeIcuBeds, type HospitalCtx, hospitalCtx, icuBeds, inIcu, inpatientsOf, moreUrgent, newCampaign, newSandbox,
+  newShift, newSingle, observationsOf, operationOf, type OrBlock, orBlock, orQueueOf, reviewFor, SANDBOX_VENUE, targetPlace, wardBeds,
 } from '@/engine/shift/engine';
 import { minutesTo, targetsFor } from '@/engine/shift/targets';
 import {
@@ -1395,6 +1395,8 @@ function wardLines(w: NonNullable<ShiftState['summary']['ward']>): string[] {
   if (w.early > 0) out.push(t.early(w.early));
   if ((w.died ?? 0) > 0) out.push(t.died(w.died!));
   if (w.discharged > 0) out.push(t.stay(Math.round((w.stayDays / w.discharged) * 10) / 10, Math.round((w.stayNorm / w.discharged) * 10) / 10));
+  // палата интенсивной терапии (часть 38а)
+  if ((w.icu ?? 0) > 0 || (w.icuLying ?? 0) > 0) out.push(t.icu(w.icu ?? 0, w.icuLying ?? 0));
   return out;
 }
 
@@ -1581,7 +1583,7 @@ function doingText(s: ShiftState, p: ShiftPatient, d: Doing): string {
     case 'left':
       return t.left(female(p));
     case 'ward':
-      return d.op ? t.waitingOp(db.treatments[d.op]?.name.ru ?? d.op) : t.ward(d.days);
+      return d.op ? t.waitingOp(db.treatments[d.op]?.name.ru ?? d.op) : d.icu ? t.icu(d.days) : t.ward(d.days);
     case 'surgery':
       return t.onTable(db.treatments[d.tx]?.name.ru ?? d.tx, hhmm(minuteOfDay(d.end)));
     case 'ambulance':
@@ -1613,6 +1615,8 @@ export interface RoundCard {
   /** на столе — ни выписать, ни перевести; ждёт операции — только перевести */
   canDischarge: boolean;
   canTransfer: boolean;
+  /** лежит в палате интенсивной терапии, под монитором (spec 2026-10-chapter-3, часть 38а) */
+  icu?: string;
 }
 
 const fmtVital = (f: Id, v: number) => {
@@ -1673,6 +1677,7 @@ export function roundsView(): RoundCard[] {
       ...(dxOp ? { operate: block ? { hint: orBlockText(block), disabled: true } : { hint: db.treatments[dxOp].name.ru } } : {}),
       canDischarge: !op || op.done === true,
       canTransfer: !op || op.done === true || op.start === undefined,
+      ...(inIcu(db, s, p) ? { icu: t.inIcu } : {}),
     };
   });
 }
@@ -1832,6 +1837,8 @@ export function archiveCaseView(key: string): VisitView | undefined {
  * Где лечить в больнице со своей палатой (spec 2026-09-chapter-2, часть 26): домой, в палату
  * (сколько коек свободно; нет свободных — нельзя), направить в другую больницу, скорая. Есть
  * операционная (часть 28) — и «В операционную»: какая операция — по диагнозу, нельзя — почему.
+ * Есть палата интенсивной терапии (spec 2026-10-chapter-3, часть 38а) — и «В ПИТ»: сколько коек
+ * под монитором свободно, нет свободных — нельзя.
  */
 function settingOptions(s: ShiftState, p: ShiftPatient): SettingOption[] {
   const diagnosis = p.draft.diagnosis;
@@ -1839,10 +1846,15 @@ function settingOptions(s: ShiftState, p: ShiftPatient): SettingOption[] {
   const free = freeBeds(db, s).length;
   const t = T.shift.ward;
   const setting = T.spikes.patient.setting;
-  const hasOr = hospitalCtx(db, s).plan.rooms.some(r => r.type === 'room.or');
+  const rooms = hospitalCtx(db, s).plan.rooms;
+  const hasOr = rooms.some(r => r.type === 'room.or');
+  const hasIcu = rooms.some(r => db.rooms[r.type]?.icu);
+  const icuAll = icuBeds(db, s).length;
+  const icuFree = freeIcuBeds(db, s).length;
   return [
     { key: 'home', title: setting.home },
-    { key: 'admit', title: t.admit, hint: free > 0 ? t.freeBeds(free, all) : t.noBeds, disabled: free === 0 },
+    ...(all > 0 ? [{ key: 'admit' as const, title: t.admit, hint: free > 0 ? t.freeBeds(free, all) : t.noBeds, disabled: free === 0 }] : []),
+    ...(hasIcu ? [{ key: 'icu' as const, title: t.icu, hint: icuFree > 0 ? t.freeIcuBeds(icuFree, icuAll) : t.noBeds, disabled: icuFree === 0 }] : []),
     ...(hasOr ? [orOption(s, p, diagnosis, free, all)] : []),
     { key: 'ward', title: t.refer },
     { key: 'ambulance', title: setting.ambulance },
@@ -1922,7 +1934,8 @@ function buildCaseView(): VisitView | undefined {
     ...(p.by ? {} : { targets: targetLines(s, p) }),
     // с какими отделениями его приняли (часть 30): с приёмным — и хирургия
     ...(p.departments ? { departments: p.departments } : {}),
-    ...(wardBeds(db, s).length > 0 ? { settings: settingOptions(s, p) } : {}),
+    // своя палата или своя палата интенсивной терапии (часть 38а) — выбор больницы
+    ...(wardBeds(db, s).length > 0 || hospitalCtx(db, s).plan.rooms.some(r => db.rooms[r.type]?.icu) ? { settings: settingOptions(s, p) } : {}),
     ...(p.payer ? { payerNote: T.sandbox.payerNote[p.payer] } : {}),
     ...(p.paid && p.closed ? { payment: paymentText(db, p.payer ?? 'oms', p.paid, p.closed) } : {}),
     ...(p.closed ? { achievements: achievementNames(caseKey(s.meta.seed, p.id)) } : {}),

@@ -1,7 +1,7 @@
 id: eq.or_table
 name: { ru: "Операционный стол с лампой" }
 gen: { ru: "операционного стола" }
-room: room.or
+rooms: [room.or]
 sprite: or_table
 # под пациентом — второе место операционной
 slot: 1

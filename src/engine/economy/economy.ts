@@ -56,11 +56,12 @@ export type WardClose = 'full' | 'interrupted' | 'unindicated' | 'repeat';
  * прибавкой за неё и её расходниками: как в КСГ хирургического случая, имплантат входит в тариф
  * (часть 35), — иначе дорогая операция на кости всегда в убыток и выгоднее её не делать.
  */
-export function wardIncome(db: ContentDb, diagnosis: Id, defensibility: Grade, close: WardClose, op?: Id): number {
+export function wardIncome(db: ContentDb, diagnosis: Id, defensibility: Grade, close: WardClose, op?: Id, icu = false): number {
   if (close === 'unindicated' || close === 'repeat') return 0;
   const t = db.economy.tariffs;
-  // с операцией — прибавка за неё и расходники, как КСГ хирургического случая (spec 2026-09-chapter-2, части 28 и 35)
-  const full = t.omsWard[db.conditions[diagnosis]?.severity ?? 'minor'] + (op ? t.omsOperation + (db.treatments[op]?.cost ?? 0) : 0);
+  // с операцией — прибавка за неё и расходники, как КСГ хирургического случая (spec 2026-09-chapter-2, части 28 и 35);
+  // с палатой интенсивной терапии по показаниям — прибавка за неё (spec 2026-10-chapter-3, часть 38а)
+  const full = t.omsWard[db.conditions[diagnosis]?.severity ?? 'minor'] + (op ? t.omsOperation + (db.treatments[op]?.cost ?? 0) : 0) + (icu ? t.omsIcu : 0);
   const share = close === 'interrupted' ? db.economy.ward.interrupted : 100;
   return Math.round((full * t.omsQuality[defensibility] * share) / 10000);
 }

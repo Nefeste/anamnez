@@ -56,8 +56,12 @@ const link = z.strictObject({
 });
 const riskMultiplier = z.strictObject({ id: z.string(), x: z.number().positive() });
 const txId = z.string().regex(/^tx\.[a-z0-9_]+$/);
-/** Где лечить — что нужно пациенту; `admit` («в палату») — только выбор врача, в базе его нет. */
-export const SETTINGS = ['home', 'ward', 'ambulance', 'surgery', 'transfer'] as const;
+/**
+ * Где лечить — что нужно пациенту; `admit` («в палату») — только выбор врача, в базе его нет;
+ * `icu` — палата интенсивной терапии (spec 2026-10-chapter-3, часть 38а): своя — «В ПИТ», нет её —
+ * перевод, из амбулатории — скорая.
+ */
+export const SETTINGS = ['home', 'ward', 'ambulance', 'surgery', 'transfer', 'icu'] as const;
 const setting = z.enum(SETTINGS);
 const season = z.strictObject({ winter: z.number(), spring: z.number(), summer: z.number(), autumn: z.number() });
 
@@ -348,7 +352,7 @@ export const riskSchema = z.strictObject({
 // Помещения, аппараты и должности — игровые предметы: цены и размеры — баланс игры. Что
 // каким аппаратом делают — медицинский факт, он записан в записях обследований с источниками.
 
-export const OBJECT_KINDS = ['bed', 'chair', 'desk', 'couch', 'cabinet', 'machine', 'plant', 'sink', 'bench', 'xray', 'table', 'ecg', 'analyzer', 'or_table', 'anesthesia', 'us'] as const;
+export const OBJECT_KINDS = ['bed', 'chair', 'desk', 'couch', 'cabinet', 'machine', 'plant', 'sink', 'bench', 'xray', 'table', 'ecg', 'analyzer', 'or_table', 'anesthesia', 'us', 'monitor'] as const;
 const cellSrc = z.tuple([z.number().int().min(0), z.number().int().min(0)]);
 /** «нет лаборатории», «нет лаборанта» — родительный падеж для причин «не работает» */
 const gen = text;
@@ -392,6 +396,11 @@ export const roomSchema = z.strictObject({
   beds: z.boolean().default(false),
   /** смотровая приёмного: койки — места для пациентов скорой (часть 27) */
   emergency: z.boolean().default(false),
+  /**
+   * палата интенсивной терапии (spec 2026-10-chapter-3, часть 38а): койки — места лежащих под
+   * монитором; койка работает, если на её месте (`slots` по порядку коек) стоит монитор
+   */
+  icu: z.boolean().default(false),
   /** работает — в больницу приходят и больные этих отделений: приёмное — хирургию (часть 30) */
   admits: z.array(z.string().regex(/^dept\.[a-z0-9_]+$/)).min(1).optional(),
   sizes: z.array(roomSize).min(1),
@@ -402,9 +411,10 @@ export const equipmentSchema = z.strictObject({
   id: eqId,
   name: text,
   gen,
-  room: roomId,
+  /** куда ставят: монитор с дефибриллятором — в смотровую приёмного и в палату интенсивной терапии (часть 38а) */
+  rooms: z.array(roomId).min(1),
   /** как выглядит на карте: у каждого вида аппарата свой рисунок (spec 2026-09-living-map) */
-  sprite: z.enum(['ecg', 'analyzer', 'xray', 'or_table', 'anesthesia', 'us']),
+  sprite: z.enum(['ecg', 'analyzer', 'xray', 'or_table', 'anesthesia', 'us', 'monitor']),
   /** улучшение другого аппарата: цифровой рентген — плёночного */
   upgradeOf: eqId.optional(),
   /** своё место в помещении — номер из `slots` (стол операционной — под пациентом); занято — первое свободное */
@@ -513,6 +523,8 @@ export const economySchema = z.strictObject({
     omsWard: z.strictObject({ minor: int, moderate: int, serious: int, critical: int }),
     /** случай стационара с операцией — прибавка к тарифу за операцию (часть 28) */
     omsOperation: int,
+    /** случай с палатой интенсивной терапии по показаниям — прибавка к тарифу (spec 2026-10-chapter-3, часть 38а) */
+    omsIcu: int,
     omsQuality: z.strictObject({ A: pct, B: pct, C: pct, D: pct }),
     omsUnconfirmed: pct,
     omsExam: int,
@@ -529,6 +541,8 @@ export const economySchema = z.strictObject({
   interest: int,
   /** стационар: койко-день — питание и расходники лежащего, ₽; доля тарифа за прерванный случай, % */
   ward: z.strictObject({ bedDay: int, interrupted: pct }),
+  /** палата интенсивной терапии (часть 38а): койко-день — дороже палатного, ₽ */
+  icu: z.strictObject({ bedDay: int }),
   /**
    * скорая (spec 2026-09-chapter-2, часть 27): машин за смену, если работает смотровая приёмного;
    * вес болезни по тяжести (с распространённостью) и доля тяжёлых среди тех, у кого тяжесть есть, %

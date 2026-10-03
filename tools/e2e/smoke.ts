@@ -324,6 +324,36 @@ function surgerySave(): { save: string; id: string } {
 }
 
 /**
+ * Песочница с палатой интенсивной терапии на две койки (spec 2026-10-chapter-3, часть 38а): два
+ * монитора с дефибриллятором, медсестра ЭКГ — в ПИТ, анестезиолог-реаниматолог — из кандидатов;
+ * день 1 — у вас в кабинете пациент с анафилактическим шоком, диагноз и эпинефрин назначены.
+ */
+function icuSave(): { save: string; id: string } {
+  const { db } = buildDb();
+  const s = newSandbox(db, { seed: 21, season: 'winter', difficulty: 'student', start: 'clinic', budget: db.economy.sandbox.budgets.generous });
+  const cells: [number, number][] = [];
+  for (let x = 29; x <= 38; x++) for (let y = 7; y <= 9; y++) cells.push([x, y]);
+  apply(db, s, { kind: 'build', cmd: { kind: 'corridor', cells } });
+  apply(db, s, { kind: 'build', cmd: { kind: 'room', type: 'room.icu', size: 'S', x: 29, y: 0, rot: 0 } });
+  const icu = s.hospital!.rooms[s.hospital!.rooms.length - 1].id;
+  for (let i = 0; i < 2; i++) apply(db, s, { kind: 'build', cmd: { kind: 'buy', room: icu, equipment: 'eq.monitor_defib' } });
+  apply(db, s, { kind: 'buildEnd' });
+  apply(db, s, { kind: 'assign', id: s.staff!.find(m => m.role === 'role.nurse' && m.room === 'r7')!.id, room: icu });
+  const c = s.candidates!.find(x => x.role === 'role.anesthetist')!;
+  apply(db, s, { kind: 'hire', id: c.id });
+  apply(db, s, { kind: 'assign', id: c.id, room: icu });
+  apply(db, s, { kind: 'nextDay' });
+  for (let i = 0; i < 600 && s.queue.length === 0; i++) apply(db, s, { kind: 'advance', seconds: 60 });
+  const id = s.queue[0];
+  s.patients[id].patient = generatePatient(db, 4747, { department: 'dept.therapy', season: 'winter', primary: 'cond.anaphylaxis', params: {} });
+  apply(db, s, { kind: 'call', id });
+  apply(db, s, { kind: 'exam', exam: 'exam.vitals' });
+  apply(db, s, { kind: 'diagnose', id: 'cond.anaphylaxis' });
+  for (const tx of ['tx.epinephrine_im', 'tx.iv_fluids', 'tx.steroid_iv']) apply(db, s, { kind: 'toggleTreatment', id: tx });
+  return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s }), id };
+}
+
+/**
  * Песочница с кабинетом УЗИ (spec 2026-09-chapter-2, часть 29): УЗ-аппарат, врач УЗД из
  * кандидатов; день 1 — у вас в кабинете пациент с аппендицитом, УЗИ сделано и описано
  * («Студент»: обследования не ошибаются — отросток виден).
@@ -1339,6 +1369,41 @@ try {
   check(opDay.includes('Операций: 1, в срок: 1.'), `операционная, итоги дня: ${opDay.replace(/\n/g, ' · ')}`);
   await page.waitForTimeout(1500); // лист меню «Продолжить» ещё уезжает вниз (веб)
   await page.screenshot({ path: join(OUT, '18-surgery-summary.png'), fullPage: true });
+  // палата интенсивной терапии (spec 2026-10-chapter-3, часть 38а): у вас анафилактический шок — в
+  // решении «В ПИТ» со свободными койками под монитором; итог — лежит в ПИТ; на обходе — строка ПИТ
+  const icuv = icuSave();
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', icuv.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId('shift-continue').waitFor({ timeout: 15_000 });
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId('shift-continue').click();
+  await visible(page, 'visit-decide').waitFor({ timeout: 10_000 });
+  await visible(page, 'visit-decide').click();
+  await page.getByTestId('decision-to-plan').click();
+  await page.getByTestId('setting-icu').waitFor({ timeout: 5000 });
+  const icuOption = await text(page, 'setting-icu');
+  check(icuOption.startsWith('В ПИТ') && icuOption.includes('под монитором свободно 2 из 2') && !(await page.getByTestId('setting-icu').isDisabled()),
+    `ПИТ, решение: ${icuOption.replace(/\n/g, ' · ')}`);
+  await page.getByTestId('setting-icu').click();
+  await page.screenshot({ path: join(OUT, '18-icu-decision.png'), fullPage: true });
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-outcome').waitFor({ timeout: 10_000 });
+  check((await text(page, 'visit-outcome')).includes('Лежит в палате интенсивной терапии, под монитором'), `ПИТ, итог приёма: ${await text(page, 'visit-outcome')}`);
+  await page.getByTestId('shift-to-queue').click();
+  await page.getByTestId('rounds-open').waitFor({ timeout: 10_000 });
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(OUT, '18-icu-map.png') });
+  await page.getByTestId('rounds-open').click();
+  await page.getByTestId(`round-icu-${icuv.id}`).waitFor({ timeout: 10_000 });
+  check((await text(page, `round-icu-${icuv.id}`)) === 'Палата интенсивной терапии, под монитором', `ПИТ, обход: ${await text(page, `round-icu-${icuv.id}`)}`);
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(OUT, '18-icu-rounds.png'), fullPage: true });
+  await page.goBack();
   // энциклопедия: операция — что лечит, где, бригада
   await page.goto(`${base}/encyclopedia/article/tx.appendectomy`);
   await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });

@@ -1,6 +1,6 @@
 {
-  "version": "0.3.2",
-  "base": 43,
+  "version": "0.3.3",
+  "base": 44,
   "ids": {
     "achievements": [
       "ach.allergy_10",
@@ -673,6 +673,7 @@
     "rooms": [
       "room.ecg",
       "room.emergency",
+      "room.icu",
       "room.lab",
       "room.office",
       "room.or",
@@ -691,6 +692,8 @@
       "room.emergency/L",
       "room.emergency/M",
       "room.emergency/S",
+      "room.icu/M",
+      "room.icu/S",
       "room.lab/M",
       "room.lab/S",
       "room.office/M",

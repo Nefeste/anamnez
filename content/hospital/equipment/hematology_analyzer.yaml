@@ -1,7 +1,7 @@
 id: eq.hematology_analyzer
 name: { ru: "Гематологический анализатор" }
 gen: { ru: "гематологического анализатора" }
-room: room.lab
+rooms: [room.lab]
 sprite: analyzer
 price: 70000
 upkeep: 70

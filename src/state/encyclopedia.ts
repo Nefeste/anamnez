@@ -215,6 +215,8 @@ function whereLines(db: ContentDb, c: Condition, t: Tactics): string[] {
   const e = T.encyclopedia;
   const s = t.setting;
   const lines = [e.whereDefault(e.setting[s.default])];
+  // ПИТ нет в амбулатории и в районной больнице без неё — туда везёт скорая (часть 38а)
+  if (s.default === 'icu') lines.push(e.whereNoIcu(e.setting.ambulance));
   for (const [value, set] of Object.entries(s.param?.map ?? {})) if (set !== s.default) lines.push(e.whereIf(whenText({ [s.param!.name]: [value] }) ?? value, e.setting[set]));
   if (s.redFlag && s.redFlag !== s.default) lines.push(e.whereRedFlag(e.setting[s.redFlag]));
   for (const r of s.risks ?? []) if (r.setting !== s.default) lines.push(e.whereRisk(nameOf(db, r.id), e.setting[r.setting]));
@@ -509,7 +511,8 @@ function equipmentArticle(db: ContentDb, x: Equipment): Article {
   const ops = Object.values(db.treatments).filter(t => t.surgery?.equipment.includes(x.id)).map(t => ref(db, t.id));
   const by = [...x.exams.map(id => ref(db, id)), ...ops].sort(byTitle);
   if (by.length > 0) blocks.push({ key: 'examsBy', title: e.examsBy, refs: by });
-  blocks.push({ key: 'standsIn', title: e.standsIn, refs: [ref(db, x.room)] });
+  // монитор с дефибриллятором — в смотровой приёмного и в ПИТ (часть 38а)
+  blocks.push({ key: 'standsIn', title: e.standsIn, refs: x.rooms.map(id => ref(db, id)) });
   if (x.upgradeOf) blocks.push({ key: 'upgrades', title: e.upgrades, refs: [ref(db, x.upgradeOf)] });
   const better = Object.values(db.equipment).filter(y => y.upgradeOf === x.id).map(y => ref(db, y.id, rub(y.price)));
   if (better.length > 0) blocks.push({ key: 'upgradedBy', title: e.upgradedBy, refs: better });
@@ -520,7 +523,7 @@ function equipmentArticle(db: ContentDb, x: Equipment): Article {
   if (sens < 0 && spec <= 0) lines.push(e.worse(-sens, -spec));
   if (sens > 0 && spec >= 0) lines.push(e.better(sens, spec));
   blocks.push({ key: 'prices', title: e.prices, text: lines });
-  return { id: x.id, section: 'hospital', title: x.name.ru, subtitle: [e.equipmentKind, db.rooms[x.room]?.name.ru ?? x.room, rub(x.price)].join(' · '), blocks };
+  return { id: x.id, section: 'hospital', title: x.name.ru, subtitle: [e.equipmentKind, x.rooms.map(id => db.rooms[id]?.name.ru ?? id).join(', '), rub(x.price)].join(' · '), blocks };
 }
 
 function roleArticle(db: ContentDb, r: StaffRole): Article {

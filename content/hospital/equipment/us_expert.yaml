@@ -3,7 +3,7 @@
 id: eq.us_expert
 name: { ru: "УЗ-аппарат экспертного класса" }
 gen: { ru: "УЗ-аппарата экспертного класса" }
-room: room.ultrasound
+rooms: [room.ultrasound]
 sprite: us
 upgradeOf: eq.us_basic
 price: 1200000

@@ -4,7 +4,7 @@
 id: eq.xray_analog
 name: { ru: "Рентгеновский аппарат плёночный" }
 gen: { ru: "рентгеновского аппарата" }
-room: room.xray
+rooms: [room.xray]
 sprite: xray
 price: 120000
 upkeep: 150

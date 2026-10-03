@@ -19,20 +19,22 @@ type ListRole = Exclude<TxRole, 'prevent'>;
 const ROLES: ListRole[] = ['firstLine', 'acceptable', 'supportive', 'notIndicated', 'harmful'];
 
 /** Насколько серьёзна помощь: чем выше, тем срочнее и сложнее. */
-export const SETTING_ORDER: Record<Setting, number> = { home: 0, ward: 1, admit: 1, ambulance: 2, surgery: 3, transfer: 3 };
+export const SETTING_ORDER: Record<Setting, number> = { home: 0, ward: 1, admit: 1, ambulance: 2, icu: 2, surgery: 3, transfer: 3 };
 
 /**
  * Что закрывает выбор врача (spec 2026-09-chapter-2, «Место лечения»): «Вызвать скорую» везёт
- * в больницу, где сделают нужное, — и операцию, и центр; своя палата — стационар сразу, но не
- * операцию и не центр.
+ * в больницу, где сделают нужное, — и операцию, и центр, и палату интенсивной терапии; своя
+ * палата — стационар сразу, но не операцию, не центр и не ПИТ; своя ПИТ — и палату, и срочный
+ * стационар (spec 2026-10-chapter-3, часть 38а).
  */
 const COVERS: Record<Setting, readonly Setting[]> = {
   home: ['home'],
   ward: ['ward'],
-  ambulance: ['ambulance', 'surgery', 'transfer'],
+  ambulance: ['ambulance', 'surgery', 'transfer', 'icu'],
   admit: ['ward', 'ambulance'],
   surgery: ['surgery'],
-  transfer: ['ambulance', 'surgery', 'transfer'],
+  transfer: ['ambulance', 'surgery', 'transfer', 'icu'],
+  icu: ['ward', 'ambulance', 'icu'],
 };
 
 /**
@@ -47,19 +49,23 @@ export function settingFit(need: Setting, chosen: Setting, also: readonly Settin
 
 /**
  * Что есть в больнице: свободная своя койка — стационар свой (часть 26); работает операционная с
- * бригадой и аппаратами для нужной операции и есть койка после неё — операция своя (часть 28).
+ * бригадой и аппаратами для нужной операции и есть койка после неё — операция своя (часть 28);
+ * свободная койка палаты интенсивной терапии под монитором — ПИТ своя (часть 38а).
  */
 export interface Venue {
   ward?: boolean;
   or?: boolean;
+  icu?: boolean;
 }
 
 /**
  * Что выбрать при такой нужде здесь: в амбулатории — направить или скорая, со своей палатой — в
- * неё, со своей операционной — оперировать; центра, которого в районе нет, — скорая.
+ * неё, со своей операционной — оперировать, со своей ПИТ — в неё; центра, которого в районе нет, и
+ * ПИТ, которой в больнице нет, — скорая.
  */
 export function choiceFor(need: Setting, venue: Venue = {}): Setting {
   if (need === 'home') return 'home';
+  if (need === 'icu') return venue.icu ? 'icu' : 'ambulance';
   if (need === 'ward' || need === 'ambulance') return venue.ward ? 'admit' : need;
   if (need === 'surgery' && venue.or) return 'surgery';
   return 'ambulance';

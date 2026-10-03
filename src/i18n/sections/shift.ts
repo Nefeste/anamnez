@@ -113,6 +113,8 @@ export const shift = {
       died: (n: number) => `Умерли в стационаре: ${n}.`,
       stay: (mean: number, norm: number) =>
         `В среднем в стационаре ${String(mean).replace('.', ',')}\u00a0сут. при обычных ${String(norm).replace('.', ',')}.`,
+      // палата интенсивной терапии (spec 2026-10-chapter-3, часть 38а)
+      icu: (admitted: number, lying: number) => `Из них в палате интенсивной терапии — поступили: ${admitted}, лежат: ${lying}.`,
     },
     // операционная за день (часть 28)
     surgery: {
@@ -151,6 +153,8 @@ export const shift = {
       or: 'Операционная',
       // кабинет УЗИ (часть 29)
       ultrasound: 'УЗИ',
+      // палата интенсивной терапии (spec 2026-10-chapter-3, часть 38а)
+      icu: 'ПИТ',
     } as Record<string, string>,
     // для чтения с экрана: что на карте, словами
     label: (waiting: number, away: number, inRoom: string | undefined) =>
@@ -176,6 +180,9 @@ export const shift = {
       anesthetist: 'Анестезиолог',
       orNurse: 'Операционная медсестра',
       sonographer: 'Врач УЗД',
+      // палата интенсивной терапии (spec 2026-10-chapter-3, часть 38а)
+      icuDoctor: 'Анестезиолог-реаниматолог',
+      icuNurse: 'Медсестра палаты интенсивной терапии',
     } as Record<string, string>,
     // нанятый врач (spec 2026-09-hired-doctors): кто он и кого принимает
     therapist: (name: string, skill: number) => `${name}, терапевт · навык ${skill}`,
@@ -191,6 +198,8 @@ export const shift = {
       radiographer: 'Делает рентгеновские снимки',
       radiologist: 'Описывает снимки: его заключение приходит вместе со снимком',
       sonographer: 'Делает УЗИ и сразу описывает, что видит',
+      icuDoctor: 'Ведёт тяжёлых больных под мониторами',
+      icuNurse: 'Следит за мониторами и ставит капельницы',
     } as Record<string, string>,
     doing: {
       registration: 'В регистратуре: заводят карту',
@@ -206,6 +215,8 @@ export const shift = {
       left: (female: boolean) => ago(female, 'Не дождался приёма и уходит', 'Не дождалась приёма и уходит'),
       // палата (spec 2026-09-chapter-2, часть 26): день поступления — «первые сутки»
       ward: (days: number) => `В палате: ${days + 1}-е\u00a0сутки`,
+      // палата интенсивной терапии (часть 38а)
+      icu: (days: number) => `В палате интенсивной терапии: ${days + 1}-е\u00a0сутки`,
       // операционная (часть 28): на столе и ждёт операции в палате
       onTable: (op: string, until: string) => `Идёт операция: ${lowerFirst(op)}, до ${until}`,
       waitingOp: (op: string) => `В палате, ждёт операции: ${lowerFirst(op)}`,
@@ -223,6 +234,10 @@ export const shift = {
     admit: 'В палату',
     freeBeds: (free: number, all: number) => `свободно ${free} из ${all}`,
     noBeds: 'свободных коек нет',
+    // палата интенсивной терапии (spec 2026-10-chapter-3, часть 38а): койки под мониторами
+    icu: 'В ПИТ',
+    freeIcuBeds: (free: number, all: number) => `палата интенсивной терапии · под монитором свободно ${free} из ${all}`,
+    inIcu: 'Палата интенсивной терапии, под монитором',
     refer: 'Направить в другую больницу',
     // обход
     title: 'Обход',

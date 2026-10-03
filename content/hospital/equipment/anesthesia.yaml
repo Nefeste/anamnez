@@ -1,7 +1,7 @@
 id: eq.anesthesia
 name: { ru: "Наркозно-дыхательный аппарат" }
 gen: { ru: "наркозно-дыхательного аппарата" }
-room: room.or
+rooms: [room.or]
 sprite: anesthesia
 # у изголовья стола — первое место
 slot: 0

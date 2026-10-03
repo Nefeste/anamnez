@@ -1,7 +1,7 @@
 id: eq.ecg
 name: { ru: "Электрокардиограф" }
 gen: { ru: "электрокардиографа" }
-room: room.ecg
+rooms: [room.ecg]
 sprite: ecg
 price: 15000
 upkeep: 15

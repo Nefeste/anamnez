@@ -26,6 +26,8 @@ export default function Rounds() {
           <H>{c.title}</H>
           <P>{c.diagnosis}</P>
           <P muted>{c.day}</P>
+          {/* палата интенсивной терапии (spec 2026-10-chapter-3, часть 38а) */}
+          {c.icu ? <P testID={`round-icu-${c.id}`}>{c.icu}</P> : null}
           <Text testID={`round-state-${c.id}`} style={[styles.state, c.state === 'worse' || c.state === 'reaction' ? styles.bad : c.state === 'ready' ? styles.good : null]}>
             {c.stateText}
             {c.readyHint ? ` · ${c.readyHint}` : ''}
