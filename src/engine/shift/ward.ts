@@ -140,7 +140,10 @@ export function vitalOn(db: ContentDb, patient: Patient, stay: Stay, f: Id, days
     return round(days <= from ? base : base + (normal - base) * k);
   }
   if (stay.worseAfter !== undefined && days >= stay.worseAfter) {
-    const far = Math.abs(spec.present[0] - normal) > Math.abs(spec.present[1] - normal) ? spec.present[0] : spec.present[1];
+    // низкое давление (часть 33б) — порог на этом же измерении: хуже значит ниже
+    const low = Object.values(db.findings).find(x => x.value?.of === f && patient.truth.findings.some(t => t.f === x.id))?.value;
+    const edge = low ? low.present : spec.present;
+    const far = Math.abs(edge[0] - normal) > Math.abs(edge[1] - normal) ? edge[0] : edge[1];
     const k = Math.min(1, (days - stay.worseAfter + 1) / 2);
     // хуже — дальше от нормы; если значение уже было в норме, болезнь уводит его к признаку
     return round(base + (far - base) * k * 0.5);

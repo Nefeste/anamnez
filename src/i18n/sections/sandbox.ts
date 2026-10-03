@@ -152,11 +152,13 @@ export const sandbox = {
   levelMissing: (pct: number, gens: string) => `Тариф ОМС за приём — ${pct}\u00a0%: нет ${gens}`,
   // стационар (spec 2026-09-chapter-2, часть 26): ОМС за случай — при выписке
   wardLine: (n: number) => `Стационар — ${n}\u00a0${pluralRu(n, 'случай', 'случая', 'случаев')}`,
-  // прерванные — доля тарифа; без показаний — экспертиза не оплатила (часть 26)
-  wardNote: (interrupted: number, unindicated: number, share: number) =>
+  // прерванные — доля тарифа; без показаний — экспертиза не оплатила (часть 26); повторные после
+  // ранней выписки — тоже (часть 35)
+  wardNote: (interrupted: number, unindicated: number, share: number, repeat = 0) =>
     [
       interrupted > 0 ? `прерваны переводом или ранней выпиской — ${interrupted}: ${share}\u00a0% тарифа` : '',
       unindicated > 0 ? `госпитализация без показаний — ${unindicated}: не оплачено` : '',
+      repeat > 0 ? `снова в палате после ранней выписки — ${repeat}: не оплачено` : '',
     ].filter(Boolean).join('; '),
   expensesTitle: 'Расходы',
   expense: {
@@ -183,6 +185,8 @@ export const sandbox = {
     waitShort: (min: number) => `Ждали недолго: в среднем ${min}\u00a0мин`,
     waitLong: (min: number) => `Ждали долго: в среднем ${min}\u00a0мин`,
     noToilet: 'Нет санузла',
+    died: (n: number) => `Умерли в стационаре: ${n}`,
+    severe: (n: number) => `Переведены в тяжёлом состоянии: ${n}`,
   },
   repHint: (pull: number) =>
     `Каждый вечер репутация сдвигается к оценке дня на ${pull}\u00a0% разницы. От неё зависит, сколько людей придёт и сколько из них — по ДМС и платно.`,

@@ -314,10 +314,11 @@ describe('операционная: исход, касса, повтор', () =>
     expect(q.stay!.op).toBeDefined();
   });
 
-  test('касса: случай с операцией — тариф стационара с прибавкой за операцию', () => {
+  test('касса: случай с операцией — тариф стационара с прибавкой за операцию и её расходниками', () => {
     const full = wardIncome(db, 'cond.appendicitis', 'A', 'full');
-    const withOp = wardIncome(db, 'cond.appendicitis', 'A', 'full', true);
-    expect(withOp - full).toBe(Math.round((db.economy.tariffs.omsOperation * db.economy.tariffs.omsQuality.A) / 100));
+    const withOp = wardIncome(db, 'cond.appendicitis', 'A', 'full', OP);
+    // имплантат и расходники — в тарифе хирургического случая, как в КСГ (часть 35)
+    expect(withOp - full).toBe(Math.round(((db.economy.tariffs.omsOperation + db.treatments[OP].cost) * db.economy.tariffs.omsQuality.A) / 100));
     const { s } = withOr(38);
     apply(db, s, { kind: 'nextDay' });
     const p = operated(s);
@@ -329,7 +330,7 @@ describe('операционная: исход, касса, повтор', () =>
     apply(db, s, { kind: 'discharge', id: p.id });
     expect(p.status).toBe('done');
     expect(p.closed!.outcome.kind).toBe('recovered');
-    expect(s.economy!.ledger!.ward).toEqual({ cases: 1, income: wardIncome(db, 'cond.appendicitis', p.closed!.grades.defensibility, 'full', true), interrupted: 0, unindicated: 0 });
+    expect(s.economy!.ledger!.ward).toEqual({ cases: 1, income: wardIncome(db, 'cond.appendicitis', p.closed!.grades.defensibility, 'full', OP), interrupted: 0, unindicated: 0 });
   });
 
   test('те же команды — те же операции, исходы и касса', () => {
@@ -505,7 +506,7 @@ describe('осложнённая стадия: перфорация по час�
     expect([deathsOf(db, OP), deathsOf(db, OP, true)]).toEqual([3, 6]);
   });
 
-  test('умер после операции — ночью: исход, строка стационара, случай оплачен; в «мягком режиме» — перевод в тяжёлом состоянии', () => {
+  test('умер после операции — ночью: исход, строка стационара, случай оплачен, репутация ниже; в «мягком режиме» — перевод в тяжёлом состоянии, репутация так же', () => {
     const d = structuredClone(db);
     d.treatments[OP].surgery!.death = P_ONE;
     d.treatments[OP].surgery!.complicated!.death = P_ONE;
@@ -525,15 +526,22 @@ describe('осложнённая стадия: перфорация по час�
     expect(died.p.closed!.stay).toMatchObject({ days: 0, end: 'died' });
     expect(died.s.summary.ward).toMatchObject({ died: 1, transferred: 0, lying: 0 });
     expect(died.s.summary.economy!.ledger.ward).toEqual({
-      cases: 1, income: wardIncome(d, 'cond.appendicitis', died.p.closed!.grades.defensibility, 'full', true), interrupted: 0, unindicated: 0,
+      cases: 1, income: wardIncome(d, 'cond.appendicitis', died.p.closed!.grades.defensibility, 'full', OP), interrupted: 0, unindicated: 0,
     });
     expect(outcomeText(died.p.closed!.outcome, 'surgery', died.p.patient.sex === 'f')).toBe(T.spikes.patient.outcome.died(0, died.p.patient.sex === 'f'));
+    // репутация (часть 35): за умершего — поправка оценки дня из economy.yaml
+    const penalty = { count: 1, delta: d.economy.reputation.died };
+    expect(d.economy.reputation.died).toBeLessThan(0);
+    expect(died.s.summary.economy!.reputation.reasons).toContainEqual({ key: 'died', ...penalty });
     const soft = run(true);
     expect(soft.s.meta.soft).toBe(true);
     expect(soft.p.closed!.outcome).toEqual({ kind: 'transferred', day: 0, cured: false, severe: true });
     expect(soft.p.closed!.stay!.end).toBe('transferred');
-    expect(soft.s.summary.ward).toMatchObject({ transferred: 1, lying: 0 });
+    expect(soft.s.summary.ward).toMatchObject({ transferred: 1, severe: 1, lying: 0 });
     expect(soft.s.summary.ward!.died).toBeUndefined();
+    // «мягкий режим» меняет строку, а не игру: репутация — как от смерти
+    expect(soft.s.summary.economy!.reputation.reasons).toContainEqual({ key: 'severe', ...penalty });
+    expect(soft.s.summary.economy!.reputation.to).toBe(died.s.summary.economy!.reputation.to);
     expect(outcomeText(soft.p.closed!.outcome, 'surgery', false)).toBe(T.spikes.patient.outcome.transferredSevere(false));
     apply(d, soft.s, { kind: 'soft', on: false });
     expect(soft.s.meta.soft).toBeUndefined();

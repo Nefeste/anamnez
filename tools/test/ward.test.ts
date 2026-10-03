@@ -1,7 +1,7 @@
 // Стационар своей больницы (spec 2026-09-chapter-2, часть 26): палата и койки, «В палату» в
 // решении, болезнь по суткам с назначенным планом, обход — выписка, перевод, смена лечения;
-// ранняя выписка — повторное обращение; касса — случай стационара и койко-дни; архив профиля —
-// с исходом после выписки.
+// ранняя выписка — повторное обращение, и снова в палате его не оплатят (часть 35); касса —
+// случай стационара и койко-дни; архив профиля — с исходом после выписки.
 import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
 import { emptyLedger, expensesOf, incomeOf, wardIncome } from '../../src/engine/economy/economy';
@@ -11,6 +11,7 @@ import { apply, freeBeds, inpatientsOf, newSandbox, wardBeds } from '../../src/e
 import type { ShiftPatient, ShiftState } from '../../src/engine/shift/types';
 import { daysIn, stayNorm, vitalOn, wardState } from '../../src/engine/shift/ward';
 import { caseKey, forgetProfile, loadProfile, profile, recordCases, setProfileStore } from '../../src/state/profile';
+import { cashView } from '../../src/state/sandboxView';
 import { memoryStore } from '../../src/state/saves';
 
 /** Песочница с готовой амбулаторией и палатой на четыре койки справа; медсестра ЭКГ — в палату. */
@@ -137,6 +138,41 @@ describe('стационар: поступление, обход, выписка
     const day = s.summary.economy!;
     expect(day.ledger.ward).toEqual({ cases: 1, income: paid, interrupted: 1, unindicated: 0 });
     expect(day.cash - cash).toBe(incomeOf(day.ledger) - expensesOf(day.ledger));
+  });
+
+  test('вернулся хуже после ранней выписки и снова в палате — этот случай страховая не оплачивает (часть 35)', () => {
+    const { s } = withWard(22);
+    apply(db, s, { kind: 'nextDay' });
+    const p = treat(s, 'cond.pneumonia_cap', ['tx.amoxicillin_clavulanate']);
+    apply(db, s, { kind: 'setting', setting: 'admit' });
+    apply(db, s, { kind: 'finish' });
+    night(s);
+    apply(db, s, { kind: 'discharge', id: p.id });
+    expect(p.closed!.stay!.end).toBe('early');
+    // вернулся — с отметкой; пришедший сам и вернувшийся после приёма — без неё
+    let r: ShiftPatient | undefined;
+    for (let d = 0; d < 4 && !r; d++) {
+      night(s);
+      r = Object.values(s.patients).find(x => x.returnOf === p.id);
+    }
+    expect(r!.afterEarly).toBe(true);
+    expect(Object.values(s.patients).filter(x => x.afterEarly)).toEqual([r!]);
+    for (let i = 0; i < 30 && r!.status !== 'waiting'; i++) apply(db, s, { kind: 'advance', seconds: 10 * 60 });
+    apply(db, s, { kind: 'call', id: r!.id });
+    apply(db, s, { kind: 'exam', exam: 'exam.vitals' });
+    apply(db, s, { kind: 'diagnose', id: 'cond.pneumonia_cap' });
+    apply(db, s, { kind: 'toggleTreatment', id: 'tx.amoxicillin_clavulanate' });
+    apply(db, s, { kind: 'setting', setting: 'admit' });
+    apply(db, s, { kind: 'finish' });
+    expect(r!.status).toBe('admitted');
+    const state = () => wardState(r!.stay!, daysIn(r!.stay!, s.day));
+    for (let d = 0; d < 15 && state() !== 'ready' && state() !== 'worse'; d++) night(s);
+    // долечили — выписка в срок, но случай — повторный: ни тарифа, ни доли
+    apply(db, s, { kind: state() === 'ready' ? 'discharge' : 'transfer', id: r!.id });
+    expect(s.economy!.ledger!.ward).toEqual({ cases: 1, income: 0, interrupted: 0, unindicated: 0, repeat: 1 });
+    expect(wardIncome(db, 'cond.pneumonia_cap', 'A', 'repeat')).toBe(0);
+    apply(db, s, { kind: 'closeDay' });
+    expect(cashView(db, s.summary.economy!).wardNote).toBe('Снова в палате после ранней выписки — 1: не оплачено');
   });
 
   test('не помогает — хуже в срок записи; смена лечения на обходе ведёт к выписке от этих суток', () => {

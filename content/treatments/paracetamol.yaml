@@ -49,6 +49,8 @@ effects:
   - { on: cond.knee_contusion, kind: relieve, band: often, days: [0, 1] }
   - { on: cond.knee_ligament, kind: relieve, band: often, days: [0, 1] }
   - { on: cond.patella_fracture, kind: relieve, band: often, days: [0, 1] }
+  # надрыв икроножной мышцы (часть 33а): ненаркотические анальгетики (832_2, раздел 3.1)
+  - { on: cond.calf_strain, kind: relieve, band: often, days: [0, 1] }
 texts:
   hint:
     ru: "Снижает температуру и боль. Лечит не причину болезни, а самочувствие: после него температура нормальная, а пневмония — нет."

@@ -12,7 +12,7 @@ import { type Browser, chromium, type Page } from 'playwright';
 import { buildDb } from '../content/load';
 import { BRAND, iconSvg, markSvg } from './art';
 import { CAPTIONS } from './captions';
-import { acsCase, emergencyState, envelope, fractureCase, pneumoniaCase, sandboxState } from './states';
+import { acsCase, districtState, envelope, fractureCase, pneumoniaCase, sandboxState } from './states';
 
 const ROOT = join(import.meta.dir, '../..');
 const DIST = join(ROOT, 'dist-web');
@@ -148,6 +148,14 @@ async function openSandbox(browser: Browser, base: string, save: string): Promis
   return p;
 }
 
+/** Карьера из сохранения — как её открывает игрок: «Кампания» → «Карьера 1» → «Продолжить». */
+async function openCampaign(browser: Browser, base: string, save: string): Promise<Page> {
+  const p = await openShift(browser, base, save, 'campaign-1', '/campaign');
+  await p.getByTestId('career-1').click();
+  await p.getByTestId('career-continue').click();
+  return p;
+}
+
 const snap = async (p: Page) => Buffer.from(await p.screenshot({ type: 'png' }));
 
 /**
@@ -193,9 +201,10 @@ async function shots(browser: Browser): Promise<Record<string, Buffer>> {
   const base = `http://127.0.0.1:${server.port}`;
   const raw: Record<string, Buffer> = {};
   try {
-    // 1. своя больница с приёмным: через минуту-две скорая привезёт больного — автопауза, внизу
-    // «сортировать» (открывают, как игрок: «Быстрая игра» → «Песочница» → «Продолжить»)
-    let p = await openSandbox(browser, base, envelope(emergencyState(db)));
+    // 1. районная больница главы 2 на третий день: в палатах лежат, через минуту-две скорая
+    // привезёт больного — автопауза, внизу «сортировать» (открывают, как игрок: «Кампания» →
+    // «Карьера 1» → «Продолжить»)
+    let p = await openCampaign(browser, base, envelope(districtState(db)));
     await p.getByTestId('shift-sort').waitFor({ timeout: 30_000 });
     await p.waitForTimeout(600);
     raw['01-emergency.png'] = await snap(p);

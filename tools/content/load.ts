@@ -35,7 +35,7 @@ export const NO_ECONOMY: ContentDb['economy'] = {
   interest: 0,
   ward: { bedDay: 0, interrupted: 0 },
   ambulance: { perDay: [0, 0], weight: { minor: 0, moderate: 0, serious: 0, critical: 0 }, severe: 0 },
-  reputation: { start: 50, pull: 1, waitShort: 0, waitShortMin: 0, waitLong: 0, waitLongMin: 0, noToilet: 0 },
+  reputation: { start: 50, pull: 1, waitShort: 0, waitShortMin: 0, waitLong: 0, waitLongMin: 0, noToilet: 0, died: 0 },
   flow: 0,
   sandbox: { plot: [8, 8], entrance: [0, 1], corridor: [], budgets: { modest: 0, normal: 0, generous: 0 }, clinicShare: 0 },
 };
@@ -232,6 +232,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     for (const r of c.epidemiology.excludes ?? []) if (!conditions[r]?.epidemiology.chronic) errors.push(`${owner}: исключающее ${r} не найдено или не хроническое`);
     if (c.confirm !== 'clinical') for (const e of c.confirm) if (!(e in exams)) errors.push(`${owner}: подтверждающее обследование ${e} не найдено`);
     for (const f of c.redFlags ?? []) if (!hasF(f)) errors.push(`${owner}: красный флаг ${f} не найден`);
+    // с чем спутать по рекомендации (часть 33б): то, с чем приходят, и не сама болезнь
+    for (const d of c.differential ?? []) if (d === c.id || !conditions[d]?.presenting) errors.push(`${owner}: с чем спутать — ${d} не найдено, не приходят с ним или это оно само`);
     if (!c.presenting && !c.epidemiology.chronic) errors.push(`${owner}: не бывает ни основным, ни хроническим`);
     // тактика: у всего, с чем приходят, и только из существующих лечений, без повторов
     const t = c.treatment;
@@ -404,6 +406,26 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     }
     if (!(x.levels.medium < x.levels.high)) errors.push(`${x.id}: средний уровень ответа должен быть ниже высокого`);
   }
+  // порог на чужом измерении (часть 33б): то измерение — число, само не порог, в тех же единицах и с
+  // той же точностью; диапазон «есть» — вне его диапазонов; в обследовании — только вместе с ним, и
+  // точность выведена из его измерения: чувствительность — его специфичность, специфичность — 100
+  for (const f of Object.values(findings)) {
+    const of = f.value?.of;
+    if (!of) continue;
+    const base = findings[of]?.value;
+    if (!base) { errors.push(`${f.id}: измерение ${of} не найдено или без числа`); continue; }
+    if (base.of) errors.push(`${f.id}: ${of} — сам порог на чужом измерении`);
+    if (base.unit !== f.value!.unit || base.decimals !== f.value!.decimals) errors.push(`${f.id}: единица и точность числа — не те, что у ${of}`);
+    const [lo, hi] = f.value!.present;
+    if ([base.present, base.absent].some(([a, b]) => lo <= b && a <= hi)) errors.push(`${f.id}: диапазон «есть» пересекается с диапазонами ${of}`);
+    for (const e of Object.values(exams)) {
+      const mine = e.checks.find(c => c.f === f.id);
+      if (!mine) continue;
+      const theirs = e.checks.find(c => c.f === of);
+      if (!theirs) errors.push(`${e.id}: ${f.id} — только вместе с ${of}: число одно`);
+      else if (mine.sens !== theirs.spec || mine.spec !== 100) errors.push(`${e.id}: у ${f.id} точность — из измерения ${of}: чувствительность ${theirs.spec}, специфичность 100`);
+    }
+  }
   // обследование только при жалобе (часть 32г): жалоба — признак с текстом жалобы
   for (const x of Object.values(exams)) for (const f of x.complaints ?? []) if (!findings[f]?.texts.complaint) errors.push(`${x.id}: жалоба ${f} не найдена или без текста жалобы`);
   // каждому с жалобой (часть 32г-2): жалоба есть, и обследование ей предлагается
@@ -417,7 +439,9 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     for (const f of x.complaints) if (!findings[f]?.texts.complaint) errors.push(`${x.id}: жалоба ${f} не найдена или без текста жалобы`);
     for (const f of x.any) if (!hasF(f)) errors.push(`${x.id}: признак ${f} не найден`);
     // часть 32г: дополнительные признаки, возраст и круг применимости
-    for (const f of [...(x.minor?.any ?? []), ...(x.requires ?? [])]) if (!hasF(f)) errors.push(`${x.id}: признак ${f} не найден`);
+    for (const f of [...(x.minor?.any ?? []), ...(x.requires ?? []), ...(x.excludes ?? [])]) if (!hasF(f)) errors.push(`${x.id}: признак ${f} не найден`);
+    // часть 33а: признак, при котором правило не применяют, не может его же и выполнять
+    for (const f of x.excludes ?? []) if (x.any.includes(f) || (x.minor?.any ?? []).includes(f) || (x.requires ?? []).includes(f)) errors.push(`${x.id}: ${f} — и в правиле, и среди признаков, при которых его не применяют`);
     for (const f of x.minor?.any ?? []) if (x.any.includes(f)) errors.push(`${x.id}: ${f} — и основной, и дополнительный признак`);
     if (x.minor && x.minor.count > x.minor.any.length + (x.age?.minor ? 1 : 0)) errors.push(`${x.id}: дополнительных признаков меньше, чем их нужно (${x.minor.count})`);
     if (x.age?.minor && !(x.age.minor[0] < x.age.minor[1])) errors.push(`${x.id}: возраст дополнительного признака — от меньшего к большему`);
@@ -426,8 +450,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     // часть 32д: «55 лет и старше» — `from`; «старше 60» — `main`; вместе — нет
     if (x.age?.main !== undefined && x.age.from !== undefined) errors.push(`${x.id}: возраст — либо «старше» (main), либо «и старше» (from)`);
     if (x.age?.from !== undefined && x.age.minor && x.age.from <= x.age.minor[1]) errors.push(`${x.id}: основной возраст (${x.age.from} и старше) пересекается с дополнительным`);
-    if (x.requires && !x.texts.na) errors.push(`${x.id}: у правила с кругом применимости нужен текст «не применяется» (texts.na)`);
-    if (!x.requires && x.texts.na) errors.push(`${x.id}: текст «не применяется» без круга применимости (requires)`);
+    if ((x.requires || x.excludes) && !x.texts.na) errors.push(`${x.id}: у правила с кругом применимости нужен текст «не применяется» (texts.na)`);
+    if (!x.requires && !x.excludes && x.texts.na) errors.push(`${x.id}: текст «не применяется» без круга применимости (requires или excludes)`);
     if (x.exams.length === 0 && !x.texts.exam) errors.push(`${x.id}: обследования правила в игре нет — нужен текст о нём (texts.exam)`);
     if (x.exams.length > 0 && x.texts.exam) errors.push(`${x.id}: текст об обследовании (texts.exam) — только если его в игре нет`);
     for (const id of x.about) if (!conditions[id]?.presenting) errors.push(`${x.id}: болезнь ${id} не найдена или с ней не приходят`);
@@ -446,7 +470,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   const db: ContentDb = {
     contentVersion, hash: '', conditions: {}, findings: {}, exams: {}, risks: {}, treatments: {}, rooms: {}, equipment: {}, roles: {}, presets: {},
     characters: Object.fromEntries(Object.values(characters).sort((a, b) => (a.id < b.id ? -1 : 1)).map(c => [c.id, c])),
-    chapters: Object.fromEntries(Object.values(chapters).sort((a, b) => a.order - b.order).map(c => [c.id, c])),
+    // заданный пациент строкой — пришедший сам с этой болезнью
+    chapters: Object.fromEntries(Object.values(chapters).sort((a, b) => a.order - b.order).map(c => [c.id, { ...c, tutorial: c.tutorial.map(t => (typeof t === 'string' ? { condition: t } : t)) }])),
     tips: Object.fromEntries(Object.values(tips).sort((a, b) => a.order - b.order).map(t => [t.id, t])),
     achievements: Object.fromEntries(Object.values(achievements).sort((a, b) => a.order - b.order).map(a => [a.id, a])),
     scores: Object.fromEntries(Object.values(scores).sort((a, b) => (a.id < b.id ? -1 : 1)).map(x => [x.id, x])),
@@ -479,6 +504,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (c.derived) out.derived = c.derived;
     if (c.course.presentation) out.presentation = c.course.presentation;
     if (c.redFlags) out.redFlags = c.redFlags;
+    if (c.differential) out.differential = c.differential;
     if (c.course.selfLimiting) {
       out.selfLimiting = true;
       if (typeof c.course.selfLimiting === 'object') out.selfLimitingWhen = c.course.selfLimiting.when;
@@ -660,10 +686,24 @@ function checkCampaign(db: ContentDb, errors: string[]) {
     if (!db.presets[c.preset]) at(`готовая больница ${c.preset} не найдена`);
     for (const r of c.build) if (!db.rooms[r]) at(`помещение ${r} не найдено`);
     if (!Object.values(db.conditions).some(x => x.presenting && x.department === c.department)) at(`в отделении ${c.department} нет болезней`);
+    // заданные пациенты — из отделений больницы главы: своё и то, что принимают её помещения
+    // (смотровая приёмного — хирургию и травму); скорая — если есть смотровая; параметры — из записи
+    const preset = db.presets[c.preset];
+    const departments = [c.department, ...new Set((preset?.rooms ?? []).flatMap(r => db.rooms[r.type]?.admits ?? []))];
+    const emergency = (preset?.rooms ?? []).some(r => db.rooms[r.type]?.emergency);
     for (const t of c.tutorial) {
-      const cond = db.conditions[t];
-      if (!cond) at(`болезнь обучения ${t} не найдена`);
-      else if (!cond.presenting || cond.department !== c.department) at(`болезнь обучения ${t} — не из приёма отделения ${c.department}`);
+      const cond = db.conditions[t.condition];
+      if (!cond) at(`болезнь обучения ${t.condition} не найдена`);
+      else if (!cond.presenting || !departments.includes(cond.department)) at(`болезнь обучения ${t.condition} — не из приёма отделения ${departments.join(', ')}`);
+      if (t.ambulance && !emergency) at(`болезнь обучения ${t.condition}: скорая, а смотровой приёмного в больнице главы нет`);
+      for (const [name, value] of Object.entries(t.params ?? {})) {
+        if (cond && cond.params?.[name]?.[value] === undefined) at(`болезнь обучения ${t.condition}: параметра ${name} со значением ${value} у болезни нет`);
+      }
+      // возраст — внутри возраста болезни
+      const age = cond?.age;
+      if (t.age && (t.age[0] > t.age[1] || (age && (t.age[1] < age.min || (age.max !== undefined && t.age[0] > age.max))))) {
+        at(`болезнь обучения ${t.condition}: возраст ${t.age.join('–')} — мимо возраста болезни`);
+      }
     }
     const missions = new Set<string>();
     for (const m of c.missions) {
@@ -688,6 +728,9 @@ function checkCampaign(db: ContentDb, errors: string[]) {
     if (tipOrders.has(t.order)) at(`порядок ${t.order} уже у другой подсказки`);
     tipOrders.add(t.order);
     if (!db.characters[t.from]) at(`персонаж ${t.from} не найден`);
+    if (t.chapter && !db.chapters[t.chapter]) at(`глава ${t.chapter} не найдена`);
+    // подсказка о скорой и об обходе — в главе, где они есть
+    if ((t.when === 'ambulance' || t.when === 'rounds') && !t.chapter) at(`подсказка «${t.when}» — только с главой (chapter)`);
     if (typeof t.when === 'object' && !db.conditions[t.when.condition]?.presenting) at(`болезнь ${t.when.condition} не найдена или с ней не приходят`);
     for (const id of t.see) if (!(db.conditions[id] || db.findings[id] || db.exams[id] || db.treatments[id] || db.risks[id] || db.rooms[id] || db.equipment[id] || db.roles[id])) at(`статья ${id} не найдена`);
   }

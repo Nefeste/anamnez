@@ -9,6 +9,7 @@ import { ABDOMEN_CASES, CHEST_CASES, HEAD_CASES, US_CASES } from '../../src/stat
 import { ABDOMEN_ASPECT, abdomenGeometry, colonAt, CRESCENT_X, DIAPHRAGM, domeY, type Loop, loopFolds, loopGas, loopLevels } from '../../src/render/xray/abdomenGeometry';
 import * as chest from '../../src/render/xray/chestGeometry';
 import { inSector, polar as usPolar, R1, usGeometry } from '../../src/render/us/geometry';
+import { PANEL_BOTTOM, PANEL_TOP, veinGeometry } from '../../src/render/us/veinGeometry';
 import { loadSkia, luma, rasterize } from '../imaging/headless';
 
 const CX = 0.5, CY = 0.5;
@@ -282,7 +283,7 @@ describe('сектор УЗИ: геометрия', () => {
 
 describe('сектор УЗИ: рисунок без экрана', () => {
   const S = 240;
-  let draw: (f: import('../../src/render/us/geometry').UsFindings, seed: number) => Promise<{ rgba: Uint8Array; png: Uint8Array }>;
+  let draw: (f: import('../../src/render/us/sector').UsImage, seed: number) => Promise<{ rgba: Uint8Array; png: Uint8Array }>;
   beforeAll(async () => {
     await loadSkia();
     const { recordUsSector } = await import('../../src/render/us/sector');
@@ -373,8 +374,95 @@ describe('сектор УЗИ: рисунок без экрана', () => {
     const a = await draw({ view: 'kidney', fluid: 0.5 }, 9);
     const b = await draw({ view: 'kidney', fluid: 0.5 }, 9);
     expect(Buffer.from(a.png).equals(Buffer.from(b.png))).toBe(true);
-    expect(US_CASES.length).toBe(11);
+    expect(US_CASES.length).toBe(16);
     for (const k of US_CASES) expect((await draw(k.findings, k.seed)).png.length).toBeGreaterThan(1000);
+  });
+
+  // вены ноги линейным датчиком (часть 33а): слева без давления, справа датчиком давят
+  test('вена: артерия и вена чёрные; под давлением здоровая вена сжимается, вена с тромбом — нет, внутри серое', async () => {
+    const g = veinGeometry({ view: 'vein' }, 12);
+    const [free, pressed] = g.panels;
+    const normal = (await draw({ view: 'vein' }, 12)).rgba;
+    for (const p of [free, pressed]) expect(at(normal, p.artery.c)).toBeLessThan(30);
+    expect(at(normal, free.vein.c)).toBeLessThan(30);
+    // где без давления была вена, под давлением — ткань: выше щели на полвысоты вены
+    const above: [number, number] = [pressed.vein.c[0], pressed.vein.c[1] - free.vein.ry * 0.6];
+    expect(at(normal, above)).toBeGreaterThan(40);
+    const clot = veinGeometry({ view: 'vein', deep: 1 }, 12).panels;
+    const withClot = (await draw({ view: 'vein', deep: 1 }, 12)).rgba;
+    for (const p of clot) {
+      expect(at(withClot, p.vein.c)).toBeGreaterThan(at(withClot, p.artery.c) + 12);
+      expect(at(withClot, p.vein.c)).toBeLessThan(110);
+    }
+    const tear = veinGeometry({ view: 'vein', tear: 0.8 }, 15).panels[0].tear!;
+    const torn = (await draw({ view: 'vein', tear: 0.8 }, 15)).rgba;
+    const intact = (await draw({ view: 'vein' }, 15)).rgba;
+    expect(at(torn, tear.c)).toBeLessThan(at(intact, tear.c) - 20);
+  });
+
+  // артерия ноги (часть 33б): закрыта тромбом или эмболом — внутри серое, вена рядом сжимается
+  test('артерия закрыта: в обоих кадрах внутри серое светлее здоровой; вена сжимается, как у здоровой ноги', async () => {
+    const shut = veinGeometry({ view: 'vein', arterial: 1 }, 16).panels;
+    const open = veinGeometry({ view: 'vein' }, 16).panels;
+    expect(shut.map(p => p.artery.clot)).toEqual([true, true]);
+    expect(open.map(p => p.artery.clot)).toEqual([false, false]);
+    expect(shut[1].vein.ry).toBeCloseTo(open[1].vein.ry, 9);
+    expect(shut[1].vein.clot).toBe(false);
+    const a = (await draw({ view: 'vein', arterial: 1 }, 16)).rgba;
+    const b = (await draw({ view: 'vein' }, 16)).rgba;
+    for (const p of shut) {
+      expect(at(a, p.artery.c)).toBeGreaterThan(at(b, p.artery.c) + 20);
+      expect(at(a, p.artery.c)).toBeLessThan(110);
+    }
+  });
+});
+
+describe('УЗИ вены: геометрия', () => {
+  test('без давления вены круглые; под давлением здоровые сжимаются в щель, артерия остаётся круглой', () => {
+    const [free, pressed] = veinGeometry({ view: 'vein' }, 12).panels;
+    expect([free.pressed, pressed.pressed]).toEqual([false, true]);
+    expect(free.vein.ry).toBeGreaterThan(0.03);
+    expect(pressed.vein.ry).toBeLessThan(0.01);
+    expect(pressed.gsv.ry).toBeLessThan(0.01);
+    expect(pressed.artery.ry).toBeGreaterThan(free.artery.ry * 0.85);
+    // датчик сдавливает клетчатку: под давлением она тоньше
+    expect(pressed.fat - pressed.skin).toBeLessThan(free.fat - free.skin);
+  });
+
+  test('тромб: глубокая вена шире и под давлением не сжимается; тромб в подкожной — вокруг светлый отёк', () => {
+    const [free, pressed] = veinGeometry({ view: 'vein', deep: 1 }, 13).panels;
+    expect([free.vein.clot, pressed.vein.clot]).toEqual([true, true]);
+    expect(pressed.vein.ry).toBeCloseTo(free.vein.ry, 9);
+    expect(free.vein.rx).toBeGreaterThan(veinGeometry({ view: 'vein' }, 13).panels[0].vein.rx);
+    const s = veinGeometry({ view: 'vein', superficial: 1 }, 14).panels;
+    for (const p of s) {
+      expect(p.gsv.clot).toBe(true);
+      expect(p.gsv.halo!.rx).toBeGreaterThan(p.gsv.rx);
+      expect(p.gsv.ry).toBeGreaterThan(0.02);
+    }
+    expect(s[0].vein.clot).toBe(false);
+  });
+
+  test('гематома надрыва — в мышце, между фасцией и сосудами; всё — в пределах своего кадра', () => {
+    for (const f of [{ view: 'vein' as const }, { view: 'vein' as const, deep: 1, superficial: 1, tear: 1 }]) {
+      const g = veinGeometry(f, 15);
+      for (const p of g.panels) {
+        const [x0, x1] = p.x;
+        for (const o of [p.gsv, p.artery, p.vein, ...(p.tear ? [p.tear] : [])]) {
+          expect(o.c[0] - o.rx).toBeGreaterThanOrEqual(x0);
+          expect(o.c[0] + o.rx).toBeLessThanOrEqual(x1);
+          expect(o.c[1] - o.ry).toBeGreaterThanOrEqual(PANEL_TOP);
+          expect(o.c[1] + o.ry).toBeLessThanOrEqual(PANEL_BOTTOM);
+        }
+        expect(p.gsv.c[1]).toBeGreaterThan(p.skin);
+        expect(p.gsv.c[1]).toBeLessThan(p.fat);
+        if (p.tear) {
+          expect(p.tear.c[1] - p.tear.ry).toBeGreaterThan(p.fat);
+          expect(p.tear.c[1] + p.tear.ry).toBeLessThan(p.vein.c[1] - p.vein.ry);
+        }
+      }
+    }
+    expect(veinGeometry({ view: 'vein' }, 15).panels[0].tear).toBeUndefined();
   });
 });
 

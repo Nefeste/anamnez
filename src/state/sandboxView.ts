@@ -169,8 +169,8 @@ export function cashView(db: ContentDb, e: NonNullable<DaySummary['economy']>): 
       // стационар (spec 2026-09-chapter-2, часть 26): случаи при выписке и переводе
       ...(l.ward && l.ward.cases > 0 ? [{ key: 'ward' as const, title: t.wardLine(l.ward.cases), sum: rub(l.ward.income) }] : []),
     ],
-    ...(l.ward && (l.ward.interrupted > 0 || l.ward.unindicated > 0)
-      ? { wardNote: cap(t.wardNote(l.ward.interrupted, l.ward.unindicated, db.economy.ward.interrupted)) }
+    ...(l.ward && (l.ward.interrupted > 0 || l.ward.unindicated > 0 || (l.ward.repeat ?? 0) > 0)
+      ? { wardNote: cap(t.wardNote(l.ward.interrupted, l.ward.unindicated, db.economy.ward.interrupted, l.ward.repeat ?? 0)) }
       : {}),
     ...(l.audit.cut > 0 ? { audit: { sum: t.audit(rub(l.audit.cut)), why: t.auditWhy(l.audit.weak, l.audit.unconfirmed, l.audit.unindicated) } } : {}),
     level: levelText(db, e.level),

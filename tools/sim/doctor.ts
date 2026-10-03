@@ -2,8 +2,9 @@
 // Три стратегии на одних и тех же пациентах: разумный, ленивый, «всё подряд»; и нанятый врач
 // своей больницы по навыку 1–5 (spec 2026-09-hired-doctors) — тот же разумный с порогами навыка.
 // Флаги: --n 10000 (пациентов), --season winter|spring|summer|autumn|all, --json (для CI),
-// --departments therapy,surgery — больница с приёмным (spec 2026-09-chapter-2, часть 30): пациенты
-// и кандидаты из обоих отделений; нет — амбулатория, одна терапия.
+// --departments therapy,surgery,trauma — больница с приёмным (spec 2026-09-chapter-2, часть 30):
+// пациенты и кандидаты из этих отделений, пороги разумного врача — и у каждого отделения (часть
+// 35); нет — амбулатория, одна терапия. Порог не выполнен — выход с кодом 1.
 import { Rng } from '../../src/engine/core/rng';
 import { observe, type OutcomeKind } from '../../src/engine/med/course';
 import { generatePatient } from '../../src/engine/med/generate';
@@ -138,16 +139,24 @@ const hired: Hired[] = SKILLS.map(skill => {
 const hiredMs = performance.now() - t1;
 
 const pct = (a: number, b: number) => (b ? (100 * a) / b : 0);
+/** средняя по болезням точность до группы: частая болезнь не вытягивает редкие */
+const balancedOf = (conds: { n: number; correctGroup: number }[]) => conds.reduce((a, v) => a + pct(v.correctGroup, v.n), 0) / Math.max(1, conds.length);
 const report = strategies.map(s => {
   const x = tally[s];
   const conds = Object.values(x.perCondition);
+  // по отделениям (spec 2026-09-chapter-2, часть 35): пациенты, больные болезнью отделения
+  const byDepartment = Object.fromEntries(departments.map(d => {
+    const own = Object.entries(x.perCondition).filter(([id]) => db.conditions[id].department === d).map(([, v]) => v);
+    const n = own.reduce((a, v) => a + v.n, 0);
+    return [d, { patients: n, groupAccuracy: pct(own.reduce((a, v) => a + v.correctGroup, 0), n), balanced: balancedOf(own) }];
+  }));
   return {
     strategy: s,
     accuracy: pct(x.correct, x.n),
     /** с точностью до группы с одинаковой тактикой */
     groupAccuracy: pct(x.correctGroup, x.n),
-    /** средняя по болезням точность до группы: частая болезнь не вытягивает редкие */
-    balanced: conds.reduce((a, v) => a + pct(v.correctGroup, v.n), 0) / Math.max(1, conds.length),
+    balanced: balancedOf(conds),
+    byDepartment,
     money: x.money / x.n,
     minutes: x.minutes / x.n,
     exams: x.exams / x.n,
@@ -181,7 +190,12 @@ const byGroup = hiredReport.map(h => h.groupAccuracy);
 // Пороги 05-content.md §6: точность — до группы с одинаковой тактикой; ленивый сравнивается
 // с разумным по сбалансированной точности — иначе самая частая болезнь (ОРВИ больше
 // половины обращений) вытягивает его сама.
-const thresholds = {
+interface Threshold { value: number; need: string; ok: boolean; /** для сведения — почему: в код выхода не идёт */ info?: string }
+// нанятые врачи — пороги амбулатории, где их проверяли (spec 2026-09-hired-doctors); в больнице с
+// приёмным хирургию и травму различает и навык 1, разница навыков уже — это для сведения (часть 35)
+const practice = departments.length === 1 && departments[0] === department;
+const notPractice = practice ? undefined : 'порог амбулатории';
+const thresholds: Record<string, Threshold> = {
   rationalAccuracy: { value: rational.groupAccuracy, need: '≥ 90', ok: rational.groupAccuracy >= 90 },
   rationalBalanced: { value: rational.balanced, need: '≥ 85', ok: rational.balanced >= 85 },
   lazyGap: { value: rational.balanced - lazy.balanced, need: '≥ 25 п. п. ниже разумного', ok: rational.balanced - lazy.balanced >= 25 },
@@ -191,21 +205,43 @@ const thresholds = {
   rationalNeedlessAntibiotic: { value: rational.needlessAntibiotic, need: '≤ 3 %', ok: rational.needlessAntibiotic <= 3 },
   // нанятые врачи (spec 2026-09-hired-doctors, критерий 1): точность растёт с навыком; навык 5 —
   // почти разумный, навык 1 — лучше ленивого, но заметно хуже навыка 3
-  hiredSkill5: { value: byGroup[4], need: '≥ 88', ok: byGroup[4] >= 88 },
-  hiredGrows: { value: byGroup[4] - byGroup[0], need: 'растёт с каждым навыком', ok: byGroup.every((v, i) => i === 0 || v >= byGroup[i - 1]) },
-  hiredSkill1: { value: byGroup[0], need: `выше ленивого (${lazy.groupAccuracy.toFixed(1)}) и ниже навыка 3 (${byGroup[2].toFixed(1)})`, ok: byGroup[0] > lazy.groupAccuracy && byGroup[0] < byGroup[2] },
+  hiredSkill5: { value: byGroup[4], need: '≥ 88', ok: byGroup[4] >= 88, info: notPractice },
+  hiredGrows: { value: byGroup[4] - byGroup[0], need: 'растёт с каждым навыком', ok: byGroup.every((v, i) => i === 0 || v >= byGroup[i - 1]), info: notPractice },
+  hiredSkill1: { value: byGroup[0], need: `выше ленивого (${lazy.groupAccuracy.toFixed(1)}) и ниже навыка 3 (${byGroup[2].toFixed(1)})`, ok: byGroup[0] > lazy.groupAccuracy && byGroup[0] < byGroup[2], info: notPractice },
   // сбалансированная — редкие болезни: у навыка 1 разница с разумным видна сильнее
-  hiredBalancedGap: { value: hiredReport[4].balanced - hiredReport[0].balanced, need: '≥ 8 п. п. между навыком 1 и 5', ok: hiredReport[4].balanced - hiredReport[0].balanced >= 8 },
+  hiredBalancedGap: { value: hiredReport[4].balanced - hiredReport[0].balanced, need: '≥ 8 п. п. между навыком 1 и 5', ok: hiredReport[4].balanced - hiredReport[0].balanced >= 8, info: notPractice },
 };
+// больница с приёмным (spec 2026-09-chapter-2, критерий приёмки 3): пороги разумного — и у каждого
+// отделения, по его больным: терапия не прячется за лёгкую для врача травму. Больных отделения
+// меньше `DEPT_MIN` — у редких болезней по два-три человека, сбалансированная скачет от одного
+// промаха: для сведения
+const DEPT_MIN = 150;
+if (departments.length > 1) {
+  for (const d of departments) {
+    const x = rational.byDepartment[d];
+    const k = d.replace('dept.', '');
+    const few = x.patients < DEPT_MIN ? `больных отделения меньше ${DEPT_MIN}` : undefined;
+    thresholds[`rationalAccuracy:${k}`] = { value: x.groupAccuracy, need: '≥ 90', ok: x.groupAccuracy >= 90, info: few };
+    thresholds[`rationalBalanced:${k}`] = { value: x.balanced, need: '≥ 85', ok: x.balanced >= 85, info: few };
+  }
+}
+const passed = Object.values(thresholds).every(t => t.ok || t.info);
 
 if (asJson) {
-  console.log(JSON.stringify({ contentVersion: db.contentVersion, contentHash: db.hash, departments, patients: N, seasons, threshold, totalMs: total, report, hired: hiredReport, thresholds }, null, 2));
+  console.log(JSON.stringify({ contentVersion: db.contentVersion, contentHash: db.hash, departments, patients: N, seasons, threshold, totalMs: total, report, hired: hiredReport, thresholds, passed }, null, 2));
 } else {
   console.log(`База ${db.contentVersion} (${db.hash}), отделения ${departments.join(', ')}, пациентов ${N}, сезоны: ${seasons.join(', ')}, порог разумного врача ${threshold}`);
   console.log(`Время: ${(total / 1000).toFixed(2)} с на всех трёх врачей (${(total / N).toFixed(2)} мс на пациента)\n`);
   const names: Record<Strategy, string> = { rational: 'разумный', lazy: 'ленивый', shotgun: 'всё подряд' };
   for (const r of report) {
     console.log(`${names[r.strategy].padEnd(11)} точность ${r.accuracy.toFixed(1).padStart(5)} %  до группы ${r.groupAccuracy.toFixed(1).padStart(5)} %  сбалансированная ${r.balanced.toFixed(1).padStart(5)} %   ${r.money.toFixed(0).padStart(5)} ₽   ${r.minutes.toFixed(0).padStart(4)} мин   обследований ${r.exams.toFixed(1)}   ${r.msPerPatient.toFixed(2)} мс/пациент`);
+  }
+  if (departments.length > 1) {
+    console.log('\nПо отделениям (больные болезнью отделения; до группы / сбалансированная):');
+    for (const d of departments) {
+      const cells = report.map(r => `${names[r.strategy]} ${r.byDepartment[d].groupAccuracy.toFixed(1).padStart(5)} / ${r.byDepartment[d].balanced.toFixed(1).padStart(5)} %`);
+      console.log(`  ${d.padEnd(13)} ${pct(rational.byDepartment[d].patients, N).toFixed(1).padStart(4)} % пациентов   ${cells.join('   ')}`);
+    }
   }
   const abcd = (g: Record<Grade, number>) => (['A', 'B', 'C', 'D'] as Grade[]).map(k => g[k].toFixed(0)).join('/');
   console.log('\nЛечение и исходы (оценки A/B/C/D, %):');
@@ -227,5 +263,6 @@ if (asJson) {
     console.log(`  навык ${h.skill}  точность ${h.accuracy.toFixed(1).padStart(5)} %  до группы ${h.groupAccuracy.toFixed(1).padStart(5)} %  сбалансированная ${h.balanced.toFixed(1).padStart(5)} %   ${h.money.toFixed(0).padStart(5)} ₽   ${h.minutes.toFixed(0).padStart(4)} мин   обследований ${h.exams.toFixed(1)}   антибиотик без показаний ${h.needlessAntibiotic.toFixed(1)} %   реакция ${h.reactions.toFixed(1)} %`);
   }
   console.log('\nПороги (05-content.md §6):');
-  for (const [k, t] of Object.entries(thresholds)) console.log(`  ${t.ok ? 'да ' : 'НЕТ'} ${k}: ${t.value.toFixed(2)} (нужно ${t.need})`);
+  for (const [k, t] of Object.entries(thresholds)) console.log(`  ${t.ok ? 'да ' : 'НЕТ'} ${k}: ${t.value.toFixed(2)} (нужно ${t.need})${t.info ? ` — для сведения: ${t.info}` : ''}`);
 }
+process.exit(passed ? 0 : 1);

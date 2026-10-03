@@ -8,7 +8,7 @@ import type { Id } from '../../src/content/types';
 import { Rng } from '../../src/engine/core/rng';
 import { generatePatient, presentingWeight } from '../../src/engine/med/generate';
 import { evaluatePlan, recommendedSetting, settingFit, txRole } from '../../src/engine/med/plan';
-import { runDoctor } from '../../src/engine/med/policy';
+import { indicated, runDoctor } from '../../src/engine/med/policy';
 import type { Observation, Patient } from '../../src/engine/med/types';
 import { candidatesOf } from '../../src/engine/shift/engine';
 import { fracturedRibs } from '../../src/render/xray/chestGeometry';
@@ -139,6 +139,16 @@ describe('«виртуальный врач»', () => {
     for (const r of air) if (r.plan.treatments.some(tx => tx === 'tx.pleural_drainage' || tx === 'tx.pleural_puncture')) expect(r.exams).toContain('exam.xray_chest');
     const ribs = people(RIBS, 60, 501).map(doctor);
     expect(share(ribs, r => r.exams.includes('exam.xray_chest') || r.exams.includes('exam.xray_ribs'))).toBeGreaterThan(0.95);
+  });
+
+  test('снимок груди — каждому с закрытой травмой груди, и при ушибе (728_2, раздел 2.4); страховая его оплачивает', () => {
+    expect(db.exams['exam.xray_chest'].routineFor).toEqual(['sym.chest_injury_pain']);
+    for (const id of NEW) {
+      for (const p of people(id, 20, 1301)) {
+        expect(doctor(p).exams).toContain('exam.xray_chest');
+        expect(indicated(db, p, [], candidates, 'exam.xray_chest')).toBe(true);
+      }
+    }
   });
 
   test('три ребра и больше не отпускает домой, если снимок их сосчитал; гемоторакс не оперирует без снимка', () => {

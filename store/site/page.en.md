@@ -1,7 +1,7 @@
 ---
 name: Anamnesis
 title: Anamnesis — a doctor simulator with honest diagnostics
-description: "A doctor simulator for Android: take a history, examine, order tests and X-rays, make a diagnosis and treat. 35 conditions and 22 injuries, X-rays, ultrasound and ECGs, a review of every visit. Offline and ad-free."
+description: "A doctor simulator for Android: take a history, examine, order tests and X-rays, make a diagnosis and treat. 40 conditions and 23 injuries, X-rays, ultrasound and ECGs, a review of every visit. Offline and ad-free."
 kind: Doctor simulator
 status: dev
 lead: "Every patient is a puzzle: ask, examine, order tests and X-rays, make a diagnosis and treat."
@@ -11,7 +11,7 @@ og: graphics/cover-1920x1080.png
 shots:
   - file: screenshots/phone/01-emergency.png
     caption: Emergency room
-    alt: "Your own hospital: a plan with the emergency room and the operating theatre; an ambulance has brought a patient, the Sort button is at the bottom"
+    alt: "Chapter 2 district hospital: emergency room, two wards and the operating theatre; an ambulance has brought a patient, the Sort button is at the bottom"
   - file: screenshots/phone/02-xray.png
     caption: X-ray
     alt: "A visit: a chest X-ray with a finding in the lower right lung"
@@ -36,7 +36,7 @@ shots:
 card:
   text: Patients come to you with real illnesses and injuries, and almost every sign stays hidden until you ask, examine or order a test. Make a diagnosis, choose a treatment and see the outcome — and between shifts, build your own hospital.
   points:
-    - 35 conditions and 22 injuries; each patient’s own X-rays, ultrasound and ECGs
+    - 40 conditions and 23 injuries; each patient’s own X-rays, ultrasound and ECGs
     - Your own hospital with an emergency department, wards and an operating room
     - A review of every visit, a campaign with a mentor and a case of the day
     - Free, offline and ad-free
@@ -68,7 +68,8 @@ in Russian.
 - **Review.** What it really was, a score for accuracy, justification, thrift and safety, and how
   an experienced doctor would have reasoned. Patients sent home sometimes get worse and come back,
   and the end-of-day summary tells you what happened to earlier patients.
-- **Campaign.** A young doctor at a village clinic. The first shift is with a mentor; after that
+- **Campaign.** A young doctor at a village clinic, and then at a district hospital with an
+  emergency department, wards and an operating room. The first shift is with a mentor; after that
   come letters and tasks without deadlines.
 - **Your own hospital.** Offices, a lab, X-ray and ultrasound rooms, an emergency department, wards
   and an operating room, hiring, the cash desk. Doctors you hire see patients on their own. Insurance
@@ -80,19 +81,21 @@ in Russian.
 
 ## What’s inside
 
-- 35 conditions and 22 injuries. At the clinic — 25 conditions a general practitioner sees: from
-  colds and flu to pneumonia, heart attack and appendicitis. In a hospital with an emergency
-  department — 10 more surgical ones, from biliary colic to a perforated ulcer and bowel obstruction,
-  and injuries: fractures, knee ligament tears, hand and scalp wounds, burns, chest trauma,
-  concussion.
+- 40 conditions and 23 injuries. At the clinic — 27 conditions a general practitioner sees: from
+  colds and flu to pneumonia, heart attack, nosebleeds and anaphylactic shock. In a hospital with an
+  emergency department — 13 more surgical ones, from biliary colic to a perforated ulcer, bowel
+  obstruction, deep vein thrombosis and acute ischaemia of the leg, and injuries: fractures, knee ligament tears, a torn calf muscle,
+  hand and scalp wounds, burns, chest trauma, concussion.
 - Wounds and burns as in a real emergency department: stitch now or delay the stitches, check the
   finger tendons, measure a burn with the patient’s palms and its depth with a pinprick, tetanus
   shots by vaccination records, and after a dog bite, a rabies vaccine with immunoglobulin.
 - The images are drawn by the program and differ for every patient: chest, abdominal and bone X-rays
   with the fracture line and displaced fragments, air and blood in the chest after trauma,
-  ultrasound and ECG strips.
+  abdominal, leg vein and leg artery ultrasound — a vein with a clot won’t compress under the probe,
+  a blocked artery looks grey inside — and ECG strips.
 - Decision rules from clinical guidelines: whether an ankle, foot or knee X-ray is needed, whether a
-  CT scan is needed after a blow to the head.
+  CT scan is needed after a blow to the head, whether a leg vein ultrasound is needed for leg pain —
+  by the Wells score and D-dimer.
 - Operations — from appendectomy to hip replacement.
 - Signs don’t always show up and tests are sometimes wrong — as in real life. A diagnosis is a
   probability, and the review shows how sure an experienced doctor would have been.
@@ -128,6 +131,6 @@ see a doctor; in an emergency, call your local emergency number (112 in Russia a
 
 ## What’s next
 
-Coming up: vascular conditions and emergencies, a campaign chapter about a district hospital, and then new departments: cardiology, neurology, CT and MRI. The game is
+Coming up: new campaign chapters and departments: cardiology, neurology, CT and MRI. The game is
 being prepared for release in RuStore for Android, in Russian first. Questions:
 support@gornitsa.games.

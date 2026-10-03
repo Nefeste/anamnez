@@ -253,19 +253,76 @@ export function priorWeight(db: ContentDb, id: Id, ctx: InferContext): number {
   return w;
 }
 
+/** Сочетание значений скрытых параметров болезни: доля и вероятность каждого признака от её связей. */
+interface Combo {
+  share: number;
+  causes: ReadonlyMap<Id, number>;
+}
+
+const comboCache = new WeakMap<Condition, Combo[]>();
+
+/**
+ * Сочетания значений тех скрытых параметров, от которых зависят признаки болезни (часть 33а), — с
+ * долями. Признаки одного значения идут вместе: у тромбоза глубоких вен с тромбофлебитом есть и
+ * тяж, и тромб в подкожной вене, и её ствол; в среднем по долям каждый из них по отдельности
+ * говорил бы против тромбоза, хотя вместе они — его картина. Без таких параметров — одно сочетание.
+ */
+function combosOf(c: Condition): Combo[] {
+  const cached = comboCache.get(c);
+  if (cached) return cached;
+  const names = [...new Set(c.findings.flatMap(l => Object.keys(l.when ?? {})))].filter(n => c.params?.[n]).sort();
+  let combos: { values: Record<string, string>; share: number }[] = [{ values: {}, share: 1 }];
+  for (const n of names) {
+    const dist = c.params![n];
+    const total = Object.values(dist).reduce((a, b) => a + b, 0);
+    combos = combos.flatMap(k => Object.entries(dist).filter(([, w]) => w > 0).map(([v, w]) => ({ values: { ...k.values, [n]: v }, share: (k.share * w) / total })));
+  }
+  const out = combos.map(k => {
+    const causes = new Map<Id, number>();
+    for (const l of c.findings) {
+      if (l.when && !Object.entries(l.when).every(([p, allowed]) => !c.params?.[p] || allowed.includes(k.values[p]))) continue;
+      causes.set(l.f, 1 - (1 - (causes.get(l.f) ?? 0)) * (1 - l.p / P_ONE));
+    }
+    return { share: k.share, causes };
+  });
+  comboCache.set(c, out);
+  return out;
+}
+
 /**
  * Апостериорные вероятности кандидатов. Предположение — одно основное заболевание плюс
- * известные сопутствующие (`docs/04-medical-model.md` §10).
+ * известные сопутствующие (`docs/04-medical-model.md` §10). У болезни со скрытыми параметрами,
+ * от которых зависят признаки, правдоподобие — сумма по сочетаниям их значений (часть 33а): так
+ * признаки одного значения считаются вместе, а не порознь.
  */
 export function posterior(db: ContentDb, candidates: readonly Id[], observations: readonly Observation[], ctx: InferContext): Belief[] {
   const grouped = [...byFinding(observations)].map(([f, obs]) => ({ f, e: evidenceOf(db, obs) }));
   const scored = candidates.map(id => {
-    const set = [id, ...(db.conditions[id].requires ?? []), ...ctx.knownConditions];
+    const c = db.conditions[id];
     const shares = sharesFor(db, id, ctx);
-    let w = priorWeight(db, id, ctx);
-    for (const { f, e } of grouped) {
-      if (w === 0) break;
-      w *= mix(e, findingProbability(db, f, set, ctx.knownRisks, unknownMiss(ctx, f, shares)));
+    const prior = priorWeight(db, id, ctx);
+    const combos = combosOf(c);
+    if (combos.length === 1) {
+      const set = [id, ...(c.requires ?? []), ...ctx.knownConditions];
+      let w = prior;
+      for (const { f, e } of grouped) {
+        if (w === 0) break;
+        w *= mix(e, findingProbability(db, f, set, ctx.knownRisks, unknownMiss(ctx, f, shares)));
+      }
+      return { id, p: w };
+    }
+    if (prior === 0) return { id, p: 0 };
+    // фон признака без самого кандидата — от сочетания не зависит, считается один раз
+    const others = [...(c.requires ?? []), ...ctx.knownConditions];
+    const bg = grouped.map(({ f, e }) => ({ f, e, other: findingProbability(db, f, others, ctx.knownRisks, unknownMiss(ctx, f, shares)) }));
+    let w = 0;
+    for (const k of combos) {
+      let x = prior * k.share;
+      for (const { f, e, other } of bg) {
+        if (x === 0) break;
+        x *= mix(e, 1 - (1 - other) * (1 - (k.causes.get(f) ?? 0)));
+      }
+      w += x;
     }
     return { id, p: w };
   });

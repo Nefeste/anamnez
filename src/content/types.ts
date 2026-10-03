@@ -117,7 +117,7 @@ export interface Treatment {
   name: Text;
   kind: 'drug' | 'regimen' | 'procedure' | 'surgery';
   class?: string;
-  route?: 'oral' | 'inhaled' | 'nasal' | 'iv' | 'im';
+  route?: 'oral' | 'inhaled' | 'nasal' | 'iv' | 'im' | 'sc';
   cost: number;
   /** cure — действует на причину: к выздоровлению с вероятностью p за days дней */
   effects: Effect[];
@@ -239,6 +239,8 @@ export interface Condition {
   findings: Link[];
   confirm: Id[] | 'clinical';
   redFlags?: Id[];
+  /** с чем спутать по рекомендации (часть 33б) — вдобавок к похожим по признакам */
+  differential?: Id[];
   /** проходит само, без лечения */
   selfLimiting?: boolean;
   /** проходит само только при этих значениях скрытого параметра (часть 30д: неосложнённый дивертикулит) */
@@ -269,6 +271,13 @@ export interface NumericSpec {
   decimals: number;
   /** производные числа для шаблона: {dia} = значение × множитель */
   derived?: Record<string, number>;
+  /**
+   * Порог на измерении другого признака (часть 33б): число одно на двоих. Низкое давление меряют
+   * тем же тонометром, что высокое: при рождении пациента с низким давлением общее значение — из
+   * `present` этого признака, а тот, чьё измерение, снимается; в обследовании с ним вместе «есть» —
+   * если его измеренное значение попало в `present`.
+   */
+  of?: Id;
 }
 
 export interface Finding {
@@ -528,10 +537,10 @@ export interface Economy {
   ward: { bedDay: number; interrupted: number };
   /** скорая: машин за смену; вес болезни по тяжести; доля тяжёлых, % (часть 27) */
   ambulance: { perDay: [number, number]; weight: Record<'minor' | 'moderate' | 'serious' | 'critical', number>; severe: number };
-  /** репутация 0–100: начало, на сколько % вечером сдвигается к оценке дня, поправки оценки */
+  /** репутация 0–100: начало, на сколько % вечером сдвигается к оценке дня, поправки оценки; `died` — за каждого умершего в стационаре (часть 35) */
   reputation: {
     start: number; pull: number;
-    waitShort: number; waitShortMin: number; waitLong: number; waitLongMin: number; noToilet: number;
+    waitShort: number; waitShortMin: number; waitLong: number; waitLongMin: number; noToilet: number; died: number;
   };
   /** поток пациентов от репутации: ± % при 0 и 100 */
   flow: number;
@@ -557,13 +566,17 @@ export interface Character {
 }
 
 /** Условие дня для заданий «N дней». */
-export type DayKind = 'noNeedlessAntibiotic' | 'noLeft' | 'cashPositive';
+export type DayKind = 'noNeedlessAntibiotic' | 'noLeft' | 'cashPositive' | 'noWaitComplication';
 
 export type Mission = { id: string; main: boolean; text: Text } & (
   | { kind: 'seen'; count: number; accuracy: number }
   | { kind: 'roomWorks'; room: Id }
   | { kind: 'streak'; days: number; day: DayKind }
   | { kind: 'days'; days: number; day: DayKind }
+  /** глава 2 (spec 2026-09-chapter-2, часть 34): сортировка скорой, операции, сроки стационара */
+  | { kind: 'triage'; count: number }
+  | { kind: 'operations'; count: number }
+  | { kind: 'stay'; count: number }
 );
 
 export type LetterWhen = 'start' | 'end' | { afterDay: number } | { mission: string };
@@ -575,29 +588,49 @@ export interface Letter {
   text: Text;
 }
 
+/**
+ * Заданный пациент первой смены главы: болезнь, привезёт ли его скорая, какие скрытые параметры
+ * заданы и в каком он возрасте (часть 34б: тяжёлая пневмония, стабильный перелом лодыжек,
+ * аппендицит у молодого).
+ */
+export interface TutorialPatient {
+  condition: Id;
+  ambulance?: boolean;
+  params?: Record<string, string>;
+  /** возраст, лет: от и до — аппендицит у молодого (часть 34б) */
+  age?: [number, number];
+}
+
 /** Глава кампании: больница, бюджет, что можно строить, задания и письма. */
 export interface Chapter {
   id: Id;
   order: number;
   name: Text;
   place: Text;
+  /** кнопка перехода в главу в конце прежней (часть 34) */
+  move?: Text;
   preset: Id;
   budget: number;
   department: Id;
   build: Id[];
-  tutorial: Id[];
+  tutorial: TutorialPatient[];
   missions: Mission[];
   letters: Letter[];
 }
 
-/** Когда подсказка наставника к месту: открылась карта, после первых вопросов, у пациента с болезнью, «Решение», разбор. */
-export type TipWhen = 'caseOpen' | 'afterAsk' | 'decision' | 'review' | { condition: Id };
+/**
+ * Когда подсказка наставника к месту: открылась карта, после первых вопросов, у пациента с
+ * болезнью, «Решение», разбор; ждёт сортировки привезённый скорой, обход (часть 34б).
+ */
+export type TipWhen = 'caseOpen' | 'afterAsk' | 'decision' | 'review' | 'ambulance' | 'rounds' | { condition: Id };
 
 /** Подсказка наставника в первую смену главы (spec 2026-09-campaign). */
 export interface Tip {
   id: Id;
   order: number;
   from: Id;
+  /** только в этой главе (часть 34б) */
+  chapter?: Id;
   name: Text;
   when: TipWhen;
   text: Text;
@@ -641,7 +674,9 @@ export interface Score {
  * `complaints` обследования `exams` нужны, если есть хоть один признак из `any`; проверили все —
  * и ни одного: перелом маловероятен, снимок можно не делать. Проверено с `ageMin` лет. С части
  * 32г — ещё дополнительные признаки (`minor`: нужно не меньше `count`), возраст как основной или
- * дополнительный признак и круг, к кому правило применимо (`requires`: хоть один признак).
+ * дополнительный признак и круг, к кому правило применимо (`requires`: хоть один признак). С части
+ * 33а — признаки, при которых правило не применяют (`excludes`), и «ещё не решено — узнать, что
+ * осталось»: шкала Уэллса меньше двух — D-димер.
  */
 export interface Rule {
   id: Id;
@@ -659,6 +694,11 @@ export interface Rule {
   age?: { main?: number; from?: number; minor?: [number, number] };
   /** применимо, только если есть хоть один из этих признаков; без них — «не применяется» */
   requires?: Id[];
+  /**
+   * не применяется, если есть хоть один из этих признаков (часть 33а): у тромбофлебита УЗИ вен
+   * нужно всем, шкала Уэллса и D-димер не нужны; при беременности D-димер не используют
+   */
+  excludes?: Id[];
   /** какое обследование правило назначает; пусто — его в игре нет (КТ, часть 32г), тогда `texts.exam` */
   exams: Id[];
   ageMin?: number;

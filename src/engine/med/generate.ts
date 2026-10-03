@@ -95,7 +95,7 @@ export function generatePatient(db: ContentDb, seed: number, ctx: GenContext): P
     return { id, role: id === primaryId ? 'primary' : 'comorbid', day, stage, params };
   });
 
-  const findings = realizeFindings(db, again('findings'), conditions, risks);
+  const findings = oneMeasure(db, realizeFindings(db, again('findings'), conditions, risks));
   deriveParams(db, conditions, age, findings);
   const values = realizeValues(db, again('values'), findings);
   const complaints = pickComplaints(db, findings);
@@ -107,9 +107,10 @@ export function generatePatient(db: ContentDb, seed: number, ctx: GenContext): P
 /**
  * Пациент с заданной болезнью, у которого она обычна: бывает основной в его возрасте и с его
  * болезнями, а по полу не редкость — цистит у женщины (заданные первые пациенты главы, spec
- * 2026-09-campaign). Зёрна — по порядку из ряда `seeds`: первое, где так; не нашлось — первое.
+ * 2026-09-campaign); `age` — ещё и в этом возрасте (часть 34б: аппендицит у молодого). Зёрна — по
+ * порядку из ряда `seeds`: первое, где так; не нашлось — первое.
  */
-export function typicalPatient(db: ContentDb, seeds: (k: number) => number, ctx: GenContext & { primary: Id }, tries = 16): Patient {
+export function typicalPatient(db: ContentDb, seeds: (k: number) => number, ctx: GenContext & { primary: Id }, tries = 16, age?: readonly [number, number]): Patient {
   const c = db.conditions[ctx.primary];
   let first: Patient | undefined;
   for (let k = 0; k < tries; k++) {
@@ -117,7 +118,8 @@ export function typicalPatient(db: ContentDb, seeds: (k: number) => number, ctx:
     first ??= p;
     const chronic = p.truth.conditions.filter(x => x.role === 'comorbid').map(x => x.id);
     const fits = presentingWeight(c, { sex: p.sex, age: p.age, season: p.season, risks: p.truth.risks, chronic }) > 0;
-    if (fits && (!c.sex || 2 * c.sex[p.sex] >= Math.max(c.sex.m, c.sex.f))) return p;
+    const aged = !age || (p.age >= age[0] && p.age <= age[1]);
+    if (fits && aged && (!c.sex || 2 * c.sex[p.sex] >= Math.max(c.sex.m, c.sex.f))) return p;
   }
   return first!;
 }
@@ -284,14 +286,36 @@ function realizeAttrs(db: ContentDb, rng: Rng, f: Id, link: Link | undefined, co
   return attrs;
 }
 
-/** Истинные значения числовых показателей: из диапазона «есть» или «нет». */
+/**
+ * Одно измерение — одно число (часть 33б): есть порог на чужом измерении — низкое давление, — и
+ * того, чьё это измерение, нет: давление не бывает сразу высоким и низким.
+ */
+function oneMeasure(db: ContentDb, findings: TrueFinding[]): TrueFinding[] {
+  const taken = new Set(findings.flatMap(x => { const of = db.findings[x.f]?.value?.of; return of ? [of] : []; }));
+  return taken.size > 0 ? findings.filter(x => !taken.has(x.f)) : findings;
+}
+
+/**
+ * Истинные значения числовых показателей: из диапазона «есть» или «нет». У порога на чужом
+ * измерении (часть 33б) число то же: есть порог — общее число из его диапазона «есть».
+ */
 function realizeValues(db: ContentDb, rng: Rng, findings: TrueFinding[]): Record<Id, number> {
   const present = new Set(findings.map(x => x.f));
   const values: Record<Id, number> = {};
+  const shared: Id[] = [];
   for (const id of Object.keys(db.findings).sort()) {
     const spec = db.findings[id].value;
     if (!spec) continue;
+    if (spec.of) {
+      shared.push(id);
+      continue;
+    }
     values[id] = sampleRange(rng.fork(id), present.has(id) ? spec.present : spec.absent, spec.decimals);
+  }
+  for (const id of shared) {
+    const spec = db.findings[id].value!;
+    if (present.has(id)) values[spec.of!] = sampleRange(rng.fork(id), spec.present, spec.decimals);
+    values[id] = values[spec.of!];
   }
   return values;
 }

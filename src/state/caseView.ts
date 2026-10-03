@@ -42,14 +42,19 @@ export type ResultImage =
     kind: 'xray'; infiltrate?: 'right' | 'left' | 'both'; hyperinflation: boolean;
     pneumothorax?: XrayFindings['pneumothorax']; effusion?: XrayFindings['effusion']; ribFractures?: XrayFindings['ribFractures']; seed: number;
   }
-  | { kind: 'ecg'; rate: number; st: number; rScale: number; seed: number }
+  | { kind: 'ecg'; rate: number; st: number; rScale: number; seed: number; /** фибрилляция предсердий (часть 33б): ритм неровный, зубцов P нет */ af?: boolean }
   /**
    * УЗИ брюшной полости: правая подвздошная область, `appendix` — виден воспалённый отросток (часть
    * 29); или желчный пузырь — `stones` камней, `wall` — утолщённая стенка (часть 30); или левая
    * подвздошная область — `diverticulum`, воспалённый дивертикул (часть 30д); УЗИ почек — почка,
-   * `pelvis` — расширенная лоханка (часть 30г)
+   * `pelvis` — расширенная лоханка (часть 30г); УЗИ вен ноги (часть 33а) — `deep`: тромб в
+   * глубокой вене, `superficial` — в подкожной, `tear` — гематома надрыва мышцы; УЗИ артерий ноги
+   * (часть 33б) — `arterial`: артерия закрыта тромбом или эмболом
    */
-  | { kind: 'us'; view: 'appendix' | 'gallbladder' | 'kidney' | 'colon'; appendix?: number; stones?: number; wall?: number; pelvis?: number; diverticulum?: number; seed: number }
+  | {
+    kind: 'us'; view: 'appendix' | 'gallbladder' | 'kidney' | 'colon' | 'vein'; appendix?: number; stones?: number; wall?: number; pelvis?: number;
+    diverticulum?: number; deep?: number; superficial?: number; tear?: number; arterial?: number; seed: number;
+  }
   /** обзорный снимок живота стоя (часть 30б): серп свободного газа под куполом, раздутые петли с уровнями */
   | { kind: 'abdomen'; freeGas: boolean; levels: boolean; seed: number }
   /** снимок костей (часть 32): запястье или голеностоп в двух проекциях — линия перелома и смещение, что нашёл рентгенолог */
@@ -247,7 +252,9 @@ const TX_GROUPS: [string, string[]][] = [
   ['pain', ['analgesic', 'antimigraine']],
   ['breathing', ['bronchodilator', 'asthma', 'steroid.systemic']],
   ['nose', ['nasal', 'steroid.intranasal', 'antihistamine']],
-  ['heart', ['antihypertensive', 'antiplatelet', 'antianginal']],
+  // сердце и сосуды: с частью 33а — антикоагулянты, компрессионный трикотаж и гель при тромбофлебите;
+  // с частью 33б — эпинефрин при анафилактическом шоке (АТХ C01CA24 — сердечно-сосудистая система)
+  ['heart', ['antihypertensive', 'antiplatelet', 'antianginal', 'anticoagulant', 'vascular', 'adrenergic']],
   ['digestive', ['acid']],
   // растворы для питья и капельница (часть 32д-2): и при кишечной инфекции, и при обширном ожоге
   ['fluids', ['rehydration']],
@@ -353,6 +360,7 @@ function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observat
       st: shown('ecg.st_elevation') ? 0.3 : shown('ecg.st_depression') ? -0.2 : 0,
       rScale: shown('ecg.lvh') ? 1.5 : 1,
       seed,
+      ...(shown('ecg.af') ? { af: true } : {}),
     };
   }
   if (exam === 'exam.xray_abdomen') {
@@ -367,6 +375,13 @@ function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observat
   }
   // почка (часть 30г): расширенная лоханка — если её показало УЗИ
   if (exam === 'exam.us_kidney') return { kind: 'us', view: 'kidney', pelvis: shown('img.us_hydronephrosis') ? 0.8 : 0, seed };
+  // вены ноги (часть 33а): тромб в глубокой вене — на любом уровне, в подкожной, гематома надрыва
+  if (exam === 'exam.us_leg_veins') {
+    const deep = shown('img.us_dvt_prox') || shown('img.us_dvt_calf') || shown('img.us_dvt_iliac');
+    return { kind: 'us', view: 'vein', deep: deep ? 1 : 0, superficial: shown('img.us_superficial_thrombus') ? 1 : 0, tear: shown('img.us_muscle_tear') ? 0.8 : 0, seed };
+  }
+  // артерии ноги (часть 33б): тот же срез бедра, в артерии — тромб или эмбол, если его показало УЗИ
+  if (exam === 'exam.us_leg_arteries') return { kind: 'us', view: 'vein', arterial: shown('img.us_artery_occluded') ? 1 : 0, seed };
   // кости (часть 32): что нашёл рентгенолог — линия перелома, смещение, признаки нестабильности;
   // сторона — из жалобы или находки
   const bone = BONE_EXAMS[exam];

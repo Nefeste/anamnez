@@ -6,7 +6,10 @@
 // (часть 30д) — сигмовидная кишка вдоль и воспалённый дивертикул с тенью.
 import { BlendMode, BlurStyle, ClipOp, PaintStyle, Skia, type SkPaint, type SkPath, type SkPicture, StrokeCap, StrokeJoin, TileMode } from '@shopify/react-native-skia';
 import { APEX, HALF, polar, type Pt, R0, R1, ray, type UsFindings, usGeometry } from './geometry';
+import { recordUsVein, type VeinFindings } from './vein';
 
+/** Что нарисовать: сектор датчиком для живота или вены ноги линейным датчиком (часть 33а). */
+export type UsImage = UsFindings | VeinFindings;
 export type { UsFindings };
 
 const SKIN = '#9a9a9a';
@@ -24,7 +27,9 @@ const MUSCULARIS = '#2c2c2c';
 const SUBMUCOSA = '#c9c9c9';
 const HALO = '#b3b3b3';
 
-export function recordUsSector(width: number, findings: UsFindings, seed: number): SkPicture {
+export function recordUsSector(width: number, findings: UsImage, seed: number): SkPicture {
+  // вены ноги (часть 33а) — линейный датчик, свой рисунок
+  if (findings.view === 'vein') return recordUsVein(width, findings, seed);
   const W = width;
   const g = usGeometry(findings, seed);
   const X = (v: number) => v * W;

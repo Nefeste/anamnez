@@ -73,11 +73,19 @@ describe('случай согласован', () => {
   });
 
   test('у числовых показателей есть значение, и оно в своём диапазоне', () => {
+    // порог на чужом измерении (часть 33б): число одно — у низкого давления то же, что у тонометра;
+    // есть низкое давление — число из его диапазона «есть»
+    const shared = Object.values(db.findings).filter(f => f.value?.of);
     for (const p of patients.slice(0, 500)) {
       const present = new Set(p.truth.findings.map(f => f.f));
       for (const [id, v] of Object.entries(p.truth.values)) {
         const spec = db.findings[id].value!;
-        const [lo, hi] = present.has(id) ? spec.present : spec.absent;
+        if (spec.of) {
+          expect(v).toBe(p.truth.values[spec.of]);
+          continue;
+        }
+        const low = shared.find(f => f.value!.of === id && present.has(f.id));
+        const [lo, hi] = present.has(id) ? spec.present : low ? low.value!.present : spec.absent;
         expect(v).toBeGreaterThanOrEqual(lo);
         expect(v).toBeLessThanOrEqual(hi);
       }
@@ -157,10 +165,22 @@ describe('обследования ошибаются с заданной час
   });
 
   test('ложный числовой результат показывает значение из «чужого» диапазона', () => {
+    const shared = Object.values(db.findings).filter(f => f.value?.of);
     for (const [i, p] of patients.slice(0, 2000).entries()) {
-      for (const o of runExam(db, p, 'exam.vitals', Rng.seeded(i).fork('v'))) {
+      const present = new Set(p.truth.findings.map(f => f.f));
+      const obs = runExam(db, p, 'exam.vitals', Rng.seeded(i).fork('v'));
+      for (const o of obs) {
         const spec = db.findings[o.f].value!;
-        const [lo, hi] = o.shown ? spec.present : spec.absent;
+        // порог на чужом измерении (часть 33б): число — то, что показал тонометр, «есть» — если оно в
+        // диапазоне порога
+        if (spec.of) {
+          const base = obs.find(x => x.f === spec.of)!;
+          expect(o.value).toBe(base.value);
+          expect(o.shown).toBe(o.value! >= spec.present[0] && o.value! <= spec.present[1]);
+          continue;
+        }
+        const low = shared.find(f => f.value!.of === o.f && present.has(f.id));
+        const [lo, hi] = o.shown ? spec.present : low && !present.has(o.f) ? low.value!.present : spec.absent;
         expect(o.value!).toBeGreaterThanOrEqual(lo);
         expect(o.value!).toBeLessThanOrEqual(hi);
       }

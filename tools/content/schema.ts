@@ -201,6 +201,11 @@ export const conditionSchema = z.strictObject({
   findings: z.array(link).min(1),
   confirm: z.union([z.array(z.string()).min(1), z.literal('clinical')]),
   redFlags: z.array(z.string()).optional(),
+  /**
+   * с чем спутать по рекомендации (часть 33б) — вдобавок к похожим по признакам: острую ишемию ноги
+   * отличают от тромбоза глубоких вен (1006_1, раздел 2.2), хотя признаки у них разные
+   */
+  differential: z.array(z.string().regex(/^cond\.[a-z0-9_]+$/)).min(1).optional(),
   texts: z.strictObject({ summary: text }),
   pearls: z.array(text).optional(),
   simplified: z.string().optional(),
@@ -225,6 +230,11 @@ export const findingSchema = z.strictObject({
     decimals: z.number().int().min(0).max(3),
     /** производные числа для шаблона: {dia} = значение × множитель (давление: нижнее из верхнего) */
     derived: z.record(z.string().regex(/^[a-z]+$/), z.number().positive()).optional(),
+    /**
+     * порог на измерении другого признака (часть 33б): число одно на двоих — низкое давление меряют
+     * тем же тонометром, что высокое; «есть» — значение в диапазоне `present`
+     */
+    of: z.string().optional(),
   }).optional(),
   texts: z.strictObject({ complaint: texts.optional(), present: texts, absent: texts.optional(), hint }),
   sources: z.array(source).optional(),
@@ -274,7 +284,8 @@ export const treatmentSchema = z.strictObject({
   kind: z.enum(['drug', 'regimen', 'procedure', 'surgery']),
   /** класс для аллергий и статистики: antibiotic.penicillin, antibiotic.macrolide… */
   class: z.string().regex(/^[a-z_]+(\.[a-z_]+)*$/).optional(),
-  route: z.enum(['oral', 'inhaled', 'nasal', 'iv', 'im']).optional(),
+  /** как вводят; `sc` — под кожу (часть 33а: низкомолекулярный гепарин, фондапаринукс натрия) */
+  route: z.enum(['oral', 'inhaled', 'nasal', 'iv', 'im', 'sc']).optional(),
   cost: z.number().int().min(0),
   /** cure — действует на причину: переводит болезнь к выздоровлению с вероятностью за столько дней */
   effects: z.array(z.strictObject({
@@ -522,6 +533,7 @@ export const economySchema = z.strictObject({
   reputation: z.strictObject({
     start: pct, pull: z.number().int().min(1).max(100),
     waitShort: z.number().int(), waitShortMin: int, waitLong: z.number().int(), waitLongMin: int, noToilet: z.number().int(),
+    died: z.number().int().max(0),
   }),
   /** поток пациентов от репутации: ± % при 0 и 100 */
   flow: z.number().int().min(0).max(90),
@@ -553,7 +565,9 @@ export const characterSchema = z.strictObject({
 });
 
 /** Условие дня для заданий «N дней»: без непоказанного антибиотика, без ушедших, касса в плюсе. */
-const dayKind = z.enum(['noNeedlessAntibiotic', 'noLeft', 'cashPositive']);
+// noWaitComplication (spec 2026-09-chapter-2, часть 34): операции были, и ни у кого болезнь не
+// осложнилась, пока он ждал в больнице
+const dayKind = z.enum(['noNeedlessAntibiotic', 'noLeft', 'cashPositive', 'noWaitComplication']);
 
 /** Задание главы: вид — в движке, числа и текст — здесь. */
 const missionSchema = z.discriminatedUnion('kind', [
@@ -561,6 +575,11 @@ const missionSchema = z.discriminatedUnion('kind', [
   z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('roomWorks'), room: roomId, text }),
   z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('streak'), days: count, day: dayKind, text }),
   z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('days'), days: count, day: dayKind, text }),
+  // глава 2 (spec 2026-09-chapter-2, часть 34): смена без ошибок сортировки со столькими пациентами
+  // скорой; столько операций без осложнения; столько выписанных подряд со сроком не выше обычного
+  z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('triage'), count, text }),
+  z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('operations'), count, text }),
+  z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('stay'), count, text }),
 ]);
 
 /** Письмо: от кого, когда — в начале главы, после дня N, при задании, в конце главы. */
@@ -577,12 +596,25 @@ export const chapterSchema = z.strictObject({
   order: count,
   name: text,
   place: text,
+  /** кнопка перехода в главу в конце прежней: «Перейти в районную больницу» (часть 34) */
+  move: text.optional(),
   preset: z.string().regex(/^preset\.[a-z0-9_]+$/),
   budget: int,
   department: z.string().regex(/^dept\.[a-z0-9_]+$/),
   build: z.array(roomId).min(1),
-  /** первые пациенты главы — заданные болезни (обучение с наставником) */
-  tutorial: z.array(z.string().regex(/^cond\.[a-z0-9_]+$/)).default([]),
+  /**
+   * первые пациенты главы — заданные болезни (обучение с наставником): строкой — пришедший сам;
+   * с часть 34б — и привезённый скорой (`ambulance`), и с заданными скрытыми параметрами
+   */
+  tutorial: z.array(z.union([
+    z.string().regex(/^cond\.[a-z0-9_]+$/),
+    z.strictObject({
+      condition: z.string().regex(/^cond\.[a-z0-9_]+$/),
+      ambulance: z.literal(true).optional(),
+      params: z.record(z.string(), z.string()).optional(),
+      age: z.tuple([z.number().int().min(0).max(110), z.number().int().min(0).max(110)]).optional(),
+    }),
+  ])).default([]),
   missions: z.array(missionSchema).min(1),
   letters: z.array(letterSchema).default([]),
 });
@@ -596,9 +628,12 @@ export const tipSchema = z.strictObject({
   /** порядок: какая первой, если подходят две */
   order: count,
   from: z.string().regex(/^char\.[a-z0-9_]+$/),
+  /** только в этой главе (часть 34б); нет — в первую смену любой главы с обучением */
+  chapter: z.string().regex(/^chapter\.[a-z0-9_]+$/).optional(),
   name: text,
+  // ambulance — ждёт сортировки привезённый скорой; rounds — обход (часть 34б)
   when: z.union([
-    z.literal('caseOpen'), z.literal('afterAsk'), z.literal('decision'), z.literal('review'),
+    z.literal('caseOpen'), z.literal('afterAsk'), z.literal('decision'), z.literal('review'), z.literal('ambulance'), z.literal('rounds'),
     z.strictObject({ condition: z.string().regex(/^cond\.[a-z0-9_]+$/) }),
   ]),
   text,
@@ -654,7 +689,8 @@ export const scoreSchema = z.strictObject({
 /**
  * Правило решения (spec 2026-09-chapter-2, часть 32): оттавские правила — при жалобе `complaints`
  * обследования `exams` нужны, если есть хоть один признак из `any`; проверили все — и ни одного,
- * перелом маловероятен. Правило проверено у тех, кому не меньше `ageMin` лет.
+ * перелом маловероятен. Правило проверено у тех, кому не меньше `ageMin` лет. С части 33а — и
+ * признаки, при которых правило не применяют (`excludes`).
  */
 export const ruleSchema = z.strictObject({
   id: z.string().regex(/^rule\.[a-z0-9_]+$/),
@@ -668,6 +704,11 @@ export const ruleSchema = z.strictObject({
   age: z.strictObject({ main: z.number().int().min(1).max(120).optional(), from: z.number().int().min(1).max(120).optional(), minor: z.tuple([z.number().int().min(0), z.number().int().max(120)]).optional() }).optional(),
   /** применимо, только если есть хоть один из этих признаков (часть 32г: лёгкая ЧМТ) */
   requires: z.array(z.string()).min(1).optional(),
+  /**
+   * не применяется, если есть хоть один из этих признаков (часть 33а): тяж по ходу подкожной вены —
+   * тромбофлебит, УЗИ нужно всем и без шкалы; при беременности D-димер не используют
+   */
+  excludes: z.array(z.string()).min(1).optional(),
   /** какое обследование правило назначает; пусто — его в игре нет (КТ, часть 32г), тогда `texts.exam` */
   exams: z.array(z.string().regex(/^exam\.[a-z0-9_]+$/)).default([]),
   ageMin: z.number().int().min(0).max(120).optional(),

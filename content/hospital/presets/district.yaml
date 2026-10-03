@@ -1,0 +1,50 @@
+# Районная больница — больница главы 2 «Приёмное» (spec 2026-09-chapter-2, часть 34): на участке
+# песочницы, три ряда помещений и два коридора. Сверху — регистратура, доврачебный, кабинет врача,
+# процедурный, лаборатория и ординаторская; справа от неё место под кабинет УЗИ — его строят
+# заданием главы. Посередине — зона ожидания, ЭКГ, проход ко второму коридору, рентген и санузел.
+# Снизу — стационар: смотровая приёмного, две палаты на четыре койки и операционная; скорая везёт
+# каталку от входа мимо регистратуры и зоны ожидания. Штат — на всё, что построено.
+id: preset.district
+name: { ru: "Районная больница" }
+plot: [40, 28]
+entrance: [0, 8]
+corridor:
+  - [1, 7, 37, 9]
+  - [18, 10, 20, 16]
+  - [1, 17, 37, 19]
+rooms:
+  - { type: room.reception, size: S, x: 0, y: 0, rot: 0 }
+  - { type: room.triage, size: S, x: 5, y: 0, rot: 0 }
+  - { type: room.office, size: M, x: 10, y: 0, rot: 0 }
+  - { type: room.procedure, size: S, x: 17, y: 0, rot: 0 }
+  - { type: room.lab, size: M, x: 22, y: 0, rot: 0, equipment: [eq.hematology_analyzer, eq.biochem_analyzer, eq.urine_analyzer, eq.immuno_analyzer] }
+  - { type: room.staff, size: S, x: 29, y: 0, rot: 0 }
+  - { type: room.waiting, size: L, x: 0, y: 10, rot: 2 }
+  - { type: room.ecg, size: S, x: 12, y: 10, rot: 2, equipment: [eq.ecg] }
+  - { type: room.xray, size: M, x: 21, y: 10, rot: 2, equipment: [eq.xray_digital] }
+  - { type: room.toilet, size: S, x: 28, y: 10, rot: 2 }
+  - { type: room.emergency, size: M, x: 0, y: 20, rot: 2 }
+  - { type: room.ward, size: M, x: 8, y: 20, rot: 2 }
+  - { type: room.ward, size: M, x: 16, y: 20, rot: 2 }
+  - { type: room.or, size: M, x: 24, y: 20, rot: 2, equipment: [eq.or_table, eq.anesthesia] }
+decor:
+  - [bench, 9, 9]
+  - [bench, 10, 9]
+  - [bench, 11, 9]
+  - [bench, 12, 9]
+  - [bench, 26, 9]
+  - [bench, 27, 9]
+staff:
+  - { role: role.registrar, room: 0 }
+  - { role: role.nurse, room: 1 }
+  - { role: role.nurse, room: 3 }
+  - { role: role.lab_tech, room: 4 }
+  - { role: role.nurse, room: 7 }
+  - { role: role.radiographer, room: 8 }
+  - { role: role.radiologist, room: 8 }
+  - { role: role.nurse, room: 10 }
+  - { role: role.nurse, room: 11 }
+  - { role: role.nurse, room: 12 }
+  - { role: role.surgeon, room: 13 }
+  - { role: role.anesthetist, room: 13 }
+  - { role: role.or_nurse, room: 13 }
