@@ -20,7 +20,7 @@ shots:
     alt: "A visit: an ankle X-ray in two views, a fracture of both malleoli with the foot shifted"
   - file: screenshots/phone/04-ecg.png
     caption: ECG
-    alt: "A visit: an ECG strip with ST elevation and a complaint of pressing chest pain"
+    alt: "A visit: a 12-lead ECG with ST elevation in II, III and aVF, the findings listed under the sheet"
   - file: screenshots/phone/05-diagnosis.png
     caption: Diagnosis
     alt: "Decision: choosing a diagnosis from the list of conditions"
@@ -92,7 +92,8 @@ in Russian.
 - The images are drawn by the program and differ for every patient: chest, abdominal and bone X-rays
   with the fracture line and displaced fragments, air and blood in the chest after trauma,
   abdominal, leg vein and leg artery ultrasound — a vein with a clot won’t compress under the probe,
-  a blocked artery looks grey inside — and ECG strips.
+  a blocked artery looks grey inside — and 12-lead ECGs with ST elevation in the leads of the
+  affected wall and atrial fibrillation.
 - Decision rules from clinical guidelines: whether an ankle, foot or knee X-ray is needed, whether a
   CT scan is needed after a blow to the head, whether a leg vein ultrasound is needed for leg pain —
   by the Wells score and D-dimer.

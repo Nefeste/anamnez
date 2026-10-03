@@ -214,8 +214,8 @@ describe('острая ишемия ноги', () => {
       arrived: [{ exam: ECG, step: 1, at: 600, obs }], pending: [], meanwhile: [], done: [ECG],
       draft: { treatments: [], setting: 'home' }, departments: ED,
     }).groups.find(g => g.exam === ECG)!.image;
-    expect(image([ob(ECG, 'ecg.af', true)])).toMatchObject({ kind: 'ecg', af: true });
-    expect(image([ob(ECG, 'ecg.af', false)])).not.toHaveProperty('af');
+    expect(image([ob(ECG, 'ecg.af', true)])).toMatchObject({ kind: 'ecg', ecg: { rhythm: 'af' } });
+    expect(image([ob(ECG, 'ecg.af', false)])).not.toHaveProperty('ecg.rhythm');
   });
 });
 

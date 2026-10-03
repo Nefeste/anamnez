@@ -246,12 +246,13 @@ async function shots(browser: Browser): Promise<Record<string, Buffer>> {
     raw['03-fracture.png'] = await snap(p);
     await p.context().close();
 
-    // 4. боль в груди: на ЭКГ подъём ST — в тёмной теме, как на мониторе
+    // 4. боль в груди: на ЭКГ подъём ST — в тёмной теме, как на мониторе; лист двенадцати
+    // отведений целиком (часть 36), под ним — строка находки
     p = await openShift(browser, base, envelope(acsCase(db)), 'shift', '/shift', 'dark');
     await p.getByTestId('shift-continue').click();
     await p.getByTestId('result-ecg').waitFor({ timeout: 20_000 });
-    await p.getByTestId('visit-fresh').first().evaluate(el => el.scrollIntoView({ block: 'end' }));
-    await p.mouse.wheel(0, 24);
+    await p.getByTestId('result-ecg').evaluate(el => el.scrollIntoView({ block: 'start' }));
+    await p.mouse.wheel(0, -40);
     await p.waitForTimeout(500);
     raw['04-ecg.png'] = await snap(p);
     await p.context().close();

@@ -15,6 +15,7 @@ import { checkRule, knownOf, rulesFor } from '@/engine/med/rules';
 import { complaintText, observationText } from '@/engine/med/text';
 import type { Observation, Patient } from '@/engine/med/types';
 import type { Difficulty } from '@/engine/shift/types';
+import type { EcgFindings, Wall } from '@/render/ecg/model';
 import type { BoneFindings, BoneFracture } from '@/render/xray/boneGeometry';
 import { fracturedRibs, type XrayFindings } from '@/render/xray/chestGeometry';
 import { T } from '@/i18n';
@@ -42,7 +43,8 @@ export type ResultImage =
     kind: 'xray'; infiltrate?: 'right' | 'left' | 'both'; hyperinflation: boolean;
     pneumothorax?: XrayFindings['pneumothorax']; effusion?: XrayFindings['effusion']; ribFractures?: XrayFindings['ribFractures']; seed: number;
   }
-  | { kind: 'ecg'; rate: number; st: number; rScale: number; seed: number; /** фибрилляция предсердий (часть 33б): ритм неровный, зубцов P нет */ af?: boolean }
+  /** лента в двенадцати отведениях (spec 2026-10-chapter-3, часть 36): ритм, частота и находки, которые показало обследование */
+  | { kind: 'ecg'; seed: number; ecg: EcgFindings }
   /**
    * УЗИ брюшной полости: правая подвздошная область, `appendix` — виден воспалённый отросток (часть
    * 29); или желчный пузырь — `stones` камней, `wall` — утолщённая стенка (часть 30); или левая
@@ -322,6 +324,14 @@ function treatmentChoices(obs: readonly Observation[]): VisitView['treatments'] 
 }
 
 /**
+ * Стенка инфаркта на ленте — из атрибута находки; без него — нижняя: текст находки в базе называет
+ * II, III, aVF, и лента должна показывать то же (стенку база узнает с частью 39).
+ */
+function wallOf(attr: string | undefined): Wall {
+  return attr === 'anterior' || attr === 'lateral' ? attr : 'inferior';
+}
+
+/**
  * Снимок, лента и сектор УЗИ — по тому, что показало это обследование; частота на ленте — по
  * пульсу. `patientSeed` — зерно пациента: номера сломанных рёбер одни на обзорном снимке и на
  * снимке рёбер (часть 32в).
@@ -354,13 +364,18 @@ function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observat
   }
   if (exam === 'exam.ecg') {
     const pulse = known.find(o => o.f === 'vital.tachycardia' && o.value !== undefined)?.value;
+    const stemi = shown('ecg.st_elevation');
     return {
       kind: 'ecg',
-      rate: pulse !== undefined ? Math.round(pulse) : 72,
-      st: shown('ecg.st_elevation') ? 0.3 : shown('ecg.st_depression') ? -0.2 : 0,
-      rScale: shown('ecg.lvh') ? 1.5 : 1,
       seed,
-      ...(shown('ecg.af') ? { af: true } : {}),
+      // на ленте — то же, что в строках находок: депрессия ST с инверсией T — в V4–V6
+      ecg: {
+        rate: pulse !== undefined ? Math.round(pulse) : 72,
+        ...(shown('ecg.af') ? { rhythm: 'af' as const } : {}),
+        ...(stemi ? { stemi: wallOf(stemi.attrs?.wall) } : {}),
+        ...(shown('ecg.st_depression') ? { stDepression: true, tInversion: 'lateral' as const } : {}),
+        ...(shown('ecg.lvh') ? { lvh: true } : {}),
+      },
     };
   }
   if (exam === 'exam.xray_abdomen') {
