@@ -13,7 +13,9 @@ const { recordAbdomenXray, ABDOMEN_ASPECT } = await import('../../src/render/xra
 const { recordBoneXray } = await import('../../src/render/xray/bones');
 const { BONE_ASPECT } = await import('../../src/render/xray/boneGeometry');
 const { recordChestXray, XRAY_ASPECT } = await import('../../src/render/xray/chest');
-const { ABDOMEN_CASES, BONE_CASES, CHEST_CASES, HEAD_CASES, US_CASES } = await import('../../src/state/imagingCases');
+const { ABDOMEN_CASES, BONE_CASES, CHEST_CASES, ECG_CASES, HEAD_CASES, US_CASES } = await import('../../src/state/imagingCases');
+const { synthEcg12 } = await import('../../src/render/ecg/model');
+const { ecgSheetLayout, recordEcgSheet } = await import('../../src/render/ecg/sheet');
 
 const SIZE = 480;
 for (const k of HEAD_CASES) {
@@ -59,6 +61,18 @@ for (const k of BONE_CASES) {
   const picture = recordBoneXray(SIZE, k.findings, k.seed);
   const ms = performance.now() - t0;
   const { png } = await rasterize(picture, SIZE, h);
+  await Bun.write(join(OUT, `${k.key}.png`), png);
+  console.log(`${k.key}.png — ${k.label}, запись ${ms.toFixed(1)} мс`);
+}
+
+// ЭКГ в двенадцати отведениях (spec 2026-10-chapter-3, часть 36): лист 6 × 2 и полоса ритма; подписи
+// отведений в приложении — текстом поверх, здесь их нет
+for (const k of ECG_CASES) {
+  const W = 720;
+  const t0 = performance.now();
+  const picture = recordEcgSheet(W, synthEcg12(k.findings, k.seed, 10));
+  const ms = performance.now() - t0;
+  const { png } = await rasterize(picture, W, ecgSheetLayout(W).height);
   await Bun.write(join(OUT, `${k.key}.png`), png);
   console.log(`${k.key}.png — ${k.label}, запись ${ms.toFixed(1)} мс`);
 }

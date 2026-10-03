@@ -181,7 +181,7 @@ describe('приём', () => {
     for (let k = 0; k < 3 && visitView().pending.length > 0; k++) waitForResults();
     const ecg = visitView().groups.find(g => g.exam === 'exam.ecg')!;
     expect(ecg.image?.kind).toBe('ecg');
-    expect(ecg.image?.kind === 'ecg' && ecg.image.rate).toBeGreaterThan(30);
+    expect(ecg.image?.kind === 'ecg' && ecg.image.ecg.rate).toBeGreaterThan(30);
     expect(visitView().groups.find(g => g.exam === 'exam.vitals')!.image).toBeUndefined();
   });
 

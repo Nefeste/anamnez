@@ -1,7 +1,7 @@
 // Снимки, лента и сектор УЗИ в результатах приёма: рисунок по тому, что показало обследование, —
 // как в спецификации карты пациента (рентген, ЭКГ и УЗИ кодом, ADR 0013).
 import { useWindowDimensions, View } from 'react-native';
-import { Ecg } from '@/render/Ecg';
+import { Ecg12 } from '@/render/Ecg12';
 import { type UsImage, UsSector } from '@/render/UsSector';
 import { Xray } from '@/render/Xray';
 import { XrayAbdomen } from '@/render/XrayAbdomen';
@@ -63,8 +63,8 @@ export function ResultPicture({ image }: { image: ResultImage }) {
   }
   return (
     <View testID="result-ecg" style={{ borderRadius: 6, overflow: 'hidden' }}>
-      {/* четыре секунды — крупно: подъём ST на телефоне должен быть виден глазом */}
-      <Ecg width={w} height={Math.round(w * 0.45)} spec={{ rhythm: image.af ? 'af' : 'sinus', rate: image.rate, seconds: 4, seed: image.seed, st: image.st, rScale: image.rScale }} />
+      {/* двенадцать отведений во всю ширину: шесть строк по два и полоса ритма (часть 36) */}
+      <Ecg12 width={w} findings={image.ecg} seed={image.seed} />
     </View>
   );
 }

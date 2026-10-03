@@ -2,6 +2,7 @@
 // что нарисовано, а не диагноз. Их же рисует `npm run imaging` без экрана.
 import { T } from '@/i18n';
 import type { HeadFindings } from '@/render/ct/geometry';
+import type { EcgFindings } from '@/render/ecg/model';
 import type { UsImage } from '@/render/us/sector';
 import type { AbdomenFindings } from '@/render/xray/abdomenGeometry';
 import type { BoneFindings } from '@/render/xray/boneGeometry';
@@ -124,4 +125,36 @@ export const BONE_CASES: BoneCase[] = [
   { key: 'bone-clavicle-displaced', findings: { view: 'clavicle', fractures: [{ site: 'clavicle', displacement: 0.9 }] }, seed: 14, label: b.clavicleDisplaced },
   { key: 'bone-ribs', findings: { view: 'ribs' }, seed: 15, label: b.ribs },
   { key: 'bone-ribs-broken', findings: { view: 'ribs', fractures: [{ site: 'rib', rib: 6, displacement: 0.9 }, { site: 'rib', rib: 7 }] }, seed: 16, label: b.ribsBroken },
+];
+
+export interface EcgCase {
+  key: string;
+  findings: EcgFindings;
+  seed: number;
+  label: string;
+}
+
+const e = T.spikes.imaging.ecg;
+
+/** ЭКГ в двенадцати отведениях (spec 2026-10-chapter-3, часть 36): ритмы, проведение, стенки инфаркта. */
+export const ECG_CASES: EcgCase[] = [
+  { key: 'ecg-normal', findings: {}, seed: 1, label: e.normal },
+  { key: 'ecg-inferior', findings: { stemi: 'inferior' }, seed: 2, label: e.inferior },
+  { key: 'ecg-anterior', findings: { stemi: 'anterior' }, seed: 3, label: e.anterior },
+  { key: 'ecg-lateral', findings: { stemi: 'lateral' }, seed: 4, label: e.lateral },
+  { key: 'ecg-depression', findings: { stDepression: true }, seed: 5, label: e.depression },
+  { key: 'ecg-af', findings: { rhythm: 'af', rate: 110 }, seed: 6, label: e.af },
+  { key: 'ecg-flutter', findings: { rhythm: 'flutter', rate: 150 }, seed: 7, label: e.flutter },
+  { key: 'ecg-svt', findings: { rhythm: 'svt', rate: 180 }, seed: 8, label: e.svt },
+  { key: 'ecg-vt', findings: { rhythm: 'vt', rate: 170 }, seed: 9, label: e.vt },
+  { key: 'ecg-avb1', findings: { rhythm: 'avb1' }, seed: 10, label: e.avb1 },
+  { key: 'ecg-avb2w', findings: { rhythm: 'avb2w' }, seed: 11, label: e.avb2w },
+  { key: 'ecg-avb2m', findings: { rhythm: 'avb2m' }, seed: 12, label: e.avb2m },
+  { key: 'ecg-avb3', findings: { rhythm: 'avb3', rate: 38 }, seed: 13, label: e.avb3 },
+  { key: 'ecg-lbbb', findings: { bundle: 'lbbb' }, seed: 14, label: e.lbbb },
+  { key: 'ecg-rbbb', findings: { bundle: 'rbbb' }, seed: 15, label: e.rbbb },
+  { key: 'ecg-pericarditis', findings: { pericarditis: true, rate: 95 }, seed: 16, label: e.pericarditis },
+  { key: 'ecg-lvh', findings: { lvh: true }, seed: 17, label: e.lvh },
+  { key: 'ecg-rv', findings: { rvStrain: true, rate: 110 }, seed: 18, label: e.rv },
+  { key: 'ecg-low', findings: { lowVoltage: true, rate: 105 }, seed: 19, label: e.lowVoltage },
 ];
