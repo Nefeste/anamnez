@@ -36,6 +36,7 @@ export const NO_ECONOMY: ContentDb['economy'] = {
   interest: 0,
   ward: { bedDay: 0, interrupted: 0 },
   icu: { bedDay: 0 },
+  transfer: { hours: 2, pci: 1 },
   ambulance: { perDay: [0, 0], weight: { minor: 0, moderate: 0, serious: 0, critical: 0 }, severe: 0 },
   reputation: { start: 50, pull: 1, waitShort: 0, waitShortMin: 0, waitLong: 0, waitLongMin: 0, noToilet: 0, died: 0 },
   flow: 0,
@@ -266,6 +267,27 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     for (const f of c.masks ?? []) {
       if (!hasF(f)) errors.push(`${owner}: гасит признак ${f}, а его нет`);
       else if (c.findings.some(l => l.f === f)) errors.push(`${owner}: признак ${f} и вызывает, и гасит`);
+    }
+    // исход перевода по часам (часть 39б): параметры объявлены, у каждого класса границы, часы по
+    // возрастанию, доля потери не убывает, тромболизис — лечение базы, часы от начала известны
+    if (c.reperfusion) {
+      const r = c.reperfusion;
+      checkWhen(owner, 'исход перевода', r.when, c.params);
+      const by = c.params?.[r.by];
+      if (!by) errors.push(`${owner}: исход перевода — по необъявленному параметру ${r.by}`);
+      else {
+        for (const v of Object.keys(by)) if (!r.death[v]) errors.push(`${owner}: исход перевода — нет смертности для ${r.by}=${v}`);
+        for (const v of Object.keys(r.death)) if (!(v in by)) errors.push(`${owner}: исход перевода — смертность для ${r.by}=${v}, а такого значения нет`);
+      }
+      for (const [v, [lo, hi]] of Object.entries(r.death)) if (lo > hi) errors.push(`${owner}: исход перевода — у ${r.by}=${v} нижняя граница выше верхней`);
+      if (r.loss.some(([h, x], i) => i > 0 && (h <= r.loss[i - 1][0] || x < r.loss[i - 1][1]))) errors.push(`${owner}: исход перевода — часы потери по возрастанию, доля не убывает`);
+      if (!(r.lysis.tx in treatments)) errors.push(`${owner}: исход перевода — тромболизис ${r.lysis.tx} не найден`);
+      if (!c.course.onset) errors.push(`${owner}: исход перевода по часам, а часов от начала у болезни нет (course.onset)`);
+    }
+    // фибрилляция желудочков (часть 39б): параметры объявлены, часы от начала известны
+    if (c.arrest) {
+      checkWhen(owner, 'фибрилляция желудочков', c.arrest.when, c.params);
+      if (!c.course.onset) errors.push(`${owner}: фибрилляция желудочков по часам от начала, а их у болезни нет (course.onset)`);
     }
     // с чем спутать по рекомендации (часть 33б): то, с чем приходят, и не сама болезнь
     for (const d of c.differential ?? []) if (d === c.id || !conditions[d]?.presenting) errors.push(`${owner}: с чем спутать — ${d} не найдено, не приходят с ним или это оно само`);
@@ -542,10 +564,13 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   // лежащих — в смотровой приёмного, и хоть одно из обследований там делают у постели не дольше срока
   for (const x of Object.values(targets)) {
     for (const f of x.complaints) if (!findings[f]?.texts.complaint) errors.push(`${x.id}: жалоба ${f} не найдена или без текста жалобы`);
+    // часть 39б: находка, назначение — из базы
+    for (const f of x.findings) if (!findings[f]) errors.push(`${x.id}: находка ${f} не найдена`);
+    for (const id of x.treatments) if (!treatments[id]) errors.push(`${x.id}: лечение ${id} не найдено`);
     for (const id of x.exams) if (!exams[id]) errors.push(`${x.id}: обследование ${id} не найдено`);
     if (x.room && !rooms[x.room]) errors.push(`${x.id}: помещение ${x.room} не найдено`);
     else if (x.room && !rooms[x.room].emergency) errors.push(`${x.id}: срок у лежащих — только в смотровой приёмного, а ${x.room} не она`);
-    else if (x.room && !x.exams.some(id => exams[id]?.bedside?.room === x.room && exams[id].bedside!.time.procedure <= x.minutes)) {
+    else if (x.room && x.exams.length > 0 && !x.exams.some(id => exams[id]?.bedside?.room === x.room && exams[id].bedside!.time.procedure <= x.minutes)) {
       errors.push(`${x.id}: в ${x.room} ни одно из обследований срока не делают у постели за ${x.minutes} минут`);
     }
   }
@@ -595,6 +620,15 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (c.course.onset) out.onset = c.course.onset;
     if (c.redFlags) out.redFlags = c.redFlags;
     if (c.masks) out.masks = c.masks;
+    if (c.reperfusion) {
+      const r = c.reperfusion;
+      out.reperfusion = {
+        when: r.when, by: r.by, loss: r.loss,
+        death: Object.fromEntries(Object.entries(r.death).map(([v, [lo, hi]]) => [v, [Math.round(lo * 100), Math.round(hi * 100)]])),
+        lysis: { tx: r.lysis.tx, p: Math.round(r.lysis.pct * 100), hours: r.lysis.hours },
+      };
+    }
+    if (c.arrest) out.arrest = { when: c.arrest.when, perHour: Math.round(c.arrest.perHour * 100), hours: c.arrest.hours };
     if (c.differential) out.differential = c.differential;
     if (c.course.selfLimiting) {
       out.selfLimiting = true;

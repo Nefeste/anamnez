@@ -234,6 +234,35 @@ export interface ConditionSurgery {
   stay?: [number, number];
 }
 
+/**
+ * Исход перевода по часам до реперфузии (spec 2026-10-chapter-3, часть 39б): при этих значениях
+ * параметров (подъём ST) артерию открывают тромболизисом здесь или вмешательством в сосудистом
+ * центре; смертность в стационаре — в границах класса по параметру `by` (Killip, 157_5, приложение
+ * А3), тем ближе к верхней, чем позже реперфузия.
+ */
+export interface Reperfusion {
+  when: Record<string, string[]>;
+  by: string;
+  /** смертность по значению параметра `by`: нижняя и верхняя граница, 1/10 000 */
+  death: Record<string, [P, P]>;
+  /** доля потери по часам до реперфузии: [до какого часа, не включая; доля, %]; позже последнего — 100 % */
+  loss: [number, number][];
+  /** тромболизис: какое лечение, доля удачных (кровоток к 90-й минуте), 1/10 000, и за сколько часов он открывает артерию */
+  lysis: { tx: Id; p: P; hours: number };
+}
+
+/**
+ * Фибрилляция желудочков до реперфузии (spec 2026-10-chapter-3, часть 39б): событие минут — доля в
+ * час, пока от начала болезни меньше `hours` часов. Под монитором её снимают разрядом, без него —
+ * смерть.
+ */
+export interface Arrest {
+  when: Record<string, string[]>;
+  /** доля в час, 1/10 000 */
+  perHour: P;
+  hours: number;
+}
+
 export interface Stage {
   id: string;
   days: [number, number];
@@ -305,6 +334,10 @@ export interface Condition {
   surgery?: ConditionSurgery;
   /** осложнённая стадия (часть 28б): перфорация аппендикса */
   complication?: Complication;
+  /** исход перевода по часам до реперфузии (часть 39б): инфаркт с подъёмом ST */
+  reperfusion?: Reperfusion;
+  /** фибрилляция желудочков до реперфузии (часть 39б) */
+  arrest?: Arrest;
   /** тактика; есть у всех, с чем приходят (валидатор) */
   treatment?: Tactics;
   texts: { summary: Text };
@@ -616,6 +649,11 @@ export interface Economy {
   ward: { bedDay: number; interrupted: number };
   /** палата интенсивной терапии: койко-день, ₽ (часть 38а) */
   icu: { bedDay: number };
+  /**
+   * перевод в сосудистый центр (spec 2026-10-chapter-3, часть 39б): часов пути и часов от приезда до
+   * вмешательства — по ним исход переведённого с подъёмом ST
+   */
+  transfer: { hours: number; pci: number };
   /** скорая: машин за смену; вес болезни по тяжести; доля тяжёлых, % (часть 27) */
   ambulance: { perDay: [number, number]; weight: Record<'minor' | 'moderate' | 'serious' | 'critical', number>; severe: number };
   /** репутация 0–100: начало, на сколько % вечером сдвигается к оценке дня, поправки оценки; `died` — за каждого умершего в стационаре (часть 35) */
@@ -806,14 +844,25 @@ export interface Rule {
  * лежащему в помещении вида `room`, если он задан, — сделать одно из `exams` за `minutes` минут от
  * прихода; сделано — пришёл результат.
  */
+/**
+ * Срок по рекомендации (spec 2026-10-chapter-3, часть 37): кому — по жалобе при поступлении или
+ * (часть 39б) по находке, которую показали обследования; что — обследование (пришёл результат),
+ * назначение или место (решение: тромболизис, перевод — срок тем, кому их сделали); отсчёт — от
+ * прихода или от результата с находкой.
+ */
 export interface Target {
   id: Id;
   name: Text;
   complaints: Id[];
+  findings: Id[];
   room?: Id;
   exams: Id[];
+  treatments: Id[];
+  settings: Setting[];
+  from: 'arrival' | 'finding';
   minutes: number;
-  texts: { hint: Text };
+  /** `from` и `after` — от чего срок: «от ЭКГ с подъёмом ST», «после ЭКГ с подъёмом ST» (у отсчёта от находки) */
+  texts: { hint: Text; from?: Text; after?: Text };
   sources: Source[];
   review: Review;
 }

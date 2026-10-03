@@ -1,6 +1,6 @@
 {
-  "version": "0.3.5",
-  "base": 46,
+  "version": "0.3.6",
+  "base": 47,
   "ids": {
     "achievements": [
       "ach.allergy_10",
@@ -732,7 +732,9 @@
       "score.news2"
     ],
     "targets": [
-      "target.ecg_chest_pain"
+      "target.ecg_chest_pain",
+      "target.lysis_stemi",
+      "target.transfer_stemi"
     ],
     "tips": [
       "tip.appendicitis",

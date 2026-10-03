@@ -6,7 +6,7 @@
 // (ADR 0004): одинаковый исход на телефоне и в тестах.
 import type { ContentDb, Id } from '../../content/types';
 import { P_ONE, type Rng } from '../core/rng';
-import { curesOf, type Plan, type PlanEval, primaryOf, selfLimits, SETTING_ORDER, untreatedOf } from './plan';
+import { curesOf, type Plan, type PlanEval, primaryOf, selfLimits, SETTING_ORDER, untreatedOf, whenHolds } from './plan';
 import type { Patient } from './types';
 
 /** Сколько дней после приёма модель следит за пациентом, отпущенным домой. */
@@ -27,6 +27,26 @@ export interface Outcome {
   reaction?: { tx: Id; by: Id };
   /** переведён в тяжёлом состоянии — «мягкий режим» вместо смерти (spec 2026-09-chapter-2, часть 28б) */
   severe?: true;
+  /** переведён в сосудистый центр с подъёмом ST: как и когда открыли артерию (spec 2026-10-chapter-3, часть 39б) */
+  rsc?: Reperfused;
+}
+
+/**
+ * Как и когда открыли артерию переведённому (часть 39б): тромболизис здесь удался; не удался —
+ * «спасающее» вмешательство в центре; без тромболизиса — вмешательство в центре после пути.
+ */
+export interface Reperfused {
+  by: 'lysis' | 'rescue' | 'pci';
+  /** часов от начала болезни до реперфузии, целые */
+  hours: number;
+  /** доля потери пользы по часам, %: позже последнего часа записи — 100 */
+  loss: number;
+}
+
+/** Путь в сосудистый центр: часов дороги и от приезда до вмешательства (economy.yaml, `transfer`). */
+export interface Way {
+  hours: number;
+  pci: number;
 }
 
 /** 1 − Π(1 − pᵢ) в долях 1/10 000, целыми. */
@@ -76,4 +96,34 @@ export function observe(db: ContentDb, patient: Patient, plan: Plan, ev: PlanEva
     return left <= OBSERVE_DAYS ? { kind: 'recovered', day: left, cured: false } : { kind: 'improved', day: OBSERVE_DAYS, cured: false };
   }
   return { kind: 'unchanged', day: OBSERVE_DAYS, returns: { day: OBSERVE_DAYS, reason: 'unchanged' }, cured: false };
+}
+
+/** Доля потери по часам до реперфузии, %: первый интервал записи, в который попали минуты; позже — 100. */
+export function lossAt(loss: readonly (readonly [number, number])[], minutes: number): number {
+  return loss.find(([h]) => minutes < h * 60)?.[1] ?? 100;
+}
+
+/**
+ * Исход переведённого в сосудистый центр по часам до реперфузии (spec 2026-10-chapter-3, часть
+ * 39б). `decided` — минут от начала болезни до решения о переводе. Тромболизис в плане открывает
+ * артерию через `lysis.hours` с долей `lysis.p` (ветвь `lysis`); не открыл — «спасающее»
+ * вмешательство в центре после пути; без тромболизиса — вмешательство после пути. Смертность — в
+ * границах класса Killip, ближе к верхней на долю потери по часам (ветвь `death`). Нет записи или
+ * болезнь не та (без подъёма ST) — undefined: исход прежний. В «мягком режиме» вместо смерти —
+ * переведён в тяжёлом состоянии.
+ */
+export function rscOutcome(db: ContentDb, patient: Patient, plan: Plan, decided: number, way: Way, rng: Rng, soft = false): Outcome | undefined {
+  const primary = primaryOf(patient);
+  const r = db.conditions[primary.id]?.reperfusion;
+  if (!r || !whenHolds(r.when, primary.params)) return undefined;
+  const lysed = plan.treatments.includes(r.lysis.tx);
+  const by: Reperfused['by'] = !lysed ? 'pci' : rng.fork('lysis').chance(r.lysis.p) ? 'lysis' : 'rescue';
+  const at = Math.round(decided) + (by === 'lysis' ? r.lysis.hours * 60 : (way.hours + way.pci) * 60);
+  const loss = lossAt(r.loss, at);
+  // класс из сохранений до 0.3.6 не известен — первый, без сердечной недостаточности
+  const [lo, hi] = r.death[primary.params[r.by]] ?? Object.values(r.death)[0];
+  const rsc: Reperfused = { by, hours: Math.round(at / 60), loss };
+  if (!rng.fork('death').chance(lo + Math.floor(((hi - lo) * loss) / 100))) return { kind: 'transferred', day: 0, cured: false, rsc };
+  if (soft) return { kind: 'transferred', day: 0, cured: false, severe: true, rsc };
+  return { kind: 'died', day: rng.fork('death-day').range(0, 2), cured: false, rsc };
 }

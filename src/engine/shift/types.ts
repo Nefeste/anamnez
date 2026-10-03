@@ -128,6 +128,8 @@ export interface ShiftPatient {
    * смотровую потом закрыли. Нет — одно отделение смены
    */
   departments?: Id[];
+  /** фибрилляция желудочков в смотровой (часть 39б): когда её сняли разрядом */
+  arrest?: number;
 }
 
 export interface ClosedCase {
@@ -153,6 +155,8 @@ export interface ClosedCase {
   targets?: TargetResult[];
   /** аппараты у постели в момент решения (часть 39а): под монитором тромболизис был возможен — разбор это помнит */
   bedside?: Id[];
+  /** до решения была фибрилляция желудочков, её сняли разрядом под монитором (часть 39б) */
+  arrest?: true;
 }
 
 export type ShiftEvent =
@@ -167,6 +171,8 @@ export type ShiftEvent =
   | { kind: 'free'; by: string }
   /** операция кончилась (spec 2026-09-chapter-2, часть 28): исход и следующий в очереди операционной */
   | { kind: 'opEnd'; id: string }
+  /** фибрилляция желудочков у лежащего в смотровой (spec 2026-10-chapter-3, часть 39б) */
+  | { kind: 'arrest'; id: string }
   | { kind: 'shiftEnd' };
 
 export type Command =
@@ -217,6 +223,8 @@ export type Notice =
   | { kind: 'left'; id: string }
   /** привезла скорая (часть 27): звук и автопауза, как у «красного» */
   | { kind: 'ambulance'; id: string }
+  /** фибрилляция желудочков в смотровой (часть 39б): под монитором — разряд, ритм восстановлен */
+  | { kind: 'arrest'; id: string }
   | { kind: 'shiftEnd' };
 
 export interface DaySummary {

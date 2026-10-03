@@ -26,12 +26,38 @@ params:
   early: { yes: 85, no: 15 }
   # сатурация ниже 90 % — производный параметр по числу (часть 38б); доли — для вывода, пока сатурацию
   # не мерили: игровая оценка по прогону генератора
-  spo2_below90: { no: 96, yes: 4 }
+  spo2_below90: { no: 93, yes: 7 }
+  # класс Killip — сердечная недостаточность при поступлении (157_5, раздел 3.4.1, приложение А3: I — нет
+  # признаков, II — III тон и влажные хрипы внизу, III — отёк лёгких, хрипы выше углов лопаток, IV —
+  # кардиогенный шок). Доли — игровая оценка: II–IV — у 22 % больных ОКС (Gulf RACE, El-Menyar 2012), III
+  # и IV — поровну, по 4 %
+  killip: { i: 78, ii: 14, iii: 4, iv: 4 }
 derived:
   # гипоксемия — SpO2 < 90 % (157_5 и 154_4: коррекция гипоксемии)
   spo2_below90: { f: vital.spo2_low, below: 90 }
   # окно тромболизиса — не больше 12 часов от начала симптомов (157_5, раздел 3.1.3)
   early: { f: hx.onset_hours, below: 12 }
+# исход перевода в сосудистый центр по часам до реперфузии (spec 2026-10-chapter-3, часть 39б): при подъёме
+# ST артерию открывают тромболизисом здесь или вмешательством в центре. Смертность в стационаре — в
+# границах класса Killip из 157_5 (приложение А3), %; к верхней — по доле потери: польза реперфузии
+# падает с часами — 65 жизней на 1000 в первый час, 37 во второй, 26–29 до шестого (Boersma 1996), около
+# 20 до двенадцатого и нет позже (FTT 1994): доля потери — 0, 43, 60 и 69 % до 1, 2, 6 и 12 ч, позже —
+# 100 %. Тромболизис открывает артерию у 63 % (кровоток TIMI 3 к 90-й минуте, тенектеплаза, TIMI 10B) —
+# за час: ST снижается за 60–90 минут (157_5, раздел 3.1.3). Игровая оценка по этим числам.
+reperfusion:
+  when: { type: [stemi] }
+  by: killip
+  death: { i: [2, 3], ii: [5, 12], iii: [10, 20], iv: [50, 81] }
+  loss: [[1, 0], [2, 43], [6, 60], [12, 69]]
+  lysis: { tx: tx.thrombolysis, pct: 63, hours: 1 }
+# фибрилляция желудочков до реперфузии (часть 39б) — событие минут: 1 % в час в первые 12 часов от начала.
+# Игровая оценка по APEX-AMI (Mehta 2009): желудочковая тахикардия или фибрилляция — у 5,7 % больных с
+# подъёмом ST, две трети — до конца коронарографии. Под монитором её снимают разрядом (157_5, раздел
+# 3.4.2.1: немедленная дефибрилляция), без монитора — смерть
+arrest:
+  when: { type: [stemi] }
+  perHour: 1
+  hours: 12
 course:
   stages:
     - { id: acute, days: [0, 1] }
@@ -64,6 +90,20 @@ findings:
     band: { pct: 100 }
     note: "когда стало плохо, больной говорит при расспросе: время — у каждого, и без боли в груди"
   - { f: ecg.st_depression, band: often, when: { type: [nste] } }
+  # класс Killip (часть 39б; 157_5, приложение А3): II и III — влажные хрипы внизу с обеих сторон; III —
+  # отёк лёгких: одышка, частое дыхание, сатурация ниже 90 %; IV — шок: верхнее давление ниже 90 у каждого
+  # (это его определение), частый пульс, бледность. Прочие доли — игровая оценка: в рекомендации
+  # определения классов, а не частоты признаков
+  - { f: sign.crackles_local, band: usually, when: { killip: [ii, iii] }, attrs: { side: { both: 100 } } }
+  - { f: sym.dyspnea, band: always, when: { killip: [iii, iv] } }
+  - { f: vital.tachypnea, band: usually, when: { killip: [iii, iv] } }
+  - { f: vital.spo2_low, band: usually, when: { killip: [iii, iv] } }
+  - f: vital.bp_low
+    band: { pct: 100 }
+    when: { killip: [iv] }
+    note: "кардиогенный шок — это Killip IV, и его основной признак — стойкая гипотензия, систолическое ≤ 90 мм рт. ст. (157_5, раздел 3.4.1.2): у каждого такого больного"
+  - { f: vital.tachycardia, band: usually, when: { killip: [iv] } }
+  - { f: sign.pallor, band: often, when: { killip: [iv] } }
 confirm: [exam.ecg]
 redFlags: [sym.chest_pain_pressing, ecg.st_elevation, ecg.st_depression]
 treatment:
@@ -110,4 +150,9 @@ sources:
   - { kind: guideline, title: "Острый коронарный синдром без подъема сегмента ST электрокардиограммы", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/154_4", note: "ID 154_4, опубликованы 23.10.2024, применяются; сверено с рубрикатором 28.09.2026" }
   - { kind: guideline, title: "Острый инфаркт миокарда с подъемом сегмента ST электрокардиограммы", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/157_5", note: "ID 157_5, опубликованы 25.11.2024, применяются; сверено с рубрикатором 03.10.2026; раздел 1.3 — доля ИМпST и медиана от начала симптомов до ЧКВ (РЕГИОН-ИМ); раздел 1.5 — локализация по отведениям; раздел 3.1.3 — тромболизис в первые 12 часов, если до ЧКВ дальше 120 минут; разделы 3.2.3.1–3.2.3.2 — АСК, клопидогрел и антикоагулянт" }
   - { kind: paper, title: "Swap CJ, Nagurney JT. Value and limitations of chest pain history in the evaluation of patients with suspected acute coronary syndromes. JAMA 2005;294(20):2623–2629" }
+  - { kind: paper, title: "Boersma E, Maas AC, Deckers JW, Simoons ML. Early thrombolytic treatment in acute myocardial infarction: reappraisal of the golden hour. Lancet 1996;348(9030):771–775", note: "PMID 8813982; жизней на 1000 леченых — 65, 37, 26 и 29 в 0–1, 1–2, 2–3 и 3–6 ч от начала: доля потери пользы по часам (часть 39б)" }
+  - { kind: paper, title: "Fibrinolytic Therapy Trialists' (FTT) Collaborative Group. Indications for fibrinolytic therapy in suspected acute myocardial infarction. Lancet 1994;343(8893):311–322", note: "PMID 7905143; около 30 жизней на 1000 в первые 6 ч, около 20 в 7–12 ч, позже 12 ч пользы нет (часть 39б)" }
+  - { kind: paper, title: "Cannon CP, Gibson CM, McCabe CH и др. TNK-tissue plasminogen activator compared with front-loaded alteplase in acute myocardial infarction: results of the TIMI 10B trial. Circulation 1998;98(25):2805–2814", note: "PMID 9860780; кровоток TIMI 3 к 90-й минуте после тенектеплазы — 62,8 %: доля удачного тромболизиса (часть 39б)" }
+  - { kind: paper, title: "Mehta RH, Starr AZ, Lopes RD и др. Incidence of and outcomes associated with ventricular tachycardia or fibrillation in patients undergoing primary percutaneous coronary intervention. JAMA 2009;301(17):1779–1789", note: "PMID 19417195; APEX-AMI, 5745 больных с подъёмом ST: желудочковая тахикардия или фибрилляция — у 5,7 %, 64 % из них — до конца коронарографии, 90 % — в первые 48 ч (часть 39б)" }
+  - { kind: paper, title: "El-Menyar A, Zubaid M, AlMahmeed W и др. Killip classification in patients with acute coronary syndrome: insight from a multicenter registry. Am J Emerg Med 2012;30(1):97–103", note: "PMID 21159479; регистр Gulf RACE, 6704 больных ОКС: Killip II–IV — у 22 % (часть 39б)" }
 review: draft

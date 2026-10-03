@@ -4,7 +4,7 @@
 // Две точки входа, как в `06-architecture.md` §2: `apply(state, command)` — действие врача,
 // которое двигает часы на свою цену, и команда `advance` — время на карте. Состояние
 // меняется на месте; случайность — только из именованных ветвей зерна смены (ADR 0004).
-import type { ContentDb, Exam, Id, Season } from '../../content/types';
+import type { ContentDb, Exam, Id, Season, Setting } from '../../content/types';
 import { fnv1a } from '../core/hash';
 import {
   caseIncome, consumablesOf, emptyLedger, expensesOf, flowOf, incomeOf, interestOf, type Ledger, levelOf, payerOf, reputationAfter, salariesOf, upkeepOf,
@@ -14,13 +14,14 @@ import { campaignEvening, chapterOf, nextChapterOf, startChapter } from '../camp
 import { build, emptyPlot, type HospitalState, type Plan, planOf, presetHospital, UNDO_DEPTH } from '../hospital/build';
 import { bedsideIn, DOCTOR, doctorRoom, examWhere, openBlocks, type Problem, problemsOf, type Staffing, workingRooms } from '../hospital/requirements';
 import { applicantsOf, doctorOf, grow, memberAt, presetStaff, readingOf, type StaffMember, speedOf, staffingOf } from '../hospital/staff';
-import { RNG_VERSION, Rng } from '../core/rng';
-import { observe } from '../med/course';
+import { log2 } from '../core/math';
+import { P_ONE, RNG_VERSION, Rng } from '../core/rng';
+import { observe, type Outcome, rscOutcome } from '../med/course';
 import { complaintObservations, type ExamSkill, examFits, NORMAL_SKILL, runExam } from '../med/exams';
 import { generatePatient, typicalPatient } from '../med/generate';
 import { contextOf, likelyParams, posterior } from '../med/infer';
 import { scaleTriage } from '../med/news2';
-import { alsoSettings, choiceFor, evaluatePlan, primaryOf, recommendedSetting, selfLimits, settingFit, surgeriesOf, txAvailable, type Venue } from '../med/plan';
+import { alsoSettings, choiceFor, evaluatePlan, primaryOf, recommendedSetting, selfLimits, settingFit, surgeriesOf, txAvailable, type Venue, whenHolds } from '../med/plan';
 import { examCost, indicated, nextStep } from '../med/policy';
 import { buildReview, type ReviewData } from '../med/review';
 import { scoreCase } from '../med/score';
@@ -928,12 +929,14 @@ function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
   // аппараты у постели в момент решения (часть 39а): под монитором тромболизис был возможен
   const bedside = bedsideEquipment(db, s, p);
   const ev = evaluatePlan(db, patient, plan, obs, { bedside });
-  const outcome = observe(db, patient, plan, ev, branch(s, `outcome:${p.id}`));
+  // переведённый из больницы с приёмным (часть 39б): инфаркт с подъёмом ST — исход по часам до реперфузии
+  const outcome = rscFor(db, s, p, plan) ?? observe(db, patient, plan, ev, branch(s, `outcome:${p.id}`));
   const review = reviewOf(db, s, p, dx);
   const present = new Set(patient.truth.findings.map(f => f.f));
   const verdict = dx === truth ? 'correct' : group(dx) === group(truth) ? 'partly' : 'wrong';
   // сроки (spec 2026-10-chapter-3, часть 37): лежит в смотровой с болью в груди — ЭКГ за 10 минут
-  const targets = targetResults(db, p, targetPlace(db, s, p));
+  // с частью 39б — и решения: тромболизис и перевод сделаны в минуту, когда врач закрыл приём
+  const targets = targetResults(db, p, targetPlace(db, s, p), { t: s.t, plan });
   const score = scoreCase({
     verdict, confidence, cost: p.done.reduce((a, id) => a + examCost(db, id), 0), rationalCost: review.rational.cost,
     plan: ev, outcome, selfLimiting: selfLimits(db, primaryOf(patient)),
@@ -946,7 +949,23 @@ function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
   return {
     at: s.t, diagnosis: dx, verdict, confidence, plan, outcome, grades, notes, rationalCost: review.rational.cost, rationalMoney: review.rational.money,
     ...(targets.length > 0 ? { targets } : {}), ...(bedside.length > 0 ? { bedside } : {}),
+    ...(p.arrest !== undefined ? { arrest: true as const } : {}),
   };
+}
+
+/**
+ * Исход переведённого в сосудистый центр (spec 2026-10-chapter-3, часть 39б): из больницы, где
+ * работает смотровая приёмного, — по часам от начала болезни до решения, пути и тому, был ли
+ * тромболизис. Из амбулатории — прежний: тромболизис там решает бригада скорой. Часов от начала нет
+ * (сохранения до 0.3.5) — тоже прежний.
+ */
+function rscFor(db: ContentDb, s: ShiftState, p: ShiftPatient, plan: { treatments: Id[]; setting: Setting }): Outcome | undefined {
+  if ((plan.setting !== 'ambulance' && plan.setting !== 'transfer') || emergencyBays(db, s).length === 0) return undefined;
+  const onset = db.conditions[p.patient.truth.conditions[0].id]?.onset;
+  const hours = onset ? p.patient.truth.values[onset.f] : undefined;
+  if (hours === undefined) return undefined;
+  const decided = hours * 60 + Math.round((s.t - p.arriveT) / 60);
+  return rscOutcome(db, p.patient, plan, decided, db.economy.transfer, branch(s, `rsc:${p.id}`), s.meta.soft === true);
 }
 
 /** Аппараты работающего помещения — то, что стоит у постели лежащего в нём (часть 39а). */
@@ -1133,6 +1152,14 @@ function admit(db: ContentDb, s: ShiftState, p: ShiftPatient) {
     ...bed, since: s.day, plan, planFrom: 0, replans: 0, ...wardCourse(db, p.patient, plan, ev, branch(s, `ward:${p.id}:0`)),
     ...(op ? { op: { tx: op, queued: s.t } } : {}),
   };
+  // фибрилляция желудочков после поступления (часть 39б): в ПИТ под монитором её снимут разрядом —
+  // строка обхода; в палате без монитора — смерть в ночь этих суток
+  const vf = p.arrest === undefined ? arrestAfter(db, s, p) : undefined;
+  if (vf !== undefined && p.arriveT + vf >= s.t) {
+    const night = Math.floor((p.arriveT + vf) / DAY) + 1 - s.day;
+    if (icu) p.stay.shock = night;
+    else p.stay.dies = Math.min(p.stay.dies ?? night, night);
+  }
   p.status = 'admitted';
   const day = wardDay(s);
   day.admitted++;
@@ -1505,6 +1532,15 @@ function handle(db: ContentDb, s: ShiftState, ev: ShiftEvent, notices: Notice[])
       return colleagueStep(db, s, s.patients[ev.id]);
     case 'opEnd':
       return finishOperation(db, s, s.patients[ev.id]);
+    case 'arrest': {
+      // фибрилляция желудочков в смотровой (часть 39б): под монитором — разряд, ритм восстановлен. Уже
+      // закрыт: увезли — в машине дефибриллятор; лежит у нас — решено при поступлении
+      const p = s.patients[ev.id];
+      if (!p || p.closed || p.kind !== 'ambulance') return;
+      p.arrest = s.t;
+      notices.push({ kind: 'arrest', id: p.id });
+      return;
+    }
     case 'free':
       return staffDesks(db, s);
     case 'shiftEnd':
@@ -1554,7 +1590,29 @@ function arriveByAmbulance(db: ContentDb, s: ShiftState, p: ShiftPatient, notice
   if (bay) p.bay = bay;
   s.summary.arrived++;
   ambulanceDay(s).arrived++;
+  // фибрилляция желудочков до реперфузии (часть 39б): лежит в смотровой под монитором, ждёт у входа — с
+  // бригадой скорой и её дефибриллятором
+  const vf = arrestAfter(db, s, p);
+  if (vf !== undefined) schedule(s, Math.max(s.t, p.arriveT + vf), { kind: 'arrest', id: p.id });
   notices.push({ kind: 'ambulance', id: p.id });
+}
+
+/**
+ * Через сколько секунд от прихода у больного фибрилляция желудочков (spec 2026-10-chapter-3, часть
+ * 39б): до реперфузии — доля в час из записи болезни, пока от её начала меньше `hours` часов; момент
+ * распределён показательно (−ln u / λ), из ветви `minute:<пациент>`. Нет записи, часов от начала или
+ * момент за окном — undefined.
+ */
+export function arrestAfter(db: ContentDb, s: ShiftState, p: ShiftPatient): number | undefined {
+  const primary = primaryOf(p.patient);
+  const cond = db.conditions[primary.id];
+  const a = cond?.arrest;
+  if (!a || !cond.onset || a.perHour <= 0 || !whenHolds(a.when, primary.params)) return undefined;
+  const onset = p.patient.truth.values[cond.onset.f];
+  if (onset === undefined || onset >= a.hours) return undefined;
+  const u = branch(s, `minute:${p.id}`).range(1, P_ONE) / P_ONE;
+  const hours = (-log2(u) * Math.LN2 * P_ONE) / a.perHour;
+  return hours < a.hours - onset ? Math.round(hours * 3600) : undefined;
 }
 
 export function triageOf(db: ContentDb, p: ShiftPatient): Triage {
