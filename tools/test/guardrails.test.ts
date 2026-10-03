@@ -49,9 +49,9 @@ describe('workflow', () => {
     }
   });
 
-  test('APK и AAB — только по тегу v* или вручную', () => {
+  test('APK и AAB — только по тегу v*, без ручного запуска', () => {
     const on = wf('android.yml').on;
-    expect(Object.keys(on).sort()).toEqual(['push', 'workflow_dispatch']);
+    expect(Object.keys(on)).toEqual(['push']);
     expect(on.push).toEqual({ tags: ['v*'] });
   });
 

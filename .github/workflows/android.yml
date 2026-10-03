@@ -1,10 +1,8 @@
 # из votchina: .github/workflows/android.yml @ 063515b
-# Только на тег версии vX.Y.Z и вручную (ADR студии 0019, решение владельца 03.10.2026): проверки,
-# сценарий в браузере, APK, подписанный постоянным ключом, и публикация в Releases
-# (docs/08-process.md «Сборка и выкладывание», ADR 0015). Слияние в main сборку не запускает:
-# на каждый PR идут быстрые проверки pr.yml. AAB для Google Play — пока только вручную («Run
-# workflow» с галочкой «aab»): до выхода в магазины он не нужен, а вторая сборка удваивает минуты
-# Actions (решение владельца, 26.09.2026).
+# Только на тег версии vX.Y.Z, ручного запуска нет (ADR студии 0019, решение владельца
+# 03.10.2026): проверки, сценарий в браузере, APK и AAB, подписанные постоянным ключом, и
+# публикация в Releases (docs/08-process.md «Сборка и выкладывание», ADR 0015). Слияние в main
+# сборку не запускает: на каждый PR идут быстрые проверки pr.yml.
 #
 # Без секретов ключа релиза нет никогда: APK собирается только на проверку (манифест,
 # разрешения, 16 КБ, размер) и выбрасывается — подписанный отладочным ключом файл не должен
@@ -15,13 +13,6 @@ on:
   # тег ставит владелец, когда версия готова к телефону: vX.Y.Z — тот же номер, что в app.json
   push:
     tags: ['v*']
-  # Вручную — с любой ветки; пре-релиз build-N в Releases — только с main.
-  workflow_dispatch:
-    inputs:
-      aab:
-        description: 'Собрать и AAB для Google Play'
-        type: boolean
-        default: false
 
 permissions:
   contents: write
@@ -99,12 +90,10 @@ jobs:
       matrix: ${{ steps.k.outputs.matrix }}
     steps:
       - uses: actions/checkout@v5
-        if: github.ref_type == 'tag'
         with:
           sparse-checkout: app.json
           sparse-checkout-cone-mode: false
       - name: Тег и версия
-        if: github.ref_type == 'tag'
         run: |
           V=$(node -p "require('./app.json').expo.version")
           if [ "$GITHUB_REF_NAME" != "v$V" ]; then echo "::error::Тег $GITHUB_REF_NAME, а в app.json версия $V."; exit 1; fi
@@ -115,7 +104,6 @@ jobs:
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           CERT: ${{ vars.ANDROID_CERT_SHA256 }}
-          WANT_AAB: ${{ github.event_name == 'workflow_dispatch' && inputs.aab }}
         run: |
           set -euo pipefail
           APK='{"target":"apk","store":"","task":"assembleRelease","file":"android/app/build/outputs/apk/release/app-release.apk"}'
@@ -135,14 +123,9 @@ jobs:
             exit 1
           fi
           echo "ready=yes" >> "$GITHUB_OUTPUT"
-          if [ "$WANT_AAB" = "true" ]; then
-            echo "matrix={\"include\":[$APK,$AAB]}" >> "$GITHUB_OUTPUT"
-          else
-            echo "matrix={\"include\":[$APK]}" >> "$GITHUB_OUTPUT"
-          fi
+          echo "matrix={\"include\":[$APK,$AAB]}" >> "$GITHUB_OUTPUT"
 
-  # APK — Releases и RuStore; AAB — Google Play, когда заказан: тогда две сборки из одного
-  # коммита, параллельно. В одном задании нельзя: Gradle не считает переменные окружения
+  # APK — Releases и RuStore; AAB — Google Play: две сборки из одного коммита, параллельно. В одном задании нельзя: Gradle не считает переменные окружения
   # входом сборки JS, и вторая сборка тихо взяла бы бандл первой.
   build:
     name: Сборка ${{ matrix.target }}
@@ -313,12 +296,11 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
-  # Одна публикация на все сборки. Тег vX.Y.Z — релиз «Latest» с разделом версии из README;
-  # ручной запуск с main — пре-релиз build-N; с другой ветки — только артефакты запуска.
+  # Одна публикация на все сборки: тег vX.Y.Z — релиз «Latest» с разделом версии из README.
   release:
     name: Релиз
     needs: [checks, web, key, build]
-    if: needs.key.outputs.ready == 'yes' && (github.ref_type == 'tag' || github.ref == 'refs/heads/main')
+    if: needs.key.outputs.ready == 'yes'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
@@ -338,17 +320,12 @@ jobs:
           ls -la dist
           echo "label=$(sed -n 1p dist/signature-apk.txt)" >> "$GITHUB_OUTPUT"
           echo "sha=$(sed -n 2p dist/signature-apk.txt)" >> "$GITHUB_OUTPUT"
-      - name: Версия — релиз по тегу или сборка
+      - name: Версия и «Что нового»
         id: ver
         run: |
+          # тег сверен с app.json в задании «Ключ подписи»
           V=$(node -p "require('./repo/app.json').expo.version")
           echo "version=$V" >> "$GITHUB_OUTPUT"
-          # релиз — только по тегу версии (сверен с app.json в задании «Ключ подписи»)
-          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
-            echo "fresh=yes" >> "$GITHUB_OUTPUT"
-          else
-            echo "fresh=no" >> "$GITHUB_OUTPUT"
-          fi
           # «Что нового» — раздел «### X.Y.Z …» из «## Версии» README, до следующего заголовка
           awk -v v="$V" 'index($0, "### " v) == 1 { on = 1; next } on && /^##/ { exit } on' repo/README.md > notes.md
           {
@@ -366,7 +343,6 @@ jobs:
           } > release.md
           cat release.md
       - name: Релиз vX.Y.Z
-        if: steps.ver.outputs.fresh == 'yes'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
@@ -377,14 +353,3 @@ jobs:
             dist/*.aab
           prerelease: false
           make_latest: true
-      - name: Пре-релиз build-N
-        if: steps.ver.outputs.fresh != 'yes'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: build-${{ github.run_number }}
-          name: Анамнез — сборка ${{ github.run_number }}
-          body_path: release.md
-          files: |
-            dist/*.apk
-            dist/*.aab
-          prerelease: true
