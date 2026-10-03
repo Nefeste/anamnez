@@ -1,12 +1,16 @@
 # из votchina: .github/workflows/android.yml @ 063515b
 # Только на тег версии vX.Y.Z, ручного запуска нет (ADR студии 0019, решение владельца
-# 03.10.2026): проверки, сценарий в браузере, APK и AAB, подписанные постоянным ключом, и
+# 03.10.2026): проверки, сценарий в браузере, APK, подписанный постоянным ключом, и
 # публикация в Releases (docs/08-process.md «Сборка и выкладывание», ADR 0015). Слияние в main
 # сборку не запускает: на каждый PR идут быстрые проверки pr.yml.
 #
 # Без секретов ключа релиза нет никогда: APK собирается только на проверку (манифест,
 # разрешения, 16 КБ, размер) и выбрасывается — подписанный отладочным ключом файл не должен
-# попасть ни на чей телефон. AAB без ключа не собирается вовсе: Google Play его не примет.
+# попасть ни на чей телефон.
+#
+# AAB для Google Play не собирается (решение владельца 03.10.2026 — экономия минут Actions).
+# Вернуть — второй строкой матрицы в задании «Ключ подписи»: target aab, store play, задача
+# Gradle для бандла; шаги сборки, проверок и релиза AAB уже понимают.
 name: Android
 
 on:
@@ -107,7 +111,6 @@ jobs:
         run: |
           set -euo pipefail
           APK='{"target":"apk","store":"","task":"assembleRelease","file":"android/app/build/outputs/apk/release/app-release.apk"}'
-          AAB='{"target":"aab","store":"play","task":"bundleRelease","file":"android/app/build/outputs/bundle/release/app-release.aab"}'
           if [ -z "$KEYSTORE_B64$KEYSTORE_PASSWORD$KEY_ALIAS$KEY_PASSWORD" ]; then
             echo "ready=no" >> "$GITHUB_OUTPUT"
             echo "matrix={\"include\":[$APK]}" >> "$GITHUB_OUTPUT"
@@ -123,9 +126,9 @@ jobs:
             exit 1
           fi
           echo "ready=yes" >> "$GITHUB_OUTPUT"
-          echo "matrix={\"include\":[$APK,$AAB]}" >> "$GITHUB_OUTPUT"
+          echo "matrix={\"include\":[$APK]}" >> "$GITHUB_OUTPUT"
 
-  # APK — Releases и RuStore; AAB — Google Play: две сборки из одного коммита, параллельно. В одном задании нельзя: Gradle не считает переменные окружения
+  # Матрица сборок: сейчас только APK (Releases и RuStore). Если вернуть AAB, это вторая сборка из того же коммита, параллельно. В одном задании нельзя: Gradle не считает переменные окружения
   # входом сборки JS, и вторая сборка тихо взяла бы бандл первой.
   build:
     name: Сборка ${{ matrix.target }}
