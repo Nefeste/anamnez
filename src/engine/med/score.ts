@@ -46,6 +46,8 @@ export interface CaseInput {
   redFlags: { f: Id; seen: boolean }[];
   /** что выбрать здесь при нужном месте лечения; нет — как в амбулатории (plan.ts, choiceFor) */
   should?: Setting;
+  /** оценки сроков приёма (spec 2026-10-chapter-3, часть 37): ЭКГ при боли в груди за 10 минут */
+  targets?: Grade[];
 }
 
 export interface CaseScore {
@@ -55,12 +57,16 @@ export interface CaseScore {
   treatment: Grade;
   setting: Grade;
   safety: Grade;
+  /** сроки (часть 37): худшая из оценок сроков приёма; нет — сроков у приёма не было */
+  targets?: Grade;
   overall: Grade;
   notes: ScoreNote[];
 }
 
 const POINTS: Record<Grade, number> = { A: 3, B: 2, C: 1, D: 0 };
 const worst = (...g: Grade[]): Grade => g.reduce((a, b) => (POINTS[b] < POINTS[a] ? b : a), 'A');
+/** Худшая из оценок; пусто — A. */
+export const worstGrade = (grades: readonly Grade[]): Grade => worst(...grades);
 
 export function scoreCase(x: CaseInput): CaseScore {
   const notes: ScoreNote[] = [];
@@ -132,9 +138,11 @@ export function scoreCase(x: CaseInput): CaseScore {
     }
   }
 
-  const weighted = 2 * POINTS[accuracy] + 2 * POINTS[treatment] + 2 * POINTS[safety] + POINTS[setting] + POINTS[defensibility] + POINTS[thrift];
-  const mean = weighted / 9;
+  // сроки (часть 37) — десятая доля общей; у приёма без срока общая — как прежде
+  const targets = x.targets && x.targets.length > 0 ? worst(...x.targets) : undefined;
+  const weighted = 2 * POINTS[accuracy] + 2 * POINTS[treatment] + 2 * POINTS[safety] + POINTS[setting] + POINTS[defensibility] + POINTS[thrift] + (targets ? POINTS[targets] : 0);
+  const mean = weighted / (targets ? 10 : 9);
   let overall: Grade = mean >= 2.5 ? 'A' : mean >= 1.75 ? 'B' : mean >= 1 ? 'C' : 'D';
   if (safety === 'D') overall = worst(overall, 'C'); // опасное решение не бывает хорошим случаем
-  return { accuracy, defensibility, thrift, treatment, setting, safety, overall, notes };
+  return { accuracy, defensibility, thrift, treatment, setting, safety, ...(targets ? { targets } : {}), overall, notes };
 }

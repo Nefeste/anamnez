@@ -1,6 +1,6 @@
 {
-  "version": "0.3.1",
-  "base": 42,
+  "version": "0.3.2",
+  "base": 43,
   "ids": {
     "achievements": [
       "ach.allergy_10",
@@ -237,6 +237,7 @@
       "eq.ecg",
       "eq.hematology_analyzer",
       "eq.immuno_analyzer",
+      "eq.monitor_defib",
       "eq.or_table",
       "eq.urine_analyzer",
       "eq.us_basic",
@@ -717,6 +718,9 @@
     ],
     "scores": [
       "score.news2"
+    ],
+    "targets": [
+      "target.ecg_chest_pain"
     ],
     "tips": [
       "tip.appendicitis",

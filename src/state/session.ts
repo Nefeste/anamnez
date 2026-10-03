@@ -20,9 +20,10 @@ import { memberAt, type StaffMember, staffingOf } from '@/engine/hospital/staff'
 import { type MissionProgress, missionProgress, nextChapterOf } from '@/engine/campaign/campaign';
 import { levelOf } from '@/engine/economy/economy';
 import {
-  apply, atDoorOf, current, freeBeds, type HospitalCtx, hospitalCtx, inpatientsOf, newCampaign, newSandbox, newShift, newSingle, observationsOf, operationOf,
-  type OrBlock, orBlock, orQueueOf, reviewFor, SANDBOX_VENUE, wardBeds,
+  apply, atDoorOf, bedsideOf, current, freeBeds, type HospitalCtx, hospitalCtx, inpatientsOf, moreUrgent, newCampaign, newSandbox, newShift, newSingle,
+  observationsOf, operationOf, type OrBlock, orBlock, orQueueOf, reviewFor, SANDBOX_VENUE, targetPlace, wardBeds,
 } from '@/engine/shift/engine';
+import { minutesTo, targetsFor } from '@/engine/shift/targets';
 import {
   type Command, DAY, type Difficulty, type Mode, type Notice, SHIFT_END, SHIFT_SCHEMA_VERSION, type ShiftPatient, type ShiftState, type Triage,
 } from '@/engine/shift/types';
@@ -135,6 +136,8 @@ export interface SummaryView {
   wardLines?: string[];
   /** скорая за день (часть 27): привезли, отсортировали, сверка со шкалой */
   ambulanceLines?: string[];
+  /** сроки за день (spec 2026-10-chapter-3, часть 37): у скольких ваших приёмов выполнены */
+  targetLines?: string[];
   /** операционная за день (часть 28): операций, в срок и позже, осложнения */
   surgeryLines?: string[];
 }
@@ -1357,8 +1360,14 @@ function summaryOf(s: ShiftState): SummaryView | undefined {
     ...(s.meta.mode === 'single' ? { single: singleView(s) } : {}),
     ...(h.ward ? { wardLines: wardLines(h.ward) } : {}),
     ...(h.ambulance && h.ambulance.arrived > 0 ? { ambulanceLines: ambulanceLines(h.ambulance) } : {}),
+    ...(h.targets && Object.keys(h.targets).length > 0 ? { targetLines: targetDayLines(h.targets) } : {}),
     ...(h.surgery && h.surgery.done > 0 ? { surgeryLines: surgeryLines(h.surgery) } : {}),
   };
+}
+
+/** Сроки за день — строками итогов: «ЭКГ при боли в груди в срок: 5 из 6». */
+function targetDayLines(x: NonNullable<ShiftState['summary']['targets']>): string[] {
+  return Object.entries(x).sort(([a], [b]) => (a < b ? -1 : 1)).map(([id, n]) => T.shift.summary.targets.line(db.targets[id]?.name.ru ?? id, n.onTime, n.total));
 }
 
 /** Операционная за день — строками итогов: операций и в срок ли, осложнения. */
@@ -1770,7 +1779,10 @@ function decisionFor(meta: Pick<ShiftState['meta'], 'seed' | 'department'>, p: S
   if (cached) return cached;
   const ev = evaluatePlan(db, p.patient, c.plan, observationsOf(p));
   const review = reviewFor(db, meta, p, c.diagnosis);
-  const d = decisionOf({ patient: p.patient, arrived, diagnosis: c.diagnosis, verdict: c.verdict, confidence: c.confidence, plan: c.plan, ev, outcome: c.outcome, score: { ...c.grades, notes: c.notes }, review });
+  const d = decisionOf({
+    patient: p.patient, arrived, diagnosis: c.diagnosis, verdict: c.verdict, confidence: c.confidence, plan: c.plan, ev, outcome: c.outcome,
+    score: { ...c.grades, notes: c.notes }, review, ...(c.targets ? { targets: c.targets } : {}),
+  });
   const out = known ? d : { ...d, outcome: T.shift.outcomeLater };
   decisions.set(key, out);
   return out;
@@ -1853,6 +1865,19 @@ function orBlockText(b: OrBlock): string {
   return t.orDown(T.sandbox.problem.noEquipment);
 }
 
+/**
+ * Сроки пациента — справка из рекомендации, не таймер (spec 2026-10-chapter-3, «Проверка по
+ * обещаниям студии»): сколько даёт рекомендация и сколько прошло с прихода; сделано — через
+ * сколько минут (часть 37).
+ */
+function targetLines(s: ShiftState, p: ShiftPatient): string[] {
+  const t = T.spikes.patient;
+  return targetsFor(db, p, targetPlace(db, s, p)).map(target => {
+    const done = minutesTo(p, target);
+    return done !== undefined ? t.targetDone(target.name.ru, done, target.minutes) : t.target(target.name.ru, target.minutes, Math.round((s.t - p.arriveT) / 60));
+  });
+}
+
 function buildCaseView(): VisitView | undefined {
   const sess = session;
   if (!sess) return undefined;
@@ -1866,6 +1891,12 @@ function buildCaseView(): VisitView | undefined {
   const arrived = arrivedOf(p, watching ? s.t : Infinity);
   const asking = watching ? p.results.filter(r => r.at > s.t).map(r => ({ exam: r.exam, readyAt: minuteOfDay(r.at) })) : [];
   const prev = p.returnOf ? s.patients[p.returnOf] : undefined;
+  // у постели в смотровой приёмного (часть 37): ЭКГ монитором — 5 минут, без очереди и описания
+  const bedside: Record<Id, number> = {};
+  if (!p.closed && !watching) {
+    for (const [eid, e] of Object.entries(db.exams)) if (e.bedside && bedsideOf(db, s, p, eid)) bedside[eid] = e.bedside.time.procedure;
+  }
+  const unavailable = Object.fromEntries(Object.entries(unavailableOf(s)).filter(([eid]) => bedside[eid] === undefined));
   return makeCaseView({
     version,
     patient: p.patient,
@@ -1881,10 +1912,14 @@ function buildCaseView(): VisitView | undefined {
     draft: p.draft,
     decision: p.closed ? decisionFor(s.meta, p, arrived, outcomeKnown(s, p)) : undefined,
     canSendAway: p.status === 'inRoom' && p.pending.length > 0,
+    // ждать нечего, а ждёт кто-то срочнее — «Попросить подождать» (часть 37)
+    canStepOut: p.status === 'inRoom' && p.pending.length === 0 && moreUrgent(s, p),
     returnNote: p.returnReason && prev?.closed ? T.shift.returnNote(p.returnReason, closedDay(prev), female(p)) : undefined,
     difficulty: s.meta.difficulty ?? 'doctor',
     // и в практике: кабинета УЗИ в амбулатории нет (часть 29)
-    unavailable: unavailableOf(s),
+    unavailable,
+    ...(Object.keys(bedside).length > 0 ? { bedside } : {}),
+    ...(p.by ? {} : { targets: targetLines(s, p) }),
     // с какими отделениями его приняли (часть 30): с приёмным — и хирургия
     ...(p.departments ? { departments: p.departments } : {}),
     ...(wardBeds(db, s).length > 0 ? { settings: settingOptions(s, p) } : {}),

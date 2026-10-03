@@ -72,6 +72,10 @@ export const spikes = {
     wait: 'Подождать результаты',
     sendAway: 'Отпустить ждать результатов',
     sendAwayHint: 'а пока принять другого: вернётся в очередь, когда всё будет готово',
+    // ждать нечего, а ждёт кто-то срочнее (часть 37): привезли с болью в груди — ЭКГ за 10 минут
+    urgentWaiting: 'Ждёт пациент срочнее',
+    stepOut: 'Попросить подождать',
+    stepOutHint: 'а пока принять срочного: вернётся в очередь на своё место',
     pending: (name: string, at: string) => `${name} — будет в ${at}`,
     readyAt: (at: string) => `Будет в ${at}`,
     // свёрнутые результаты (отзыв на 0.0.37: меньше листать, когда обследований много)
@@ -157,8 +161,14 @@ export const spikes = {
       treatment: 'Лечение',
       setting: 'Место лечения',
       safety: 'Безопасность',
+      // сроки по рекомендации (часть 37): худшая оценка срока входит в «Итог»
+      targets: 'Сроки',
       overall: 'Итог',
     } as Record<string, string>,
+    targetLine: (name: string, minutes: number | undefined, limit: number) =>
+      minutes === undefined ? `${name}: не сделано, срок — ${limit}\u00a0мин от прихода`
+        : minutes <= limit ? `${name}: через ${minutes}\u00a0мин после прихода — в срок`
+          : `${name}: через ${minutes}\u00a0мин после прихода — позже срока на ${minutes - limit}\u00a0мин`,
     notesLabel: 'Замечания',
     yourPlan: 'Ваше лечение',
     // приём вёл нанятый врач (spec 2026-09-hired-doctors, часть 19); уволен — пол уже не знаем
@@ -211,6 +221,12 @@ export const spikes = {
     },
     done: 'Уже сделано',
     cost: (min: number, rub: number) => (rub > 0 ? `${min}\u00a0мин · ${rub}\u00a0₽` : `${min}\u00a0мин`),
+    // у постели в смотровой приёмного (часть 37): монитором, без очереди в кабинет и без описания
+    costBedside: (min: number, rub: number) => (rub > 0 ? `у постели, ${min}\u00a0мин · ${rub}\u00a0₽` : `у постели, ${min}\u00a0мин`),
+    // срок по рекомендации (часть 37) — справка, не таймер: сколько даёт рекомендация и сколько прошло
+    target: (name: string, limit: number, since: number) => `${name} — в первые ${limit}\u00a0минут; с прихода — ${since}\u00a0мин`,
+    targetDone: (name: string, minutes: number, limit: number) =>
+      minutes <= limit ? `${name} — через ${minutes}\u00a0мин после прихода, в срок` : `${name} — через ${minutes}\u00a0мин после прихода, позже срока на ${minutes - limit}\u00a0мин`,
   },
   // решение и итог приёма — отдельные экраны (03-game-design.md §5; отзыв на 0.0.5:
   // диагноз и лечение на одной вкладке — тесно)

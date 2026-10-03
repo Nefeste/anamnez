@@ -247,6 +247,48 @@ function ambulanceSave(): { save: string; id: string; dx: string; scale: string;
 }
 
 /**
+ * Смотровая приёмного с монитором с дефибриллятором (spec 2026-10-chapter-3, часть 37): скорая
+ * привезла давящую боль в груди — он лежит в смотровой, ещё не отсортирован; прочих привезённых
+ * до него врач перевёл, чтобы места не были заняты. Часы стоят сразу после его приезда — под
+ * конец рабочих часов: после приёма до «Закрыть день» на ×4 — секунды.
+ */
+function bedsideSave(): { save: string; id: string; dx: string; scale: string } {
+  const { db } = buildDb();
+  for (let seed = 21; seed < 221; seed++) {
+    const s = newSandbox(db, { seed, season: 'winter', difficulty: 'student', start: 'clinic', budget: db.economy.sandbox.budgets.generous });
+    const cells: [number, number][] = [];
+    for (let x = 29; x <= 38; x++) for (let y = 7; y <= 9; y++) cells.push([x, y]);
+    apply(db, s, { kind: 'build', cmd: { kind: 'corridor', cells } });
+    apply(db, s, { kind: 'build', cmd: { kind: 'room', type: 'room.emergency', size: 'M', x: 29, y: 1, rot: 0 } });
+    const er = s.hospital!.rooms[s.hospital!.rooms.length - 1].id;
+    apply(db, s, { kind: 'build', cmd: { kind: 'buy', room: er, equipment: 'eq.monitor_defib' } });
+    apply(db, s, { kind: 'buildEnd' });
+    apply(db, s, { kind: 'assign', id: s.staff!.find(m => m.role === 'role.nurse' && m.room === 'r7')!.id, room: er });
+    apply(db, s, { kind: 'nextDay' });
+    const late = (s.day - 1) * DAY + SHIFT_END - 90 * 60;
+    for (let i = 0; i < 6 * 60; i++) {
+      const waiting = Object.values(s.patients).filter(p => p.kind === 'ambulance' && p.status === 'waiting' && !p.sorted && p.scale);
+      const p = waiting.find(q => q.bay && q.patient.complaints.includes('sym.chest_pain_pressing'));
+      if (p && p.arriveT < late) break; // привезли с утра — день дожидать долго: следующее зерно
+      if (p && !s.current) {
+        return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s }), id: p.id, dx: p.patient.truth.conditions[0].id, scale: p.scale!.triage };
+      }
+      const other = waiting.find(q => !q.patient.complaints.includes('sym.chest_pain_pressing'));
+      if (other && !s.current) {
+        apply(db, s, { kind: 'sort', id: other.id, triage: other.scale!.triage });
+        apply(db, s, { kind: 'call', id: other.id });
+        apply(db, s, { kind: 'diagnose', id: other.patient.truth.conditions[0].id });
+        apply(db, s, { kind: 'setting', setting: 'ambulance' });
+        apply(db, s, { kind: 'finish' });
+        continue;
+      }
+      apply(db, s, { kind: 'advance', seconds: 60 });
+    }
+  }
+  throw new Error('e2e: за 200 зёрен никого с болью в груди в смотровую не привезли');
+}
+
+/**
  * Песочница с палатой и операционной (spec 2026-09-chapter-2, часть 28): стол, наркозный
  * аппарат, бригада из кандидатов; день 1 после рабочих часов — у вас в кабинете пациент с
  * аппендицитом, диагноз поставлен.
@@ -659,8 +701,15 @@ try {
     `П5: срезы головы нарисованы — ${heads.filter(Boolean).length} из 7, УЗИ — ${us.filter(Boolean).length} из 16 (с венами и артерией ног), снимки живота — ${abd.filter(Boolean).length} из 3, груди при травме — ${chest.filter(Boolean).length} из 7; все рисунки экрана — ${allImages.filter(Boolean).length} из ${allImages.length} (смотреть 06-head-*.png, 06-us.png, 06-abdomen.png, 06-chest.png)`);
   // ЭКГ в двенадцати отведениях (spec 2026-10-chapter-3, часть 36): ритмы, проведение, стенки инфаркта
   const ecg = await drawn('[data-testid^="ecg-"] canvas');
-  check(ecg.length === 19 && ecg.every(Boolean), `П5: листы ЭКГ в двенадцати отведениях нарисованы — ${ecg.filter(Boolean).length} из 19 (смотреть 06-ecg.png)`);
-  for (const id of ['head-ct', 'head-mri', 'us', 'abdomen', 'chest', 'ecg']) {
+  check(ecg.length === 19 && ecg.every(Boolean), `П5: листы ЭКГ в двенадцати отведениях нарисованы — ${ecg.filter(Boolean).length} из 19 (смотреть 06-ecg-*.png)`);
+  for (const id of ['head-ct', 'head-mri', 'us', 'abdomen', 'chest']) {
+    await page.getByTestId(id).scrollIntoViewIfNeeded();
+    await page.waitForTimeout(300);
+    await page.getByTestId(id).screenshot({ path: join(OUT, `06-${id}.png`) });
+  }
+  // карточка ЭКГ — 19 листов, выше окна отрисовки браузера: целиком снимок выходит пустым (0.3.1),
+  // поэтому — по листу
+  for (const id of ['ecg-inferior', 'ecg-af', 'ecg-avb3', 'ecg-lbbb']) {
     await page.getByTestId(id).scrollIntoViewIfNeeded();
     await page.waitForTimeout(300);
     await page.getByTestId(id).screenshot({ path: join(OUT, `06-${id}.png`) });
@@ -1193,6 +1242,58 @@ try {
     && (amb.cars === 1 || ambDay.includes(`Не отсортировали до конца дня: ${amb.cars - 1}.`)), `скорая, итоги дня: ${ambDay.replace(/\n/g, ' · ')}`);
   await page.waitForTimeout(1500); // лист меню «Продолжить» ещё уезжает вниз (веб)
   await page.screenshot({ path: join(OUT, '17-ambulance-summary.png'), fullPage: true });
+
+  // сроки и ЭКГ у постели (spec 2026-10-chapter-3, часть 37): привезли давящую боль в груди —
+  // в карте строка срока, ЭКГ у постели за 5 минут, результат сразу; в разборе — «Сроки», в
+  // итогах дня — «в срок: 1 из 1»
+  const bed = bedsideSave();
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', bed.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId(`ambulance-${bed.id}`).waitFor({ timeout: 15_000 });
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId(`ambulance-${bed.id}`).click();
+  await page.getByTestId(`sort-${bed.scale}`).click();
+  await page.getByTestId('handover-sheet').waitFor({ state: 'detached', timeout: 5000 });
+  await page.getByTestId(`queue-${bed.id}`).click();
+  await visible(page, 'visit-decide').waitFor({ timeout: 10_000 });
+  const targetLine = await text(page, 'visit-target-0');
+  check(/^ЭКГ при боли в груди — в первые 10\u00a0минут; с прихода — \d+\u00a0мин$/.test(targetLine), `сроки: в карте — «${targetLine}»`);
+  await page.getByTestId('tab-order').click();
+  const ecgButton = await text(page, 'exam-exam.ecg');
+  check(ecgButton.includes('у постели, 5\u00a0мин · 400\u00a0₽'), `ЭКГ у постели: ${ecgButton.replace(/\n/g, ' · ')}`);
+  await page.getByTestId('exam-exam.ecg').click();
+  await page.getByTestId('done-exam.ecg').waitFor({ timeout: 10_000 });
+  // у постели — сразу, без «будет в …»
+  const ecgDone = await text(page, 'done-exam.ecg');
+  check(!ecgDone.includes('Будет в') && (await page.getByTestId('visit-wait').count()) === 0, `ЭКГ у постели: сразу — «${ecgDone.replace(/\n/g, ' · ').slice(0, 120)}»`);
+  const doneLine = await text(page, 'visit-target-0');
+  check(/^ЭКГ при боли в груди — через \d+\u00a0мин после прихода, в срок$/.test(doneLine), `сроки: сделано — «${doneLine}»`);
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(OUT, '17-bedside-ecg.png'), fullPage: true });
+  await visible(page, 'visit-decide').click();
+  await page.getByTestId(`dx-${bed.dx}`).click();
+  await page.getByTestId('decision-to-plan').click();
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-outcome').waitFor({ timeout: 10_000 });
+  const targetsGrade = await text(page, 'visit-targets-grade');
+  const reviewLine = await text(page, 'visit-target-line-0');
+  check(targetsGrade === 'A' && /^• ЭКГ при боли в груди: через \d+\u00a0мин после прихода — в срок$/.test(reviewLine), `сроки, разбор: ${targetsGrade} · ${reviewLine}`);
+  await page.getByTestId('shift-to-queue').click();
+  // рабочие часы ещё идут — «Закрыть день» появится после них
+  await page.getByTestId('tab-x4').click();
+  const closeBed = page.locator('[data-testid="shift-close-day-early"], [data-testid="shift-close-day"]');
+  check(await runClockUntil(page, async () => (await closeBed.count()) > 0, 120_000), 'сроки: день дожит до конца рабочих часов');
+  await closeBed.first().click();
+  await page.getByTestId('summary-targets').waitFor({ timeout: 10_000 });
+  const targetsDay = await text(page, 'summary-targets');
+  check(targetsDay.includes('ЭКГ при боли в груди в срок: 1 из 1.'), `сроки, итоги дня: ${targetsDay.replace(/\n/g, ' · ')}`);
+  await page.waitForTimeout(1500); // лист меню «Продолжить» ещё уезжает вниз (веб)
+  await page.screenshot({ path: join(OUT, '17-targets-summary.png'), fullPage: true });
   // операционная (spec 2026-09-chapter-2, часть 28): у вас пациент с аппендицитом — в решении
   // «В операционную» с операцией и койками; итог приёма — операция и палата; на обходе —
   // «идёт операция» и выписать нельзя; вечером — в итогах дня операционная

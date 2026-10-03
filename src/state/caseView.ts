@@ -10,10 +10,11 @@ import { complaintObservations, examFits } from '@/engine/med/exams';
 import { type Belief, contextOf, knownFacts, posterior } from '@/engine/med/infer';
 import type { PlanEval } from '@/engine/med/plan';
 import type { ReviewData } from '@/engine/med/review';
-import type { CaseScore, Grade, ScoreNote } from '@/engine/med/score';
+import { type CaseScore, type Grade, type ScoreNote, worstGrade } from '@/engine/med/score';
 import { checkRule, knownOf, rulesFor } from '@/engine/med/rules';
 import { complaintText, observationText } from '@/engine/med/text';
 import type { Observation, Patient } from '@/engine/med/types';
+import type { TargetResult } from '@/engine/shift/targets';
 import type { Difficulty } from '@/engine/shift/types';
 import type { EcgFindings, Wall } from '@/render/ecg/model';
 import type { BoneFindings, BoneFracture } from '@/render/xray/boneGeometry';
@@ -96,6 +97,8 @@ export interface Decision {
   grades: { key: string; label: string; grade: Grade }[];
   overall: Grade;
   notes: string[];
+  /** сроки по рекомендации (часть 37): оценка — худшая из сроков, она входит в «Итог»; строки — по каждому */
+  targets?: { grade: Grade; lines: string[] };
   plan: { name: string; role: string }[];
   settingName: string;
   rational: string;
@@ -157,6 +160,12 @@ export interface VisitView {
   draftDiagnosisName?: string;
   /** смена: можно отпустить ждать результатов и принять другого */
   canSendAway?: boolean;
+  /** смена: ждать нечего, а ждёт кто-то срочнее — можно попросить подождать (часть 37) */
+  canStepOut?: boolean;
+  /** смена: что делается у постели и сколько минут (часть 37: ЭКГ в смотровой приёмного) */
+  bedside?: Record<Id, number>;
+  /** смена: сроки по рекомендации — строками (часть 37) */
+  targets?: string[];
   /** смена: повторное обращение — строка для шапки */
   returnNote?: string;
   /** песочница: кто платит и что оплатит — строка для шапки */
@@ -200,6 +209,9 @@ export interface CaseInput {
   draft: Draft;
   decision?: Decision;
   canSendAway?: boolean;
+  canStepOut?: boolean;
+  bedside?: Record<Id, number>;
+  targets?: string[];
   returnNote?: string;
   /** сложность: «Похоже на» — только у «Студента» (03-game-design.md §14); нет — «Студент» (прототип П4) */
   difficulty?: Difficulty;
@@ -554,6 +566,9 @@ export function makeCaseView(c: CaseInput): VisitView {
     draft: c.draft,
     draftDiagnosisName: c.draft.diagnosis ? db.conditions[c.draft.diagnosis].name.ru : undefined,
     ...(c.canSendAway ? { canSendAway: true } : {}),
+    ...(c.canStepOut ? { canStepOut: true } : {}),
+    ...(c.bedside ? { bedside: c.bedside } : {}),
+    ...(c.targets && c.targets.length > 0 ? { targets: c.targets } : {}),
     ...(c.returnNote ? { returnNote: c.returnNote } : {}),
     ...(c.payerNote ? { payerNote: c.payerNote } : {}),
     ...(c.payment ? { payment: c.payment } : {}),
@@ -568,6 +583,7 @@ export function makeCaseView(c: CaseInput): VisitView {
 export function decisionOf(x: {
   patient: Patient; arrived: readonly Arrival[]; diagnosis: Id; verdict: Decision['verdict']; confidence: number;
   plan: { treatments: Id[]; setting: Setting }; ev: PlanEval; outcome: Outcome; score: CaseScore; review: ReviewData;
+  targets?: readonly TargetResult[];
 }): Decision {
   const t = T.spikes.patient;
   const p = x.patient;
@@ -589,6 +605,9 @@ export function decisionOf(x: {
     grades: keys.map(k => ({ key: k, label: t.grade[k], grade: x.score[k] })),
     overall: x.score.overall,
     notes: x.score.notes.map(noteText),
+    ...(x.targets && x.targets.length > 0
+      ? { targets: { grade: worstGrade(x.targets.map(r => r.grade)), lines: x.targets.map(r => t.targetLine(db.targets[r.id]?.name.ru ?? r.id, r.minutes, r.limit)) } }
+      : {}),
     // не лекарство — «лечение выбора» (часть 32)
     plan: x.ev.roles.map(r => ({ name: db.treatments[r.tx].name.ru, role: (db.treatments[r.tx].kind !== 'drug' ? t.roleTx[r.role] : undefined) ?? t.role[r.role] })),
     settingName: t.setting[x.plan.setting],

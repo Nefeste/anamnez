@@ -272,6 +272,15 @@ export const examSchema = z.strictObject({
   complaints: z.array(z.string().regex(/^sym\.[a-z0-9_]+$/)).min(1).optional(),
   /** чувствительность и специфичность — в процентах */
   checks: z.array(z.strictObject({ f: z.string(), sens: accuracy, spec: accuracy })).min(1),
+  /**
+   * у постели (spec 2026-10-chapter-3, часть 37): лежащему в смотровой приёмного, где стоит этот
+   * аппарат, обследование делают на месте — врачом, без очереди в кабинет и без описания
+   */
+  bedside: z.strictObject({
+    room: roomId,
+    equipment: z.array(eqId).min(1),
+    time: z.strictObject({ procedure: z.number().int().min(1) }),
+  }).optional(),
   texts: z.strictObject({ summary: text, hint }),
   sources: z.array(source).min(1),
   review,
@@ -723,6 +732,23 @@ export const ruleSchema = z.strictObject({
   review,
 });
 
+/**
+ * Срок (spec 2026-10-chapter-3, часть 37): что сделать и за сколько минут от прихода — кому с
+ * жалобой `complaints` при поступлении, лежащему в помещении `room` (смотровая приёмного: там
+ * монитор и ЭКГ у постели). Сделано — пришёл результат одного из `exams`.
+ */
+export const targetSchema = z.strictObject({
+  id: z.string().regex(/^target\.[a-z0-9_]+$/),
+  name: text,
+  complaints: z.array(z.string().regex(/^sym\.[a-z0-9_]+$/)).min(1),
+  room: roomId.optional(),
+  exams: z.array(z.string().regex(/^exam\.[a-z0-9_]+$/)).min(1),
+  minutes: z.number().int().min(1).max(24 * 60),
+  texts: z.strictObject({ hint }),
+  sources: z.array(source).min(1),
+  review,
+});
+
 export const versionSchema = z.strictObject({ contentVersion: z.number().int().min(1) });
 
 export type ConditionSrc = z.infer<typeof conditionSchema>;
@@ -741,5 +767,6 @@ export type TipSrc = z.infer<typeof tipSchema>;
 export type AchievementSrc = z.infer<typeof achievementSchema>;
 export type ScoreSrc = z.infer<typeof scoreSchema>;
 export type RuleSrc = z.infer<typeof ruleSchema>;
+export type TargetSrc = z.infer<typeof targetSchema>;
 export type LinkSrc = z.infer<typeof link>;
 export type ProbabilitySrc = z.infer<typeof probability>;
