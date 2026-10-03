@@ -206,6 +206,8 @@ function RoomCard({ b, id, onClose, onDemolish, act }: {
     for (let at = room.door + dir; at >= 1 && at + z.door.width - 1 <= z.w - 2; at += dir) if (act({ kind: 'door', room: id, at })) return;
   };
   const back = refund(z.cost) + room.equipment.reduce((m, e) => m + (e ? refund(db.equipment[e].price) : 0), 0);
+  // места — по нынешнему размеру: у смотровой приёмного из прежних сохранений места под монитор ещё нет
+  const slots = z.slots.map((_, i) => room.equipment[i] ?? null);
   return (
     <Sheet visible onClose={onClose} closeTitle={t.close} testID="room-card">
       <H>{t.size(type.name.ru, room.size)}</H>
@@ -217,10 +219,10 @@ function RoomCard({ b, id, onClose, onDemolish, act }: {
       {z.slots.length > 0 && (
         <>
           <P>{t.equipment}</P>
-          {room.equipment.map((e, i) => (e
+          {slots.map((e, i) => (e
             ? <Button key={i} testID={`room-sell-${i}`} kind="plain" title={db.equipment[e].name.ru} hint={t.sell(rub(refund(db.equipment[e].price)))} onPress={() => act({ kind: 'sell', room: id, slot: i })} />
             : <P key={i} muted>{t.emptySlot}</P>))}
-          {room.equipment.includes(null) && !buying && <Button testID="room-buy" kind="plain" title={t.buy} onPress={() => setBuying(true)} />}
+          {slots.includes(null) && !buying && <Button testID="room-buy" kind="plain" title={t.buy} onPress={() => setBuying(true)} />}
           {buying && type.equipment.map(e => {
             const eq = db.equipment[e];
             return (

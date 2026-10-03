@@ -62,11 +62,24 @@ export function OutcomeScreen({ view, next, back }: { view: VisitView | undefine
               <Text style={styles.gradeName}>{g.label}</Text>
             </View>
           ))}
+          {/* сроки (часть 37): худшая оценка — она и входит в «Итог» */}
+          {x.targets && (
+            <View style={styles.gradeCell}>
+              <Text testID="visit-targets-grade" style={[styles.gradeLetter, gradeColor(theme, x.targets.grade)]}>{x.targets.grade}</Text>
+              <Text style={styles.gradeName}>{t.grade.targets}</Text>
+            </View>
+          )}
           <View style={[styles.gradeCell, styles.gradeTotal]}>
             <Text testID="visit-overall" style={[styles.gradeLetter, gradeColor(theme, x.overall)]}>{x.overall}</Text>
             <Text style={styles.gradeName}>{t.grade.overall}</Text>
           </View>
         </View>
+        {x.targets && (
+          <>
+            <Text style={styles.label}>{t.grade.targets}</Text>
+            {x.targets.lines.map((line, i) => <P key={i} testID={`visit-target-line-${i}`}>{`• ${line}`}</P>)}
+          </>
+        )}
         {x.notes.length > 0 && (
           <>
             <Text style={styles.label}>{t.notesLabel}</Text>

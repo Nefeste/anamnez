@@ -23,7 +23,7 @@ rooms:
   - { type: room.ecg, size: S, x: 12, y: 10, rot: 2, equipment: [eq.ecg] }
   - { type: room.xray, size: M, x: 21, y: 10, rot: 2, equipment: [eq.xray_digital] }
   - { type: room.toilet, size: S, x: 28, y: 10, rot: 2 }
-  - { type: room.emergency, size: M, x: 0, y: 20, rot: 2 }
+  - { type: room.emergency, size: M, x: 0, y: 20, rot: 2, equipment: [eq.monitor_defib] }
   - { type: room.ward, size: M, x: 8, y: 20, rot: 2 }
   - { type: room.ward, size: M, x: 16, y: 20, rot: 2 }
   - { type: room.or, size: M, x: 24, y: 20, rot: 2, equipment: [eq.or_table, eq.anesthesia] }

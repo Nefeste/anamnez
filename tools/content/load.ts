@@ -15,7 +15,7 @@ import {
   BANDS, type ChapterSrc, chapterSchema, type CharacterSrc, characterSchema, type ConditionSrc, conditionSchema, type EconomySrc, economySchema, type EquipmentSrc, equipmentSchema, type ExamSrc, examSchema, type FindingSrc, findingSchema,
   type LinkSrc, PREVALENCE, type PresetSrc, presetSchema, type ProbabilitySrc, type RiskSrc, type RoleSrc, riskSchema, roleSchema, type RoomSrc, roomSchema,
   type TipSrc, tipSchema, type TreatmentSrc, treatmentSchema, versionSchema, type AchievementSrc, achievementSchema, type ScoreSrc, scoreSchema,
-  type RuleSrc, ruleSchema,
+  type RuleSrc, ruleSchema, type TargetSrc, targetSchema,
 } from './schema';
 
 export const CONTENT_DIR = join(import.meta.dir, '../../content');
@@ -89,6 +89,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   const achievements: Record<string, AchievementSrc> = {};
   const scores: Record<string, ScoreSrc> = {};
   const rules: Record<string, RuleSrc> = {};
+  const targets: Record<string, TargetSrc> = {};
   let economy: EconomySrc | undefined;
   let contentVersion = 0;
 
@@ -170,8 +171,11 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     } else if (top === 'rules') {
       const x = check(ruleSchema);
       if (x) { expectId(x.id, 'rule'); put(rules, x); }
+    } else if (top === 'targets') {
+      const x = check(targetSchema);
+      if (x) { expectId(x.id, 'target'); put(targets, x); }
     } else {
-      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/economy.yaml, campaign/characters, campaign/chapters, campaign/tips, achievements, scores, rules)`);
+      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/economy.yaml, campaign/characters, campaign/chapters, campaign/tips, achievements, scores, rules, targets)`);
     }
   }
   if (!contentVersion) errors.push('version.yaml: нет contentVersion');
@@ -461,6 +465,17 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       if (!exams[id].checks.some(ch => about.has(ch.f))) errors.push(`${x.id}: ${id} не проверяет ни одного признака ${x.about.join(', ')}`);
     }
   }
+  // сроки (spec 2026-10-chapter-3, часть 37): жалоба — признак с жалобой, обследования есть; срок у
+  // лежащих — в смотровой приёмного, и хоть одно из обследований там делают у постели не дольше срока
+  for (const x of Object.values(targets)) {
+    for (const f of x.complaints) if (!findings[f]?.texts.complaint) errors.push(`${x.id}: жалоба ${f} не найдена или без текста жалобы`);
+    for (const id of x.exams) if (!exams[id]) errors.push(`${x.id}: обследование ${id} не найдено`);
+    if (x.room && !rooms[x.room]) errors.push(`${x.id}: помещение ${x.room} не найдено`);
+    else if (x.room && !rooms[x.room].emergency) errors.push(`${x.id}: срок у лежащих — только в смотровой приёмного, а ${x.room} не она`);
+    else if (x.room && !x.exams.some(id => exams[id]?.bedside?.room === x.room && exams[id].bedside!.time.procedure <= x.minutes)) {
+      errors.push(`${x.id}: в ${x.room} ни одно из обследований срока не делают у постели за ${x.minutes} минут`);
+    }
+  }
   checkWho({ conditions, findings, exams, risks }, errors);
   checkHospital({ rooms, equipment, roles, exams, conditions, treatments }, errors);
 
@@ -476,6 +491,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     achievements: Object.fromEntries(Object.values(achievements).sort((a, b) => a.order - b.order).map(a => [a.id, a])),
     scores: Object.fromEntries(Object.values(scores).sort((a, b) => (a.id < b.id ? -1 : 1)).map(x => [x.id, x])),
     rules: Object.fromEntries(Object.values(rules).sort((a, b) => (a.id < b.id ? -1 : 1)).map(x => [x.id, x])),
+    targets: Object.fromEntries(Object.values(targets).sort((a, b) => (a.id < b.id ? -1 : 1)).map(x => [x.id, x])),
     economy: economy
       ? { ...economy, sandbox: { ...economy.sandbox, corridor: rects(economy.sandbox.corridor) } }
       : NO_ECONOMY,
@@ -560,6 +576,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (e.radiation) out.radiation = e.radiation;
     if (e.routine) out.routine = true;
     if (e.routineFor) out.routineFor = e.routineFor;
+    if (e.bedside) out.bedside = e.bedside;
     if (e.sex) out.sex = e.sex;
     if (e.ageMin !== undefined) out.ageMin = e.ageMin;
     if (e.ageMax !== undefined) out.ageMax = e.ageMax;
@@ -851,6 +868,17 @@ function checkHospital(c: {
       else if (equipment[id].room !== e.room) errors.push(`${e.id}: аппарат ${id} стоит в ${equipment[id].room}, а обследование — в ${e.room}`);
     }
     if (e.room && rooms[e.room]?.needsEquipment && !e.equipment) errors.push(`${e.id}: в ${e.room} без аппарата не работают — укажите equipment`);
+    // у постели (часть 37): в смотровой приёмного, аппаратом, который там стоит
+    if (e.bedside) {
+      const b = e.bedside;
+      if (!rooms[b.room]) errors.push(`${e.id}: у постели — в ${b.room}, а такого помещения нет`);
+      else if (!rooms[b.room].emergency) errors.push(`${e.id}: у постели — только в смотровой приёмного, а ${b.room} не она`);
+      for (const id of b.equipment) {
+        if (!equipment[id]) errors.push(`${e.id}: аппарат у постели ${id} не найден`);
+        else if (equipment[id].room !== b.room) errors.push(`${e.id}: аппарат у постели ${id} стоит в ${equipment[id].room}, а не в ${b.room}`);
+      }
+      if (e.kind !== 'functional' && e.kind !== 'imaging') errors.push(`${e.id}: у постели — то, что иначе делают в своём кабинете в очереди (функциональное или снимок)`);
+    }
   }
   // пациент приходит туда, где берут материал, и туда, где обследование делают с ним самим
   const visited = new Set(exList.flatMap(e => (e.collect ? [e.collect] : e.room ? [e.room] : [])));
@@ -905,7 +933,7 @@ function checkHospital(c: {
     if (e.upgradeOf && equipment[e.upgradeOf]?.room !== e.room) errors.push(`${e.id}: улучшает ${e.upgradeOf} — такого аппарата в том же помещении нет`);
     if (e.slot !== undefined && rooms[e.room]?.sizes.some(z => e.slot! >= z.slots.length)) errors.push(`${e.id}: места ${e.slot} под аппарат нет у всех размеров ${e.room}`);
     // аппаратом делают обследование или операцию (операционный стол, наркозный аппарат — часть 28)
-    const used = exList.some(x => x.equipment?.includes(e.id)) || Object.values(c.treatments).some(t => t.surgery?.equipment.includes(e.id));
+    const used = exList.some(x => x.equipment?.includes(e.id) || x.bedside?.equipment.includes(e.id)) || Object.values(c.treatments).some(t => t.surgery?.equipment.includes(e.id));
     if (!used) errors.push(`${e.id}: ни одно обследование и ни одна операция им не делают`);
   }
   for (const r of Object.values(roles)) {

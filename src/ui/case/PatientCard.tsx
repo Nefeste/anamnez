@@ -78,6 +78,8 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
           <View style={styles.headText}>
             <H>{v.title}</H>
             <Text testID="visit-clock" style={styles.clock}>{`${t.clock(v.clock)} · ${t.spent(v.minutesSpent, T.common.rub(v.money))}`}</Text>
+            {/* срок по рекомендации (часть 37) — справка: ЭКГ при боли в груди в первые 10 минут */}
+            {v.targets?.map((line, i) => <P key={i} muted testID={`visit-target-${i}`}>{line}</P>)}
             {v.returnNote ? <P testID="visit-return">{v.returnNote}</P> : null}
             {readOnly ? <P testID="visit-colleague">{readOnly.note}</P> : null}
             {v.payerNote ? <P muted testID="visit-payer">{v.payerNote}</P> : null}
@@ -97,6 +99,14 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
         <Card style={styles.notice}>
           <Text style={styles.label}>{t.meanwhile}</Text>
           {v.meanwhile.map((m, i) => <P key={i} testID={`meanwhile-${i}`}>{m}</P>)}
+        </Card>
+      )}
+
+      {/* ждать нечего, а ждёт кто-то срочнее (часть 37): привезли с болью в груди — к нему */}
+      {v.canStepOut && actions.sendAway && !readOnly && !v.decision && (
+        <Card style={styles.notice}>
+          <Text style={styles.label}>{t.urgentWaiting}</Text>
+          <Button kind="plain" testID="visit-step-out" title={t.stepOut} hint={t.stepOutHint} onPress={actions.sendAway} />
         </Card>
       )}
 
@@ -183,7 +193,8 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
               // своя больница: нет помещения, аппарата или человека — серым, с причиной
               const why = v.unavailable[id];
               return (
-                <Button key={id} testID={`exam-${id}`} kind="plain" disabled={!!why} title={info.name} hint={why ?? t.cost(info.minutes, info.cost)} hintMono={!why}
+                <Button key={id} testID={`exam-${id}`} kind="plain" disabled={!!why} title={info.name}
+                  hint={why ?? (v.bedside?.[id] !== undefined ? t.costBedside(v.bedside[id], info.cost) : t.cost(info.minutes, info.cost))} hintMono={!why}
                   onPress={() => doExam(id)} onInfo={() => explain(examTerm(id))} infoLabel={t.whatIsIt} />
               );
             })}

@@ -14,6 +14,7 @@ import type { DoctorPhase } from '../med/policy';
 import type { Grade, ScoreNote } from '../med/score';
 import type { Observation, Patient } from '../med/types';
 import type { Bed, Stay, StayResult } from './ward';
+import type { TargetResult } from './targets';
 
 export const SHIFT_SCHEMA_VERSION = 1;
 
@@ -148,6 +149,8 @@ export interface ClosedCase {
   from?: string;
   /** лежал в палате: сколько суток, обычный срок, как ушёл (часть 26) */
   stay?: StayResult;
+  /** сроки приёма (spec 2026-10-chapter-3, часть 37): ЭКГ при боли в груди — через сколько минут от прихода */
+  targets?: TargetResult[];
 }
 
 export type ShiftEvent =
@@ -169,7 +172,10 @@ export type Command =
   | { kind: 'exam'; exam: Id }
   /** в кабинете: подождать ближайший результат этого пациента */
   | { kind: 'waitResults' }
-  /** отпустить ждать результатов, а пока принять другого */
+  /**
+   * отпустить ждать результатов, а пока принять другого; ждать нечего, а ждёт кто-то срочнее, —
+   * попросить подождать в очереди (часть 37)
+   */
   | { kind: 'sendAway' }
   | { kind: 'diagnose'; id: Id }
   | { kind: 'toggleTreatment'; id: Id }
@@ -240,6 +246,8 @@ export interface DaySummary {
   ambulance?: AmbulanceDay;
   /** операционная за день (часть 28): операций, из них в срок `window` и позже; осложнений после операции */
   surgery?: SurgeryDay;
+  /** сроки за день (часть 37): у скольких ваших приёмов срок был и у скольких выполнен */
+  targets?: Record<Id, { onTime: number; total: number }>;
 }
 
 export interface SurgeryDay {

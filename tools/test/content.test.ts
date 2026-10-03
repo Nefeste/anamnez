@@ -426,6 +426,21 @@ describe('каталог больницы', () => {
     expect(foreign.some(e => e.includes('eq.immuno_analyzer: ни одно обследование и ни одна операция им не делают'))).toBe(true);
   });
 
+  test('у постели и сроки (часть 37): не в смотровой, аппарат не из смотровой, срок, которого у постели не успеть, — ошибки', () => {
+    const ward = broken(d => edit(d, 'exams/ecg.yaml', 'bedside: { room: room.emergency', 'bedside: { room: room.ward'));
+    expect(ward.some(e => e.includes('exam.ecg: у постели — только в смотровой приёмного, а room.ward не она'))).toBe(true);
+    const foreign = broken(d => edit(d, 'exams/ecg.yaml', 'equipment: [eq.monitor_defib]', 'equipment: [eq.ecg]'));
+    expect(foreign.some(e => e.includes('exam.ecg: аппарат у постели eq.ecg стоит в room.ecg, а не в room.emergency'))).toBe(true);
+    // монитором тогда ничего не делают
+    expect(foreign.some(e => e.includes('eq.monitor_defib: ни одно обследование и ни одна операция им не делают'))).toBe(true);
+    const quick = broken(d => edit(d, 'targets/ecg_chest_pain.yaml', 'minutes: 10', 'minutes: 4'));
+    expect(quick.some(e => e.includes('target.ecg_chest_pain: в room.emergency ни одно из обследований срока не делают у постели за 4 минут'))).toBe(true);
+    const unknown = broken(d => edit(d, 'targets/ecg_chest_pain.yaml', 'exams: [exam.ecg]', 'exams: [exam.ecg, exam.ekg]'));
+    expect(unknown.some(e => e.includes('target.ecg_chest_pain: обследование exam.ekg не найдено'))).toBe(true);
+    const complaint = broken(d => edit(d, 'targets/ecg_chest_pain.yaml', 'complaints: [sym.chest_pain_pressing]', 'complaints: [sym.chest_pain_pressed]'));
+    expect(complaint.some(e => e.includes('target.ecg_chest_pain: жалоба sym.chest_pain_pressed не найдена или без текста жалобы'))).toBe(true);
+  });
+
   test('в лаборатории без аппарата не работают — у анализа должен быть анализатор', () => {
     const errors = broken(d => edit(d, 'exams/tsh.yaml', 'equipment: [eq.immuno_analyzer]\n', ''));
     expect(errors.some(e => e.includes('exam.tsh: в room.lab без аппарата не работают'))).toBe(true);

@@ -96,6 +96,18 @@ export function examWhere(db: ContentDb, plan: Plan, working: Set<string>, staff
   return { rooms: rooms.map(r => r.id) };
 }
 
+/**
+ * Можно ли сделать обследование у постели (spec 2026-10-chapter-3, часть 37): лежащему в
+ * смотровой приёмного `room` (номер помещения плана) — если она работает и в ней стоит аппарат из
+ * записи `bedside`.
+ */
+export function bedsideIn(db: ContentDb, plan: Plan, working: Set<string>, examId: Id, room: string): boolean {
+  const b = db.exams[examId]?.bedside;
+  if (!b) return false;
+  const r = plan.rooms.find(x => x.id === room);
+  return !!r && r.type === b.room && working.has(r.id) && r.equipment.some(id => id !== null && b.equipment.includes(id));
+}
+
 /** Чего не хватает, чтобы открыть смену; пусто — можно. */
 export function openBlocks(db: ContentDb, plan: Plan, working: Set<string>, staffed: Staffing): Block[] {
   return REQUIRED.flatMap(type => {
