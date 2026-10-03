@@ -66,5 +66,13 @@ export function roomSigns(layout: ClinicLayout, s: ShiftState, down: ReadonlySet
       if (sign) sign.lit = true;
     } else if (op.start === undefined && or) signs.get(or.id)!.queue++;
   }
+  // мониторы (spec 2026-10-chapter-3, часть 38а): в палате интенсивной терапии лежит человек, в
+  // смотровой приёмного на койке привезённый — экран горит
+  for (const p of all) {
+    const room = p.status === 'admitted' ? p.stay?.room
+      : p.bay && (p.status === 'waiting' || p.status === 'inRoom' || p.status === 'away') ? p.bay.room : undefined;
+    const sign = room === undefined ? undefined : signs.get(room);
+    if (sign && (typeOf.get(room!) === 'icu' || typeOf.get(room!) === 'emergency')) sign.lit = true;
+  }
   return layout.rooms.map(r => signs.get(r.id)!);
 }

@@ -28,7 +28,7 @@ export interface Room {
 
 export type RoomType =
   | 'reception' | 'waiting' | 'office' | 'triage' | 'procedure' | 'lab' | 'ecg' | 'xray'
-  | 'ultrasound' | 'ward' | 'surgery' | 'staff' | 'toilet' | 'emergency' | 'or';
+  | 'ultrasound' | 'ward' | 'surgery' | 'staff' | 'toilet' | 'emergency' | 'or' | 'icu';
 
 /** Что стоит в помещении: вид предмета и клетка. */
 export interface Placed {
@@ -37,7 +37,7 @@ export interface Placed {
   y: number;
 }
 
-export type ObjectKind = 'bed' | 'chair' | 'desk' | 'couch' | 'cabinet' | 'machine' | 'plant' | 'sink' | 'bench' | 'xray' | 'table' | 'ecg' | 'analyzer' | 'or_table' | 'anesthesia' | 'us';
+export type ObjectKind = 'bed' | 'chair' | 'desk' | 'couch' | 'cabinet' | 'machine' | 'plant' | 'sink' | 'bench' | 'xray' | 'table' | 'ecg' | 'analyzer' | 'or_table' | 'anesthesia' | 'us' | 'monitor';
 
 export const cellAt = (g: Grid, x: number, y: number) => g.cells[y * g.w + x] as CellKind;
 export const walkable = (g: Grid, x: number, y: number) => {

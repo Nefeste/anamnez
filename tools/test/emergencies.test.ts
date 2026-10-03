@@ -272,7 +272,8 @@ describe('анафилактический шок', () => {
     const a = article(db, ANA)!;
     const rows = a.blocks.find(b => b.key === 'treatment')!.rows!;
     expect(rows.find(r => r.label === 'Первая линия')!.refs!.map(r => r.id)).toEqual(['tx.epinephrine_im']);
-    expect(a.blocks.find(b => b.key === 'where')!.text![0]).toContain('скорая');
+    // в ПИТ; своей нет — скорая (часть 38а)
+    expect(a.blocks.find(b => b.key === 'where')!.text!.slice(0, 2)).toEqual(['Обычно — палата интенсивной терапии.', 'Своей палаты интенсивной терапии нет — скорая, больница.']);
     expect(a.blocks.find(b => b.key === 'redFlags')!.refs!.map(r => r.id).sort()).toEqual([LOW, 'sign.angioedema', 'sign.stridor'].sort());
     expect(a.blocks.find(b => b.key === 'course')!.text![0]).toContain('в тот же день');
     expect(similar(db, ANA)[0]).toBe('cond.acs');

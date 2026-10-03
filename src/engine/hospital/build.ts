@@ -279,7 +279,8 @@ export function build(db: ContentDb, s: Built, cmd: BuildCommand): BuildResult {
   if (cmd.kind === 'buy') {
     const eq = db.equipment[cmd.equipment];
     if (!eq) return fail({ kind: 'unknown' });
-    if (eq.room !== room.type) return fail({ kind: 'wrongRoom' });
+    // монитор с дефибриллятором — и в смотровую приёмного, и в палату интенсивной терапии (часть 38а)
+    if (!eq.rooms.includes(room.type)) return fail({ kind: 'wrongRoom' });
     // места — по нынешнему размеру: у смотровой приёмного из сохранений до 0.3.2 места под
     // монитор ещё нет (часть 37)
     const slots = z.slots.map((_, i) => room.equipment[i] ?? null);
@@ -413,7 +414,7 @@ export function planOf(db: ContentDb, hs: HospitalState): Plan {
         .sort((a, b) => b.row - a.row || a.cell[1] - b.cell[1] || a.cell[0] - b.cell[0])
         .map(o => o.cell)
       : [];
-    const beds = db.rooms[r.type].beds || db.rooms[r.type].emergency ? z.objects.filter(o => o.kind === 'bed').map(o => at([o.x, o.y])) : [];
+    const beds = db.rooms[r.type].beds || db.rooms[r.type].emergency || db.rooms[r.type].icu ? z.objects.filter(o => o.kind === 'bed').map(o => at([o.x, o.y])) : [];
     const ok = doorOk(z, r, r.door, hs, occ);
     rooms.push({
       id: r.id, type: r.type, size: r.size, rot: r.rot, x: r.x, y: r.y, w, h,

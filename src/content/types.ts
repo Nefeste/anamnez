@@ -42,11 +42,12 @@ export interface Link {
 /** Где лечить: дома, направить в стационар, вызвать скорую (перевод). */
 /**
  * Место лечения. В базе — что нужно пациенту: дома, стационар, срочно в стационар, операция,
- * центр, которого в районе нет. У врача — что он выбрал: домой, направить в стационар,
- * вызвать скорую, в свою палату, в свою операционную, перевести (spec 2026-09-chapter-2,
- * «Место лечения»).
+ * центр, которого в районе нет, палата интенсивной терапии. У врача — что он выбрал: домой,
+ * направить в стационар, вызвать скорую, в свою палату, в свою операционную, перевести, в свою
+ * палату интенсивной терапии (spec 2026-09-chapter-2, «Место лечения»; spec 2026-10-chapter-3,
+ * часть 38а — `icu`).
  */
-export type Setting = 'home' | 'ward' | 'ambulance' | 'admit' | 'surgery' | 'transfer';
+export type Setting = 'home' | 'ward' | 'ambulance' | 'admit' | 'surgery' | 'transfer' | 'icu';
 
 /** Система органов в порядке показа: простуда и ЛОР, лёгкие, сердце, живот, мочевые, обмен, голова и спина, кости и суставы (часть 32). */
 export const SYSTEMS = ['airways', 'lungs', 'heart', 'digestive', 'urinary', 'metabolic', 'nerves', 'bones', 'skin'] as const;
@@ -367,7 +368,7 @@ export type Season = 'winter' | 'spring' | 'summer' | 'autumn';
 // --- каталог больницы (spec 2026-09-own-hospital) ------------------------------------------
 
 export type Cell = [number, number];
-export type ObjectKind = 'bed' | 'chair' | 'desk' | 'couch' | 'cabinet' | 'machine' | 'plant' | 'sink' | 'bench' | 'xray' | 'table' | 'ecg' | 'analyzer' | 'or_table' | 'anesthesia' | 'us';
+export type ObjectKind = 'bed' | 'chair' | 'desk' | 'couch' | 'cabinet' | 'machine' | 'plant' | 'sink' | 'bench' | 'xray' | 'table' | 'ecg' | 'analyzer' | 'or_table' | 'anesthesia' | 'us' | 'monitor';
 export type RoomSizeId = 'S' | 'M' | 'L';
 
 /**
@@ -392,7 +393,7 @@ export interface RoomSize {
   patient?: Cell;
   /** стулья зоны ожидания — места в очереди */
   seats: number;
-  /** койки палаты — места лежащих; у смотровой приёмного — места для пациентов скорой */
+  /** койки палаты — места лежащих; у смотровой приёмного — места для пациентов скорой; у палаты интенсивной терапии — койки под мониторами */
   beds: number;
   /** мест для нанятых врачей — ординаторская */
   places: number;
@@ -410,6 +411,11 @@ export interface RoomType {
   beds: boolean;
   /** смотровая приёмного: койки — места для пациентов скорой (spec 2026-09-chapter-2, часть 27) */
   emergency: boolean;
+  /**
+   * палата интенсивной терапии (spec 2026-10-chapter-3, часть 38а): койки — места лежащих под
+   * монитором; койка работает, если на её месте (место под аппарат с тем же номером) стоит монитор
+   */
+  icu: boolean;
   /** работает — в больницу приходят и больные этих отделений: приёмное — хирургию (часть 30) */
   admits?: Id[];
   sizes: RoomSize[];
@@ -424,8 +430,9 @@ export interface Equipment {
   id: Id;
   name: Text;
   gen: Text;
-  room: Id;
-  sprite: 'ecg' | 'analyzer' | 'xray' | 'or_table' | 'anesthesia' | 'us';
+  /** куда ставят: монитор с дефибриллятором — в смотровую приёмного и в палату интенсивной терапии (часть 38а) */
+  rooms: Id[];
+  sprite: 'ecg' | 'analyzer' | 'xray' | 'or_table' | 'anesthesia' | 'us' | 'monitor';
   upgradeOf?: Id;
   /** своё место в помещении — номер из `slots`; занято — первое свободное */
   slot?: number;
@@ -523,6 +530,8 @@ export interface Economy {
     omsWard: Record<'minor' | 'moderate' | 'serious' | 'critical', number>;
     /** случай стационара с операцией — прибавка за операцию */
     omsOperation: number;
+    /** случай с палатой интенсивной терапии по показаниям — прибавка (spec 2026-10-chapter-3, часть 38а) */
+    omsIcu: number;
     omsQuality: Record<'A' | 'B' | 'C' | 'D', number>;
     omsUnconfirmed: number;
     /** показанные обследования, % цены в базе */
@@ -540,6 +549,8 @@ export interface Economy {
   interest: number;
   /** стационар: койко-день, ₽; доля тарифа за прерванный случай (перевод, выписка раньше срока), % */
   ward: { bedDay: number; interrupted: number };
+  /** палата интенсивной терапии: койко-день, ₽ (часть 38а) */
+  icu: { bedDay: number };
   /** скорая: машин за смену; вес болезни по тяжести; доля тяжёлых, % (часть 27) */
   ambulance: { perDay: [number, number]; weight: Record<'minor' | 'moderate' | 'serious' | 'critical', number>; severe: number };
   /** репутация 0–100: начало, на сколько % вечером сдвигается к оценке дня, поправки оценки; `died` — за каждого умершего в стационаре (часть 35) */

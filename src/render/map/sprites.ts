@@ -8,9 +8,9 @@ import type { ObjectKind } from '@/engine/hospital/grid';
 import { CLOTHES, HAIR, SKIN } from '@/render/look';
 import { BODIES, type Hair, HAIRS, HEADS, STYLES, UNIFORM } from './figures';
 
-export const OBJECT_KINDS: ObjectKind[] = ['bed', 'chair', 'desk', 'couch', 'cabinet', 'machine', 'plant', 'sink', 'bench', 'xray', 'table', 'ecg', 'analyzer', 'or_table', 'anesthesia', 'us'];
-/** Аппараты, у которых есть рисунок «работает» — горит экран, трубка или лампа над столом (части 23, 28, 29). */
-export const LIT_KINDS: ObjectKind[] = ['ecg', 'analyzer', 'xray', 'or_table', 'anesthesia', 'us'];
+export const OBJECT_KINDS: ObjectKind[] = ['bed', 'chair', 'desk', 'couch', 'cabinet', 'machine', 'plant', 'sink', 'bench', 'xray', 'table', 'ecg', 'analyzer', 'or_table', 'anesthesia', 'us', 'monitor'];
+/** Аппараты, у которых есть рисунок «работает» — горит экран, трубка или лампа над столом (части 23, 28, 29, 38а). */
+export const LIT_KINDS: ObjectKind[] = ['ecg', 'analyzer', 'xray', 'or_table', 'anesthesia', 'us', 'monitor'];
 
 export interface SpriteAtlas {
   image: SkImage;
@@ -300,6 +300,22 @@ function drawObject(u: Pen, k: ObjectKind, lit = false) {
       u.rr(0.73, 0.44, 0.82, 0.54, 0.02, '#56666B');
       u.rr(0.73, 0.58, 0.82, 0.68, 0.02, '#56666B');
       u.quad(0.78, 0.68, 0.96, 0.8, 0.86, 0.97, '#56666B', 0.022);
+      break;
+    case 'monitor':
+      // монитор с дефибриллятором на стойке у изголовья (spec 2026-10-chapter-3, часть 38а): экран
+      // с кривой ЭКГ, дыханием и цифрами к северу, под ним — дефибриллятор с двумя электродами,
+      // стойка на колёсах; работает — горит экран
+      for (const [x, y] of [[0.3, 0.9], [0.7, 0.9], [0.5, 0.97]]) u.circle(x, y, 0.035, '#56666B');
+      u.line([0.5, 0.74, 0.5, 0.92], '#87949A', 0.035);
+      u.rr(0.12, 0.06, 0.88, 0.5, 0.06, '#E6EAEC', STEEL_EDGE);
+      u.rr(0.18, 0.11, 0.82, 0.44, 0.035, lit ? SCREEN_ON : '#2F3B3E');
+      u.line([0.21, 0.23, 0.32, 0.23, 0.36, 0.15, 0.4, 0.3, 0.44, 0.23, 0.6, 0.23], lit ? TRACE_ON : '#7FD4A0', 0.022);
+      u.line([0.21, 0.36, 0.31, 0.33, 0.41, 0.36, 0.51, 0.33, 0.6, 0.35], lit ? '#1A6FA8' : '#7FC4E6', 0.02);
+      u.rr(0.66, 0.16, 0.78, 0.26, 0.015, lit ? '#3DDC84' : '#1A8A86');
+      u.rr(0.66, 0.3, 0.78, 0.39, 0.015, lit ? '#F2C14E' : '#9AA6A9');
+      u.rr(0.2, 0.55, 0.8, 0.74, 0.04, '#F2C14E', '#C99A2E', 0.015);
+      u.circle(0.36, 0.645, 0.06, '#56666B');
+      u.circle(0.64, 0.645, 0.06, '#56666B');
       break;
   }
 }

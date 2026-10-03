@@ -2,7 +2,7 @@
 id: eq.us_basic
 name: { ru: "УЗ-аппарат" }
 gen: { ru: "УЗ-аппарата" }
-room: room.ultrasound
+rooms: [room.ultrasound]
 sprite: us
 price: 450000
 upkeep: 150

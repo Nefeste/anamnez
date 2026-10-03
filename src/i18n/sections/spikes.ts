@@ -4,13 +4,13 @@ import { lowerFirst } from '../case';
 /** Что надо было выбрать — в разборе: «нужно было …» и «хватило бы …» (spec 2026-09-chapter-2, «Место лечения»). */
 const UNDER: Record<string, string> = {
   home: 'лечить дома', ward: 'направить в стационар', ambulance: 'вызвать скорую', admit: 'положить в палату',
-  surgery: 'взять в операционную', transfer: 'перевести в областную',
+  surgery: 'взять в операционную', transfer: 'перевести в областную', icu: 'положить в палату интенсивной терапии',
 };
 /** Цвет сортировки словами — в разборе скорой (часть 27). */
 const TRIAGE: Record<string, string> = { red: 'красный', yellow: 'жёлтый', green: 'зелёный' };
 const OVER: Record<string, string> = {
   home: 'лечения дома', ward: 'направления в стационар', ambulance: 'скорой', admit: 'палаты',
-  surgery: 'операционной', transfer: 'перевода',
+  surgery: 'операционной', transfer: 'перевода', icu: 'палаты интенсивной терапии',
 };
 
 export const spikes = {
@@ -122,7 +122,7 @@ export const spikes = {
     finish: 'Завершить приём',
     finishNeedsDx: 'Выберите диагноз, чтобы завершить приём',
     contraindicated: (by: string) => `Противопоказано: ${lowerFirst(by)}`,
-    setting: { home: 'Дома', ward: 'В стационар', ambulance: 'Вызвать скорую', admit: 'В палату', surgery: 'В операционную', transfer: 'Перевести' } as Record<string, string>,
+    setting: { home: 'Дома', ward: 'В стационар', ambulance: 'Вызвать скорую', admit: 'В палату', surgery: 'В операционную', transfer: 'Перевести', icu: 'В ПИТ' } as Record<string, string>,
     role: {
       firstLine: 'препарат выбора',
       acceptable: 'допустимая замена',
@@ -145,6 +145,8 @@ export const spikes = {
       ambulance: 'Увезла скорая',
       // своя палата (spec 2026-09-chapter-2, часть 26)
       admitted: 'Лежит в палате — чем кончится, покажет обход',
+      // своя палата интенсивной терапии (spec 2026-10-chapter-3, часть 38а)
+      icu: 'Лежит в палате интенсивной терапии, под монитором, — чем кончится, покажет обход',
       // операционная (spec 2026-09-chapter-2, часть 28)
       operated: 'В операционную, после операции — в палату: чем кончится, покажет обход',
       transferred: (female: boolean) => (female ? 'Переведена в другую больницу' : 'Переведён в другую больницу'),

@@ -42,7 +42,7 @@ const LAMP_HALO = 'rgba(255, 201, 77, 0.6)';
 const LAMP_OFF = '#A7B1B3';
 const CLEAR = 'rgba(0, 0, 0, 0)';
 /** Где аппараты светятся: на ЭКГ и рентгене — пока пациент у аппарата, в лаборатории — пока идут анализы. */
-const GLOWING: ReadonlySet<string> = new Set(['ecg', 'xray', 'lab', 'or', 'ultrasound']);
+const GLOWING: ReadonlySet<string> = new Set(['ecg', 'xray', 'lab', 'or', 'ultrasound', 'emergency', 'icu']);
 
 /** Где на кадре человек из места `i` буферов (в клетках); нет его или исчез у выхода — null. */
 function pointAt(m: number[], pts: number[], i: number, clock: number): [number, number] | null {

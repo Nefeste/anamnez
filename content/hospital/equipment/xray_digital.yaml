@@ -1,7 +1,7 @@
 id: eq.xray_digital
 name: { ru: "Цифровой рентгеновский аппарат" }
 gen: { ru: "цифрового рентгеновского аппарата" }
-room: room.xray
+rooms: [room.xray]
 sprite: xray
 upgradeOf: eq.xray_analog
 price: 350000

@@ -148,11 +148,13 @@ export const encyclopedia = {
   harmful: 'Опасно',
   prevent: 'Обязательная профилактика',
   preHospital: 'До приезда скорой',
-  setting: { home: 'дома', ward: 'в стационаре', ambulance: 'скорая, больница', admit: 'в стационаре', surgery: 'операция', transfer: 'скорая, перевод в центр' },
+  setting: { home: 'дома', ward: 'в стационаре', ambulance: 'скорая, больница', admit: 'в стационаре', surgery: 'операция', transfer: 'скорая, перевод в центр', icu: 'палата интенсивной терапии' },
   whereTitle: 'Где лечить',
   whereDefault: (s: string) => `Обычно — ${s}.`,
   whereIf: (when: string, s: string) => `${when[0].toUpperCase()}${when.slice(1)} — ${s}.`,
   whereRedFlag: (s: string) => `При красных флагах — ${s}.`,
+  // своей ПИТ нет — скорая (часть 38а)
+  whereNoIcu: (s: string) => `Своей палаты интенсивной терапии нет — ${s}.`,
   // ещё место, которое не ошибка (часть 32б): «При смещении без красных флагов — можно и дома.»
   whereAlso: (when: string, s: string, flags = false, risks = false) =>
     `${when[0].toUpperCase()}${when.slice(1)}${flags || risks ? ` без ${[flags ? 'красных флагов' : '', risks ? 'факторов риска' : ''].filter(Boolean).join(' и ')}` : ''} — можно и ${s}.`,

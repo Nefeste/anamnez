@@ -90,8 +90,9 @@ export function scoreCase(x: CaseInput): CaseScore {
   }
   if (x.plan.violations.length > 0) treatment = 'D';
   // направленного лечат дальше в другом стационаре: лечения причины здесь не ждут, а то, что
-  // делают до приезда скорой (ОКС — ацетилсалициловая кислота), — ждут; в своей палате лечат сами
-  const referred = x.plan.setting.chosen !== 'home' && x.plan.setting.chosen !== 'admit' && x.plan.setting.chosen !== 'surgery';
+  // делают до приезда скорой (ОКС — ацетилсалициловая кислота), — ждут; в своей палате и своей ПИТ
+  // (часть 38а) лечат сами
+  const referred = !['home', 'admit', 'surgery', 'icu'].includes(x.plan.setting.chosen);
   if (!x.plan.effective && !x.selfLimiting && !referred) { treatment = 'D'; notes.push({ code: 'tx.noCure' }); }
   if (referred && x.plan.preHospital.length > 0 && !roles.some(r => x.plan.preHospital.includes(r.tx))) {
     treatment = worst(treatment, 'B');

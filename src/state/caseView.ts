@@ -629,8 +629,9 @@ export function outcomeText(outcome: Outcome, setting: Setting, female: boolean)
     case 'reaction': return outcome.reaction ? out.reaction(db.treatments[outcome.reaction.tx].name.ru, riskName(outcome.reaction.by)) : out.unchanged;
     case 'transferred':
       if (outcome.severe) return out.transferredSevere(female);
-      return setting === 'ambulance' ? out.ambulance : setting === 'admit' || setting === 'surgery' ? out.transferred(female) : out.ward(female);
-    case 'admitted': return setting === 'surgery' ? out.operated : out.admitted;
+      return setting === 'ambulance' ? out.ambulance : setting === 'admit' || setting === 'surgery' || setting === 'icu' ? out.transferred(female) : out.ward(female);
+    // своя палата интенсивной терапии (spec 2026-10-chapter-3, часть 38а)
+    case 'admitted': return setting === 'surgery' ? out.operated : setting === 'icu' ? out.icu : out.admitted;
     case 'died': return out.died(outcome.day, female);
   }
 }
