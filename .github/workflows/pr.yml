@@ -3,12 +3,14 @@
 # android.yml по тегу версии. Проверка обязательна для слияния (ADR студии 0018) и отвечает на
 # каждом PR, и на документах тоже, — поэтому без paths-ignore: иначе она повисла бы «ожидающей».
 # Сценарий в браузере и «виртуальный врач» — не здесь: их агент гоняет у себя перед push, а в
-# сборке по тегу они — ворота релиза (docs/08-process.md).
+# сборке по тегу они — ворота релиза (docs/08-process.md). Черновик PR не проверяется — задание
+# пропускается внутри, и проверка уходит, когда PR готов к ревью: минуты Actions берегутся.
 name: PR
 
 on:
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
@@ -20,6 +22,7 @@ concurrency:
 jobs:
   checks:
     name: Проверки PR
+    if: ${{ !github.event.pull_request.draft }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:

@@ -110,6 +110,11 @@ Studio-wide hard rules — generated `ios/`/`android/`, no React Native `Alert`,
 only in `src/i18n/` and `content/`, a permanent signing key, no generated images — are in the
 charter's `docs/05-rules.md` and are not repeated here. Project rules:
 
+- Merging and releases (studio ADR 0018, 0019): agents act through the owner's GitHub account,
+  so branch protection and its bypass cannot tell an agent from the owner. Never merge, never
+  enable auto-merge by hand (API, MCP tool or UI) and never create a `vX.Y.Z` tag: classes 1–2
+  are merged by `automerge.yml` after the Reviewer's `ревью: ок`; PRs touching
+  `.github/CODEOWNERS` paths and release tags are the owner's (`docs/08-process.md`, «Слияние»).
 - The release build has **no `INTERNET` permission** (ADR 0006); it is removed from the release
   manifest by a config plugin, debug keeps it for Metro. Any new permission must be added to the
   CI whitelist consciously.
