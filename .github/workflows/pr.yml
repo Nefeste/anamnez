@@ -1,0 +1,45 @@
+# Быстрые проверки на каждый PR в main (ADR студии 0019): сборка и валидатор медицинской базы,
+# типы, линтер, тесты — те же команды, что в AGENTS.md. Без prebuild, Gradle и APK: их собирает
+# android.yml по тегу версии. Проверка обязательна для слияния (ADR студии 0018) и отвечает на
+# каждом PR, и на документах тоже, — поэтому без paths-ignore: иначе она повисла бы «ожидающей».
+# Сценарий в браузере и «виртуальный врач» — не здесь: их агент гоняет у себя перед push, а в
+# сборке по тегу они — ворота релиза (docs/08-process.md).
+name: PR
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Проверки PR
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.11
+      - run: npm ci
+      # бандл базы не хранится в репозитории (ADR 0007): типы и тесты читают собранный
+      - name: Медицинская база — сборка и валидатор
+        run: bun tools/content/build.ts
+      - name: Типы приложения
+        run: npx tsc --noEmit
+      - name: Типы инструментов и тестов
+        run: npx tsc --noEmit -p tools
+      - name: Линтер
+        run: npm run lint
+      - name: Тесты
+        run: bun test tools/test

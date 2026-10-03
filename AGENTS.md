@@ -2,11 +2,6 @@ This is an Expo/React Native mobile game (Android first). Prioritize mobile-firs
 smoothness on modern Android phones (no freezes; budget phones are not a target), and a pure,
 deterministic game engine.
 
-**Current stage: stage 3 — own hospital** (`docs/specs/2026-09-own-hospital.md`): building,
-equipment, hiring and money between shifts (ADR 0016). Stage 2 — the first shift
-(`docs/specs/2026-09-first-shift.md`) — waits for the owner's live test; the stage 1 spikes
-(`docs/specs/2026-09-spikes.md`) are done and stay in the menu as prototypes.
-
 ## Studio charter — read first
 
 This project belongs to the «Горница» studio. Studio-wide rules live only in the public
@@ -15,6 +10,8 @@ keeps only what is specific to the project. Before changing anything — and aft
 reset — read the charter's `AGENTS.md`, then `docs/05-rules.md` (hard rules for every game)
 and `docs/04-process.md` (how work is done). Raw files:
 `https://raw.githubusercontent.com/Nefeste/gornitsa/main/<path>`.
+
+Current state of this project: `STATUS.md` (it is not repeated here).
 
 Precedence: the owner's recorded decision → the charter → this project's documents. A project
 rule may narrow a charter rule, never weaken it. If a document here restates or contradicts
