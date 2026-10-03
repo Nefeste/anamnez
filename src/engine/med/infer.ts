@@ -4,7 +4,7 @@
 // По пользе обследования решают страховая песочницы и нанятые врачи — а это меняет состояние
 // партии, поэтому логарифм здесь свой, из `core/math.ts` (ADR 0004): одинаковый в Hermes, V8 и
 // JavaScriptCore.
-import type { Condition, ContentDb, Id, Link, Season } from '../../content/types';
+import type { Condition, ContentDb, DerivedByValue, Id, Link, Season } from '../../content/types';
 import { log2 } from '../core/math';
 import { P_ONE } from '../core/rng';
 import { chronicChance, presentingWeight } from './generate';
@@ -396,8 +396,9 @@ export function paramBeliefs(db: ContentDb, condId: Id, name: string, observatio
   const c = db.conditions[condId];
   const dist = c?.params?.[name];
   if (!dist) return [];
-  const rule = c.derived?.[name];
-  if (rule) return derivedBeliefs(dist, checkRule(db.rules[rule], age, knownOf(observations)).verdict);
+  const derived = c.derived?.[name];
+  if (typeof derived === 'string') return derivedBeliefs(dist, checkRule(db.rules[derived], age, knownOf(observations)).verdict);
+  if (derived) return derivedBeliefs(dist, valueVerdict(derived, observations));
   const grouped = byFinding(observations);
   const telling = tellingOf(c, name).filter(f => grouped.has(f));
   const weighted = Object.entries(dist).map(([value, share]) => {
@@ -407,6 +408,16 @@ export function paramBeliefs(db: ContentDb, condId: Id, name: string, observatio
   });
   const total = weighted.reduce((a, b) => a + b.p, 0);
   return weighted.map(x => ({ value: x.value, p: total > 0 ? x.p / total : 0 }));
+}
+
+/**
+ * Порог на измерении (часть 38б): число измерили — «yes», если последнее измеренное ниже порога;
+ * не измеряли — пока неизвестно.
+ */
+function valueVerdict(d: DerivedByValue, observations: readonly Observation[]): RuleVerdict {
+  const measured = observations.filter(o => o.f === d.f && o.value !== undefined);
+  if (measured.length === 0) return 'unknown';
+  return measured[measured.length - 1].value! < d.below ? 'yes' : 'no';
 }
 
 /**
@@ -446,12 +457,14 @@ export function paramGain(db: ContentDb, condId: Id, name: string, examId: Id, o
   if (!c || !exam) return 0;
   const beliefs = paramBeliefs(db, condId, name, observations, age);
   if (beliefs.length < 2) return 0;
-  const rule = c.derived?.[name];
-  if (rule) {
-    const { left } = checkRule(db.rules[rule], age, knownOf(observations));
+  const derived = c.derived?.[name];
+  if (typeof derived === 'string') {
+    const { left } = checkRule(db.rules[derived], age, knownOf(observations));
     const covered = left.filter(f => exam.checks.some(k => k.f === f)).length;
     return left.length > 0 ? (entropy(beliefs.map(b => ({ id: b.value, p: b.p }))) * covered) / left.length : 0;
   }
+  // порог на измерении (часть 38б): обследование, которое меряет число, снимает всю неопределённость
+  if (derived) return exam.checks.some(k => k.f === derived.f) ? entropy(beliefs.map(b => ({ id: b.value, p: b.p }))) : 0;
   const observed = new Set(observations.map(o => o.f));
   const telling = new Set(tellingOf(c, name));
   const h0 = entropy(beliefs.map(b => ({ id: b.value, p: b.p })));

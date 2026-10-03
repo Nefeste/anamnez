@@ -12,6 +12,8 @@ export type ScoreNote =
   | { code: 'tx.preHospitalMissing'; tx: Id }
   /** не назначена обязательная профилактика (часть 32г-2): анатоксин столбнячный, вакцина от бешенства */
   | { code: 'tx.preventMissing'; tx: Id }
+  /** не назначено обязательное при лечении здесь (часть 38б): кислород при низкой сатурации; `when` — при каких значениях */
+  | { code: 'tx.requireMissing'; tx: Id; when?: Record<string, string[]> }
   /** `recommended` — что надо было выбрать здесь: в амбулатории «вызвать скорую», со своей палатой — «в палату» */
   | { code: 'setting.under' | 'setting.over'; recommended: Setting }
   | { code: 'safety.knownViolation' | 'safety.unaskedViolation'; tx: Id; by: Id }
@@ -106,6 +108,14 @@ export function scoreCase(x: CaseInput): CaseScore {
       treatment = worst(treatment, 'C');
       safety0 = worst(safety0, 'C');
       notes.push({ code: 'tx.preventMissing', tx });
+    }
+    // обязательное при лечении здесь (часть 38б): гипоксемия без кислорода — лечение неполное и
+    // опасное; переведённому кислород дают в дороге и там, куда везут
+    for (const tx of x.plan.requireMissing) {
+      treatment = worst(treatment, 'C');
+      safety0 = worst(safety0, 'C');
+      const when = x.plan.requireWhen[tx];
+      notes.push({ code: 'tx.requireMissing', tx, ...(when ? { when } : {}) });
     }
   }
   if (x.plan.effective && !roles.some(r => r.role === 'firstLine')) {

@@ -10,6 +10,7 @@ import { useSyncExternalStore } from 'react';
 import { db } from '@/content';
 import type { Id, Mission, Season, Setting } from '@/content/types';
 import { complaintObservations } from '@/engine/med/exams';
+import { deriveByValue } from '@/engine/med/generate';
 import { evaluatePlan, primaryOf } from '@/engine/med/plan';
 import type { Grade } from '@/engine/med/score';
 import { complaintText, observationText } from '@/engine/med/text';
@@ -318,6 +319,8 @@ export function loadShift(which?: Mode, careerNo?: number): Promise<void> {
   loading = loadSlot<ShiftState>(st, slotOf(want, wantCareer), e => fits(e, want, wantCareer))
     .then(r => {
       if (r && !session) {
+        // пациенты из сохранений до 0.3.4 — без порогов на измерении: досчитать по их числам (часть 38б)
+        for (const p of Object.values(r.envelope.data.patients)) deriveByValue(db, p.patient.truth.conditions, p.patient.truth.values);
         session = fresh(r.envelope.data, r.from === 'prev-1' || r.from === 'prev-2');
         // приёмы, закрытые до профиля (0.0.14 и раньше) или до сбоя, — в профиль; повторы он отбросит
         recordCases(closedCases(session.s));

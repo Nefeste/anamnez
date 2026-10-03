@@ -130,6 +130,8 @@ export const spikes = {
       notIndicated: 'не показано',
       harmful: 'вредно',
       prevent: 'профилактика',
+      // часть 38б: кислород при низкой сатурации
+      require: 'обязательно',
     } as Record<string, string>,
     // не лекарство (часть 32): гипсовая лонгета, репозиция, операция — «лечение выбора»
     roleTx: { firstLine: 'лечение выбора' } as Record<string, string>,
@@ -195,6 +197,8 @@ export const spikes = {
       none: 'Ничего не рекомендовано — даже при простуде пациенту нужен совет',
       preHospitalMissing: (tx: string) => `До приезда скорой не назначено: ${lowerFirst(tx)}`,
       preventMissing: (tx: string) => `Не назначено: ${lowerFirst(tx)} — без этой профилактики лечение неполное`,
+      // обязательное при лечении здесь (часть 38б): «обязательно при сатурации ниже 90 %»
+      requireMissing: (tx: string, when?: string) => `Не назначено: ${lowerFirst(tx)} — ${when ? `обязательно ${when}` : 'без этого лечение неполное'}`,
       settingUnder: (should: string) => `Недооценили тяжесть: нужно было ${UNDER[should] ?? UNDER.ambulance}`,
       settingOver: (should: string) => `Перестраховка: хватило бы ${OVER[should] ?? OVER.ward}`,
       knownViolation: (tx: string, by: string) => `${tx}: противопоказано (${lowerFirst(by)}), и вы об этом знали`,
@@ -266,6 +270,7 @@ export const spikes = {
       antivirals: 'Противовирусные',
       pain: 'Жаропонижающие и обезболивающие',
       breathing: 'Бронхи и воспаление',
+      oxygen: 'Кислород',
       nose: 'Нос и аллергия',
       heart: 'Сердце и сосуды',
       digestive: 'Желудок и кишечник',

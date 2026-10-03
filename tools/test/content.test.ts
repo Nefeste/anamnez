@@ -441,6 +441,20 @@ describe('каталог больницы', () => {
     expect(complaint.some(e => e.includes('target.ecg_chest_pain: жалоба sym.chest_pain_pressed не найдена или без текста жалобы'))).toBe(true);
   });
 
+  test('кислород по сатурации (часть 38б): порог — на числе признака и внутри его диапазонов; обязательное — не в списке той же тактики и не операция', () => {
+    const C = 'conditions/therapy/pneumonia_cap.yaml';
+    const A = 'conditions/therapy/anaphylaxis.yaml';
+    const has = (errors: string[], text: string) => errors.some(e => e.includes(text));
+    const derived = '  spo2_below90: { f: vital.spo2_low, below: 90 }';
+    expect(has(broken(d => edit(d, C, derived, '  spo2_below90: { f: sym.cough, below: 90 }')), 'cond.pneumonia_cap: порог параметра spo2_below90 — на sym.cough, а у него нет числа')).toBe(true);
+    expect(has(broken(d => edit(d, C, derived, '  spo2_below90: { f: vital.spo2_low, below: 80 }')), 'cond.pneumonia_cap: порог 80 параметра spo2_below90 вне диапазонов vital.spo2_low (86–99)')).toBe(true);
+    const block = '    - when: { spo2_below90: [yes] }\n      require: [tx.oxygen_mask]';
+    expect(has(broken(d => edit(d, C, block, `${block}\n      supportive: [tx.oxygen_mask]`)), 'cond.pneumonia_cap: обязательное тактики по параметру №1 — tx.oxygen_mask стоит и в списке тактики')).toBe(true);
+    expect(has(broken(d => edit(d, C, block, '    - when: { spo2_below90: [yes] }\n      require: [tx.appendectomy]')), 'cond.pneumonia_cap: обязательное тактики по параметру №1 — операцию tx.appendectomy выбирают местом, а не назначением')).toBe(true);
+    const supportive = '  supportive: [tx.iv_fluids, tx.steroid_iv, tx.antihistamine_parenteral, tx.salbutamol]';
+    expect(has(broken(d => edit(d, A, supportive, '  supportive: [tx.iv_fluids, tx.steroid_iv, tx.antihistamine_parenteral, tx.salbutamol, tx.oxygen_mask]')), 'cond.anaphylaxis: обязательное — tx.oxygen_mask стоит и в списке тактики')).toBe(true);
+  });
+
   test('палата интенсивной терапии (часть 38а): койки есть, мест под мониторы не меньше коек, не палата; аппарат — в разных помещениях, в ПИТ без своего места', () => {
     const I = 'hospital/rooms/icu.yaml';
     const M = 'hospital/equipment/monitor_defib.yaml';

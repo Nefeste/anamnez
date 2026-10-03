@@ -98,6 +98,7 @@ export function generatePatient(db: ContentDb, seed: number, ctx: GenContext): P
   const findings = oneMeasure(db, realizeFindings(db, again('findings'), conditions, risks));
   deriveParams(db, conditions, age, findings);
   const values = realizeValues(db, again('values'), findings);
+  deriveByValue(db, conditions, values);
   const complaints = pickComplaints(db, findings);
 
   // отделение пациента — его основного заболевания: в больнице с приёмным это и хирургия
@@ -193,7 +194,23 @@ function deriveParams(db: ContentDb, conditions: ActiveCondition[], age: number,
   const has = new Set(findings.map(x => x.f));
   for (const c of conditions) {
     for (const [name, ruleId] of Object.entries(db.conditions[c.id].derived ?? {})) {
+      if (typeof ruleId !== 'string') continue;
       c.params[name] = checkRule(db.rules[ruleId], age, f => has.has(f)).verdict === 'yes' ? 'yes' : 'no';
+    }
+  }
+}
+
+/**
+ * Порог на измерении (spec 2026-10-chapter-3, часть 38б): «yes», если настоящее число признака
+ * ниже порога, — сатурация ниже 90 %. Числа от параметров не зависят, поэтому считаются после них;
+ * новых бросков нет. Уже посчитанные не трогает: так при загрузке досчитываются пациенты из
+ * сохранений до 0.3.4 (`loadShift`), у них порогов нет.
+ */
+export function deriveByValue(db: ContentDb, conditions: ActiveCondition[], values: Record<Id, number>): void {
+  for (const c of conditions) {
+    for (const [name, d] of Object.entries(db.conditions[c.id].derived ?? {})) {
+      if (typeof d === 'string' || c.params[name] !== undefined) continue;
+      c.params[name] = (values[d.f] ?? Infinity) < d.below ? 'yes' : 'no';
     }
   }
 }

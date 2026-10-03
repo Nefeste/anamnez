@@ -349,7 +349,8 @@ function icuSave(): { save: string; id: string } {
   apply(db, s, { kind: 'call', id });
   apply(db, s, { kind: 'exam', exam: 'exam.vitals' });
   apply(db, s, { kind: 'diagnose', id: 'cond.anaphylaxis' });
-  for (const tx of ['tx.epinephrine_im', 'tx.iv_fluids', 'tx.steroid_iv']) apply(db, s, { kind: 'toggleTreatment', id: tx });
+  // кислород через маску — всем с анафилактическим шоком (часть 38б, 263_2, рек. 22)
+  for (const tx of ['tx.epinephrine_im', 'tx.iv_fluids', 'tx.steroid_iv', 'tx.oxygen_mask']) apply(db, s, { kind: 'toggleTreatment', id: tx });
   return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s }), id };
 }
 
@@ -1386,6 +1387,9 @@ try {
   await visible(page, 'visit-decide').click();
   await page.getByTestId('decision-to-plan').click();
   await page.getByTestId('setting-icu').waitFor({ timeout: 5000 });
+  // кислород через маску (часть 38б) — своя группа в списке назначений
+  check((await page.getByTestId('tx-tx.oxygen_mask').count()) === 1 && (await page.getByText('Кислород', { exact: true }).count()) >= 1,
+    'ПИТ, решение: «Кислород через маску» — в группе «Кислород»');
   const icuOption = await text(page, 'setting-icu');
   check(icuOption.startsWith('В ПИТ') && icuOption.includes('под монитором свободно 2 из 2') && !(await page.getByTestId('setting-icu').isDisabled()),
     `ПИТ, решение: ${icuOption.replace(/\n/g, ' · ')}`);

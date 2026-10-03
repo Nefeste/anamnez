@@ -12,10 +12,11 @@ export interface Plan {
 
 /**
  * Роль назначения при состоянии; не названное в тактике — «не показано». `prevent` — обязательная
- * профилактика (часть 32г-2): анатоксин столбнячный, вакцина от бешенства.
+ * профилактика (часть 32г-2): анатоксин столбнячный, вакцина от бешенства; `require` — обязательно
+ * при лечении здесь (часть 38б): кислород через маску при сатурации ниже порога рекомендации.
  */
-export type TxRole = 'firstLine' | 'acceptable' | 'supportive' | 'notIndicated' | 'harmful' | 'prevent';
-type ListRole = Exclude<TxRole, 'prevent'>;
+export type TxRole = 'firstLine' | 'acceptable' | 'supportive' | 'notIndicated' | 'harmful' | 'prevent' | 'require';
+type ListRole = Exclude<TxRole, 'prevent' | 'require'>;
 const ROLES: ListRole[] = ['firstLine', 'acceptable', 'supportive', 'notIndicated', 'harmful'];
 
 /** Насколько серьёзна помощь: чем выше, тем срочнее и сложнее. */
@@ -99,6 +100,10 @@ export interface PlanEval {
   preHospital: Id[];
   /** обязательная профилактика по правде о пациенте, которой нет в плане (часть 32г-2) */
   preventMissing: Id[];
+  /** обязательное при лечении здесь по правде о пациенте, чего нет в плане (часть 38б) */
+  requireMissing: Id[];
+  /** при каких значениях оно обязательно — для строки разбора: «при сатурации ниже 90 %» */
+  requireWhen: Record<Id, Record<string, string[]>>;
 }
 
 export function primaryOf(patient: Patient) {
@@ -144,6 +149,17 @@ export function preventOf(t: Tactics | undefined, params?: Record<string, string
 }
 
 /**
+ * Обязательное при лечении здесь (часть 38б): общее и из подошедших записей `byParam`; без
+ * параметров — только общее: при других значениях у того же лечения может быть другая роль
+ * (кислород у ОКС при сатурации от 90 % — «не нужно»).
+ */
+export function requireOf(t: Tactics | undefined, params?: Record<string, string>): Id[] {
+  if (!t) return [];
+  const over = params ? (t.byParam ?? []).filter(b => whenHolds(b.when, params)) : [];
+  return [...new Set([...(t.require ?? []), ...over.flatMap(b => b.require ?? [])])];
+}
+
+/**
  * Что сделать до приезда скорой (часть 27; 32д-2) — хоть одно из этого: названное в подошедших
  * записях `byParam` (обширный ожог — капельница до перевода, хотя место по умолчанию — дом); без
  * них у того, что лечат не дома, — первая линия, кроме операции: её до приезда скорой не сделать.
@@ -162,6 +178,7 @@ export function preHospitalOf(db: ContentDb, t: Tactics | undefined, params: Rec
 export function txRole(db: ContentDb, condId: Id, tx: Id, params?: Record<string, string>): TxRole {
   const t = db.conditions[condId]?.treatment;
   if (preventOf(t, params).includes(tx)) return 'prevent';
+  if (requireOf(t, params).includes(tx)) return 'require';
   const x = params && t?.byParam?.find(b => whenHolds(b.when, params) && ROLES.some(role => b[role].includes(tx)));
   if (x) return ROLES.find(role => x[role].includes(tx))!;
   // своя операция болезни — первая линия (часть 28); в тактике её нет: до приезда скорой её не сделать.
@@ -210,14 +227,16 @@ export function alsoSettings(db: ContentDb, patient: Patient): Setting[] {
 export function tacticsFor(t: Tactics, params: Record<string, string> = {}): Tactics {
   const over = (t.byParam ?? []).filter(b => whenHolds(b.when, params));
   if (over.length === 0) return t;
-  const named = new Set(over.flatMap(b => ROLES.flatMap(role => b[role])));
+  // обязательное по параметру (часть 38б) тоже названо: из общих списков оно уходит
+  const named = new Set(over.flatMap(b => [...ROLES.flatMap(role => b[role]), ...(b.require ?? [])]));
   const lists = Object.fromEntries(ROLES.map(role => [role, [...new Set([...over.flatMap(b => b[role]), ...t[role].filter(id => !named.has(id))])]])) as Record<ListRole, Id[]>;
   const plan = over.find(b => b.plan)?.plan ?? t.plan?.filter(id => lists.firstLine.includes(id) || lists.acceptable.includes(id) || lists.supportive.includes(id));
   const prevent = preventOf(t, params);
+  const require = requireOf(t, params);
   const preHospital = [...new Set(over.flatMap(b => b.preHospital ?? []))];
   return {
     ...lists, setting: t.setting, ...(plan && plan.length > 0 ? { plan } : {}), ...(prevent.length > 0 ? { prevent } : {}),
-    ...(preHospital.length > 0 ? { preHospital } : {}),
+    ...(require.length > 0 ? { require } : {}), ...(preHospital.length > 0 ? { preHospital } : {}),
   };
 }
 
@@ -287,5 +306,7 @@ export function evaluatePlan(db: ContentDb, patient: Patient, plan: Plan, observ
     preHospital: preHospitalOf(db, base, params),
     // профилактику, противопоказанную тем, о чём врач знает (аллергия на пенициллины), в вину не ставим
     preventMissing: preventOf(base, params).filter(tx => !plan.treatments.includes(tx) && !db.treatments[tx]?.contraindications.some(k => knownIds.has(k.id))).sort(),
+    requireMissing: requireOf(base, params).filter(tx => !plan.treatments.includes(tx) && !db.treatments[tx]?.contraindications.some(k => knownIds.has(k.id))).sort(),
+    requireWhen: Object.fromEntries((base?.byParam ?? []).filter(b => whenHolds(b.when, params)).flatMap(b => (b.require ?? []).map(tx => [tx, b.when] as const)).reverse()),
   };
 }

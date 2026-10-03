@@ -5,11 +5,13 @@
 // формат сохранения или уйдёт из базы то, на что они ссылаются, — этот тест скажет, что прежние
 // сохранения нужно переводить. С 0.0.43 — ещё песочница, записанная кодом 0.0.42
 // (fixtures/saves/0.0.42-sandbox.json): день 1 закрыт с кассой, день 2 идёт, пациент в кабинете;
-// стационара в ней нет, а построить палату можно.
+// стационара в ней нет, а построить палату можно. С 0.3.4 у болезней есть пороги на измерении
+// (сатурация ниже 95 % у COVID-19): у пациентов этих сохранений их нет — загрузка досчитывает.
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { db } from '../../src/content';
+import { txRole } from '../../src/engine/med/plan';
 import { apply, freeBeds, wardBeds } from '../../src/engine/shift/engine';
 import { achievementsBy, EARLIER, forgetProfile, loadProfile, profile, setProfileStore } from '../../src/state/profile';
 import { memoryStore } from '../../src/state/saves';
@@ -71,7 +73,7 @@ describe('обновление с 0.0.17', () => {
 });
 
 describe('обновление с 0.0.42', () => {
-  test('песочница посреди дня 2: приём доигрывается, день закрывается; стационара нет, палату можно построить', async () => {
+  const openSandbox = async () => {
     const store = memoryStore();
     const saved = JSON.parse(readFileSync(join(import.meta.dir, 'fixtures/saves/0.0.42-sandbox.json'), 'utf8')) as Record<string, unknown>;
     for (const [name, envelope] of Object.entries(saved)) store.files.set(name, JSON.stringify(envelope));
@@ -81,6 +83,10 @@ describe('обновление с 0.0.42', () => {
     forgetProfile();
     await loadProfile();
     await loadShift('sandbox');
+  };
+
+  test('песочница посреди дня 2: приём доигрывается, день закрывается; стационара нет, палату можно построить', async () => {
+    await openSandbox();
     const s = shiftState()!;
     expect([s.meta.mode, s.day, s.current, s.history.length]).toEqual(['sandbox', 2, '2-01', 1]);
     // вчерашняя касса — без стационара: ни случаев, ни койко-дней
@@ -111,5 +117,14 @@ describe('обновление с 0.0.42', () => {
     expect(ward.type).toBe('room.ward');
     apply(db, st, { kind: 'assign', id: st.staff!.find(m => m.role === 'role.nurse' && m.room === 'r7')!.id, room: ward.id });
     expect(freeBeds(db, st)).toHaveLength(2);
+  });
+
+  test('пороги на измерении (часть 38б): у сохранённых пациентов их нет — досчитаны по их числам, прочие параметры те же', async () => {
+    await openSandbox();
+    const params = (id: string) => shiftState()!.patients[id].patient.truth.conditions[0].params;
+    // COVID-19 с сатурацией 98 и 99 % — кислород не нужен
+    expect([params('1-17'), params('2-05')]).toEqual([{ severity: 'mild', spo2_below95: 'no' }, { severity: 'mild', spo2_below95: 'no' }]);
+    expect(txRole(db, 'cond.covid19', 'tx.oxygen_mask', params('2-05'))).toBe('notIndicated');
+    expect(params('2-03')).toEqual({});
   });
 });

@@ -1,6 +1,6 @@
 {
-  "version": "0.3.3",
-  "base": 44,
+  "version": "0.3.4",
+  "base": 45,
   "ids": {
     "achievements": [
       "ach.allergy_10",
@@ -796,6 +796,7 @@
       "tx.nose_pinch",
       "tx.ors",
       "tx.oseltamivir",
+      "tx.oxygen_mask",
       "tx.paracetamol",
       "tx.patella_orif",
       "tx.pleural_drainage",
