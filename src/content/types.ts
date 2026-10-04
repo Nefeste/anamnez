@@ -112,6 +112,11 @@ export interface Tactics {
      * со смещением — показание к операции относительное, повязка дома тоже можно
      */
     also?: { when: Record<string, string[]>; settings: Setting[] }[];
+    /**
+     * место, когда пришёл результат одного из `exams` (spec 2026-10-chapter-3, часть 40): вместо
+     * места по параметру — `setting`, вместо красного флага — признаки `flags`
+     */
+    after?: { exams: Id[]; setting: Setting; flags?: { any: Id[]; setting: Setting } };
   };
 }
 
@@ -482,7 +487,7 @@ export type Season = 'winter' | 'spring' | 'summer' | 'autumn';
 // --- каталог больницы (spec 2026-09-own-hospital) ------------------------------------------
 
 export type Cell = [number, number];
-export type ObjectKind = 'bed' | 'chair' | 'desk' | 'couch' | 'cabinet' | 'machine' | 'plant' | 'sink' | 'bench' | 'xray' | 'table' | 'ecg' | 'analyzer' | 'or_table' | 'anesthesia' | 'us' | 'monitor';
+export type ObjectKind = 'bed' | 'chair' | 'desk' | 'couch' | 'cabinet' | 'machine' | 'plant' | 'sink' | 'bench' | 'xray' | 'table' | 'ecg' | 'analyzer' | 'or_table' | 'anesthesia' | 'us' | 'monitor' | 'ct';
 export type RoomSizeId = 'S' | 'M' | 'L';
 
 /**
@@ -546,7 +551,7 @@ export interface Equipment {
   gen: Text;
   /** куда ставят: монитор с дефибриллятором — в смотровую приёмного и в палату интенсивной терапии (часть 38а) */
   rooms: Id[];
-  sprite: 'ecg' | 'analyzer' | 'xray' | 'or_table' | 'anesthesia' | 'us' | 'monitor';
+  sprite: 'ecg' | 'analyzer' | 'xray' | 'or_table' | 'anesthesia' | 'us' | 'monitor' | 'ct';
   upgradeOf?: Id;
   /** своё место в помещении — номер из `slots`; занято — первое свободное */
   slot?: number;

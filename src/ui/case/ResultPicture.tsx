@@ -1,7 +1,8 @@
-// Снимки, лента и сектор УЗИ в результатах приёма: рисунок по тому, что показало обследование, —
-// как в спецификации карты пациента (рентген, ЭКГ и УЗИ кодом, ADR 0013).
+// Снимки, лента, сектор УЗИ и срез КТ в результатах приёма: рисунок по тому, что показало
+// обследование, — как в спецификации карты пациента (рентген, ЭКГ, УЗИ и КТ кодом, ADR 0013).
 import { useWindowDimensions, View } from 'react-native';
 import { Ecg12 } from '@/render/Ecg12';
+import { HeadSlice } from '@/render/HeadSlice';
 import { type UsImage, UsSector } from '@/render/UsSector';
 import { Xray } from '@/render/Xray';
 import { XrayAbdomen } from '@/render/XrayAbdomen';
@@ -37,6 +38,14 @@ export function ResultPicture({ image }: { image: ResultImage }) {
     return (
       <View testID="result-xray-abdomen" style={{ borderRadius: 6, overflow: 'hidden' }}>
         <XrayAbdomen width={w} seed={image.seed} findings={{ freeGas: image.freeGas ? 0.8 : 0, levels: image.levels ? 0.8 : 0 }} />
+      </View>
+    );
+  }
+  if (image.kind === 'head') {
+    // срез КТ (часть 40) — квадрат, не шире колонки сектора УЗИ: кровь у свода видна и на телефоне
+    return (
+      <View testID="result-ct" style={{ borderRadius: 6, overflow: 'hidden', alignSelf: 'center' }}>
+        <HeadSlice width={Math.min(w, 360)} seed={image.seed} findings={image.findings} />
       </View>
     );
   }

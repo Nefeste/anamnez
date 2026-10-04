@@ -17,6 +17,7 @@ import type { Observation, Patient } from '@/engine/med/types';
 import type { TargetResult } from '@/engine/shift/targets';
 import type { Difficulty } from '@/engine/shift/types';
 import type { EcgFindings, Wall } from '@/render/ecg/model';
+import type { HeadFindings } from '@/render/ct/geometry';
 import type { BoneFindings, BoneFracture } from '@/render/xray/boneGeometry';
 import { fracturedRibs, type XrayFindings } from '@/render/xray/chestGeometry';
 import { T } from '@/i18n';
@@ -61,7 +62,9 @@ export type ResultImage =
   /** обзорный снимок живота стоя (часть 30б): серп свободного газа под куполом, раздутые петли с уровнями */
   | { kind: 'abdomen'; freeGas: boolean; levels: boolean; seed: number }
   /** снимок костей (часть 32): запястье или голеностоп в двух проекциях — линия перелома и смещение, что нашёл рентгенолог */
-  | ({ kind: 'bone'; seed: number } & BoneFindings);
+  | ({ kind: 'bone'; seed: number } & BoneFindings)
+  /** срез головы на КТ (spec 2026-10-chapter-3, часть 40): кровь внутри черепа — светлое пятно, если её показала КТ */
+  | { kind: 'head'; seed: number; findings: HeadFindings };
 
 /** Результаты одного обследования. `fresh` — пришли за последнее действие игрока. */
 export interface ResultGroup {
@@ -431,6 +434,12 @@ function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observat
   }
   // артерии ноги (часть 33б): тот же срез бедра, в артерии — тромб или эмбол, если его показало УЗИ
   if (exam === 'exam.us_leg_arteries') return { kind: 'us', view: 'vein', arterial: shown('img.us_artery_occluded') ? 1 : 0, seed };
+  // КТ головы (часть 40): кровь внутри черепа — светлое пятно в веществе на стороне находки; без
+  // неё — обычный срез
+  if (exam === 'exam.ct_head') {
+    const blood = shown('img.ct_blood') ? sideOf('img.ct_blood') : undefined;
+    return { kind: 'head', seed, findings: blood ? { focus: { density: 'high', shape: 'blob', side: blood, region: 'middle', size: 0.45 } } : {} };
+  }
   // кости (часть 32): что нашёл рентгенолог — линия перелома, смещение, признаки нестабильности;
   // сторона — из жалобы или находки
   const bone = BONE_EXAMS[exam];

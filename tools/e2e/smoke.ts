@@ -430,6 +430,51 @@ function gallSave(): { save: string; id: string } {
   return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s }), id };
 }
 
+/**
+ * Песочница со смотровой приёмного и кабинетом КТ (spec 2026-10-chapter-3, часть 40): больница
+ * принимает и травму; томограф на 16 срезов, рентгенолаборант и рентгенолог из кандидатов; день 1 —
+ * у вас в кабинете сотрясение с рвотой, КТ по правилу показана; расспрос, осмотр и КТ сделаны, КТ
+ * описана («Студент»: обследования не ошибаются).
+ */
+function ctSave(): { save: string; id: string } {
+  const { db } = buildDb();
+  const s = newSandbox(db, { seed: 25, season: 'winter', difficulty: 'student', start: 'clinic', budget: db.economy.sandbox.budgets.generous });
+  // томограф дороже «щедрого» бюджета
+  s.economy!.cash = 6_000_000;
+  const cells: [number, number][] = [];
+  for (let x = 29; x <= 38; x++) for (let y = 7; y <= 9; y++) cells.push([x, y]);
+  apply(db, s, { kind: 'build', cmd: { kind: 'corridor', cells } });
+  apply(db, s, { kind: 'build', cmd: { kind: 'room', type: 'room.emergency', size: 'M', x: 29, y: 1, rot: 0 } });
+  const er = s.hospital!.rooms[s.hospital!.rooms.length - 1].id;
+  apply(db, s, { kind: 'build', cmd: { kind: 'room', type: 'room.ct', size: 'M', x: 29, y: 10, rot: 2 } });
+  const ct = s.hospital!.rooms.find(r => r.type === 'room.ct')!.id;
+  apply(db, s, { kind: 'build', cmd: { kind: 'buy', room: ct, equipment: 'eq.ct_16' } });
+  apply(db, s, { kind: 'buildEnd' });
+  apply(db, s, { kind: 'assign', id: s.staff!.find(m => m.role === 'role.nurse' && m.room === 'r7')!.id, room: er });
+  for (const role of ['role.radiographer', 'role.radiologist']) {
+    const c = s.candidates!.find(x => x.role === role);
+    if (!c) throw new Error(`ctSave: среди кандидатов нет ${role}`);
+    apply(db, s, { kind: 'hire', id: c.id });
+    apply(db, s, { kind: 'assign', id: c.id, room: ct });
+  }
+  apply(db, s, { kind: 'nextDay' });
+  for (let i = 0; i < 600 && s.queue.length === 0; i++) apply(db, s, { kind: 'advance', seconds: 60 });
+  const id = s.queue[0];
+  const departments = s.patients[id].departments;
+  if (!departments?.includes('dept.trauma')) throw new Error('ctSave: смотровая приёмного не работает — травму не принимают');
+  // сотрясение с рвотой, без оглушения: КТ показана, после неё — дома
+  let seed = 4700;
+  const has = (p: ReturnType<typeof generatePatient>, f: string) => p.truth.findings.some(x => x.f === f);
+  let patient = generatePatient(db, seed, { department: 'dept.trauma', departments, season: 'winter', primary: 'cond.concussion', params: {} });
+  while (!has(patient, 'sym.vomiting') || has(patient, 'sign.gcs_low')) patient = generatePatient(db, ++seed, { department: 'dept.trauma', departments, season: 'winter', primary: 'cond.concussion', params: {} });
+  s.patients[id].patient = patient;
+  apply(db, s, { kind: 'call', id });
+  for (const exam of ['exam.ask_head_injury', 'exam.neuro_exam', 'exam.ct_head']) apply(db, s, { kind: 'exam', exam });
+  for (let i = 0; i < 20 && s.patients[id].pending.length > 0; i++) apply(db, s, { kind: 'waitResults' });
+  if (!s.patients[id].results.some(r => r.exam === 'exam.ct_head')) throw new Error('ctSave: КТ не пришла');
+  return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s }), id };
+}
+
 /** «Смена» в амбулатории, «Студент»: первым в очереди — стабильная стенокардия напряжения (часть 39г). */
 function anginaSave(): { save: string; id: string } {
   const { db } = buildDb();
@@ -974,6 +1019,9 @@ try {
   };
   const cash0 = await text(page, 'build-cash');
   await page.getByTestId('build-tool-room').click();
+  // кабинет КТ (часть 40) — в списке помещений песочницы, с ценой
+  const ctType = await text(page, 'room-type-room.ct');
+  check(ctType.startsWith('Кабинет КТ') && ctType.includes('70 000 ₽'), `песочница: в списке помещений — «${ctType.replace(/\n/g, ' · ').slice(0, 120)}»`);
   await page.getByTestId('room-type-room.reception').click();
   await page.getByTestId('build-place').waitFor({ timeout: 5000 });
   // призрак — посреди участка (17, 10); тянем на пять клеток влево
@@ -1613,6 +1661,53 @@ try {
   await page.goto(`${base}/encyclopedia/article/room.ultrasound`);
   await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
   check((await visibleText(page, 'enc-article-title')) === 'Кабинет УЗИ', `энциклопедия, кабинет: ${await visibleText(page, 'enc-article-title')}`);
+
+  // кабинет КТ (spec 2026-10-chapter-3, часть 40): у вас сотрясение с рвотой — КТ показана и сделана:
+  // срез головы и «Крови внутри черепа нет»; после КТ — «Дома», в разборе место не ошибка; на карте —
+  // кабинет КТ; в энциклопедии — кабинет, обследование и место после КТ
+  const ctv = ctSave();
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', ctv.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId('shift-continue').waitFor({ timeout: 15_000 });
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId('shift-continue').click();
+  await visible(page, 'result-ct').waitFor({ timeout: 10_000 });
+  await visible(page, 'result-ct').scrollIntoViewIfNeeded();
+  await page.waitForTimeout(800);
+  const ctBox = await visible(page, 'result-ct').boundingBox();
+  const ctLine = await page.locator('text=Крови внутри черепа нет').first().isVisible().catch(() => false);
+  check(ctBox !== null && ctBox.height > 150 && Math.abs(ctBox.width - ctBox.height) < 2 && ctLine,
+    `КТ: результат в карте — срезом ${Math.round(ctBox?.width ?? 0)} × ${Math.round(ctBox?.height ?? 0)} и строкой «Крови внутри черепа нет»`);
+  await page.screenshot({ path: join(OUT, '20-ct-result.png'), fullPage: true });
+  await visible(page, 'visit-decide').click();
+  await visible(page, 'dx-cond.concussion').click();
+  await visible(page, 'decision-to-plan').click();
+  for (const tx of ['tx.screen_rest', 'tx.paracetamol']) await page.getByTestId(`tx-${tx}`).click();
+  await page.getByTestId('setting-home').click();
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
+  const ctReview = await page.locator('body').innerText();
+  check(ctReview.includes('Сотрясение головного мозга') && !/Недооценили тяжесть|Перестраховка/.test(ctReview),
+    `КТ: после КТ без крови — «Дома», разбор — «${ctReview.replace(/\n/g, ' · ').slice(0, 260)}»`);
+  await page.getByTestId('shift-to-queue').click();
+  await page.getByTestId('shift-clock').waitFor({ timeout: 10_000 });
+  await page.waitForTimeout(800);
+  await page.screenshot({ path: join(OUT, '20-ct-map.png') });
+  await page.goto(`${base}/encyclopedia/article/room.ct`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  check((await visibleText(page, 'enc-article-title')) === 'Кабинет КТ', `энциклопедия, кабинет: ${await visibleText(page, 'enc-article-title')}`);
+  await page.goto(`${base}/encyclopedia/article/exam.ct_head`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  check((await visibleText(page, 'enc-article-title')) === 'КТ головного мозга', `энциклопедия, КТ: ${await visibleText(page, 'enc-article-title')}`);
+  await page.goto(`${base}/encyclopedia/article/cond.concussion`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const afterCt = await page.locator('text=После обследования «КТ головного мозга» — дома.').first().isVisible().catch(() => false);
+  check(afterCt, 'энциклопедия, сотрясение: «После обследования «КТ головного мозга» — дома.»');
 
   // хирургия живота (spec 2026-09-chapter-2, часть 30): со смотровой приёмного больница принимает
   // и хирургию — у вас больной острым холециститом; УЗИ — желчный пузырь с камнями и толстой

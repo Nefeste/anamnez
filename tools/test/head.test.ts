@@ -1,7 +1,8 @@
 // Травма головы (spec 2026-09-chapter-2, часть 32г): сотрясение головного мозга и ушиб мягких тканей
 // головы; правило «КТ при лёгкой черепно-мозговой травме» — основные и дополнительные признаки,
 // возраст и круг применимости; производный параметр «показана ли КТ» — по правилу на настоящих
-// признаках; тактика — перевод, палата или дом; «виртуальный врач»; карта «Студенту»; энциклопедия.
+// признаках; тактика — перевод, палата или дом; «виртуальный врач» без КТ; карта «Студенту»;
+// энциклопедия. Кабинет КТ и место после КТ (часть 40) — ct.test.ts.
 import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
 import type { Id } from '../../src/content/types';
@@ -48,12 +49,15 @@ const knownAs = (yes: Id[], no: Id[] = []) => (f: Id) => (yes.includes(f) ? true
 const obs = (f: Id, shown: boolean, exam: Id = 'exam.ask_head_injury'): Observation => ({ f, shown, exam });
 const candidates = candidatesOf(db, ED);
 const exams = Object.keys(db.exams).sort();
-const doctor = (p: Patient) => runDoctor(db, p, 'rational', Rng.seeded(p.seed).fork('doctor'), { candidates, exams, threshold: 0.9 });
+/** без кабинета КТ (амбулатория, больница главы 2): при показаниях — перевод */
+const noCt = exams.filter(id => id !== 'exam.ct_head');
+const doctor = (p: Patient) => runDoctor(db, p, 'rational', Rng.seeded(p.seed).fork('doctor'), { candidates, exams: noCt, threshold: 0.9 });
 
 describe('правило КТ: основные, дополнительные, возраст, к кому применимо', () => {
-  test('запись: жалоба «травма головы», признаки ЧМТ, пять основных, потеря сознания и возраст 40–60 — дополнительные; КТ в игре нет', () => {
-    expect(rule).toMatchObject({ complaints: ['sym.head_injury'], requires: TBI, any: MAIN, minor: { any: [LOC], count: 2 }, age: { main: 60, minor: [40, 60] }, ageMin: 18, exams: [] });
-    expect(rule.texts.exam?.ru).toContain('перевод');
+  test('запись: жалоба «травма головы», признаки ЧМТ, пять основных, потеря сознания и возраст 40–60 — дополнительные; КТ — своим обследованием (часть 40)', () => {
+    expect(rule).toMatchObject({ complaints: ['sym.head_injury'], requires: TBI, any: MAIN, minor: { any: [LOC], count: 2 }, age: { main: 60, minor: [40, 60] }, ageMin: 18, exams: ['exam.ct_head'] });
+    expect(rule.texts.exam).toBeUndefined();
+    expect(rule.texts.summary.ru).toContain('Где КТ нет, при показаниях везут в больницу с КТ и нейрохирургией');
     expect(rule.about).toEqual([CONC, BRUISE]);
     expect(rule.sources.map(s => s.url)).toEqual(expect.arrayContaining(['https://cr.minzdrav.gov.ru/view-cr/734_2', 'https://cr.minzdrav.gov.ru/view-cr/733_2', 'https://pubmed.ncbi.nlm.nih.gov/17371884/']));
     expect(ruleFindings(rule).sort()).toEqual([...new Set([...TBI, ...MAIN])].sort());
@@ -204,7 +208,7 @@ describe('тактика и оценка', () => {
   });
 });
 
-describe('виртуальный врач', () => {
+describe('виртуальный врач без кабинета КТ', () => {
   const conc = people(CONC, 300, 20_001);
   const runs = conc.map(p => ({ p, r: doctor(p) }));
 
@@ -272,7 +276,7 @@ describe('карта «Студенту»', () => {
 });
 
 describe('энциклопедия', () => {
-  test('правило: к кому применимо, основные с возрастом, «или не меньше двух из этих», чего нет в игре — словами', () => {
+  test('правило: к кому применимо, основные с возрастом, «или не меньше двух из этих», обследование — ссылкой (часть 40)', () => {
     const a = article(db, rule.id)!;
     const block = (key: string) => a.blocks.find(b => b.key === key)!;
     expect(a.blocks.map(b => b.key)).toEqual(['what', 'when', 'requires', 'any', 'minor', 'none', 'exams', 'about', 'sources']);
@@ -282,12 +286,13 @@ describe('энциклопедия', () => {
     expect(block('minor')).toMatchObject({ title: 'Или не меньше двух из этих', text: ['Возраст 40–60 лет — тоже дополнительный признак.'] });
     expect(block('minor').refs!.map(r => r.id)).toEqual([LOC]);
     expect(block('none').title).toBe('Если проверили все: основных нет, дополнительных не хватает');
-    expect(block('exams')).toMatchObject({ refs: [], text: [rule.texts.exam!.ru] });
+    expect(block('exams').refs!.map(r => r.id)).toEqual(['exam.ct_head']);
+    expect(block('exams').text).toBeUndefined();
     // признак — «в правилах», и дополнительный, и из круга применимости
     for (const f of [LOC, AMNESIA, ANTICOAG]) expect(JSON.stringify(article(db, f)!.blocks.find(b => b.key === 'inRules'))).toContain(rule.id);
   });
 
-  test('сотрясение: где лечить — по показаниям к КТ, красные флаги, палата на сутки; правило в статьях обеих болезней', () => {
+  test('сотрясение: где лечить — по показаниям к КТ, красные флаги, палата на сутки, после КТ (часть 40); правило в статьях обеих болезней', () => {
     expect(whenText({ ct: ['yes'] })).toBe('при показаниях к КТ');
     const where = article(db, CONC)!.blocks.find(b => b.key === 'where')!.text;
     expect(where).toEqual([
@@ -295,6 +300,8 @@ describe('энциклопедия', () => {
       'При показаниях к КТ — скорая, перевод в центр.',
       'При красных флагах — скорая, перевод в центр.',
       'При показаниях к КТ без красных флагов — можно и в стационаре.',
+      'После обследования «КТ головного мозга» — дома.',
+      'После обследования «КТ головного мозга», если есть «Оглушение по шкале комы Глазго», — скорая, больница.',
       'В стационаре обычно 1–2 дня.',
     ]);
     for (const id of [CONC, BRUISE]) expect(JSON.stringify(article(db, id)!.blocks.find(b => b.key === 'rules'))).toContain(rule.id);

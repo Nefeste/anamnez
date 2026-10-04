@@ -1,11 +1,11 @@
 // «Виртуальный врач» (`docs/05-content.md` §6, `docs/09-testing.md` §3): три стратегии,
 // которыми проверяется база. Шаг разумного врача (`nextStep`) — и нанятый врач своей больницы
 // (spec 2026-09-hired-doctors): тот делает шаги по одному, с порогами своего навыка.
-import type { ContentDb, Exam, Id, Setting } from '../../content/types';
+import type { ContentDb, Exam, Id } from '../../content/types';
 import { Rng } from '../core/rng';
 import { complaintObservations, examFits, runExam } from './exams';
 import { type Belief, contextOf, expectedGain, knownFacts, likelyParams, paramBeliefs, paramGain, posterior } from './infer';
-import { choiceFor, type Plan, possibleFor, SETTING_ORDER, tacticsFor, txAvailable, type Venue, whenHolds } from './plan';
+import { choiceFor, type Plan, possibleFor, settingOf, tacticsFor, txAvailable, type Venue, whenHolds } from './plan';
 import { openRuleExams, ruleExams } from './rules';
 import type { Observation, Patient } from './types';
 
@@ -70,7 +70,8 @@ function askingExam(db: ContentDb, contraindication: Id): Id | undefined {
  * замена); место — по умолчанию или выше, если врач видел красный флаг этого состояния. Скрытый
  * параметр болезни — по тому, что видно (часть 32): смещение на снимке — репозиция, нестабильный
  * перелом — операция; производный — по правилу решения и возрасту `age` (часть 32г): показана КТ
- * при сотрясении — перевод. Операцию выбирают местом «В операционную», не в назначении.
+ * при сотрясении — перевод, а после КТ без крови — дома (часть 40). Операцию выбирают местом «В
+ * операционную», не в назначении.
  */
 export function choosePlan(db: ContentDb, diagnosis: Id, observations: readonly Observation[], age: number, venue: Venue = {}): Plan {
   const base = db.conditions[diagnosis]?.treatment;
@@ -108,17 +109,10 @@ export function choosePlan(db: ContentDb, diagnosis: Id, observations: readonly 
       if (pick && !group.some(c => treatments.includes(c))) treatments.push(pick);
     }
   }
+  // место — по тому, что видно, и по пришедшим результатам (часть 40): после КТ без крови — дома
   const seen = new Set(observations.filter(o => o.shown).map(o => o.f));
-  let setting = t.setting.default;
-  const raise = (s: Setting) => {
-    if (SETTING_ORDER[s] > SETTING_ORDER[setting]) setting = s;
-  };
-  if (t.setting.param) {
-    const s = t.setting.param.map[params[t.setting.param.name]];
-    if (s) raise(s);
-  }
-  if (t.setting.redFlag && (db.conditions[diagnosis].redFlags ?? []).some(f => seen.has(f))) raise(t.setting.redFlag);
-  for (const r of t.setting.risks ?? []) if (known.risks.includes(r.id)) raise(r.setting);
+  const did = new Set(observations.map(o => o.exam));
+  const setting = settingOf(t.setting, db.conditions[diagnosis].redFlags ?? [], { params, has: f => seen.has(f), risk: id => known.risks.includes(id), done: e => did.has(e) });
   return { treatments: [...new Set(treatments)].sort(), setting: choiceFor(setting, venue) };
 }
 

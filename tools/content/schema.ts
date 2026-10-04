@@ -183,6 +183,17 @@ export const conditionSchema = z.strictObject({
        * со смещением — показание к операции относительное (853_1), повязка дома тоже можно
        */
       also: z.array(z.strictObject({ when: z.record(z.string(), z.array(z.string()).min(1)), settings: z.array(setting).min(1) })).min(1).optional(),
+      /**
+       * место, когда пришёл результат одного из `exams` (spec 2026-10-chapter-3, часть 40): вместо
+       * места по параметру — `setting`, вместо красного флага — признаки `flags`. КТ без крови —
+       * сотрясение лечат дома, а оглушённого кладут под наблюдение (734_2, приложение Б); `also` —
+       * как и до обследования
+       */
+      after: z.strictObject({
+        exams: z.array(z.string().regex(/^exam\.[a-z0-9_]+$/)).min(1),
+        setting,
+        flags: z.strictObject({ any: z.array(z.string()).min(1), setting }).optional(),
+      }).optional(),
     }),
   }).optional(),
   /**
@@ -420,7 +431,7 @@ export const riskSchema = z.strictObject({
 // Помещения, аппараты и должности — игровые предметы: цены и размеры — баланс игры. Что
 // каким аппаратом делают — медицинский факт, он записан в записях обследований с источниками.
 
-export const OBJECT_KINDS = ['bed', 'chair', 'desk', 'couch', 'cabinet', 'machine', 'plant', 'sink', 'bench', 'xray', 'table', 'ecg', 'analyzer', 'or_table', 'anesthesia', 'us', 'monitor'] as const;
+export const OBJECT_KINDS = ['bed', 'chair', 'desk', 'couch', 'cabinet', 'machine', 'plant', 'sink', 'bench', 'xray', 'table', 'ecg', 'analyzer', 'or_table', 'anesthesia', 'us', 'monitor', 'ct'] as const;
 const cellSrc = z.tuple([z.number().int().min(0), z.number().int().min(0)]);
 /** «нет лаборатории», «нет лаборанта» — родительный падеж для причин «не работает» */
 const gen = text;
@@ -482,7 +493,7 @@ export const equipmentSchema = z.strictObject({
   /** куда ставят: монитор с дефибриллятором — в смотровую приёмного и в палату интенсивной терапии (часть 38а) */
   rooms: z.array(roomId).min(1),
   /** как выглядит на карте: у каждого вида аппарата свой рисунок (spec 2026-09-living-map) */
-  sprite: z.enum(['ecg', 'analyzer', 'xray', 'or_table', 'anesthesia', 'us', 'monitor']),
+  sprite: z.enum(['ecg', 'analyzer', 'xray', 'or_table', 'anesthesia', 'us', 'monitor', 'ct']),
   /** улучшение другого аппарата: цифровой рентген — плёночного */
   upgradeOf: eqId.optional(),
   /** своё место в помещении — номер из `slots` (стол операционной — под пациентом); занято — первое свободное */

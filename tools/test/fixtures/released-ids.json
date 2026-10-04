@@ -1,6 +1,6 @@
 {
-  "version": "0.3.8",
-  "base": 49,
+  "version": "0.3.9",
+  "base": 50,
   "ids": {
     "achievements": [
       "ach.allergy_10",
@@ -236,6 +236,8 @@
     "equipment": [
       "eq.anesthesia",
       "eq.biochem_analyzer",
+      "eq.ct_16",
+      "eq.ct_64",
       "eq.ecg",
       "eq.hematology_analyzer",
       "eq.immuno_analyzer",
@@ -280,6 +282,7 @@
       "exam.covid_rapid",
       "exam.creatinine",
       "exam.crp",
+      "exam.ct_head",
       "exam.cva_percussion",
       "exam.d_dimer",
       "exam.ecg",
@@ -378,6 +381,7 @@
       "hx.trigger_sting",
       "hx.ulcer",
       "hx.wound_late",
+      "img.ct_blood",
       "img.cxr_hemothorax",
       "img.cxr_hemothorax_large",
       "img.cxr_hyperinflation",
@@ -689,6 +693,7 @@
       "role.therapist"
     ],
     "rooms": [
+      "room.ct",
       "room.ecg",
       "room.emergency",
       "room.icu",
@@ -706,6 +711,7 @@
       "room.xray"
     ],
     "rooms.sizes": [
+      "room.ct/M",
       "room.ecg/S",
       "room.emergency/L",
       "room.emergency/M",

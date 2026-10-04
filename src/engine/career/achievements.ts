@@ -91,7 +91,9 @@ export function caseFacts(db: ContentDb, p: ShiftPatient): CaseFacts {
   const drug = c.plan.treatments.some(id => db.treatments[id]?.kind === 'drug');
   const { id: primary, params } = primaryOf(p.patient);
   const antibiotics = c.plan.treatments.filter(id => db.treatments[id]?.class?.startsWith('antibiotic.'));
-  const recommended = recommendedSetting(db, p.patient);
+  // место — по пришедшим результатам (часть 40): после КТ без крови сотрясение лечат дома
+  const done = p.results.map(r => r.exam);
+  const recommended = recommendedSetting(db, p.patient, done);
   const danger = SETTING_ORDER[recommended] > SETTING_ORDER.home;
   return {
     correct: c.verdict === 'correct',
@@ -101,6 +103,6 @@ export function caseFacts(db: ContentDb, p: ShiftPatient): CaseFacts {
     antibiotic: antibiotics.length > 0,
     antibioticIndicated: antibiotics.length > 0 && antibiotics.every(id => ['firstLine', 'acceptable'].includes(txRole(db, primary, id, params))),
     danger,
-    caught: danger && settingFit(recommended, c.plan.setting, alsoSettings(db, p.patient)) !== 'under',
+    caught: danger && settingFit(recommended, c.plan.setting, alsoSettings(db, p.patient, done)) !== 'under',
   };
 }

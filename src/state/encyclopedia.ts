@@ -233,6 +233,12 @@ function whereLines(db: ContentDb, c: Condition, t: Tactics): string[] {
     const when = whenText(a.when);
     if (when) lines.push(e.whereAlso(when, a.settings.map(x => e.setting[x]).join(', '), flags, risks));
   }
+  // после обследования (часть 40): КТ без крови — дома, при оглушении — в стационар
+  if (s.after) {
+    const exams = s.after.exams.map(id => nameOf(db, id));
+    lines.push(e.whereAfter(exams, e.setting[s.after.setting]));
+    if (s.after.flags) lines.push(e.whereAfterFlags(exams, s.after.flags.any.map(f => nameOf(db, f)), e.setting[s.after.flags.setting]));
+  }
   // без показаний к экстренной операции — наблюдение в палате, не помогло — операция в срок (часть 30в)
   if (c.surgery?.observe !== undefined) lines.push(e.whereObserve(c.surgery.observe));
   if (c.stay) lines.push(e.whereStay(c.stay[0], c.stay[1]));
