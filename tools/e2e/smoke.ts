@@ -642,12 +642,19 @@ try {
   // «мягкий режим» (spec 2026-09-chapter-2, часть 28б): по умолчанию выключен
   check((await page.getByTestId('settings-soft').getAttribute('aria-checked')) === 'false' && (await text(page, 'settings-soft')).includes('перевод в областную больницу'),
     `настройки: мягкий режим — выключен, ${(await text(page, 'settings-soft')).replace(/\n/g, ' · ')}`);
+  // больные (spec 2026-10-variety): по умолчанию — «Реализм», выбор остаётся после перезапуска
+  check((await page.getByTestId('patients-real').getAttribute('aria-checked')) === 'true' && (await text(page, 'patients-varied')).includes('редкие болезни чаще'),
+    `настройки: больные — «Реализм»; ${(await text(page, 'patients-varied')).replace(/\n/g, ' · ')}`);
   await page.getByTestId('settings-vibration').click();
   await page.getByTestId('sound-1').click();
+  await page.getByTestId('patients-varied').click();
   await page.screenshot({ path: join(OUT, '10-settings.png'), fullPage: true });
   await page.goto(`${base}/settings`);
   await page.getByTestId('settings-vibration').waitFor({ timeout: 10_000 });
   check((await vibration()) === 'false' && (await quiet()) === 'true', 'настройки: вибрация и громкость — те же после перезапуска');
+  // «Разнообразие» — тоже; дальше сценарий — на частотах жизни
+  check((await page.getByTestId('patients-varied').getAttribute('aria-checked')) === 'true', 'настройки: «Разнообразие» — то же после перезапуска');
+  await page.getByTestId('patients-real').click();
   await page.getByTestId('settings-vibration').click();
   await page.getByTestId('sound-3').click();
   // размер текста: «Крупный» — шрифт в 1,3 раза больше; вернуть «Обычный»

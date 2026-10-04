@@ -37,7 +37,18 @@ export interface GenContext {
    * нет — инсульт привозят в смотровую приёмного
    */
   walkIn?: boolean;
+  /**
+   * «Разнообразие» из настроек (spec 2026-10-variety, 0.3.11): основное заболевание — по сглаженным
+   * весу записи и сезону (`VARIETY_POWER`); человек и вывод — как в жизни
+   */
+  variety?: boolean;
 }
+
+/**
+ * Степень, в которую с «Разнообразием» берутся вес записи и сезонный множитель (spec
+ * 2026-10-variety): при ½ ОРВИ и грипп остаются по 9–10 % пришедших, при 0 пропадает сезон.
+ */
+export const VARIETY_POWER = 0.25;
 
 /** Возрастная пирамида обращающихся взрослых: [от, до, вес]. Черновик для среза. */
 const AGE_BANDS: [number, number, number][] = [
@@ -80,7 +91,7 @@ export function generatePatient(db: ContentDb, seed: number, ctx: GenContext): P
   });
 
   // Основное заболевание.
-  const primaryId = ctx.primary ?? pickPrimary(db, root.fork('primary'), { sex, age, season: ctx.season, departments: ctx.departments ?? [ctx.department], risks, chronic, walkIn: ctx.walkIn === true }, ctx.carried);
+  const primaryId = ctx.primary ?? pickPrimary(db, root.fork('primary'), { sex, age, season: ctx.season, departments: ctx.departments ?? [ctx.department], risks, chronic, walkIn: ctx.walkIn === true }, ctx.carried, ctx.variety === true);
   const primary = db.conditions[primaryId];
   if (!primary) throw new Error(`generatePatient: unknown condition ${primaryId}`);
 
@@ -166,9 +177,20 @@ export function presentingWeight(c: Condition, who: Omit<Who, 'departments'>): n
   return w;
 }
 
-function pickPrimary(db: ContentDb, rng: Rng, who: Who, carried?: GenContext['carried']): Id {
+/**
+ * Вес для жребия с «Разнообразием» (spec 2026-10-variety): вес записи и сезон — в степени
+ * `VARIETY_POWER`, пол, пик возраста, привычки и хронические болезни — как в жизни. Вывод врача
+ * берёт прежний `presentingWeight`.
+ */
+function variedWeight(c: Condition, who: Omit<Who, 'departments'>): number {
+  const w = presentingWeight(c, who);
+  const base = c.weight * (c.season ? c.season[who.season] : 1);
+  return w > 0 && base > 0 ? (w / base) * base ** VARIETY_POWER : 0;
+}
+
+function pickPrimary(db: ContentDb, rng: Rng, who: Who, carried?: GenContext['carried'], variety = false): Id {
   const ids = sortedKeys(db.conditions).filter(id => who.departments.includes(db.conditions[id].department) && !(who.walkIn && db.conditions[id].arrival === 'ambulance'));
-  const base = ids.map(id => presentingWeight(db.conditions[id], who));
+  const base = ids.map(id => (variety ? variedWeight : presentingWeight)(db.conditions[id], who));
   // скорая: вес ещё и по тяжести; ничего из того, что везут, у этого человека не бывает — как пришёл сам
   const carriedBy = carried && ids.map((id, i) => base[i] * carriedWeight(db.conditions[id], carried));
   const w = carriedBy && carriedBy.some(x => Math.round(x * 100) > 0) ? carriedBy : base;

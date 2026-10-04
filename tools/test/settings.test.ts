@@ -13,9 +13,9 @@ beforeEach(() => {
 });
 
 describe('настройки', () => {
-  test('файла нет — умолчания: звук полный, фон и вибрация включены, автопауза тоже, оговорка не прочитана, текст обычный, тема как в телефоне, мягкий режим выключен', async () => {
+  test('файла нет — умолчания: звук полный, фон и вибрация включены, автопауза тоже, оговорка не прочитана, текст обычный, тема как в телефоне, мягкий режим выключен, больные — как в жизни', async () => {
     await loadSettings();
-    expect(settings()).toEqual({ sound: 1, ambience: true, vibration: true, pauseOnRed: true, pauseOnResults: true, disclaimerAccepted: false, textScale: 1, theme: 'system', softMode: false });
+    expect(settings()).toEqual({ sound: 1, ambience: true, vibration: true, pauseOnRed: true, pauseOnResults: true, disclaimerAccepted: false, textScale: 1, theme: 'system', softMode: false, variety: false });
   });
 
   test('поменяли — записано; после «перезапуска» — те же', async () => {

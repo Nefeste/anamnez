@@ -2,6 +2,8 @@
 // Три стратегии на одних и тех же пациентах: разумный, ленивый, «всё подряд»; и нанятый врач
 // своей больницы по навыку 1–5 (spec 2026-09-hired-doctors) — тот же разумный с порогами навыка.
 // Флаги: --n 10000 (пациентов), --season winter|spring|summer|autumn|all, --json (для CI),
+// --variety — больные с «Разнообразием» (spec 2026-10-variety): основное заболевание по сглаженным
+// частотам, вывод врача — по частотам жизни; пороги — для сведения.
 // --departments therapy,surgery,trauma — больница с приёмным (spec 2026-09-chapter-2, часть 30):
 // пациенты и кандидаты из этих отделений, пороги разумного врача — и у каждого отделения (часть
 // 35); нет — амбулатория, одна терапия. Порог не выполнен — выход с кодом 1.
@@ -21,6 +23,7 @@ const arg = (name: string, def: string) => {
 const N = Number(arg('n', '3000'));
 const seasonArg = arg('season', 'all');
 const asJson = process.argv.includes('--json');
+const variety = process.argv.includes('--variety');
 const threshold = Number(arg('threshold', '0.9'));
 /** нанятый врач по навыку — на первых стольких пациентах: навык 5 берётся из прогона разумного */
 const HN = Math.min(N, Number(arg('hired-n', '1000')));
@@ -76,7 +79,7 @@ function decidedAt(patient: Patient, minutes: number): { copy: Patient; before: 
 const t0 = performance.now();
 for (let i = 0; i < N; i++) {
   const season = seasons[i % seasons.length];
-  const patient = generatePatient(db, 9_000_000 + i, { department, departments, season });
+  const patient = generatePatient(db, 9_000_000 + i, { department, departments, season, ...(variety ? { variety: true } : {}) });
   const truth = patient.truth.conditions[0].id;
   const cond = db.conditions[truth];
   const present = new Set(patient.truth.findings.map(f => f.f));
@@ -132,7 +135,7 @@ const hired: Hired[] = SKILLS.map(skill => {
   const cases: Case[] = [];
   for (let i = 0; i < HN; i++) {
     const season = seasons[i % seasons.length];
-    const patient = generatePatient(db, 9_000_000 + i, { department, departments, season });
+    const patient = generatePatient(db, 9_000_000 + i, { department, departments, season, ...(variety ? { variety: true } : {}) });
     const truth = patient.truth.conditions[0].id;
     const forgot = Rng.seeded(patient.seed).fork('forget');
     const r = runDoctor(db, patient, 'rational', Rng.seeded(patient.seed).fork('doctor:rational'), {
@@ -235,12 +238,14 @@ if (departments.length > 1) {
     thresholds[`rationalBalanced:${k}`] = { value: x.balanced, need: '≥ 85', ok: x.balanced >= 85, info: few };
   }
 }
+// с разнообразием (spec 2026-10-variety) пороги — для сведения: они про частоты жизни
+if (variety) for (const t of Object.values(thresholds)) t.info ??= 'больные с разнообразием';
 const passed = Object.values(thresholds).every(t => t.ok || t.info);
 
 if (asJson) {
   console.log(JSON.stringify({ contentVersion: db.contentVersion, contentHash: db.hash, departments, patients: N, seasons, threshold, totalMs: total, report, hired: hiredReport, thresholds, passed }, null, 2));
 } else {
-  console.log(`База ${db.contentVersion} (${db.hash}), отделения ${departments.join(', ')}, пациентов ${N}, сезоны: ${seasons.join(', ')}, порог разумного врача ${threshold}`);
+  console.log(`База ${db.contentVersion} (${db.hash}), отделения ${departments.join(', ')}, пациентов ${N}, сезоны: ${seasons.join(', ')}, порог разумного врача ${threshold}${variety ? ', больные — с разнообразием' : ''}`);
   console.log(`Время: ${(total / 1000).toFixed(2)} с на всех трёх врачей (${(total / N).toFixed(2)} мс на пациента)\n`);
   const names: Record<Strategy, string> = { rational: 'разумный', lazy: 'ленивый', shotgun: 'всё подряд' };
   for (const r of report) {
