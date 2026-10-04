@@ -1,7 +1,7 @@
 // «Виртуальный врач» (`docs/05-content.md` §6, `docs/09-testing.md` §3): три стратегии,
 // которыми проверяется база. Шаг разумного врача (`nextStep`) — и нанятый врач своей больницы
 // (spec 2026-09-hired-doctors): тот делает шаги по одному, с порогами своего навыка.
-import type { ContentDb, Id, Setting } from '../../content/types';
+import type { ContentDb, Exam, Id, Setting } from '../../content/types';
 import { Rng } from '../core/rng';
 import { complaintObservations, examFits, runExam } from './exams';
 import { type Belief, contextOf, expectedGain, knownFacts, likelyParams, paramBeliefs, paramGain, posterior } from './infer';
@@ -90,8 +90,13 @@ export function choosePlan(db: ContentDb, diagnosis: Id, observations: readonly 
   }
   // обязательная профилактика по вероятным значениям (часть 32г-2): о прививках спрашивает, пока не уверен
   treatments.push(...(t.prevent ?? []).filter(ok));
-  // обязательное по вероятным значениям (часть 38б): кислород, если измеренная сатурация ниже порога
-  treatments.push(...(t.require ?? []).filter(ok).filter(tx => !treatments.includes(tx)));
+  // обязательное по вероятным значениям (часть 38б): кислород, если измеренная сатурация ниже порога;
+  // из группы (часть 39в) — первое, что можно: фондапаринукс, без него — эноксапарин
+  for (const g of t.require ?? []) {
+    const group = typeof g === 'string' ? [g] : g;
+    const pick = group.find(ok);
+    if (pick && !group.some(tx => treatments.includes(tx))) treatments.push(pick);
+  }
   // обязательное и при переводе (часть 39а): тромболизис в окне, если здесь его можно сделать
   treatments.push(...(t.beforeTransfer ?? []).filter(ok).filter(tx => !treatments.includes(tx)));
   // спутники назначенного (часть 39а): тромболизис — с клопидогрелом и антикоагулянтом; из группы — первое,
@@ -124,6 +129,23 @@ export function choosePlan(db: ContentDb, diagnosis: Id, observations: readonly 
  */
 export function targetExams(db: ContentDb, patient: Patient): Id[] {
   return [...new Set(Object.values(db.targets).filter(t => t.complaints.some(f => patient.complaints.includes(f))).flatMap(t => t.exams))].sort();
+}
+
+/**
+ * Срок решения по тому, что показали обследования (spec 2026-10-chapter-3, часть 39в): у сроков на
+ * назначение и место — меньший; подъём ST — тромболизис в первые 10 минут, перевод в первые 30. Нет
+ * такой находки — undefined. Обследований, которые дольше срока, разумный врач не ждёт: решение о
+ * тромболизисе и переводе не откладывают до тропонина (`157_5`, раздел 2.3).
+ */
+export function decisionLimit(db: ContentDb, obs: readonly Observation[]): number | undefined {
+  const shown = new Set(obs.filter(o => o.shown).map(o => o.f));
+  const limits = Object.values(db.targets).filter(t => (t.treatments.length > 0 || t.settings.length > 0) && t.findings.some(f => shown.has(f))).map(t => t.minutes);
+  return limits.length > 0 ? Math.min(...limits) : undefined;
+}
+
+/** Через сколько минут после назначения придёт последний результат: процедура, анализ, описание, повторный забор. */
+export function examMinutes(e: Exam): number {
+  return e.time.procedure + (e.time.turnaround ?? 0) + (e.time.report ?? 0) + (e.repeat?.minutes ?? 0);
 }
 
 /**
@@ -256,8 +278,10 @@ function confirmBeforeInvasive(db: ContentDb, diagnosis: Id, obs: readonly Obser
  * спрашивают мужчину и женщину 64 лет), и план.
  */
 export function nextStep(db: ContentDb, patient: Patient, obs: readonly Observation[], done: readonly Id[], phase: DoctorPhase, options: StepOptions): { step: DoctorStep; phase: DoctorPhase } {
-  // о месячных и беременности мужчину не спрашивают: только то, что пациенту подходит
-  const opt = { ...options, exams: options.exams.filter(id => examFits(db.exams[id], patient)) };
+  // о месячных и беременности мужчину не спрашивают: только то, что пациенту подходит; есть срок
+  // решения (часть 39в) — то, что успеет до него
+  const limit = decisionLimit(db, obs);
+  const opt = { ...options, exams: options.exams.filter(id => examFits(db.exams[id], patient) && (limit === undefined || examMinutes(db.exams[id]) <= limit)) };
   let now = phase;
   if (now.diagnosis === undefined) {
     // срок по жалобе (часть 37) — первым делом: при давящей боли в груди ЭКГ, ещё до расспроса

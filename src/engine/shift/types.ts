@@ -51,18 +51,24 @@ export type Mode = 'shift' | 'sandbox' | 'campaign' | 'single';
 export type VisitKind = 'appointment' | 'walkIn' | 'return' | 'ambulance';
 export type ReturnReason = 'worse' | 'reaction' | 'unchanged';
 
-/** Результаты одного обследования; step — номер действия врача, за которое они пришли. */
+/**
+ * Результаты одного обследования; step — номер действия врача, за которое они пришли. `repeat` —
+ * повторный забор того же назначения (spec 2026-10-chapter-3, часть 39в): тропонин через час.
+ */
 export interface ResultBatch {
   exam: Id;
   obs: Observation[];
   at: number;
   step: number;
+  repeat?: true;
 }
 
 export interface PendingResult {
   exam: Id;
   readyAt: number;
   obs: Observation[];
+  /** повторный забор (часть 39в) */
+  repeat?: true;
   /** где делают (помещение больницы) и когда сама процедура — для карты; нет — в кабинете врача */
   room?: string;
   start?: number;

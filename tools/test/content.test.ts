@@ -169,7 +169,7 @@ describe('каталог больницы', () => {
     expect(db.rooms['room.lab'].exams).toContain('exam.cbc');
     expect(db.rooms['room.procedure'].collects).toContain('exam.cbc');
     expect(db.rooms['room.lab'].equipment).toContain('eq.biochem_analyzer');
-    expect(db.equipment['eq.immuno_analyzer'].exams).toEqual(['exam.d_dimer', 'exam.tsh']);
+    expect(db.equipment['eq.immuno_analyzer'].exams).toEqual(['exam.d_dimer', 'exam.troponin_hs', 'exam.tsh']);
     expect(db.equipment['eq.xray_digital'].upgradeOf).toBe('eq.xray_analog');
     expect(db.roles['role.nurse'].rooms).toEqual(['room.ecg', 'room.emergency', 'room.icu', 'room.procedure', 'room.triage', 'room.ward']);
     // палата (spec 2026-09-chapter-2, часть 26): койки — места лежащих
@@ -418,8 +418,9 @@ describe('каталог больницы', () => {
     expect(unknown.some(e => e.includes('exam.tsh: аппарат eq.immuno не найден'))).toBe(true);
     const foreign = broken(d => {
       edit(d, 'exams/tsh.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.ecg]');
-      // D-димер (часть 33а) — и на биохимическом анализаторе
+      // D-димер (часть 33а) — и на биохимическом анализаторе; тропонин (часть 39в) — тоже на нём
       edit(d, 'exams/d_dimer.yaml', 'equipment: [eq.biochem_analyzer, eq.immuno_analyzer]', 'equipment: [eq.biochem_analyzer]');
+      edit(d, 'exams/troponin_hs.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.biochem_analyzer]');
     });
     expect(foreign.some(e => e.includes('exam.tsh: аппарат eq.ecg стоит в room.ecg'))).toBe(true);
     // и тогда иммунохимическим анализатором ничего не делают
@@ -516,6 +517,24 @@ describe('каталог больницы', () => {
     expect(has(second, 'cond.acs: исход перевода — нет смертности для killip=iv')).toBe(true);
     expect(has(second, 'cond.acs: исход перевода — у killip=i нижняя граница выше верхней')).toBe(true);
     expect(has(second, 'срок от находки — с находками и словами «от чего» (texts.from, texts.after)')).toBe(true);
+  });
+
+  test('тропонин 0/1 час и обязательное «одно из» (часть 39в): повторный забор — у анализа и своими проверками; группа — из базы', () => {
+    const E = 'exams/troponin_hs.yaml';
+    const C = 'conditions/therapy/acs.yaml';
+    const has = (errors: string[], text: string) => errors.some(e => e.includes(text));
+    const first = broken(d => {
+      edit(d, E, '  checks: [lab.troponin_rise]', '  checks: [lab.troponin_rose]');
+      edit(d, C, 'require: [tx.clopidogrel, [tx.fondaparinux, tx.enoxaparin_acs, tx.heparin_iv]]', 'require: [tx.clopidogrel, [tx.fondaparinox, tx.enoxaparin_acs]]');
+    });
+    expect(has(first, 'exam.troponin_hs: повторный забор проверяет lab.troponin_rose, а обследование — нет')).toBe(true);
+    expect(has(first, 'cond.acs: обязательное тактики по параметру №7 — лечение tx.fondaparinox не найдено')).toBe(true);
+    const second = broken(d => {
+      edit(d, E, 'kind: lab', 'kind: functional');
+      edit(d, E, '  checks: [lab.troponin_rise]', '  checks: [lab.troponin_high, lab.troponin_rise]');
+    });
+    expect(has(second, 'exam.troponin_hs: повторный забор — у анализа (kind: lab)')).toBe(true);
+    expect(has(second, 'exam.troponin_hs: повторный забор проверяет всё — первому нечего показать')).toBe(true);
   });
 
   test('палата интенсивной терапии (часть 38а): койки есть, мест под мониторы не меньше коек, не палата; аппарат — в разных помещениях, в ПИТ без своего места', () => {

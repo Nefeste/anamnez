@@ -3,7 +3,7 @@
 // Здесь только вид: разделы, статьи, поиск; экраны — src/app/encyclopedia. База приходит
 // параметром, как у движка: тесты подставляют ту же собранную базу.
 import {
-  type Condition, type ContentDb, type Equipment, type Exam, type Finding, type Id, type Link, type P, type Risk, type RoomType, type Rule, type Score, type StaffRole, SYSTEMS,
+  type Condition, type ContentDb, type Equipment, type Exam, type Finding, type Id, type Link, membersOf, type P, type Risk, type RoomType, type Rule, type Score, type StaffRole, SYSTEMS,
   type Tactics, type Tip, type Treatment,
 } from '@/content/types';
 import { surgeriesOf } from '@/engine/med/plan';
@@ -282,7 +282,15 @@ function conditionArticle(db: ContentDb, c: Condition): Article {
 
   const t = c.treatment;
   if (t) {
-    const rows = TACTICS.map(k => ({ label: e[k.label], refs: (t[k.key] ?? []).map(id => ref(db, id)) })).filter(r => r.refs.length > 0);
+    // строки списка тактики: каждое — одной строкой, группа «одно из» (часть 39в) — своей
+    const tacticRows = (label: string, list: readonly (Id | Id[])[] | undefined): Row[] => {
+      const each = (list ?? []).filter((g): g is Id => typeof g === 'string');
+      return [
+        ...(each.length > 0 ? [{ label, refs: each.map(id => ref(db, id)) }] : []),
+        ...(list ?? []).filter((g): g is Id[] => typeof g !== 'string').map(g => ({ label: e.oneOf(label), refs: g.map(id => ref(db, id)) })),
+      ];
+    };
+    const rows = TACTICS.flatMap(k => tacticRows(e[k.label], t[k.key]));
     if (c.surgery) rows.unshift({ label: e.surgeryRow, refs: [ref(db, c.surgery.tx)] });
     // операция по скрытому параметру (часть 32б): «Операция, без смещения — остеосинтез винтами»
     for (const [i, b] of (c.surgery?.byParam ?? []).entries()) {
@@ -293,10 +301,7 @@ function conditionArticle(db: ContentDb, c: Condition): Article {
     for (const b of t.byParam ?? []) {
       const when = whenText(b.when);
       if (!when) continue;
-      for (const k of TACTICS) {
-        const ids = b[k.key] ?? [];
-        if (ids.length > 0) rows.push({ label: e.byParamRow(e[k.label], when), refs: ids.map(id => ref(db, id)) });
-      }
+      for (const k of TACTICS) rows.push(...tacticRows(e.byParamRow(e[k.label], when), b[k.key]));
     }
     blocks.push({ key: 'treatment', title: e.treatment, rows });
     blocks.push({ key: 'where', title: e.whereTitle, text: whereLines(db, c, t) });
@@ -391,10 +396,11 @@ function treatmentArticle(db: ContentDb, x: Treatment): Article {
   const blocks: Block[] = [{ key: 'what', title: e.what, text: [x.texts.hint.ru] }];
   const conditions = Object.values(db.conditions);
   // роль по скрытому параметру (часть 32) — с условием: «Первая линия при — Перелом… (со смещением)»
-  const byParam = (c: Condition, key: (typeof TACTICS)[number]['key']) => (c.treatment?.byParam ?? []).filter(b => (b[key] ?? []).includes(x.id)).map(b => ref(db, c.id, whenText(b.when)));
+  // и из группы «одно из» обязательного (часть 39в)
+  const byParam = (c: Condition, key: (typeof TACTICS)[number]['key']) => (c.treatment?.byParam ?? []).filter(b => membersOf(b[key]).includes(x.id)).map(b => ref(db, c.id, whenText(b.when)));
   const rows = TACTICS.flatMap(k => (k.forLabel ? [{
     label: e[k.forLabel],
-    refs: [...conditions.filter(c => (c.treatment?.[k.key] ?? []).includes(x.id)).map(c => ref(db, c.id)), ...conditions.flatMap(c => byParam(c, k.key))].sort(byTitle),
+    refs: [...conditions.filter(c => membersOf(c.treatment?.[k.key]).includes(x.id)).map(c => ref(db, c.id)), ...conditions.flatMap(c => byParam(c, k.key))].sort(byTitle),
   }] : [])).filter(r => r.refs.length > 0);
   if (rows.length > 0) blocks.push({ key: 'usedAs', title: e.usedAs, rows });
   if (x.contraindications.length > 0) {

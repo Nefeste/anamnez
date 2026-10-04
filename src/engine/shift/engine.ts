@@ -793,13 +793,22 @@ function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pc
   const cost = Math.round((e.time.procedure * MIN * pct) / 100);
   // анализ: пока лаборатория готовит, — с поправкой лаборатории
   const wait = room ? Math.round((after * MIN * roomPct) / 100) : after * MIN;
-  if (after > 0) addPending(s, p, examId, s.t + cost + wait, obs, room ? { room: room.id, start: s.t, end: s.t + cost } : undefined);
-  else p.results.push({ exam: examId, obs, at: s.t + cost, step: p.step });
+  // повторный забор (spec 2026-10-chapter-3, часть 39в): его проверки — через `minutes` минут после
+  // первого, со своим временем анализа; тропонин по алгоритму 0/1 час
+  const again = e.repeat?.checks ?? [];
+  const first = obs.filter(o => !again.includes(o.f));
+  const second = obs.filter(o => again.includes(o.f));
+  if (after > 0) addPending(s, p, examId, s.t + cost + wait, first, room ? { room: room.id, start: s.t, end: s.t + cost } : undefined);
+  else p.results.push({ exam: examId, obs: first, at: s.t + cost, step: p.step });
+  if (e.repeat && second.length > 0) {
+    const draw = s.t + e.repeat.minutes * MIN;
+    addPending(s, p, examId, draw + cost + wait, second, room ? { room: room.id, start: draw, end: draw + cost } : undefined, true);
+  }
   return cost;
 }
 
-function addPending(s: ShiftState, p: ShiftPatient, examId: Id, readyAt: number, obs: Observation[], at?: { room: string; start: number; end: number }) {
-  p.pending.push({ exam: examId, readyAt, obs, ...(at ?? {}) });
+function addPending(s: ShiftState, p: ShiftPatient, examId: Id, readyAt: number, obs: Observation[], at?: { room: string; start: number; end: number }, repeat?: true) {
+  p.pending.push({ exam: examId, readyAt, obs, ...(at ?? {}), ...(repeat ? { repeat } : {}) });
   schedule(s, readyAt, { kind: 'result', id: p.id });
 }
 
@@ -1650,7 +1659,7 @@ function results(s: ShiftState, p: ShiftPatient, notices: Notice[]) {
   const ready = p.pending.filter(x => x.readyAt <= s.t).sort((a, b) => a.readyAt - b.readyAt || (a.exam < b.exam ? -1 : 1));
   if (ready.length === 0) return;
   p.pending = p.pending.filter(x => x.readyAt > s.t);
-  for (const x of ready) p.results.push({ exam: x.exam, obs: x.obs, at: x.readyAt, step: p.step });
+  for (const x of ready) p.results.push({ exam: x.exam, obs: x.obs, at: x.readyAt, step: p.step, ...(x.repeat ? { repeat: x.repeat } : {}) });
   if (p.status === 'away' && p.pending.length === 0 && p.by) {
     // пациент нанятого врача ждёт его, а не общей очереди: врач позовёт, когда освободится
     p.status = 'waiting';

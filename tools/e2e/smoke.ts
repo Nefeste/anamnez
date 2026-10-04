@@ -1389,6 +1389,57 @@ try {
   await page.waitForTimeout(500);
   await page.screenshot({ path: join(OUT, '17-rsc-outcome.png'), fullPage: true });
   await page.getByTestId('shift-to-queue').click();
+
+  // ОКС без подъёма ST (spec 2026-10-chapter-3, часть 39в): тропонин по алгоритму 0/1 час — одно
+  // назначение, два результата; пока второго нет — «будет в …»; прирост подтверждает инфаркт, правило
+  // («Студент») — коронарография в первые сутки, перевод; в разборе — без «не назначено»
+  const nste = bedsideSave(db => {
+    for (let seed = 9300; ; seed++) {
+      const x = generatePatient(db, seed, { department: 'dept.therapy', season: 'winter', primary: 'cond.acs', params: { type: 'nste', mi: 'yes', killip: 'i' } });
+      // возраст — как у ОКС в базе (с 35 лет): иначе вывод «Студента» его не предложит; сатурация не
+      // ниже 90 — без обязательного кислорода
+      if (x.age >= 45 && x.complaints.includes('sym.chest_pain_pressing') && x.truth.risks.length === 0 && x.truth.conditions[0].params.spo2_below90 === 'no') return x;
+    }
+  });
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', nste.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId(`ambulance-${nste.id}`).waitFor({ timeout: 15_000 });
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId(`ambulance-${nste.id}`).click();
+  await page.getByTestId(`sort-${nste.scale}`).click();
+  await page.getByTestId('handover-sheet').waitFor({ state: 'detached', timeout: 5000 });
+  await page.getByTestId(`queue-${nste.id}`).click();
+  await visible(page, 'visit-decide').waitFor({ timeout: 10_000 });
+  await page.getByTestId('tab-order').click();
+  await page.getByTestId('exam-exam.troponin_hs').click();
+  await page.getByTestId('done-exam.troponin_hs').waitFor({ timeout: 10_000 });
+  const tropWait = await text(page, 'done-exam.troponin_hs');
+  check(tropWait.includes('Будет в'), `тропонин: ждём — «${tropWait.replace(/\n/g, ' · ').slice(0, 120)}»`);
+  // ждать — до первого результата, потом до второго (привезённая скорая обрывает ожидание — ещё раз)
+  for (let i = 0; i < 8 && (await page.getByTestId('visit-wait').count()) > 0; i++) await page.getByTestId('visit-wait').click();
+  const tropDone = await text(page, 'done-exam.troponin_hs');
+  check(/Через час тропонин T вырос на \d+\sнг\/л — 5 и больше/.test(tropDone) && /Тропонин T \d+\sнг\/л — (52 и выше|ниже 12)/.test(tropDone),
+    `тропонин 0/1 час: «${tropDone.replace(/\n/g, ' · ').slice(0, 220)}»`);
+  const ruleLine = await text(page, 'rule-rule.acs_invasive');
+  check(ruleLine.startsWith('Коронарография в первые сутки при ОКС. Коронарография в первые сутки — перевод в сосудистый центр'), `правило коронарографии: «${ruleLine.slice(0, 160)}»`);
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(OUT, '18-troponin.png'), fullPage: true });
+  await visible(page, 'visit-decide').click();
+  await page.getByTestId('dx-cond.acs').click();
+  await page.getByTestId('decision-to-plan').click();
+  for (const tx of ['tx.aspirin_acs', 'tx.nitroglycerin', 'tx.enoxaparin_acs']) await page.getByTestId(`tx-${tx}`).click();
+  await page.getByTestId('setting-ambulance').click();
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-outcome').waitFor({ timeout: 10_000 });
+  // замечаний разбора о лечении нет: клопидогрел перед коронарографией не дали, антикоагулянт — облегчает
+  const nsteReview = await page.locator('body').innerText();
+  check(!/не назначено|здесь не показано/i.test(nsteReview), `ОКС без подъёма ST, перевод: разбор — «${nsteReview.replace(/\n/g, ' · ').slice(0, 260)}»`);
+  await page.getByTestId('shift-to-queue').click();
   // операционная (spec 2026-09-chapter-2, часть 28): у вас пациент с аппендицитом — в решении
   // «В операционную» с операцией и койками; итог приёма — операция и палата; на обходе —
   // «идёт операция» и выписать нельзя; вечером — в итогах дня операционная
