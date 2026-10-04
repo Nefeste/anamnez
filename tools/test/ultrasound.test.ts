@@ -85,11 +85,11 @@ describe('кабинет УЗИ: где можно сделать', () => {
       callPatient(shiftView().queue[0].id);
       const v = shiftCaseView()!;
       // УЗИ почек (часть 30г) — в том же кабинете; тропонин (часть 39в) — кровь в смотровой приёмного, её нет;
-      // кабинета КТ тоже нет (часть 40)
+      // кабинета КТ тоже нет (часть 40), КТ-ангиография — там же (часть 41а)
       expect(v.unavailable).toEqual({
         [US]: T.sandbox.examBlock.none('кабинета УЗИ'), 'exam.us_kidney': T.sandbox.examBlock.none('кабинета УЗИ'), 'exam.us_leg_arteries': T.sandbox.examBlock.none('кабинета УЗИ'),
         'exam.us_leg_veins': T.sandbox.examBlock.none('кабинета УЗИ'), 'exam.troponin_hs': T.sandbox.examBlock.none('смотровой приёмного'),
-        'exam.ct_head': T.sandbox.examBlock.none('кабинета КТ'),
+        'exam.ct_head': T.sandbox.examBlock.none('кабинета КТ'), 'exam.cta_head': T.sandbox.examBlock.none('кабинета КТ'),
       });
     });
   });

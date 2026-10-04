@@ -120,11 +120,26 @@ export interface Tactics {
   };
 }
 
-/** Производный параметр по числу (часть 38б): «yes», если значение признака `f` у пациента ниже `below`. */
+/**
+ * Производный параметр по числу (часть 38б): «yes», если значение признака `f` у пациента ниже
+ * `below`. `clock` (spec 2026-10-chapter-3, часть 41а) — с ходом времени: к часам от начала
+ * прибавляются часы от прихода до решения — окно тромболизиса закрывается, пока идёт обследование.
+ */
 export interface DerivedByValue {
   f: Id;
   below: number;
+  clock?: true;
 }
+
+/**
+ * Производный параметр по другим параметрам (часть 41а): «yes», если у каждого из `all` — одно из
+ * названных значений; тромбэктомия — окклюзия, NIHSS 6 и больше и меньше 6 часов от начала.
+ */
+export interface DerivedByParams {
+  all: Record<string, string[]>;
+}
+
+export type Derived = Id | DerivedByValue | DerivedByParams;
 
 /**
  * Часов от начала болезни до прихода (spec 2026-10-chapter-3, часть 39а): интервалы — верхняя
@@ -300,6 +315,8 @@ export interface Condition {
   presenting: boolean;
   /** бывает без жалоб — находят на профосмотре; остальные приходят с заметным симптомом */
   checkup?: boolean;
+  /** приходят только со скорой (spec 2026-10-chapter-3, часть 41а): инсульт привозят в смотровую приёмного */
+  arrival?: 'ambulance';
   /** относительный вес распространённости (из полосы) */
   weight: number;
   age: { min: number; max: number; peak?: [number, number] };
@@ -320,7 +337,7 @@ export interface Condition {
    * для вывода, пока признаки правила не известны. Порог на измерении (spec 2026-10-chapter-3,
    * часть 38б) — «yes», если число признака у пациента ниже порога: сатурация ниже 90 %
    */
-  derived?: Record<string, Id | DerivedByValue>;
+  derived?: Record<string, Derived>;
   stages: Stage[];
   /** в какие дни болезни обычно обращаются: [от, до] */
   presentation?: [number, number];
@@ -344,6 +361,11 @@ export interface Condition {
   untreated?: { p: P; days: [number, number]; when?: Record<string, string[]> };
   /** в стационаре при действенном лечении: через сколько суток можно выписывать */
   stay?: [number, number];
+  /**
+   * острый период проходит в стационаре и без действия на причину (часть 41а): инсульт в ПИТ
+   * стабилизируется к сроку `stay`, последствия остаются
+   */
+  settles?: boolean;
   /** лечат операцией (часть 28): какой и за сколько часов от поступления, чтобы не поздно */
   /** срок `window` часов — от поступления или, с `from: 'onset'`, от начала болезни (часть 30) */
   surgery?: ConditionSurgery;
@@ -881,6 +903,8 @@ export interface Target {
   treatments: Id[];
   settings: Setting[];
   from: 'arrival' | 'finding';
+  /** только тем, кто остаётся у нас (часть 41а): тест глотания — в палате, ПИТ, операционной */
+  stays?: true;
   minutes: number;
   /** `from` и `after` — от чего срок: «от ЭКГ с подъёмом ST», «после ЭКГ с подъёмом ST» (у отсчёта от находки) */
   texts: { hint: Text; from?: Text; after?: Text };

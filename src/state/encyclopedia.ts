@@ -316,6 +316,8 @@ function conditionArticle(db: ContentDb, c: Condition): Article {
   const course: string[] = [];
   // течение может зависеть от скрытого параметра (часть 30д): «при неосложнённом — проходит само»
   if (c.selfLimiting) course.push(c.selfLimitingWhen ? e.selfLimitingIf(whenText(c.selfLimitingWhen) ?? '') : e.selfLimiting);
+  // острый период проходит в стационаре (часть 41а): у инсульта — под наблюдением, последствия могут остаться
+  if (c.settles) course.push(e.settles);
   if (c.untreated && c.untreated.p > 0) course.push(e.untreated(e.band[bandOf(c.untreated.p)], c.untreated.days[0], c.untreated.days[1], whenText(c.untreated.when)));
   const x = c.complication;
   if (x?.after !== undefined) course.push(e.complicationAfter(x.name.ru, x.after, whenText(x.when)));

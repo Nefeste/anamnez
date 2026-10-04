@@ -75,13 +75,18 @@ export function minutesTo(p: Pick<ShiftPatient, 'arriveT' | 'results'>, t: Targe
   return at === Infinity ? undefined : Math.round((at - start) / 60);
 }
 
+/** Остаётся у нас (часть 41а): в палате, ПИТ или операционной; переведённому срок — там, куда везут. */
+const STAYS: readonly Setting[] = ['admit', 'icu', 'surgery'];
+
 /**
  * Сроки закрытого приёма. Срок на назначение или место — только тем, кому его сделали (часть 39б):
  * тромболизис, которого не назначили, — строка «Не сделано до перевода» (часть 39а), а не второй
- * штраф сроком; перевод — тем, кого перевели.
+ * штраф сроком; перевод — тем, кого перевели. Срок «только остающимся» (часть 41а: тест глотания) —
+ * тем, кого оставили у себя.
  */
 export function targetResults(db: ContentDb, p: Seen & Pick<ShiftPatient, 'arriveT'>, at: TargetPlace, decision?: TargetDecision): TargetResult[] {
   return targetsFor(db, p, at)
+    .filter(t => !t.stays || (decision !== undefined && STAYS.includes(decision.plan.setting)))
     .filter(t => t.exams.length > 0 || (decision !== undefined && decided(t, decision)))
     .map(t => {
       const minutes = minutesTo(p, t, decision);

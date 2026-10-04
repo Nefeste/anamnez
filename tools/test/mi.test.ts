@@ -175,11 +175,11 @@ describe('правило «Можно ли тромболизис»', () => {
 });
 
 describe('тромболизис у постели', () => {
-  test('только под монитором с дефибриллятором; остальное лечение — где угодно', () => {
+  test('только под монитором с дефибриллятором — и при инсульте (часть 41а); остальное лечение — где угодно', () => {
     expect(txAvailable(db, LYSIS)).toBe(false);
     expect(txAvailable(db, LYSIS, BAY)).toBe(true);
     expect(txAvailable(db, LYSIS, { bedside: ['eq.ecg'] })).toBe(false);
-    expect(Object.values(db.treatments).filter(t => !txAvailable(db, t.id)).map(t => t.id)).toEqual([LYSIS]);
+    expect(Object.values(db.treatments).filter(t => !txAvailable(db, t.id)).map(t => t.id)).toEqual([LYSIS, 'tx.thrombolysis_stroke']);
   });
 
   test('в карте: без монитора у постели кнопка серая и сказано почему; под монитором — обычная', () => {
@@ -188,8 +188,8 @@ describe('тромболизис у постели', () => {
       version: 0, patient: p, clock: 600, minutesSpent: 0, money: 0, step: 0, arrived: [], pending: [], meanwhile: [], done: [],
       draft: { treatments: [], setting: 'transfer' }, ...(bedsideEquipment ? { bedsideEquipment } : {}),
     }).treatments.find(x => x.id === LYSIS)!;
-    expect(view()).toEqual({ id: LYSIS, name: 'Тромболизис', warning: 'У постели нет монитора с дефибриллятором', disabled: true });
-    expect(view([MONITOR])).toEqual({ id: LYSIS, name: 'Тромболизис', warning: undefined });
+    expect(view()).toEqual({ id: LYSIS, name: 'Тромболизис при инфаркте', warning: 'У постели нет монитора с дефибриллятором', disabled: true });
+    expect(view([MONITOR])).toEqual({ id: LYSIS, name: 'Тромболизис при инфаркте', warning: undefined });
     // на обходе — по аппаратам у койки: в палате монитора нет, в ПИТ — есть
     const at = (bed: Id[]) => treatmentGroupsFor([], bed).flatMap(g => g.items).find(x => x.id === LYSIS)!.disabled;
     expect([at([]), at([MONITOR])]).toEqual([true, undefined]);
@@ -211,7 +211,7 @@ describe('тромболизис у постели', () => {
     expect(bay.ev.beforeTransferMissing).toEqual([LYSIS]);
     const note = bay.score.notes.find(n => n.code === 'tx.beforeTransferMissing')!;
     expect(note).toEqual({ code: 'tx.beforeTransferMissing', tx: LYSIS, when: { type: ['stemi'], early: ['yes'] } });
-    expect(noteText(note)).toBe('Не сделано до перевода: тромболизис — обязательно при инфаркте с подъёмом ST и в первые 12 часов от начала симптомов');
+    expect(noteText(note)).toBe('Не сделано до перевода: тромболизис при инфаркте — обязательно при инфаркте с подъёмом ST и в первые 12 часов от начала симптомов');
     expect([bay.score.treatment, bay.score.safety]).toEqual(['C', 'C']);
     // в кабинете тромболизиса нет — и спроса за него нет
     expect(scoreOf(p, plan, {}).ev.beforeTransferMissing).toEqual([]);
@@ -237,7 +237,7 @@ describe('тромболизис у постели', () => {
     const bare = scoreOf(p, { treatments: ['tx.aspirin_acs', LYSIS], setting: 'transfer' }, BAY);
     expect(bare.ev.companionsMissing).toEqual([{ tx: 'tx.clopidogrel', of: LYSIS }, { tx: 'tx.enoxaparin_acs', of: LYSIS }]);
     const note = bare.score.notes.find(n => n.code === 'tx.companionMissing')!;
-    expect(noteText(note)).toBe('Тромболизис без обязательного спутника — не назначено: клопидогрел');
+    expect(noteText(note)).toBe('Тромболизис при инфаркте без обязательного спутника — не назначено: клопидогрел');
     expect(bare.score.treatment).toBe('C');
     const fonda = scoreOf(p, { treatments: ['tx.aspirin_acs', 'tx.clopidogrel', 'tx.fondaparinux', LYSIS], setting: 'transfer' }, BAY);
     expect(fonda.ev.companionsMissing).toEqual([]);

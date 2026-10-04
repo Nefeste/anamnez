@@ -80,6 +80,11 @@ export const conditionSchema = z.strictObject({
   presenting: z.boolean().default(true),
   /** бывает без жалоб — находят на профосмотре (гипертония, диабет); остальные приходят с симптомом */
   checkup: z.boolean().optional(),
+  /**
+   * с этим приходят только со скорой (spec 2026-10-chapter-3, часть 41а): инсульт привозят в
+   * смотровую приёмного, к монитору, — пришедших самих с ним нет
+   */
+  arrival: z.literal('ambulance').optional(),
   epidemiology: z.strictObject({
     prevalence: z.enum(Object.keys(PREVALENCE) as [keyof typeof PREVALENCE, ...(keyof typeof PREVALENCE)[]]),
     age: z.strictObject({ min: z.number().int(), max: z.number().int().optional(), peak: z.tuple([z.number(), z.number()]).optional() }),
@@ -100,7 +105,16 @@ export const conditionSchema = z.strictObject({
    */
   derived: z.record(z.string(), z.union([
     z.string().regex(/^rule\.[a-z0-9_]+$/),
-    z.strictObject({ f: z.string().regex(/^[a-z]+\.[a-z0-9_]+$/), below: z.number() }),
+    /**
+     * `clock` (spec 2026-10-chapter-3, часть 41а) — порог по числу с ходом времени: к часам от
+     * начала прибавляются часы от прихода до решения; окно тромболизиса — 4,5 часа до его начала
+     */
+    z.strictObject({ f: z.string().regex(/^[a-z]+\.[a-z0-9_]+$/), below: z.number(), clock: z.literal(true).optional() }),
+    /**
+     * по другим параметрам (часть 41а): «yes», если у каждого из `all` — одно из названных значений;
+     * тромбэктомия — окклюзия, NIHSS 6 и больше и меньше 6 часов от начала
+     */
+    z.strictObject({ all: z.record(z.string(), z.array(z.string()).min(1)) }),
   ])).optional(),
   course: z.strictObject({
     stages: z.array(z.strictObject({ id: z.string(), days: z.tuple([z.number(), z.number()]), needs: z.literal('treatment').optional() })).min(1),
@@ -115,6 +129,12 @@ export const conditionSchema = z.strictObject({
     untreated: z.strictObject({ band: probability, days: z.tuple([z.number().int().min(0), z.number().int().min(0)]), when: z.record(z.string(), z.array(z.string())).optional() }).optional(),
     /** в стационаре при действенном лечении: через сколько суток можно выписывать (spec 2026-09-chapter-2, часть 26) */
     stay: z.tuple([z.number().int().min(1), z.number().int().min(1)]).optional(),
+    /**
+     * острый период проходит в стационаре и без действия на причину (spec 2026-10-chapter-3, часть
+     * 41а): инсульт под наблюдением в ПИТ стабилизируется к сроку `stay`, последствия остаются; дома —
+     * `untreated`
+     */
+    settles: z.literal(true).optional(),
     /**
      * часов от начала до прихода (spec 2026-10-chapter-3, часть 39а): интервалы — верхняя граница в
      * часах и доля; число — у признака `f` (`hx.*`), его больной называет при расспросе
@@ -849,6 +869,11 @@ export const targetSchema = z.strictObject({
   settings: z.array(setting).default([]),
   /** отсчёт: от прихода или от результата с находкой (часть 39б) */
   from: z.enum(['arrival', 'finding']).default('arrival'),
+  /**
+   * только тем, кто остаётся у нас (spec 2026-10-chapter-3, часть 41а): в палате, ПИТ или
+   * операционной; переведённому тест глотания делают там, куда везут
+   */
+  stays: z.literal(true).optional(),
   minutes: z.number().int().min(1).max(24 * 60),
   texts: z.strictObject({ hint, from: text.optional(), after: text.optional() }),
   sources: z.array(source).min(1),

@@ -671,7 +671,8 @@ export function outcomeText(outcome: Outcome, setting: Setting, female: boolean)
     return `${outcome.severe ? r.severe(female) : r.transferred(female)}. ${how}`;
   }
   switch (outcome.kind) {
-    case 'recovered': return out.recovered(outcome.day, female);
+    // острый период позади (часть 41а): у инсульта — с последствиями или без
+    case 'recovered': return outcome.settled === 'clear' ? out.settledClear(outcome.day) : outcome.settled === 'residual' ? out.settledResidual(outcome.day) : out.recovered(outcome.day, female);
     case 'improved': return out.improved(female);
     case 'unchanged': return out.unchanged;
     case 'worse': return out.worse(outcome.day);
@@ -692,7 +693,12 @@ export function outcomeText(outcome: Outcome, setting: Setting, female: boolean)
  */
 export function whenText(when: Record<string, string[]> | undefined): string | undefined {
   if (!when) return undefined;
-  const words = Object.entries(when).flatMap(([name, values]) => values.map(v => T.encyclopedia.when[`${name}:${v}`] ?? T.encyclopedia.when[v])).filter((w): w is string => w !== undefined);
+  const words = Object.entries(when).flatMap(([name, values]) => {
+    // подпись набора значений (часть 41а): гемипарез при инсульте — «при слабости в руке и ноге», а не
+    // четыре шаблона выпадений подряд
+    const set = values.length > 1 ? T.encyclopedia.when[`${name}:${[...values].sort().join('|')}`] : undefined;
+    return set !== undefined ? [set] : values.map(v => T.encyclopedia.when[`${name}:${v}`] ?? T.encyclopedia.when[v]);
+  }).filter((w): w is string => w !== undefined);
   // несколько значений (часть 30д): «при инфильтрате, абсцессе и перитоните» — «при» один раз
   return words.length <= 1 ? words[0] : T.encyclopedia.whenList(words);
 }
@@ -713,6 +719,8 @@ export function noteText(n: ScoreNote): string {
     // обязательное и при переводе (часть 39а): «при инфаркте с подъёмом ST в первые 12 часов»
     case 'tx.beforeTransferMissing': return t.beforeTransferMissing(tx(n.tx), whenText(n.when));
     case 'tx.companionMissing': return t.companionMissing(tx(n.tx), tx(n.of));
+    // окно закрылось, пока шло обследование (часть 41а): тромболизис при инсульте
+    case 'tx.windowMissed': return t.windowMissed(tx(n.tx), n.at);
     case 'setting.under': return t.settingUnder(n.recommended);
     case 'setting.over': return t.settingOver(n.recommended);
     case 'safety.knownViolation': return t.knownViolation(tx(n.tx), riskName(n.by));

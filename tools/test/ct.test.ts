@@ -50,7 +50,8 @@ const share = <T>(xs: T[], ok: (x: T) => boolean) => xs.filter(ok).length / xs.l
 describe('каталог: кабинет КТ, томографы, обследование', () => {
   test('кабинет КТ: рентгенолаборант и рентгенолог, без томографа не работает; один размер, пациент — на столе томографа', () => {
     const r = db.rooms['room.ct'];
-    expect(r).toMatchObject({ staff: ['role.radiographer', 'role.radiologist'], needsEquipment: true, equipment: ['eq.ct_16', 'eq.ct_64'], exams: [CT] });
+    // КТ-ангиография — с частью 41а
+    expect(r).toMatchObject({ staff: ['role.radiographer', 'role.radiologist'], needsEquipment: true, equipment: ['eq.ct_16', 'eq.ct_64'], exams: [CT, 'exam.cta_head'] });
     expect(r.sizes.map(z => [z.id, z.w, z.h])).toEqual([['M', 9, 7]]);
     expect(r.sizes[0].patient).toEqual(r.sizes[0].slots[0]);
     // рентгенолог описывает срезы — точность от его навыка, как у снимков
@@ -60,8 +61,8 @@ describe('каталог: кабинет КТ, томографы, обслед�
 
   test('томограф на 64 среза — улучшение томографа на 16: быстрее и точнее, дороже в покупке и в обслуживании; дороже всех аппаратов больницы', () => {
     const [a, b] = [db.equipment['eq.ct_16'], db.equipment['eq.ct_64']];
-    expect(a).toMatchObject({ rooms: ['room.ct'], sprite: 'ct', speed: 1.3, quality: { sens: -3, spec: -1 }, exams: [CT] });
-    expect(b).toMatchObject({ rooms: ['room.ct'], sprite: 'ct', upgradeOf: 'eq.ct_16', speed: 1, quality: { sens: 0, spec: 0 }, exams: [CT] });
+    expect(a).toMatchObject({ rooms: ['room.ct'], sprite: 'ct', speed: 1.3, quality: { sens: -3, spec: -1 }, exams: [CT, 'exam.cta_head'] });
+    expect(b).toMatchObject({ rooms: ['room.ct'], sprite: 'ct', upgradeOf: 'eq.ct_16', speed: 1, quality: { sens: 0, spec: 0 }, exams: [CT, 'exam.cta_head'] });
     expect(b.price).toBeGreaterThan(a.price);
     expect(b.upkeep).toBeGreaterThan(a.upkeep);
     const others = Object.values(db.equipment).filter(e => e.sprite !== 'ct');

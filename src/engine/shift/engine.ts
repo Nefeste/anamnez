@@ -18,7 +18,7 @@ import { log2 } from '../core/math';
 import { P_ONE, RNG_VERSION, Rng } from '../core/rng';
 import { observe, type Outcome, rscOutcome } from '../med/course';
 import { complaintObservations, type ExamSkill, examFits, NORMAL_SKILL, runExam } from '../med/exams';
-import { generatePatient, typicalPatient } from '../med/generate';
+import { freezeClock, generatePatient, patientAt, typicalPatient } from '../med/generate';
 import { contextOf, likelyParams, posterior } from '../med/infer';
 import { scaleTriage } from '../med/news2';
 import { alsoSettings, choiceFor, evaluatePlan, primaryOf, recommendedSetting, selfLimits, settingFit, surgeriesOf, txAvailable, type Venue, whenHolds } from '../med/plan';
@@ -517,7 +517,8 @@ function planDay(db: ContentDb, s: ShiftState) {
         ? typicalPatient(db, n => fnv1a(`${s.meta.seed}:${d}:${a.key}${n ? `:${n}` : ''}`), { ...gen, primary: teach.condition, ...(teach.params ? { params: teach.params } : {}) }, TUTORIAL_TRIES, teach.age)
         : a.kind === 'ambulance'
           ? ambulancePatient(db, s, d, a.key, departments)
-          : generatePatient(db, fnv1a(`${s.meta.seed}:${d}:${a.key}`), gen);
+          // пришёл сам (часть 41а): инсульта у него нет — его привозит скорая
+          : generatePatient(db, fnv1a(`${s.meta.seed}:${d}:${a.key}`), { ...gen, walkIn: true });
     // вернувшийся — и с теми отделениями, с какими его приняли в первый раз
     const own = a.ret ? [...new Set([...(s.patients[a.ret.of]?.departments ?? []), ...departments])] : departments;
     s.patients[id] = {
@@ -769,7 +770,7 @@ function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pc
   const skill = room && e.kind === 'imaging' ? imagingSkill(db, ctx.staff, room, eqId) : NORMAL_SKILL;
 
   // песочница: показано ли — по тому, что известно сейчас; показанные оплачивают ОМС и ДМС
-  if (s.economy && e.cost > 0 && indicated(db, p.patient, observationsOf(p), candidatesOf(db, p.departments ?? s.meta.department), examId)) (p.indicated ??= []).push(examId);
+  if (s.economy && e.cost > 0 && indicated(db, p.patient, observationsOf(p), candidatesOf(db, p.departments ?? s.meta.department), examId, Math.round((s.t - p.arriveT) / 60))) (p.indicated ??= []).push(examId);
   p.step++;
   p.done.push(examId);
   p.spent.money += e.cost;
@@ -937,7 +938,10 @@ function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
   const plan = { treatments: op ? [...new Set([...p.draft.treatments, op])].sort() : [...p.draft.treatments], setting: p.draft.setting };
   // аппараты у постели в момент решения (часть 39а): под монитором тромболизис был возможен
   const bedside = bedsideEquipment(db, s, p);
-  const ev = evaluatePlan(db, patient, plan, obs, { bedside });
+  // окна по часам — на минуту решения (часть 41а): тромболизис при инсульте — в первые 4,5 часа от начала
+  const minutes = Math.round((s.t - p.arriveT) / 60);
+  const before = freezeClock(db, patient, minutes);
+  const ev = evaluatePlan(db, patient, plan, obs, { bedside, minutes }, before);
   // переведённый из больницы с приёмным (часть 39б): инфаркт с подъёмом ST — исход по часам до реперфузии
   const outcome = rscFor(db, s, p, plan) ?? observe(db, patient, plan, ev, branch(s, `outcome:${p.id}`));
   const review = reviewOf(db, s, p, dx);
@@ -948,7 +952,7 @@ function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
   const targets = targetResults(db, p, targetPlace(db, s, p), { t: s.t, plan });
   const score = scoreCase({
     verdict, confidence, cost: p.done.reduce((a, id) => a + examCost(db, id), 0), rationalCost: review.rational.cost,
-    plan: ev, outcome, selfLimiting: selfLimits(db, primaryOf(patient)),
+    plan: ev, outcome, selfLimiting: selfLimits(db, primaryOf(patient)), ...(cond.settles ? { settles: true } : {}),
     redFlags: (cond.redFlags ?? []).filter(f => present.has(f)).map(f => ({ f, seen: obs.some(o => o.f === f && o.shown) })),
     // что было правильно выбрать здесь: со своей палатой — положить в неё, со своей операционной — оперировать
     should: choiceFor(recommendedSetting(db, patient, p.results.map(r => r.exam)), venueOf(db, s, plan.setting === 'admit' || plan.setting === 'surgery', operationFor(db, truth, primaryOf(patient).params) ?? null, plan.setting === 'icu')),
@@ -1394,7 +1398,8 @@ function leaveWard(db: ContentDb, s: ShiftState, id: string, how: 'discharge' | 
     ward.transferred++;
   } else if (state === 'ready') {
     end = 'discharged';
-    p.closed.outcome = { kind: 'recovered', day: days, cured: true };
+    // острый период позади (часть 41а): без тромболизиса последствия инсульта остались
+    p.closed.outcome = { kind: 'recovered', day: days, cured: stay.settled !== 'residual', ...(stay.settled ? { settled: stay.settled } : {}) };
     ward.discharged++;
   } else {
     // выписан, когда болезнь ещё не прошла: вернётся хуже через день-два
@@ -1482,9 +1487,12 @@ function replan(db: ContentDb, s: ShiftState, id: string, treatments: Id[]): Not
   const from = daysIn(stay, s.day);
   // операция остаётся в плане: её меняют «В операционную», а не сменой лечения (часть 28)
   const plan = { treatments: [...new Set([...known, ...(stay.op ? [stay.op.tx] : [])])].sort(), setting: stay.plan.setting };
-  const ev = evaluatePlan(db, p.patient, plan, observationsOf(p));
+  // часы идут (часть 41а): на обходе окно тромболизиса давно закрыто — течение по нынешнему часу, а
+  // разбор приёма остаётся на минуту решения
+  const now = patientAt(db, p.patient, Math.round((s.t - p.arriveT) / 60)).patient;
+  const ev = evaluatePlan(db, now, plan, observationsOf(p));
   const replans = stay.replans + 1;
-  const course = wardCourse(db, p.patient, plan, ev, branch(s, `ward:${p.id}:${replans}`), from);
+  const course = wardCourse(db, now, plan, ev, branch(s, `ward:${p.id}:${replans}`), from);
   if (stay.op?.done) {
     // после операции причина устранена: новое лечение выписку не сдвигает, своя у него — только реакция
     const { reaction: _, ...kept } = stay;
@@ -1797,8 +1805,8 @@ function colleagueStep(db: ContentDb, s: ShiftState, p: ShiftPatient) {
     candidates: candidatesOf(db, p.departments ?? s.meta.department), exams: examsHere(db, s), threshold: how.threshold, minGain: how.minGain,
     // навык 1–2 иногда забывает спросить перед лечением — жребий своей ветви
     skipAsk: q => how.forget > 0 && branch(s, `forget:${p.id}:${q}`).chance(how.forget * 100),
-    // и что у постели (часть 39а): под монитором — тромболизис
-    venue: { ...venueOf(db, s), bedside: bedsideEquipment(db, s, p) },
+    // и что у постели (часть 39а): под монитором — тромболизис; и сколько прошло с прихода (часть 41а)
+    venue: { ...venueOf(db, s), bedside: bedsideEquipment(db, s, p), minutes: Math.round((s.t - p.arriveT) / 60) },
   });
   p.phase = r.phase;
   if (r.step.kind === 'exam') {
