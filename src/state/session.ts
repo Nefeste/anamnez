@@ -10,7 +10,7 @@ import { useSyncExternalStore } from 'react';
 import { db } from '@/content';
 import type { Id, Mission, Season, Setting } from '@/content/types';
 import { complaintObservations } from '@/engine/med/exams';
-import { deriveByValue, deriveParams } from '@/engine/med/generate';
+import { deriveByParams, deriveByValue, deriveParams } from '@/engine/med/generate';
 import { evaluatePlan, primaryOf } from '@/engine/med/plan';
 import type { Grade } from '@/engine/med/score';
 import { complaintText, observationText } from '@/engine/med/text';
@@ -324,6 +324,8 @@ export function loadShift(which?: Mode, careerNo?: number): Promise<void> {
         for (const p of Object.values(r.envelope.data.patients)) {
           deriveByValue(db, p.patient.truth.conditions, p.patient.truth.values);
           deriveParams(db, p.patient.truth.conditions, p.patient.age, p.patient.truth.findings);
+          // параметры по другим параметрам (часть 41а) — после всех остальных
+          deriveByParams(db, p.patient.truth.conditions);
         }
         session = fresh(r.envelope.data, r.from === 'prev-1' || r.from === 'prev-2');
         // приёмы, закрытые до профиля (0.0.14 и раньше) или до сбоя, — в профиль; повторы он отбросит

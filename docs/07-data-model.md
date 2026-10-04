@@ -54,6 +54,7 @@ interface Condition {
   kind: 'disease' | 'injury' | 'syndrome' | 'state';
   severity: 'minor' | 'moderate' | 'serious' | 'critical';
   checkup?: boolean;                     // бывает без жалоб — находят на профосмотре
+  arrival?: 'ambulance';                 // с 0.3.10: привозит только скорая — среди пришедших самих нет
   epidemiology: {
     prevalence: P;                      // из полосы распространённости
     age: { min: number; max?: number; peak?: [number, number] };
@@ -65,8 +66,11 @@ interface Condition {
     chronic?: boolean;                  // бывает сопутствующим
   };
   params?: Record<string, Record<string, number>>;       // скрытые параметры: значение → вес
-  derived?: Record<string, Id>;         // с 0.2.1: параметр — вывод правила решения (rule.*) на настоящих
-                                        // признаках и возрасте, no/yes; веса в params — для вывода врача
+  derived?: Record<string, Id | { f: Id; below: number; clock?: true } | { all: Record<string, string[]> }>;
+                                        // с 0.2.1: параметр — вывод правила решения (rule.*) на настоящих
+                                        // признаках и возрасте, no/yes; веса в params — для вывода врача;
+                                        // с 0.3.4 — порог по числу; с 0.3.10 — с ходом времени (clock:
+                                        // к часам от начала — часы от прихода) и по другим параметрам (all)
   course: {
     stages: { id: string; days: [number, number]; needs?: 'treatment' }[];
     presentation?: [number, number];    // в какие дни болезни обычно обращаются
@@ -75,6 +79,8 @@ interface Condition {
     untreated?: { p: P; days: [number, number]; when?: Record<string, string[]> };  // без действенного лечения: ухудшение и на какой день; when — с 0.0.52
     stay?: [number, number];            // обычный срок стационара, сутки, — по рекомендации (0.0.43);
                                         // нет — срок действия лечения причины, иначе неделя
+    settles?: boolean;                  // с 0.3.10: острый период проходит в стационаре к сроку stay —
+                                        // без действия на причину с последствиями (инсульт)
     // позже (приёмное и скорая, этап 4) — осложнения новыми состояниями:
     // complications?: { after: [number, number]; when?: Cond; add: Id; p: P }[];
   };
@@ -458,6 +464,13 @@ interface Patient {
   обследований — «попросить подождать», когда ждёт кто-то срочнее: пациент — в очередь по времени
   прихода. Схема сохранения прежняя: всё новое — необязательные поля; у смотровой из прежних
   сохранений места под монитор нет — стройка добавляет его пустым.
+- С 0.3.10 — ишемический инсульт (spec 2026-10-chapter-3, часть 41а): у болезни — `arrival` и
+  `course.settles`, у производного параметра — `clock` и `all`; у срока — `stays` (только остающимся у
+  нас). Движок: `GenContext.walkIn`, `deriveByParams`, `freezeClock` и `patientAt` (окна на минуту
+  решения), `Venue.minutes`; у проверки плана — `windowMissed` и `noFirstLine`, у оценки — замечание
+  `tx.windowMissed`, у исхода и течения в палате — `settled` (`clear` или `residual`). Схема сохранения
+  прежняя: всё новое — необязательные поля; производные параметры по другим параметрам у пациентов из
+  прежних сохранений досчитываются при загрузке.
 - С 0.3.9 — кабинет КТ (spec 2026-10-chapter-3, часть 40): помещение `room.ct`, аппараты `eq.ct_16` и
   `eq.ct_64` с рисунком `ct` (`ObjectKind` и `RoomType` — `ct`), обследование `exam.ct_head` и находка
   `img.ct_blood`; у места лечения — `after` (пришёл результат одного из обследований — своё место и свои

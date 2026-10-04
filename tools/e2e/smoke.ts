@@ -475,6 +475,60 @@ function ctSave(): { save: string; id: string } {
   return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s }), id };
 }
 
+/**
+ * Песочница (spec 2026-10-chapter-3, часть 41а): справа — смотровая приёмного с монитором, кабинет КТ и
+ * ниже — ПИТ на две койки. Первая машина скорой везёт ишемический инсульт в окне: 2 часа от начала, NIHSS
+ * 5 и больше, без окклюзии и без нарушения глотания. Он лежит в смотровой и вызван; осмотр, расспрос,
+ * глюкоза, КТ, вопросы перед тромболизисом и тест глотания готовы («Студент»: без ошибок).
+ */
+function strokeSave(): { save: string; id: string } {
+  const { db } = buildDb();
+  const s = newSandbox(db, { seed: 25, season: 'winter', difficulty: 'student', start: 'clinic', budget: db.economy.sandbox.budgets.generous });
+  // томограф дороже «щедрого» бюджета
+  s.economy!.cash = 8_000_000;
+  const cells: [number, number][] = [];
+  for (let x = 29; x <= 38; x++) for (let y = 7; y <= 9; y++) cells.push([x, y]);
+  for (let y = 10; y <= 16; y++) cells.push([38, y]);
+  for (let x = 29; x <= 38; x++) for (let y = 17; y <= 19; y++) cells.push([x, y]);
+  apply(db, s, { kind: 'build', cmd: { kind: 'corridor', cells } });
+  const room = (type: string, size: 'S' | 'M', x: number, y: number, rot: 0 | 2, equipment: string[]) => {
+    apply(db, s, { kind: 'build', cmd: { kind: 'room', type, size, x, y, rot } });
+    const id = s.hospital!.rooms[s.hospital!.rooms.length - 1].id;
+    for (const e of equipment) apply(db, s, { kind: 'build', cmd: { kind: 'buy', room: id, equipment: e } });
+    return id;
+  };
+  const er = room('room.emergency', 'M', 29, 1, 0, ['eq.monitor_defib']);
+  const ct = room('room.ct', 'M', 29, 10, 2, ['eq.ct_16']);
+  const icu = room('room.icu', 'S', 29, 20, 2, ['eq.monitor_defib', 'eq.monitor_defib']);
+  apply(db, s, { kind: 'buildEnd' });
+  apply(db, s, { kind: 'assign', id: s.staff!.find(m => m.role === 'role.nurse' && m.room === 'r7')!.id, room: er });
+  for (const [role, to] of [['role.radiographer', ct], ['role.radiologist', ct], ['role.nurse', icu], ['role.anesthetist', icu]] as const) {
+    const c = s.candidates!.find(x => x.role === role && !s.staff!.some(m => m.id === x.id));
+    if (!c) throw new Error(`strokeSave: среди кандидатов нет ${role}`);
+    apply(db, s, { kind: 'hire', id: c.id });
+    apply(db, s, { kind: 'assign', id: c.id, room: to });
+  }
+  apply(db, s, { kind: 'nextDay' });
+  const p = Object.values(s.patients).filter(q => q.kind === 'ambulance' && q.status === 'coming').sort((a, b) => a.arriveT - b.arriveT)[0];
+  if (!p?.departments?.includes('dept.neurology')) throw new Error('strokeSave: кабинет КТ не работает — неврологию не принимают');
+  const fits = (x: ReturnType<typeof generatePatient>) => {
+    const c = x.truth.conditions[0].params;
+    return x.age >= 40 && x.truth.values['hx.onset_hours'] === 2 && c.minor === 'no' && c.thrombectomy === 'no' && c.dysphagia === 'no'
+      && x.complaints.includes('sym.weakness_one_side') && !x.truth.risks.some(r => r === 'risk.anticoagulants' || r === 'risk.bleeding_tendency');
+  };
+  const stroke = (seed: number) => generatePatient(db, seed, { department: 'dept.neurology', departments: p.departments!, season: 'winter', primary: 'cond.stroke_ischemic' });
+  let seed = 4800;
+  while (!fits(stroke(seed))) seed++;
+  p.patient = stroke(seed);
+  for (let i = 0; i < 600 && p.status === 'coming'; i++) apply(db, s, { kind: 'advance', seconds: 60 });
+  apply(db, s, { kind: 'sort', id: p.id, triage: p.scale!.triage });
+  apply(db, s, { kind: 'call', id: p.id });
+  for (const exam of ['exam.neuro_exam', 'exam.ask_stroke', 'exam.glucometer', 'exam.ct_head', 'exam.ask_lysis', 'exam.swallow_test']) apply(db, s, { kind: 'exam', exam });
+  for (let i = 0; i < 20 && p.pending.length > 0; i++) apply(db, s, { kind: 'waitResults' });
+  if (!p.results.some(r => r.exam === 'exam.ct_head')) throw new Error('strokeSave: КТ не пришла');
+  return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s }), id: p.id };
+}
+
 /** «Смена» в амбулатории, «Студент»: первым в очереди — стабильная стенокардия напряжения (часть 39г). */
 function anginaSave(): { save: string; id: string } {
   const { db } = buildDb();
@@ -752,7 +806,7 @@ try {
   check((await text(page, 'decision-diagnosis')).includes('Внебольничная пневмония'), 'решение, шаг 2: выбранный диагноз виден над лечением');
   // тромболизис (часть 39а) — только лежащему под монитором: в кабинете кнопка серая, причина под названием
   check(await page.getByTestId('tx-tx.thrombolysis').isDisabled() && (await text(page, 'tx-tx.thrombolysis')).includes('У постели нет монитора с дефибриллятором'),
-    'решение в кабинете: «Тромболизис» серый — у постели нет монитора с дефибриллятором');
+    'решение в кабинете: «Тромболизис при инфаркте» серый — у постели нет монитора с дефибриллятором');
   await page.getByTestId('tx-tx.amoxicillin').click();
   await page.getByTestId('setting-home').click();
   await page.screenshot({ path: join(OUT, '05-decision-plan.png') });
@@ -1708,6 +1762,49 @@ try {
   await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
   const afterCt = await page.locator('text=После обследования «КТ головного мозга» — дома.').first().isVisible().catch(() => false);
   check(afterCt, 'энциклопедия, сотрясение: «После обследования «КТ головного мозга» — дома.»');
+
+  // ишемический инсульт (spec 2026-10-chapter-3, часть 41а): у вас — привезённый скорой инсульт в окне,
+  // он лежит в смотровой под монитором; в карте — NIHSS и КТ без крови, КТ-ангиография — среди
+  // обследований; тромболизис у постели доступен, «В ПИТ»; в разборе — сроки инсульта и ни одного
+  // замечания о лечении; в энциклопедии — острый период и тромболизис в окне
+  const sv = strokeSave();
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', sv.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId('shift-continue').waitFor({ timeout: 15_000 });
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId('shift-continue').click();
+  await visible(page, 'visit-decide').waitFor({ timeout: 10_000 });
+  const strokeCard = await page.locator('body').innerText();
+  check(/По шкале инсульта NIH — \d+/.test(strokeCard) && strokeCard.includes('Крови внутри черепа нет'),
+    `инсульт: в карте — NIHSS и КТ без крови («${strokeCard.replace(/\n/g, ' · ').slice(0, 240)}»)`);
+  await visible(page, 'tab-order').click();
+  check((await visible(page, 'exam-exam.cta_head').count()) === 1, 'инсульт: «КТ-ангиография сосудов головы и шеи» — среди обследований');
+  await page.screenshot({ path: join(OUT, '21-stroke-card.png'), fullPage: true });
+  await visible(page, 'visit-decide').click();
+  await visible(page, 'dx-cond.stroke_ischemic').click();
+  await visible(page, 'decision-to-plan').click();
+  await page.getByTestId('tx-tx.thrombolysis_stroke').waitFor({ timeout: 5000 });
+  check(!(await page.getByTestId('tx-tx.thrombolysis_stroke').isDisabled()) && (await text(page, 'tx-tx.thrombolysis_stroke')).includes('Тромболизис при ишемическом инсульте'),
+    `инсульт, решение: тромболизис у постели под монитором — ${await text(page, 'tx-tx.thrombolysis_stroke')}`);
+  await page.getByTestId('tx-tx.thrombolysis_stroke').click();
+  await page.getByTestId('setting-icu').click();
+  await page.screenshot({ path: join(OUT, '21-stroke-decision.png'), fullPage: true });
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
+  const strokeReview = await page.locator('body').innerText();
+  check(strokeReview.includes('Ишемический инсульт') && strokeReview.includes('Осмотр при подозрении на инсульт') && strokeReview.includes('Тест глотания при инсульте')
+    && !/Не назначено|не показано|Окно закрылось|Недооценили тяжесть/.test(strokeReview),
+    `инсульт: тромболизис и ПИТ, разбор — «${strokeReview.replace(/\n/g, ' · ').slice(0, 300)}»`);
+  await page.screenshot({ path: join(OUT, '21-stroke-review.png'), fullPage: true });
+  await page.goto(`${base}/encyclopedia/article/cond.stroke_ischemic`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const settles = await page.locator('text=Острый период проходит под наблюдением в стационаре').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'Ишемический инсульт' && settles, `энциклопедия, инсульт: ${await visibleText(page, 'enc-article-title')} — острый период в стационаре`);
 
   // хирургия живота (spec 2026-09-chapter-2, часть 30): со смотровой приёмного больница принимает
   // и хирургию — у вас больной острым холециститом; УЗИ — желчный пузырь с камнями и толстой

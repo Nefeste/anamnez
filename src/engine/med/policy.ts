@@ -76,7 +76,8 @@ function askingExam(db: ContentDb, contraindication: Id): Id | undefined {
 export function choosePlan(db: ContentDb, diagnosis: Id, observations: readonly Observation[], age: number, venue: Venue = {}): Plan {
   const base = db.conditions[diagnosis]?.treatment;
   if (!base) return { treatments: [], setting: 'home' };
-  const params = likelyParams(db, diagnosis, observations, age);
+  // окна по часам — на минуту решения (часть 41а): пришёл через 3 часа, и полтора часа ушло на обследование
+  const params = likelyParams(db, diagnosis, observations, age, venue.minutes ?? 0);
   const t = tacticsFor(base, params);
   const known = knownFacts(db, observations);
   const blocked = new Set([...known.risks, ...known.conditions]);
@@ -125,6 +126,33 @@ export function targetExams(db: ContentDb, patient: Patient): Id[] {
   return [...new Set(Object.values(db.targets).filter(t => t.complaints.some(f => patient.complaints.includes(f))).flatMap(t => t.exams))].sort();
 }
 
+/** Срок первого контакта (часть 41а): что делают ещё до расспроса — ЭКГ при боли в груди, осмотр при инсульте. */
+const FIRST_CONTACT = 10;
+
+/**
+ * Что сделать по срокам сейчас (spec 2026-10-chapter-3, часть 41а): срок по жалобе не дольше `within`
+ * минут, который ещё не выполнило ни одно из его обследований, — по порядку минут; из его
+ * обследований — то, что больше уточнит тактику (`prefer`: КТ-ангиография при NIHSS 6 и больше в
+ * первые 6 часов вместо КТ), иначе дешевле.
+ */
+export function urgentExam(db: ContentDb, patient: Patient, done: readonly Id[], exams: readonly Id[], within = Infinity, prefer: (exam: Id) => number = () => 0): Id | undefined {
+  const due = Object.values(db.targets)
+    .filter(t => t.minutes <= within && t.exams.length > 0 && t.complaints.some(f => patient.complaints.includes(f)) && !t.exams.some(e => done.includes(e)))
+    .sort((a, b) => a.minutes - b.minutes || (a.id < b.id ? -1 : 1));
+  for (const t of due) {
+    const own = t.exams.filter(e => exams.includes(e));
+    if (own.length === 0) continue;
+    const score = new Map(own.map(e => [e, quantize(prefer(e))]));
+    return own.sort((a, b) => score.get(b)! - score.get(a)! || examCost(db, a) - examCost(db, b) || (a < b ? -1 : 1))[0];
+  }
+  return undefined;
+}
+
+/** Польза обследования для тактики болезни `condId` (часть 41а): лучшая по её параметрам тактики, биты. */
+function tacticGain(db: ContentDb, condId: Id, examId: Id, obs: readonly Observation[], age: number, minutes = 0): number {
+  return tacticParams(db, condId).reduce((best, name) => Math.max(best, paramGain(db, condId, name, examId, obs, age, minutes)), 0);
+}
+
 /**
  * Срок решения по тому, что показали обследования (spec 2026-10-chapter-3, часть 39в): у сроков на
  * назначение и место — меньший; подъём ST — тромболизис в первые 10 минут, перевод в первые 30. Нет
@@ -149,7 +177,7 @@ export function examMinutes(e: Exam): number {
  * запрещает: «снимок можно не делать» — не «нельзя». Правило ещё не решено, и обследование узнает
  * то, что для него осталось, — тоже показано (часть 33а: шкала Уэллса меньше двух — D-димер).
  */
-export function indicated(db: ContentDb, patient: Patient, obs: readonly Observation[], candidates: Id[], examId: Id): boolean {
+export function indicated(db: ContentDb, patient: Patient, obs: readonly Observation[], candidates: Id[], examId: Id, minutes = 0): boolean {
   // рекомендация велит его каждому с такой жалобой (часть 33а: снимок груди при травме груди, таза и
   // бедра — при боли в бедре) — показано
   const e = db.exams[examId];
@@ -162,7 +190,11 @@ export function indicated(db: ContentDb, patient: Patient, obs: readonly Observa
   if (openRuleExams(db, patient, obs).includes(examId)) return true;
   const ctx = contextOf(db, patient, obs);
   const beliefs = posterior(db, candidates, obs, ctx);
-  return quantize(expectedGain(db, examId, beliefs, ctx, new Set(obs.map(o => o.f)))) >= quantize(MIN_GAIN);
+  if (quantize(expectedGain(db, examId, beliefs, ctx, new Set(obs.map(o => o.f)))) >= quantize(MIN_GAIN)) return true;
+  // уточняет тактику при самом вероятном диагнозе (часть 41а): окклюзию на КТ-ангиографии ищут при
+  // NIHSS 6 и больше в первые 6 часов — от неё зависит перевод на тромбэктомию
+  const top = beliefs[0];
+  return top !== undefined && quantize(tacticGain(db, top.id, examId, obs, patient.age, minutes)) >= quantize(MIN_GAIN);
 }
 
 /** Где разумный врач в приёме: ищет диагноз или, уже решив, спрашивает о противопоказаниях. */
@@ -228,12 +260,13 @@ export function tacticParams(db: ContentDb, condId: Id): string[] {
 function tacticExam(db: ContentDb, diagnosis: Id, obs: readonly Observation[], age: number, done: readonly Id[], opt: StepOptions): Id | undefined {
   let best: Id | undefined;
   let bestScore = 0;
+  const minutes = opt.venue?.minutes ?? 0;
   for (const name of tacticParams(db, diagnosis)) {
-    const top = paramBeliefs(db, diagnosis, name, obs, age).reduce((a, b) => Math.max(a, b.p), 0);
+    const top = paramBeliefs(db, diagnosis, name, obs, age, minutes).reduce((a, b) => Math.max(a, b.p), 0);
     if (top >= opt.threshold) continue;
     for (const id of opt.exams) {
       if (done.includes(id)) continue;
-      const gain = paramGain(db, diagnosis, name, id, obs, age);
+      const gain = paramGain(db, diagnosis, name, id, obs, age, minutes);
       if (quantize(gain) < quantize(opt.minGain)) continue;
       const score = quantize(gain / examCost(db, id));
       if (score > bestScore) {
@@ -278,12 +311,20 @@ export function nextStep(db: ContentDb, patient: Patient, obs: readonly Observat
   const opt = { ...options, exams: options.exams.filter(id => examFits(db.exams[id], patient) && (limit === undefined || examMinutes(db.exams[id]) <= limit)) };
   let now = phase;
   if (now.diagnosis === undefined) {
-    // срок по жалобе (часть 37) — первым делом: при давящей боли в груди ЭКГ, ещё до расспроса
-    const urgent = targetExams(db, patient).find(id => opt.exams.includes(id) && !done.includes(id));
+    // срок по жалобе (часть 37) — первым делом: при давящей боли в груди ЭКГ, ещё до расспроса; при
+    // признаках инсульта — осмотр с NIHSS (часть 41а)
+    const urgent = urgentExam(db, patient, done, opt.exams, FIRST_CONTACT);
     if (urgent) return { step: { kind: 'exam', exam: urgent }, phase: now };
     // вопросы всем и то, что делают каждому с такой жалобой (часть 32г-2: неврологический осмотр при ране головы)
     const routine = opt.exams.find(id => (db.exams[id].routine || db.exams[id].routineFor?.some(f => patient.complaints.includes(f))) && !done.includes(id));
     if (routine) return { step: { kind: 'exam', exam: routine }, phase: now };
+    // остальные сроки (часть 41а): КТ за 40 минут — уже зная, когда началось; КТ-ангиография вместо КТ —
+    // если окклюзия решает тактику при самом вероятном диагнозе
+    const later = urgentExam(db, patient, done, opt.exams, Infinity, e => {
+      const top = posterior(db, opt.candidates, obs, contextOf(db, patient, obs))[0];
+      return top ? tacticGain(db, top.id, e, obs, patient.age, opt.venue?.minutes ?? 0) : 0;
+    });
+    if (later) return { step: { kind: 'exam', exam: later }, phase: now };
     // положительное правило решения велит обследование — его делают (часть 32д): оттавские правила
     // сказали «снимок нужен», и снимок делают, даже почти уверившись в ушибе
     const ruled = ruleExams(db, patient, obs).find(id => opt.exams.includes(id) && !done.includes(id));
@@ -340,7 +381,9 @@ export function runDoctor(db: ContentDb, patient: Patient, strategy: Strategy, r
     // шаги подряд — те же, что у нанятого врача по одному
     let phase: DoctorPhase = {};
     for (;;) {
-      const r = nextStep(db, patient, obs, done, phase, { candidates: opt.candidates, exams: opt.exams, threshold, minGain, ...(opt.skipAsk ? { skipAsk: opt.skipAsk } : {}) });
+      // сколько прошло с прихода (часть 41а): окно тромболизиса закрывается, пока идёт обследование
+      const minutes = done.reduce((a, id) => a + examMinutes(db.exams[id]), 0);
+      const r = nextStep(db, patient, obs, done, phase, { candidates: opt.candidates, exams: opt.exams, threshold, minGain, ...(opt.skipAsk ? { skipAsk: opt.skipAsk } : {}), venue: { minutes } });
       phase = r.phase;
       if (r.step.kind === 'decide') {
         decision = r.step;

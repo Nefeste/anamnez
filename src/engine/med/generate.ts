@@ -32,6 +32,11 @@ export interface GenContext {
    * не везут. Человек — прежде болезни: камни, привычки и возраст решают, чем он заболел
    */
   carried?: Readonly<Record<Condition['severity'], number>>;
+  /**
+   * пришёл сам (spec 2026-10-chapter-3, часть 41а): того, с чем приходят только со скорой, у него
+   * нет — инсульт привозят в смотровую приёмного
+   */
+  walkIn?: boolean;
 }
 
 /** Возрастная пирамида обращающихся взрослых: [от, до, вес]. Черновик для среза. */
@@ -75,7 +80,7 @@ export function generatePatient(db: ContentDb, seed: number, ctx: GenContext): P
   });
 
   // Основное заболевание.
-  const primaryId = ctx.primary ?? pickPrimary(db, root.fork('primary'), { sex, age, season: ctx.season, departments: ctx.departments ?? [ctx.department], risks, chronic }, ctx.carried);
+  const primaryId = ctx.primary ?? pickPrimary(db, root.fork('primary'), { sex, age, season: ctx.season, departments: ctx.departments ?? [ctx.department], risks, chronic, walkIn: ctx.walkIn === true }, ctx.carried);
   const primary = db.conditions[primaryId];
   if (!primary) throw new Error(`generatePatient: unknown condition ${primaryId}`);
 
@@ -101,6 +106,7 @@ export function generatePatient(db: ContentDb, seed: number, ctx: GenContext): P
   // часы от начала (часть 39а): число признака — по долям записи, из своей ветви зерна
   if (primary.onset && findings.some(x => x.f === primary.onset!.f)) values[primary.onset.f] = onsetValue(primary.onset, root.fork('onset'));
   deriveByValue(db, conditions, values);
+  deriveByParams(db, conditions);
   const complaints = pickComplaints(db, findings);
 
   // отделение пациента — его основного заболевания: в больнице с приёмным это и хирургия
@@ -142,6 +148,8 @@ interface Who {
   departments: readonly Id[];
   risks: readonly Id[];
   chronic: readonly Id[];
+  /** пришёл сам: того, с чем только привозят (часть 41а), у него нет */
+  walkIn?: boolean;
 }
 
 /** Вес состояния как основного заболевания у этого человека (0 — не бывает). */
@@ -159,7 +167,7 @@ export function presentingWeight(c: Condition, who: Omit<Who, 'departments'>): n
 }
 
 function pickPrimary(db: ContentDb, rng: Rng, who: Who, carried?: GenContext['carried']): Id {
-  const ids = sortedKeys(db.conditions).filter(id => who.departments.includes(db.conditions[id].department));
+  const ids = sortedKeys(db.conditions).filter(id => who.departments.includes(db.conditions[id].department) && !(who.walkIn && db.conditions[id].arrival === 'ambulance'));
   const base = ids.map(id => presentingWeight(db.conditions[id], who));
   // скорая: вес ещё и по тяжести; ничего из того, что везут, у этого человека не бывает — как пришёл сам
   const carriedBy = carried && ids.map((id, i) => base[i] * carriedWeight(db.conditions[id], carried));
@@ -213,10 +221,52 @@ export function deriveParams(db: ContentDb, conditions: ActiveCondition[], age: 
 export function deriveByValue(db: ContentDb, conditions: ActiveCondition[], values: Record<Id, number>): void {
   for (const c of conditions) {
     for (const [name, d] of Object.entries(db.conditions[c.id].derived ?? {})) {
-      if (typeof d === 'string' || c.params[name] !== undefined) continue;
+      if (typeof d === 'string' || 'all' in d || c.params[name] !== undefined) continue;
       c.params[name] = (values[d.f] ?? Infinity) < d.below ? 'yes' : 'no';
     }
   }
+}
+
+/**
+ * По другим параметрам (spec 2026-10-chapter-3, часть 41а): «yes», если у каждого из `all` —
+ * одно из названных значений, — тромбэктомия при окклюзии, NIHSS 6 и больше и меньше 6 часов от
+ * начала. Считается после остальных производных; бросков нет. Уже посчитанные не трогает.
+ */
+export function deriveByParams(db: ContentDb, conditions: ActiveCondition[]): void {
+  for (const c of conditions) {
+    for (const [name, d] of Object.entries(db.conditions[c.id].derived ?? {})) {
+      if (typeof d === 'string' || !('all' in d) || c.params[name] !== undefined) continue;
+      c.params[name] = Object.entries(d.all).every(([k, values]) => values.includes(c.params[k])) ? 'yes' : 'no';
+    }
+  }
+}
+
+/**
+ * Окна по часам на момент решения (spec 2026-10-chapter-3, часть 41а): у порогов с ходом времени
+ * (`clock`) к часам от начала прибавляются `minutes` от прихода до решения — окно тромболизиса
+ * закрывается, пока идёт обследование; параметры по другим параметрам пересчитываются по ним.
+ * Меняет параметры основного заболевания и возвращает прежние значения тех, что изменились.
+ */
+export function freezeClock(db: ContentDb, patient: Pick<Patient, 'truth'>, minutes: number): Record<string, string> {
+  const primary = patient.truth.conditions.find(c => c.role === 'primary') ?? patient.truth.conditions[0];
+  const derived = db.conditions[primary.id]?.derived ?? {};
+  const before = { ...primary.params };
+  for (const [name, d] of Object.entries(derived)) {
+    if (typeof d === 'string' || 'all' in d || !d.clock) continue;
+    const v = patient.truth.values[d.f];
+    if (v !== undefined) primary.params[name] = v + minutes / 60 < d.below ? 'yes' : 'no';
+  }
+  for (const [name, d] of Object.entries(derived)) {
+    if (typeof d === 'string' || !('all' in d)) continue;
+    primary.params[name] = Object.entries(d.all).every(([k, values]) => values.includes(primary.params[k])) ? 'yes' : 'no';
+  }
+  return Object.fromEntries(Object.entries(before).filter(([k, v]) => primary.params[k] !== v));
+}
+
+/** Тот же пациент на `minutes` от прихода (часть 41а): копия с окнами по часам на это время; сам он не меняется. */
+export function patientAt(db: ContentDb, patient: Patient, minutes: number): { patient: Patient; before: Record<string, string> } {
+  const copy: Patient = { ...patient, truth: { ...patient.truth, conditions: patient.truth.conditions.map(c => ({ ...c, params: { ...c.params } })) } };
+  return { patient: copy, before: freezeClock(db, copy, minutes) };
 }
 
 function linkApplies(link: Link, cond: ActiveCondition | undefined): boolean {

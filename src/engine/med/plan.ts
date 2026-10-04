@@ -63,6 +63,11 @@ export interface Venue {
    * приёмного под монитором с дефибриллятором — тромболизис можно; нет — в кабинете врача его нет
    */
   bedside?: readonly Id[];
+  /**
+   * минут от прихода до решения (часть 41а): окна по часам от начала болезни закрываются, пока
+   * идёт обследование, — тромболизис при инсульте делают в первые 4,5 часа
+   */
+  minutes?: number;
 }
 
 /** Какого аппарата у постели не хватает лечению у постели (часть 39а); всё есть — undefined. */
@@ -129,6 +134,17 @@ export interface PlanEval {
   beforeTransferWhen: Record<Id, Record<string, string[]>>;
   /** назначено без своих спутников (часть 39а): тромболизис — без клопидогрела или эноксапарина */
   companionsMissing: { tx: Id; of: Id }[];
+  /**
+   * окно закрылось, пока шло обследование (часть 41а): при поступлении это было обязательно, а к
+   * решению — уже нет; `at` — минут от начала болезни до решения, `left` — сколько минут окна
+   * оставалось при поступлении
+   */
+  windowMissed: { tx: Id; at: number; left: number }[];
+  /**
+   * у тактики при этих значениях нет первой линии и операции нет (часть 41а): у инсульта — тромболизис по
+   * окну и место; у хирургической болезни первая линия — её операция
+   */
+  noFirstLine: boolean;
 }
 
 export function primaryOf(patient: Patient) {
@@ -348,7 +364,11 @@ function tellingFindings(db: ContentDb, id: Id): Id[] {
   return (db.risks[id]?.findings ?? db.conditions[id]?.findings ?? []).map(l => l.f).filter(f => f.startsWith('hx.'));
 }
 
-export function evaluatePlan(db: ContentDb, patient: Patient, plan: Plan, observations: readonly Observation[], venue: Venue = {}): PlanEval {
+/**
+ * Проверка плана по правде о пациенте. `before` — значения параметров при поступлении, которые к
+ * решению изменились (часть 41а, `freezeClock`): окно тромболизиса закрылось, пока шло обследование.
+ */
+export function evaluatePlan(db: ContentDb, patient: Patient, plan: Plan, observations: readonly Observation[], venue: Venue = {}, before: Readonly<Record<string, string>> = {}): PlanEval {
   const primary = primaryOf(patient).id;
   const known = knownFacts(db, observations);
   const knownIds = new Set([...known.risks, ...known.conditions]);
@@ -372,6 +392,30 @@ export function evaluatePlan(db: ContentDb, patient: Patient, plan: Plan, observ
   const also = alsoSettings(db, patient, done);
   const firstLineBlocked = (tactics?.firstLine ?? [])
     .some(tx => db.treatments[tx]?.contraindications.some(k => knownIds.has(k.id)));
+  // противопоказано тем, о чём врач знает, — в вину не ставим; у постели нет аппарата — здесь не сделать
+  const blocked = (tx: Id) => db.treatments[tx]?.contraindications.some(k => knownIds.has(k.id)) === true;
+  const can = (tx: Id) => !blocked(tx) && txAvailable(db, tx, venue);
+  // окно закрылось (часть 41а): обязательное по параметрам при поступлении, которого к решению уже нет
+  const onsetF = db.conditions[primary]?.onset?.f;
+  const onsetH = onsetF !== undefined ? patient.truth.values[onsetF] : undefined;
+  const wasParams = { ...params, ...before };
+  const single = (ps: Record<string, string>) => [...requireOf(base, ps).filter(g => g.length === 1).map(g => g[0]), ...beforeTransferOf(base, ps)];
+  const now = new Set(single(params));
+  const was = [...new Set(single(wasParams))];
+  // сколько минут окна оставалось при поступлении: из условий записи, по которой это было обязательно, —
+  // пороги по часам, что закрылись к решению
+  const leftOf = (tx: Id): number => {
+    const entry = (base?.byParam ?? []).find(b => whenHolds(b.when, wasParams) && (membersOf(b.require).includes(tx) || (b.beforeTransfer ?? []).includes(tx)));
+    const derived = db.conditions[primary]?.derived ?? {};
+    const lefts = Object.keys(entry?.when ?? {}).flatMap(k => {
+      const d = derived[k];
+      return k in before && d && typeof d !== 'string' && !('all' in d) && d.clock ? [Math.round((d.below - (onsetH ?? 0)) * 60)] : [];
+    });
+    return lefts.length > 0 ? Math.min(...lefts) : 0;
+  };
+  const windowMissed = Object.keys(before).length > 0 && onsetH !== undefined
+    ? was.filter(tx => !now.has(tx) && can(tx)).sort().map(tx => ({ tx, at: Math.round(onsetH * 60 + (venue.minutes ?? 0)), left: leftOf(tx) }))
+    : [];
   return {
     primary,
     roles: plan.treatments.map(tx => ({ tx, role: txRole(db, primary, tx, params) })),
@@ -385,9 +429,10 @@ export function evaluatePlan(db: ContentDb, patient: Patient, plan: Plan, observ
     preventMissing: preventOf(base, params).filter(tx => !plan.treatments.includes(tx) && !db.treatments[tx]?.contraindications.some(k => knownIds.has(k.id))).sort(),
     // из группы хватит одного (часть 39в); противопоказанное тем, о чём врач знает, в вину не ставим —
     // из группы называем первое, что можно
+    // и то, что здесь не сделать (часть 41а): тромболизис без монитора у постели — не в вину
     requireMissing: requireOf(base, params).flatMap(g => {
-      const can = g.filter(tx => !db.treatments[tx]?.contraindications.some(k => knownIds.has(k.id)));
-      return can.length > 0 && !g.some(tx => plan.treatments.includes(tx)) ? [can[0]] : [];
+      const ok = g.filter(can);
+      return ok.length > 0 && !g.some(tx => plan.treatments.includes(tx)) ? [ok[0]] : [];
     }).sort(),
     requireWhen: Object.fromEntries((base?.byParam ?? []).filter(b => whenHolds(b.when, params)).flatMap(b => membersOf(b.require).map(tx => [tx, b.when] as const)).reverse()),
     // до перевода (часть 39а) — то, что здесь можно было сделать: тромболизис у постели под монитором
@@ -401,5 +446,8 @@ export function evaluatePlan(db: ContentDb, patient: Patient, plan: Plan, observ
       const can = group.filter(tx => !db.treatments[tx]?.contraindications.some(k => knownIds.has(k.id)));
       return can.length > 0 && !group.some(tx => plan.treatments.includes(tx)) ? [{ tx: can[0], of }] : [];
     })),
+    windowMissed,
+    // первая линия хирургической болезни — операция (часть 28): её выбирают местом, в тактике её нет
+    noFirstLine: (tactics?.firstLine.length ?? 0) === 0 && surgeryFor(db, primary, params) === undefined,
   };
 }

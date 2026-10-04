@@ -18,6 +18,11 @@ export type ScoreNote =
   | { code: 'tx.beforeTransferMissing'; tx: Id; when?: Record<string, string[]> }
   /** назначено без своего спутника (часть 39а): тромболизис без клопидогрела */
   | { code: 'tx.companionMissing'; tx: Id; of: Id }
+  /**
+   * окно закрылось, пока шло обследование (часть 41а): тромболизис был обязателен при поступлении, а к
+   * решению — уже нет; `at` — минут от начала болезни до решения
+   */
+  | { code: 'tx.windowMissed'; tx: Id; at: number }
   /** `recommended` — что надо было выбрать здесь: в амбулатории «вызвать скорую», со своей палатой — «в палату» */
   | { code: 'setting.under' | 'setting.over'; recommended: Setting }
   | { code: 'safety.knownViolation' | 'safety.unaskedViolation'; tx: Id; by: Id }
@@ -48,6 +53,11 @@ export interface CaseInput {
   plan: PlanEval;
   outcome: Outcome;
   selfLimiting: boolean;
+  /**
+   * острый период проходит в стационаре (часть 41а): у лежащего у нас инсульта без тромболизиса
+   * лечение причины не обязательно — его нет, а стабилизирует ПИТ
+   */
+  settles?: boolean;
   /** красные флаги основного состояния, которые у пациента есть, и какие из них врач видел */
   redFlags: { f: Id; seen: boolean }[];
   /** что выбрать здесь при нужном месте лечения; нет — как в амбулатории (plan.ts, choiceFor) */
@@ -70,6 +80,8 @@ export interface CaseScore {
 }
 
 const POINTS: Record<Grade, number> = { A: 3, B: 2, C: 1, D: 0 };
+/** Сколько минут нужно на обследование до тромболизиса при инсульте — осмотр, КТ с заключением, глюкоза (часть 41а, игровое правило). */
+export const WORKUP_MINUTES = 60;
 const worst = (...g: Grade[]): Grade => g.reduce((a, b) => (POINTS[b] < POINTS[a] ? b : a), 'A');
 /** Худшая из оценок; пусто — A. */
 export const worstGrade = (grades: readonly Grade[]): Grade => worst(...grades);
@@ -99,7 +111,10 @@ export function scoreCase(x: CaseInput): CaseScore {
   // делают до приезда скорой (ОКС — ацетилсалициловая кислота), — ждут; в своей палате и своей ПИТ
   // (часть 38а) лечат сами
   const referred = !['home', 'admit', 'surgery', 'icu'].includes(x.plan.setting.chosen);
-  if (!x.plan.effective && !x.selfLimiting && !referred) { treatment = 'D'; notes.push({ code: 'tx.noCure' }); }
+  // острый период проходит в стационаре (часть 41а): у лежащего у нас инсульта без тромболизиса — не
+  // ошибка; дома он не пройдёт
+  const settled = x.settles === true && x.plan.setting.chosen !== 'home';
+  if (!x.plan.effective && !x.selfLimiting && !settled && !referred) { treatment = 'D'; notes.push({ code: 'tx.noCure' }); }
   if (referred && x.plan.preHospital.length > 0 && !roles.some(r => x.plan.preHospital.includes(r.tx))) {
     treatment = worst(treatment, 'B');
     notes.push({ code: 'tx.preHospitalMissing', tx: x.plan.preHospital[0] });
@@ -125,6 +140,8 @@ export function scoreCase(x: CaseInput): CaseScore {
   // обязательное и при переводе (часть 39а): тромболизис в окне, если больной лежал под монитором, —
   // без него лечение неполное и опасное, куда бы больного ни везли
   for (const tx of x.plan.beforeTransferMissing) {
+    // лечат здесь (часть 41а): обязательное и здесь, и до перевода уже названо выше — тромболизис при инсульте
+    if (!referred && x.plan.requireMissing.includes(tx)) continue;
     treatment = worst(treatment, 'C');
     safety0 = worst(safety0, 'C');
     const when = x.plan.beforeTransferWhen[tx];
@@ -135,9 +152,17 @@ export function scoreCase(x: CaseInput): CaseScore {
     treatment = worst(treatment, 'C');
     notes.push({ code: 'tx.companionMissing', tx: m.tx, of: m.of });
   }
+  // окно закрылось, пока шло обследование (часть 41а): тромболизис при инсульте — в первые 4,5 часа.
+  // Оставалось меньше часа — успеть было нельзя: обследование до тромболизиса занимает около часа
+  // (игровое правило), замечание — без оценки
+  for (const m of x.plan.windowMissed ?? []) {
+    if (m.left >= WORKUP_MINUTES) treatment = worst(treatment, 'C');
+    notes.push({ code: 'tx.windowMissed', tx: m.tx, at: m.at });
+  }
   if (x.plan.effective && !roles.some(r => r.role === 'firstLine')) {
-    // замена препарата выбора оправдана, если о противопоказании к нему врач знал
-    if (!x.plan.firstLineBlocked) treatment = worst(treatment, 'B');
+    // замена препарата выбора оправдана, если о противопоказании к нему врач знал; первой линии у
+    // тактики нет (часть 41а: инсульт) — и заменять нечего
+    if (!x.plan.firstLineBlocked && !x.plan.noFirstLine) treatment = worst(treatment, 'B');
     for (const r of roles.filter(r => r.role === 'acceptable')) notes.push({ code: 'tx.acceptable', tx: r.tx });
   }
 

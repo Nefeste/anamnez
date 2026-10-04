@@ -24,6 +24,11 @@ export interface WardCourse {
   worseAfter?: number;
   /** реакция на назначенное при противопоказании, которое у пациента есть: что и на что */
   reaction?: { tx: Id; by: Id; after: number };
+  /**
+   * у болезни, острый период которой проходит в стационаре (spec 2026-10-chapter-3, часть 41а):
+   * `clear` — лечение подействовало, последствий нет; `residual` — без него, последствия остались
+   */
+  settled?: 'clear' | 'residual';
 }
 
 /** Лежит в палате своей больницы. */
@@ -103,6 +108,15 @@ export function wardCourse(db: ContentDb, patient: Patient, plan: Plan, ev: Plan
   if (cures.length > 0 && rng.fork('cure').chance(anyOf(cures.map(e => e.p)))) {
     const [lo, hi] = cond.stay ?? [Math.max(1, Math.min(...cures.map(e => e.days[0]))), Math.max(1, ...cures.map(e => e.days[1]))];
     out.readyAfter = from + rng.fork('ready').range(lo, hi);
+    if (cond.settles) out.settled = 'clear';
+    return out;
+  }
+  // острый период проходит в стационаре (часть 41а): инсульт без тромболизиса стабилизируется к
+  // сроку стационара, последствия остаются — дальше реабилитация
+  if (cond.settles) {
+    const [lo, hi] = cond.stay ?? [1, 1];
+    out.readyAfter = from + rng.fork('ready').range(lo, hi);
+    out.settled = 'residual';
     return out;
   }
   if (selfLimits(db, primary)) {

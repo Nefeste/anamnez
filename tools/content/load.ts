@@ -230,6 +230,15 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       else if (Object.keys(p).sort().join() !== 'no,yes') errors.push(`${owner}: у производного параметра ${name} значения — no и yes`);
       if (typeof d === 'string') {
         if (!rules[d]) errors.push(`${owner}: правило ${d} параметра ${name} не найдено`);
+      } else if ('all' in d) {
+        // по другим параметрам (часть 41а): они объявлены, значения у них есть, и сами они — не такие же
+        for (const [other, values] of Object.entries(d.all)) {
+          const q = c.params?.[other];
+          if (other === name || !q) errors.push(`${owner}: параметр ${name} — по параметру ${other}, а его нет или это он сам`);
+          else for (const v of values) if (!(v in q)) errors.push(`${owner}: параметр ${name} — по ${other}=${v}, а такого значения нет`);
+          const od = c.derived?.[other];
+          if (od && typeof od !== 'string' && 'all' in od) errors.push(`${owner}: параметр ${name} — по ${other}, а тот сам по параметрам`);
+        }
       } else {
         const v = findings[d.f]?.value;
         if (!v) errors.push(`${owner}: порог параметра ${name} — на ${d.f}, а у него нет числа`);
@@ -237,6 +246,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
           const lo = Math.min(v.present[0], v.absent[0]);
           const hi = Math.max(v.present[1], v.absent[1]);
           if (d.below <= lo || d.below > hi) errors.push(`${owner}: порог ${d.below} параметра ${name} вне диапазонов ${d.f} (${lo}–${hi})`);
+          // с ходом времени (часть 41а) — только часы: к ним прибавляются часы от прихода до решения
+          if (d.clock && v.unit !== 'ч') errors.push(`${owner}: порог параметра ${name} идёт со временем, а ${d.f} — не в часах`);
         }
       }
       for (const l of c.findings) {
@@ -289,6 +300,11 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       checkWhen(owner, 'фибрилляция желудочков', c.arrest.when, c.params);
       if (!c.course.onset) errors.push(`${owner}: фибрилляция желудочков по часам от начала, а их у болезни нет (course.onset)`);
     }
+    // только со скорой (часть 41а): скорая такое везёт — у болезни есть тактика и тяжесть, которую возят
+    if (c.arrival === 'ambulance' && (c.checkup || !c.treatment || c.severity === 'minor')) errors.push(`${owner}: приходят только со скорой, а скорая такое не везёт (профосмотр, без тактики или лёгкое)`);
+    // острый период проходит в стационаре (часть 41а): к сроку стационара, и это не «проходит само»
+    if (c.course.settles && !c.course.stay) errors.push(`${owner}: острый период проходит в стационаре, а срока стационара (course.stay) нет`);
+    if (c.course.settles && c.course.selfLimiting) errors.push(`${owner}: и «проходит само», и «острый период проходит в стационаре» — что-то одно`);
     // с чем спутать по рекомендации (часть 33б): то, с чем приходят, и не сама болезнь
     for (const d of c.differential ?? []) if (d === c.id || !conditions[d]?.presenting) errors.push(`${owner}: с чем спутать — ${d} не найдено, не приходят с ним или это оно само`);
     if (!c.presenting && !c.epidemiology.chronic) errors.push(`${owner}: не бывает ни основным, ни хроническим`);
@@ -618,6 +634,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     };
     if (c.icd10) out.icd10 = c.icd10;
     if (c.checkup) out.checkup = true;
+    if (c.arrival) out.arrival = c.arrival;
     if (c.group) out.group = c.group;
     if (c.system) out.system = c.system;
     if (e.sex) out.sex = e.sex;
@@ -651,6 +668,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       out.untreated = { p: prob(u.band), days: u.days, ...(u.when ? { when: u.when } : {}) };
     }
     if (c.course.stay) out.stay = c.course.stay;
+    if (c.course.settles) out.settles = true;
     if (c.surgery) {
       const x = c.surgery;
       out.surgery = {

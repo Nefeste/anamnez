@@ -8,6 +8,12 @@ const UNDER: Record<string, string> = {
 };
 /** Цвет сортировки словами — в разборе скорой (часть 27). */
 const TRIAGE: Record<string, string> = { red: 'красный', yellow: 'жёлтый', green: 'зелёный' };
+/** «4 ч 40 мин», «90 мин» — минуты от начала болезни (часть 41а). */
+const hoursMinutes = (minutes: number) => {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return h === 0 ? `${m}\u00a0мин` : m === 0 ? `${h}\u00a0ч` : `${h}\u00a0ч ${m}\u00a0мин`;
+};
 const OVER: Record<string, string> = {
   home: 'лечения дома', ward: 'направления в стационар', ambulance: 'скорой', admit: 'палаты',
   surgery: 'операционной', transfer: 'перевода', icu: 'палаты интенсивной терапии',
@@ -143,6 +149,9 @@ export const spikes = {
       // день 0 — в день приёма (боль прошла от обезболивающего): «через 0 дней» так не говорят
       recovered: (day: number, female: boolean) =>
         `${day === 0 ? 'В тот же день' : `Через ${day}\u00a0${pluralRu(day, 'день', 'дня', 'дней')}`} ${female ? 'выздоровела' : 'выздоровел'}`,
+      // острый период позади (часть 41а): тромболизис помог — последствий нет; без него — остались
+      settledClear: (day: number) => `Через ${day}\u00a0${pluralRu(day, 'день', 'дня', 'дней')} острый период позади, и последствий нет: лечение помогло`,
+      settledResidual: (day: number) => `Через ${day}\u00a0${pluralRu(day, 'день', 'дня', 'дней')} острый период позади, но последствия остались — дальше реабилитация`,
       improved: (female: boolean) => `Через неделю ${female ? 'ей' : 'ему'} лучше, но болезнь ещё не прошла`,
       unchanged: 'Через неделю без изменений — придёт снова',
       worse: (day: number) => `${day === 0 ? 'В тот же день' : day === 1 ? 'На следующий день' : `На ${day}-й день`} стало хуже — вернётся на приём`,
@@ -221,6 +230,9 @@ export const spikes = {
       beforeTransferMissing: (tx: string, when?: string) => `Не сделано до перевода: ${lowerFirst(tx)} — ${when ? `обязательно ${when}` : 'без этого лечение неполное'}`,
       // спутник (часть 39а): тромболизис без клопидогрела
       companionMissing: (tx: string, of: string) => `${of} без обязательного спутника — не назначено: ${lowerFirst(tx)}`,
+      // окно закрылось, пока шло обследование (часть 41а): «решение — через 4 ч 40 мин от начала»
+      windowMissed: (tx: string, at: number) =>
+        `Окно закрылось, пока шло обследование: решение — через ${hoursMinutes(at)} от начала болезни, и ${lowerFirst(tx)} уже не поможет`,
       settingUnder: (should: string) => `Недооценили тяжесть: нужно было ${UNDER[should] ?? UNDER.ambulance}`,
       settingOver: (should: string) => `Перестраховка: хватило бы ${OVER[should] ?? OVER.ward}`,
       knownViolation: (tx: string, by: string) => `${tx}: противопоказано (${lowerFirst(by)}), и вы об этом знали`,

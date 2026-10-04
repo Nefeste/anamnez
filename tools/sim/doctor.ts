@@ -7,10 +7,11 @@
 // 35); нет — амбулатория, одна терапия. Порог не выполнен — выход с кодом 1.
 import { Rng } from '../../src/engine/core/rng';
 import { observe, type OutcomeKind } from '../../src/engine/med/course';
-import { generatePatient } from '../../src/engine/med/generate';
+import { generatePatient, patientAt } from '../../src/engine/med/generate';
 import { evaluatePlan, primaryOf, selfLimits } from '../../src/engine/med/plan';
 import { type DoctorResult, examCost, runDoctor, type Strategy } from '../../src/engine/med/policy';
 import { type Grade, scoreCase } from '../../src/engine/med/score';
+import type { Patient } from '../../src/engine/med/types';
 import { buildDb } from '../content/load';
 
 const arg = (name: string, def: string) => {
@@ -66,6 +67,12 @@ interface Case { truth: string; correct: boolean; correctGroup: boolean; money: 
 const rationalCases: Case[] = [];
 const timing: Record<Strategy, number> = { rational: 0, lazy: 0, shotgun: 0 };
 
+/** Пациент на минуту решения (часть 41а): копия с окнами по часам на это время и прежние значения. */
+function decidedAt(patient: Patient, minutes: number): { copy: Patient; before: Record<string, string> } {
+  const at = patientAt(db, patient, minutes);
+  return { copy: at.patient, before: at.before };
+}
+
 const t0 = performance.now();
 for (let i = 0; i < N; i++) {
   const season = seasons[i % seasons.length];
@@ -80,11 +87,13 @@ for (let i = 0; i < N; i++) {
     timing[s] += performance.now() - t;
     if (s === 'rational') rationalCost = costOf(r);
     const x = tally[s];
-    const ev = evaluatePlan(db, patient, r.plan, r.observations);
-    const outcome = observe(db, patient, r.plan, ev, Rng.seeded(patient.seed).fork(`outcome:${s}`));
+    // окна по часам — на минуту решения этого врача (часть 41а): у каждого своё время
+    const { copy, before } = decidedAt(patient, r.minutes);
+    const ev = evaluatePlan(db, copy, r.plan, r.observations, { minutes: r.minutes }, before);
+    const outcome = observe(db, copy, r.plan, ev, Rng.seeded(patient.seed).fork(`outcome:${s}`));
     const score = scoreCase({
       verdict: r.correct ? 'correct' : r.correctGroup ? 'partly' : 'wrong',
-      confidence: r.confidence, cost: costOf(r), rationalCost, plan: ev, outcome, selfLimiting: selfLimits(db, primaryOf(patient)),
+      confidence: r.confidence, cost: costOf(r), rationalCost, plan: ev, outcome, selfLimiting: selfLimits(db, primaryOf(patient)), ...(cond.settles ? { settles: true } : {}),
       redFlags: (cond.redFlags ?? []).filter(f => present.has(f)).map(f => ({ f, seen: r.observations.some(o => o.f === f && o.shown) })),
     });
     x.overall[score.overall]++;
@@ -129,8 +138,9 @@ const hired: Hired[] = SKILLS.map(skill => {
     const r = runDoctor(db, patient, 'rational', Rng.seeded(patient.seed).fork('doctor:rational'), {
       candidates, exams, threshold: thr, minGain: gain, skipAsk: q => forget > 0 && forgot.fork(q).chance(forget * 100),
     });
-    const ev = evaluatePlan(db, patient, r.plan, r.observations);
-    const outcome = observe(db, patient, r.plan, ev, Rng.seeded(patient.seed).fork('outcome:rational'));
+    const { copy, before } = decidedAt(patient, r.minutes);
+    const ev = evaluatePlan(db, copy, r.plan, r.observations, { minutes: r.minutes }, before);
+    const outcome = observe(db, copy, r.plan, ev, Rng.seeded(patient.seed).fork('outcome:rational'));
     const needless = selfLimits(db, primaryOf(patient)) && ev.roles.some(v => v.role === 'notIndicated' && db.treatments[v.tx].class?.startsWith('antibiotic.'));
     cases.push({ truth, correct: r.correct, correctGroup: r.correctGroup, money: r.money, minutes: r.minutes, exams: r.exams.length, needless, reaction: outcome.kind === 'reaction' });
   }
