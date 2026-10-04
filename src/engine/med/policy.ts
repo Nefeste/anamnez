@@ -5,7 +5,7 @@ import type { ContentDb, Id, Setting } from '../../content/types';
 import { Rng } from '../core/rng';
 import { complaintObservations, examFits, runExam } from './exams';
 import { type Belief, contextOf, expectedGain, knownFacts, likelyParams, paramBeliefs, paramGain, posterior } from './infer';
-import { choiceFor, type Plan, possibleFor, SETTING_ORDER, tacticsFor, type Venue, whenHolds } from './plan';
+import { choiceFor, type Plan, possibleFor, SETTING_ORDER, tacticsFor, txAvailable, type Venue, whenHolds } from './plan';
 import { openRuleExams, ruleExams } from './rules';
 import type { Observation, Patient } from './types';
 
@@ -79,7 +79,8 @@ export function choosePlan(db: ContentDb, diagnosis: Id, observations: readonly 
   const t = tacticsFor(base, params);
   const known = knownFacts(db, observations);
   const blocked = new Set([...known.risks, ...known.conditions]);
-  const ok = (tx: Id) => !db.treatments[tx].contraindications.some(k => blocked.has(k.id)) && db.treatments[tx].kind !== 'surgery';
+  // и только то, что здесь можно (часть 39а): тромболизис — у постели под монитором
+  const ok = (tx: Id) => !db.treatments[tx].contraindications.some(k => blocked.has(k.id)) && db.treatments[tx].kind !== 'surgery' && txAvailable(db, tx, venue);
   const cures = (tx: Id) => db.treatments[tx].effects.some(e => e.on === diagnosis && e.kind === 'cure' && whenHolds(e.when, params));
   // типичное назначение; если противопоказание убрало лечение причины — замена из первой линии и допустимых
   const treatments = (t.plan ?? t.firstLine).filter(ok);
@@ -91,6 +92,17 @@ export function choosePlan(db: ContentDb, diagnosis: Id, observations: readonly 
   treatments.push(...(t.prevent ?? []).filter(ok));
   // обязательное по вероятным значениям (часть 38б): кислород, если измеренная сатурация ниже порога
   treatments.push(...(t.require ?? []).filter(ok).filter(tx => !treatments.includes(tx)));
+  // обязательное и при переводе (часть 39а): тромболизис в окне, если здесь его можно сделать
+  treatments.push(...(t.beforeTransfer ?? []).filter(ok).filter(tx => !treatments.includes(tx)));
+  // спутники назначенного (часть 39а): тромболизис — с клопидогрелом и антикоагулянтом; из группы — первое,
+  // что можно
+  for (const tx of [...treatments]) {
+    for (const g of db.treatments[tx].companions ?? []) {
+      const group = typeof g === 'string' ? [g] : g;
+      const pick = group.find(ok);
+      if (pick && !group.some(c => treatments.includes(c))) treatments.push(pick);
+    }
+  }
   const seen = new Set(observations.filter(o => o.shown).map(o => o.f));
   let setting = t.setting.default;
   const raise = (s: Setting) => {
@@ -277,7 +289,8 @@ export function nextStep(db: ContentDb, patient: Patient, obs: readonly Observat
     // 32 и 32в): нестабильный перелом с деформацией не оперируют, пневмоторакс не дренируют без снимка
     const confirm = confirmBeforeInvasive(db, top.id, obs, patient.age, done, opt.exams);
     if (confirm) return { step: { kind: 'exam', exam: confirm }, phase: now };
-    const plan = choosePlan(db, top.id, obs, patient.age);
+    // что здесь можно (часть 39а): о противопоказаниях тромболизиса спрашивают там, где его делают
+    const plan = choosePlan(db, top.id, obs, patient.age, opt.venue);
     const risks = [...new Set(plan.treatments.flatMap(tx => db.treatments[tx].contraindications.map(k => k.id)))].sort();
     const ask: Id[] = [];
     for (const k of risks) {

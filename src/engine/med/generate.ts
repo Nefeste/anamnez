@@ -3,7 +3,7 @@
 // Каждый бросок берётся из своей именованной ветви зерна (`fork`), поэтому добавление
 // новой записи в базу не сдвигает случайность у остальных признаков и золотые случаи
 // меняются только там, где изменилась медицина.
-import type { Condition, ContentDb, Id, Link, Risk, Season } from '../../content/types';
+import type { Condition, ContentDb, Id, Link, Onset, Risk, Season } from '../../content/types';
 import { P_ONE, Rng } from '../core/rng';
 import { checkRule } from './rules';
 import type { ActiveCondition, Patient, Sex, TrueFinding } from './types';
@@ -95,9 +95,11 @@ export function generatePatient(db: ContentDb, seed: number, ctx: GenContext): P
     return { id, role: id === primaryId ? 'primary' : 'comorbid', day, stage, params };
   });
 
-  const findings = oneMeasure(db, realizeFindings(db, again('findings'), conditions, risks));
+  const findings = oneMeasure(db, followers(db, unmasked(db, conditions, realizeFindings(db, again('findings'), conditions, risks))));
   deriveParams(db, conditions, age, findings);
   const values = realizeValues(db, again('values'), findings);
+  // часы от начала (часть 39а): число признака — по долям записи, из своей ветви зерна
+  if (primary.onset && findings.some(x => x.f === primary.onset!.f)) values[primary.onset.f] = onsetValue(primary.onset, root.fork('onset'));
   deriveByValue(db, conditions, values);
   const complaints = pickComplaints(db, findings);
 
@@ -301,6 +303,44 @@ function realizeAttrs(db: ContentDb, rng: Rng, f: Id, link: Link | undefined, co
     else attrs[name] = r.pick(Object.keys(options[name]).sort());
   }
   return attrs;
+}
+
+/**
+ * Часов от начала болезни к приходу (spec 2026-10-chapter-3, часть 39а): интервал — по долям
+ * записи, в нём — целые часы поровну, не меньше часа: больной говорит «около N ч назад», и по
+ * этому числу видно, в окне ли он.
+ */
+export function onsetValue(o: Onset, rng: Rng): number {
+  const k = rng.weighted(o.hours.map((_, i) => i), i => o.hours[i][1]);
+  const lo = Math.max(1, k === 0 ? 0 : o.hours[k - 1][0]);
+  return rng.range(lo, o.hours[k][0] - 1);
+}
+
+/**
+ * Чего при состоянии не бывает (spec 2026-10-chapter-3, часть 39а): признак убран, откуда бы он ни
+ * пришёл, — при анафилактическом шоке давление не высокое и у гипертоника. Монеты уже брошены,
+ * поэтому расход случайности прежний.
+ */
+function unmasked(db: ContentDb, conditions: ActiveCondition[], findings: TrueFinding[]): TrueFinding[] {
+  const masked = new Set(conditions.flatMap(c => db.conditions[c.id].masks ?? []));
+  return masked.size > 0 ? findings.filter(x => !masked.has(x.f)) : findings;
+}
+
+/**
+ * Признаки-последователи (spec 2026-10-chapter-3, часть 39а): есть у каждого, у кого есть хоть один
+ * ведущий, — «плохо стало около N ч назад» говорит всякий, кому плохо остро, а не только больной
+ * инфарктом; причина — та же, что у первого ведущего. Без бросков.
+ */
+function followers(db: ContentDb, findings: TrueFinding[]): TrueFinding[] {
+  const present = new Map(findings.map(x => [x.f, x]));
+  const added: TrueFinding[] = [];
+  for (const id of Object.keys(db.findings).sort()) {
+    const leaders = db.findings[id].follows;
+    if (!leaders || present.has(id)) continue;
+    const lead = leaders.map(f => present.get(f)).find(x => x !== undefined);
+    if (lead) added.push({ f: id, cause: lead.cause });
+  }
+  return added.length > 0 ? [...findings, ...added].sort((a, b) => (a.f < b.f ? -1 : 1)) : findings;
 }
 
 /**

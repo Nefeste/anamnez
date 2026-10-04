@@ -13,7 +13,7 @@ import { Rng } from '@/engine/core/rng';
 import { observe } from '@/engine/med/course';
 import { complaintObservations, examFits, runExam } from '@/engine/med/exams';
 import { generatePatient } from '@/engine/med/generate';
-import { evaluatePlan, primaryOf, selfLimits } from '@/engine/med/plan';
+import { evaluatePlan, primaryOf, selfLimits, txAvailable } from '@/engine/med/plan';
 import { examCost } from '@/engine/med/policy';
 import { buildReview } from '@/engine/med/review';
 import { scoreCase } from '@/engine/med/score';
@@ -153,6 +153,8 @@ export function createVisit(first: number, opts: { season?: Season; onFinish?: (
     toggleTreatment(tx) {
       if (state.decision) return;
       const has = state.draft.treatments.includes(tx);
+      // в кабинете врача монитора у постели нет — тромболизис не назначить (часть 39а)
+      if (!has && !txAvailable(db, tx)) return;
       state.draft = { ...state.draft, treatments: has ? state.draft.treatments.filter(t => t !== tx) : [...state.draft.treatments, tx].sort() };
       changed();
     },

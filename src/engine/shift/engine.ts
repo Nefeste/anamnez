@@ -20,7 +20,7 @@ import { complaintObservations, type ExamSkill, examFits, NORMAL_SKILL, runExam 
 import { generatePatient, typicalPatient } from '../med/generate';
 import { contextOf, likelyParams, posterior } from '../med/infer';
 import { scaleTriage } from '../med/news2';
-import { alsoSettings, choiceFor, evaluatePlan, primaryOf, recommendedSetting, selfLimits, settingFit, surgeriesOf, type Venue } from '../med/plan';
+import { alsoSettings, choiceFor, evaluatePlan, primaryOf, recommendedSetting, selfLimits, settingFit, surgeriesOf, txAvailable, type Venue } from '../med/plan';
 import { examCost, indicated, nextStep } from '../med/policy';
 import { buildReview, type ReviewData } from '../med/review';
 import { scoreCase } from '../med/score';
@@ -328,6 +328,8 @@ export function apply(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
       // операцию выбирают «В операционную», а не в списке лечения (часть 28)
       if (!p || !db.treatments[cmd.id] || db.treatments[cmd.id].kind === 'surgery') return [];
       const has = p.draft.treatments.includes(cmd.id);
+      // лечение у постели (часть 39а): тромболизис — только лежащему под монитором
+      if (!has && !txAvailable(db, cmd.id, { bedside: bedsideEquipment(db, s, p) })) return [];
       p.draft.treatments = has ? p.draft.treatments.filter(x => x !== cmd.id) : [...p.draft.treatments, cmd.id].sort();
       return [];
     }
@@ -923,7 +925,9 @@ function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
   // в операционную — операцией поставленного диагноза (часть 28): по тому, что видно на снимке (часть 32б)
   const op = p.draft.setting === 'surgery' ? operationFor(db, dx, likelyParams(db, dx, obs, patient.age)) : undefined;
   const plan = { treatments: op ? [...new Set([...p.draft.treatments, op])].sort() : [...p.draft.treatments], setting: p.draft.setting };
-  const ev = evaluatePlan(db, patient, plan, obs);
+  // аппараты у постели в момент решения (часть 39а): под монитором тромболизис был возможен
+  const bedside = bedsideEquipment(db, s, p);
+  const ev = evaluatePlan(db, patient, plan, obs, { bedside });
   const outcome = observe(db, patient, plan, ev, branch(s, `outcome:${p.id}`));
   const review = reviewOf(db, s, p, dx);
   const present = new Set(patient.truth.findings.map(f => f.f));
@@ -941,8 +945,29 @@ function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
   const { notes, targets: _worst, ...grades } = score;
   return {
     at: s.t, diagnosis: dx, verdict, confidence, plan, outcome, grades, notes, rationalCost: review.rational.cost, rationalMoney: review.rational.money,
-    ...(targets.length > 0 ? { targets } : {}),
+    ...(targets.length > 0 ? { targets } : {}), ...(bedside.length > 0 ? { bedside } : {}),
   };
+}
+
+/** Аппараты работающего помещения — то, что стоит у постели лежащего в нём (часть 39а). */
+function roomEquipment(db: ContentDb, s: ShiftState, roomId: string | undefined): Id[] {
+  if (roomId === undefined) return [];
+  const ctx = hospitalCtx(db, s);
+  const room = ctx.plan.rooms.find(r => r.id === roomId);
+  return room && ctx.working.has(room.id) ? [...new Set(room.equipment.filter((id): id is Id => id !== null))].sort() : [];
+}
+
+/**
+ * Аппараты у постели больного (spec 2026-10-chapter-3, часть 39а): лежит в работающей смотровой
+ * приёмного — её аппараты, монитор с дефибриллятором; в кабинете врача и в амбулатории — ничего.
+ */
+export function bedsideEquipment(db: ContentDb, s: ShiftState, p: ShiftPatient): Id[] {
+  return roomEquipment(db, s, p.bay?.room);
+}
+
+/** Аппараты у койки лежащего — для смены лечения на обходе (часть 39а): в ПИТ — монитор, в палате — ничего. */
+export function stayEquipment(db: ContentDb, s: ShiftState, p: ShiftPatient): Id[] {
+  return roomEquipment(db, s, p.stay?.room);
 }
 
 /**
@@ -1411,8 +1436,11 @@ function nightDeaths(db: ContentDb, s: ShiftState) {
 function replan(db: ContentDb, s: ShiftState, id: string, treatments: Id[]): Notice[] {
   const p = s.patients[id];
   if (!s.dayOpen || !p || p.status !== 'admitted' || !p.stay) return [];
-  const known = treatments.filter(tx => db.treatments[tx] && db.treatments[tx].kind !== 'surgery');
   const stay = p.stay;
+  // лечение у постели (часть 39а) добавить можно только у койки с его аппаратом; назначенное — остаётся
+  const bed = stayEquipment(db, s, p);
+  const known = treatments.filter(tx => db.treatments[tx] && db.treatments[tx].kind !== 'surgery'
+    && (stay.plan.treatments.includes(tx) || txAvailable(db, tx, { bedside: bed })));
   const from = daysIn(stay, s.day);
   // операция остаётся в плане: её меняют «В операционную», а не сменой лечения (часть 28)
   const plan = { treatments: [...new Set([...known, ...(stay.op ? [stay.op.tx] : [])])].sort(), setting: stay.plan.setting };
@@ -1700,7 +1728,8 @@ function colleagueStep(db: ContentDb, s: ShiftState, p: ShiftPatient) {
     candidates: candidatesOf(db, p.departments ?? s.meta.department), exams: examsHere(db, s), threshold: how.threshold, minGain: how.minGain,
     // навык 1–2 иногда забывает спросить перед лечением — жребий своей ветви
     skipAsk: q => how.forget > 0 && branch(s, `forget:${p.id}:${q}`).chance(how.forget * 100),
-    venue: venueOf(db, s),
+    // и что у постели (часть 39а): под монитором — тромболизис
+    venue: { ...venueOf(db, s), bedside: bedsideEquipment(db, s, p) },
   });
   p.phase = r.phase;
   if (r.step.kind === 'exam') {

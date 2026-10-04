@@ -455,6 +455,42 @@ describe('каталог больницы', () => {
     expect(has(broken(d => edit(d, A, supportive, '  supportive: [tx.iv_fluids, tx.steroid_iv, tx.antihistamine_parenteral, tx.salbutamol, tx.oxygen_mask]')), 'cond.anaphylaxis: обязательное — tx.oxygen_mask стоит и в списке тактики')).toBe(true);
   });
 
+  test('инфаркт с подъёмом ST (часть 39а): часы от начала, маска, признак-последователь, тромболизис у постели и его спутники, правило о лечении, атрибут для старых записей', () => {
+    const C = 'conditions/therapy/acs.yaml';
+    const A = 'conditions/therapy/anaphylaxis.yaml';
+    const L = 'treatments/thrombolysis.yaml';
+    const R = 'rules/lysis_mi.yaml';
+    const has = (errors: string[], text: string) => errors.some(e => e.includes(text));
+    const first = broken(d => {
+      edit(d, C, 'hours: [[2, 30], [6, 35]', 'hours: [[1.5, 30], [6, 35]');
+      edit(d, A, 'masks: [vital.bp_high]', 'masks: [vital.bp_high, vital.tachycardia]');
+      edit(d, L, 'bedside: { equipment: [eq.monitor_defib] }', 'bedside: { equipment: [eq.monitor_defibrillator] }');
+      edit(d, L, 'companions: [tx.aspirin_acs, tx.clopidogrel,', 'companions: [tx.aspirin_acs, tx.thrombolysis,');
+      edit(d, R, 'requires: [ecg.st_elevation]\n', '');
+      edit(d, R, 'decides: tx.thrombolysis', 'decides: tx.thrombolysys');
+      edit(d, 'findings/ecg/st_elevation.yaml', 'fallback: { wall: inferior }', 'fallback: { wall: posterior }');
+      edit(d, 'findings/hx/onset_hours.yaml', 'follows: [sym.chest_pain_pressing,', 'follows: [sym.chest_pain_pressed, hx.onset_hours,');
+    });
+    expect(has(first, 'cond.acs: в интервале часов от начала нет целого часа от одного — больной назвал бы «0 ч»')).toBe(true);
+    expect(has(first, 'cond.anaphylaxis: признак vital.tachycardia и вызывает, и гасит')).toBe(true);
+    expect(has(first, 'tx.thrombolysis: аппарат у постели eq.monitor_defibrillator не найден')).toBe(true);
+    expect(has(first, 'tx.thrombolysis: спутник tx.thrombolysis — само лечение или операция')).toBe(true);
+    expect(has(first, 'rule.lysis_mi: пункты проверяют только применимым, а круга применимости (requires) нет')).toBe(true);
+    expect(has(first, 'rule.lysis_mi: лечение tx.thrombolysys не найдено')).toBe(true);
+    expect(has(first, 'ecg.st_elevation: для старых записей wall=posterior, а в атрибутах признака такого нет')).toBe(true);
+    expect(has(first, 'hx.onset_hours: следует за признаком sym.chest_pain_pressed, а его нет')).toBe(true);
+    expect(has(first, 'hx.onset_hours: следует за hx.onset_hours — сам за собой или за последователем')).toBe(true);
+    const second = broken(d => {
+      edit(d, C, '    f: hx.onset_hours\n    hours', '    f: hx.anticoagulants\n    hours');
+      edit(d, C, '      beforeTransfer: [tx.thrombolysis]', '      beforeTransfer: [tx.thrombolysis]\n      supportive: [tx.thrombolysis]');
+      edit(d, A, 'masks: [vital.bp_high]', 'masks: [vital.bp_higher]');
+    });
+    expect(has(second, 'cond.acs: часы от начала — на hx.anticoagulants, а у него нет числа в часах')).toBe(true);
+    expect(has(second, 'cond.acs: часы от начала — на hx.anticoagulants, а он есть не у каждого такого больного')).toBe(true);
+    expect(has(second, 'cond.acs: обязательное до перевода тактики по параметру №3 — tx.thrombolysis стоит и в списке тактики')).toBe(true);
+    expect(has(second, 'cond.anaphylaxis: гасит признак vital.bp_higher, а его нет')).toBe(true);
+  });
+
   test('палата интенсивной терапии (часть 38а): койки есть, мест под мониторы не меньше коек, не палата; аппарат — в разных помещениях, в ПИТ без своего места', () => {
     const I = 'hospital/rooms/icu.yaml';
     const M = 'hospital/equipment/monitor_defib.yaml';

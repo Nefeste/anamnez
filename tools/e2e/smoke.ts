@@ -42,12 +42,23 @@ const text = async (page: Page, id: string) => (await page.getByTestId(id).inner
 const visible = (page: Page, id: string) => page.locator(`[data-testid="${id}"]:visible`);
 const visibleText = async (page: Page, id: string) => (await visible(page, id).first().innerText()).trim();
 
+/**
+ * «×4», если кнопкам скорости не мешает лист поверх экрана (подсказка наставника, лист передачи):
+ * он приходит сам, с автопаузой, и закрывает их своим фоном — его закрывает тот, кто его ждёт. Лист
+ * мог открыться и между проверкой и нажатием (так упал сценарий сборки тега v0.3.4: 30 с на «×4»
+ * под подсказкой) — нажатие ждёт не дольше 2 с.
+ */
+async function fastClock(page: Page): Promise<void> {
+  if ((await page.locator('[data-testid$="-sheet"]').count()) > 0) return;
+  await page.getByTestId('tab-x4').click({ timeout: 2_000 }).catch(() => undefined);
+}
+
 /** Часы смены на ×4, пока не выполнится условие; автопаузу («срочный», «результаты») снимаем. */
 async function runClockUntil(page: Page, done: () => Promise<boolean>, ms = 60_000): Promise<boolean> {
   const until = Date.now() + ms;
   while (Date.now() < until) {
     if (await done()) return true;
-    if ((await page.getByTestId('shift-pause-reason').count()) > 0) await page.getByTestId('tab-x4').click();
+    if ((await page.getByTestId('shift-pause-reason').count()) > 0) await fastClock(page);
     await page.waitForTimeout(250);
   }
   return false;
@@ -677,6 +688,9 @@ try {
   await page.getByTestId('decision-to-plan').click();
   await page.getByTestId('tx-tx.amoxicillin').waitFor({ timeout: 5000 });
   check((await text(page, 'decision-diagnosis')).includes('Внебольничная пневмония'), 'решение, шаг 2: выбранный диагноз виден над лечением');
+  // тромболизис (часть 39а) — только лежащему под монитором: в кабинете кнопка серая, причина под названием
+  check(await page.getByTestId('tx-tx.thrombolysis').isDisabled() && (await text(page, 'tx-tx.thrombolysis')).includes('У постели нет монитора с дефибриллятором'),
+    'решение в кабинете: «Тромболизис» серый — у постели нет монитора с дефибриллятором');
   await page.getByTestId('tx-tx.amoxicillin').click();
   await page.getByTestId('setting-home').click();
   await page.screenshot({ path: join(OUT, '05-decision-plan.png') });
@@ -1763,7 +1777,8 @@ try {
     await page.getByTestId('tip-sheet-close').click();
     await page.getByTestId('tip-sheet').waitFor({ state: 'detached', timeout: 5000 });
   };
-  await page.getByTestId('tab-x4').click();
+  // первая скорая с подсказкой может приехать и раньше нажатия
+  await fastClock(page);
   check(await runClockUntil(page, tipShown), 'глава 2: первая скорая — в первые минуты смены');
   check((await text(page, 'tip-text')).startsWith('Скорая привезла человека — сначала лист передачи'), 'глава 2: привезли — подсказка «Лист передачи»');
   await page.waitForTimeout(700);
