@@ -24,11 +24,11 @@ import { sizeOf } from '../../src/engine/hospital/build';
 import { examWhere } from '../../src/engine/hospital/requirements';
 import { contextOf, posterior } from '../../src/engine/med/infer';
 import { alsoSettings, recommendedSetting, settingFit } from '../../src/engine/med/plan';
-import { choosePlan, runDoctor, type Strategy } from '../../src/engine/med/policy';
+import { choosePlan, decisionLimit, examMinutes, MIN_GAIN, nextStep, runDoctor, type Strategy } from '../../src/engine/med/policy';
 import {
   apply, candidatesOf, current, freeBeds, hospitalCtx, inpatientsOf, moreUrgent, newCampaign, observationsOf, operationOf, targetPlace,
 } from '../../src/engine/shift/engine';
-import { targetsFor } from '../../src/engine/shift/targets';
+import { targetStart, targetsFor } from '../../src/engine/shift/targets';
 import { type Command, DAY, SHIFT_END, type ShiftPatient, type ShiftState } from '../../src/engine/shift/types';
 import { daysIn, wardState } from '../../src/engine/shift/ward';
 import { buildDb } from '../content/load';
@@ -44,6 +44,8 @@ const RUNS = Number(arg('runs', '4'));
 const season = arg('season', 'winter') as 'winter' | 'spring' | 'summer' | 'autumn';
 const asJson = process.argv.includes('--json');
 const CHAPTER = 'chapter.hospital';
+/** закрыть приём — рецепт, направление: 2 минуты (engine.ts, finish) */
+const CLOSE_MIN = 2;
 
 const { db, errors } = buildDb();
 if (errors.length) {
@@ -106,6 +108,19 @@ function unitCosts(s: ShiftState) {
     }
   }
   return out;
+}
+
+/**
+ * Сколько минут осталось до ближайшего срока на назначение или место, который уже идёт (подъём ST:
+ * тромболизис — 10 минут от ЭКГ, перевод — 30 от прихода); такого нет — undefined.
+ */
+function minutesLeft(s: ShiftState, p: ShiftPatient): number | undefined {
+  const left: number[] = [];
+  for (const t of targetsFor(db, p, targetPlace(db, s, p))) {
+    const start = targetStart(p, t);
+    if ((t.treatments.length > 0 || t.settings.length > 0) && start !== undefined) left.push(t.minutes - (s.t - start) / 60);
+  }
+  return left.length > 0 ? Math.min(...left) : undefined;
 }
 
 function beliefsOf(s: ShiftState, p: ShiftPatient) {
@@ -173,17 +188,30 @@ function playDay(s: ShiftState, player: Player) {
       todo.set(p.id, list);
     }
     // привезли срочнее — разумный просит подождать того, кто в кабинете, и идёт к привезённому
-    // (часть 37: ЭКГ при боли в груди — в первые 10 минут, а опрос может идти и полчаса)
-    if (player === 'rational' && p.pending.length === 0 && moreUrgent(s, p)) {
+    // (часть 37: ЭКГ при боли в груди — в первые 10 минут, а опрос может идти и полчаса); ждёт тот
+    // результатов — ждёт их вне кабинета, а не пока ему назначат остальное (часть 39г)
+    if (player === 'rational' && moreUrgent(s, p)) {
       step({ kind: 'sendAway' });
       continue;
+    }
+    // находка срока в пришедших результатах (подъём ST: тромболизис за 10 минут, перевод за 30) — план,
+    // заготовленный при первом вызове по своему прогону, мог её не увидеть и ждать тропонина. Дальше
+    // разумный идёт по пришедшему, шаг за шагом: нужное и успевающее до срока с закрытием приёма — или
+    // решение, не дожидаясь назначенного раньше (spec 2026-10-chapter-3, часть 39г)
+    const limit = player === 'rational' ? decisionLimit(db, observationsOf(p)) : undefined;
+    const deadline = limit !== undefined;
+    if (deadline) {
+      const left = Math.min(limit, minutesLeft(s, p) ?? Infinity) - CLOSE_MIN;
+      const fits = exams.filter(e => examMinutes(db.exams[e]) <= left);
+      const ns = fits.length > 0 ? nextStep(db, p.patient, observationsOf(p), p.done, {}, { candidates, exams: fits, threshold: 0.9, minGain: MIN_GAIN }).step : undefined;
+      todo.set(p.id, ns?.kind === 'exam' && !p.done.includes(ns.exam) ? [ns.exam] : []);
     }
     const next = todo.get(p.id)!.shift();
     if (next) {
       step({ kind: 'exam', exam: next });
       continue;
     }
-    if (p.pending.length > 0) {
+    if (p.pending.length > 0 && !deadline) {
       if (s.queue.length > 0) {
         step({ kind: 'sendAway' });
         continue;

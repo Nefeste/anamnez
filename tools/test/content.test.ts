@@ -438,7 +438,7 @@ describe('каталог больницы', () => {
     expect(quick.some(e => e.includes('target.ecg_chest_pain: в room.emergency ни одно из обследований срока не делают у постели за 4 минут'))).toBe(true);
     const unknown = broken(d => edit(d, 'targets/ecg_chest_pain.yaml', 'exams: [exam.ecg]', 'exams: [exam.ecg, exam.ekg]'));
     expect(unknown.some(e => e.includes('target.ecg_chest_pain: обследование exam.ekg не найдено'))).toBe(true);
-    const complaint = broken(d => edit(d, 'targets/ecg_chest_pain.yaml', 'complaints: [sym.chest_pain_pressing]', 'complaints: [sym.chest_pain_pressed]'));
+    const complaint = broken(d => edit(d, 'targets/ecg_chest_pain.yaml', 'complaints: [sym.chest_pain_pressing,', 'complaints: [sym.chest_pain_pressed,'));
     expect(complaint.some(e => e.includes('target.ecg_chest_pain: жалоба sym.chest_pain_pressed не найдена или без текста жалобы'))).toBe(true);
   });
 

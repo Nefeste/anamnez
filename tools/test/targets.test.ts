@@ -106,7 +106,8 @@ describe('ЭКГ у постели в смотровой приёмного', ()
     expect(r.grade).toBe('A');
     expect(r.minutes).toBeLessThanOrEqual(10);
     finish(s, p);
-    expect(p.closed?.targets).toEqual([r]);
+    // при подъёме ST на этой ЭКГ к ней добавляется срок перевода (часть 39б) — здесь важен срок ЭКГ
+    expect(p.closed?.targets?.filter(t => t.id === TARGET)).toEqual([r]);
     expect(s.summary.targets?.[TARGET]).toEqual({ onTime: 1, total: 1 });
     // строки разбора и итогов дня
     expect(T.spikes.patient.targetLine(db.targets[TARGET].name.ru, r.minutes, 10)).toBe(`ЭКГ при боли в груди: через ${r.minutes} мин после прихода — в срок`);

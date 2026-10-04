@@ -430,6 +430,21 @@ function gallSave(): { save: string; id: string } {
   return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s }), id };
 }
 
+/** «Смена» в амбулатории, «Студент»: первым в очереди — стабильная стенокардия напряжения (часть 39г). */
+function anginaSave(): { save: string; id: string } {
+  const { db } = buildDb();
+  const s = newShift(db, { seed: 46, season: 'winter', difficulty: 'student' });
+  for (let i = 0; i < 600 && s.queue.length === 0; i++) apply(db, s, { kind: 'advance', seconds: 60 });
+  const id = s.queue[0];
+  for (let seed = 9500; ; seed++) {
+    const x = generatePatient(db, seed, { department: 'dept.therapy', season: 'winter', primary: 'cond.angina_stable', params: { fc: 'i_ii' } });
+    if (x.age >= 50 && x.truth.risks.length === 0 && x.truth.conditions.length === 1) {
+      s.patients[id].patient = x;
+      return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s }), id };
+    }
+  }
+}
+
 /** Песочница до открытия: готовая амбулатория, бюджет «обычный» — экран «Перед открытием». */
 /**
  * Карьера 2, у которой глава 1 выполнена к концу дня 3 (spec 2026-09-chapter-2, часть 34): переход
@@ -1440,6 +1455,37 @@ try {
   const nsteReview = await page.locator('body').innerText();
   check(!/не назначено|здесь не показано/i.test(nsteReview), `ОКС без подъёма ST, перевод: разбор — «${nsteReview.replace(/\n/g, ' · ').slice(0, 260)}»`);
   await page.getByTestId('shift-to-queue').click();
+
+  // стенокардия напряжения (spec 2026-10-chapter-3, часть 39г): боль при нагрузке — жалоба, расспрос о боли в
+  // груди её не повторяет, а отвечает: давно, не чаще, в покое не давит; дома — нитроглицерин,
+  // бета-адреноблокатор и статин, в разборе нет «не назначено»
+  const angina = anginaSave();
+  const ac = await browser.newContext({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2 });
+  await ac.addInitScript(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/shift.json', angina.save]);
+  const pa = await ac.newPage();
+  pa.on('pageerror', e => errors.push(String(e)));
+  await pa.goto(`${base}/shift`);
+  await pa.getByTestId(`queue-${angina.id}`).waitFor({ timeout: 15_000 });
+  await pa.getByTestId('tab-pause').click();
+  await pa.getByTestId(`queue-${angina.id}`).click();
+  await visible(pa, 'visit-decide').waitFor({ timeout: 15_000 });
+  await pa.getByTestId('exam-exam.ask_chest_pain').click();
+  await pa.getByTestId('done-exam.ask_chest_pain').waitFor({ timeout: 5000 });
+  const anginaAsk = await text(pa, 'done-exam.ask_chest_pain');
+  check(anginaAsk.includes('Приступы такие же') && anginaAsk.includes('Давящей боли за грудиной в покое нет'), `стенокардия напряжения: расспрос — «${anginaAsk.replace(/\n/g, ' · ').slice(0, 240)}»`);
+  await visible(pa, 'visit-decide').click();
+  await pa.getByTestId('dx-cond.angina_stable').click();
+  await pa.getByTestId('decision-to-plan').click();
+  for (const tx of ['tx.nitroglycerin', 'tx.beta_blocker', 'tx.statin']) await pa.getByTestId(`tx-${tx}`).click();
+  await pa.getByTestId('setting-home').click();
+  await pa.getByTestId('visit-finish').click();
+  await pa.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
+  const anginaReview = await pa.locator('body').innerText();
+  check(anginaReview.includes('Стабильная стенокардия напряжения') && !/не назначено|здесь не показано/i.test(anginaReview),
+    `стенокардия напряжения: дома, разбор — «${anginaReview.replace(/\n/g, ' · ').slice(0, 260)}»`);
+  await pa.waitForTimeout(500);
+  await pa.screenshot({ path: join(OUT, '19-angina.png'), fullPage: true });
+  await ac.close();
   // операционная (spec 2026-09-chapter-2, часть 28): у вас пациент с аппендицитом — в решении
   // «В операционную» с операцией и койками; итог приёма — операция и палата; на обходе —
   // «идёт операция» и выписать нельзя; вечером — в итогах дня операционная
