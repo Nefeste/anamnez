@@ -96,14 +96,17 @@ export function recordHeadSlice(width: number, findings: HeadFindings, seed: num
 
   // 4. Жидкость: борозды, боковые щели, межполушарная щель с серпом, желудочки
   // борозда сужается вглубь: у поверхности — полная толщина, дальше — тоньше
+  // кровь под паутинной оболочкой (часть 41в) — светлая там, где была тёмная жидкость: в бороздах, щелях
   for (const s of g.sulci) {
     const half = Math.ceil(s.path.length / 2);
-    c.drawPath(pathOf(s.path, false), paint(pal.csf, { stroke: s.width * 0.6, blur: 0.0012 }));
-    c.drawPath(pathOf(s.path.slice(0, half), false), paint(pal.csf, { stroke: s.width, blur: 0.0012 }));
+    const fill = s.blood ? pal.high : pal.csf;
+    c.drawPath(pathOf(s.path, false), paint(fill, { stroke: s.width * 0.6, blur: 0.0012 }));
+    c.drawPath(pathOf(s.path.slice(0, half), false), paint(fill, { stroke: s.width, blur: 0.0012 }));
   }
-  for (const s of g.sylvian) c.drawPath(pathOf(s, false), paint(pal.csf, { stroke: 0.0065, blur: 0.002 }));
+  const cleft = g.sah ? pal.high : pal.csf;
+  for (const s of g.sylvian) c.drawPath(pathOf(s, false), paint(cleft, { stroke: 0.0065, blur: 0.002 }));
   for (const s of g.fissure) {
-    c.drawPath(pathOf(s, false), paint(pal.csf, { stroke: 0.008, blur: 0.0015 }));
+    c.drawPath(pathOf(s, false), paint(cleft, { stroke: 0.008, blur: 0.0015 }));
     c.drawPath(pathOf(s, false), paint(mode === 'mri' ? pal.csf : '#9a9a9a', { stroke: 0.0018 }));
   }
   for (const v of g.ventricles) c.drawPath(pathOf(v), paint(pal.csf, { blur: 0.0015 }));

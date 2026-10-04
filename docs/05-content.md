@@ -135,7 +135,7 @@ department: therapy
 kind: disease                 # disease | injury | syndrome | state
 severity: serious             # minor | moderate | serious | critical
 epidemiology:
-  prevalence: common          # very_common | common | uncommon | rare | very_rare
+  prevalence: common          # very_common | common | uncommon | rare | very_rare | extremely_rare | ultra_rare
   age: { min: 18, peak: [65, 95] }
   season: { winter: 1.5, spring: 1.1, summer: 0.6, autumn: 1.0 }
   risks:
@@ -149,7 +149,9 @@ params:                       # скрытые параметры случая
 #                             # с 0.3.4 — порог по числу { f, below }, с 0.3.10 — и с ходом
 #                             # времени { f, below, clock: true } (окно тромболизиса при инсульте)
 #                             # и по другим параметрам { all: { lvo: [yes], nihss: [high] } };
-#                             # с 0.3.11 — по баллам шкалы { rule: rule.abcd2, from: 6 }
+#                             # с 0.3.11 — по баллам шкалы { rule: rule.abcd2, from: 6 }; с 0.3.12 —
+#                             # порог по измерению { f, below, seen: true }: разбор судит по тому,
+#                             # что показал прибор (давление при кровоизлиянии)
 course:
   stages:
     - { id: onset, days: [0, 2] }
@@ -180,6 +182,8 @@ findings:
   - { f: lab.wbc_high, band: often }
   - { f: lab.crp_high, band: always }
   - { f: img.cxr_infiltrate, band: always, attrs: { side: $side } }
+# - { f: img.ct_hematoma, band: { pct: 100 }, attrs: { side: -$side } }   # с 0.3.12: противоположная
+#                             # сторона — гематома в полушарии напротив слабости (только right и left)
   - { f: sym.rhinorrhea, band: rarely }        # «против»: насморк нехарактерен
 confirm: [exam.xray_chest]
 redFlags: [vital.spo2_low, sign.confusion, vital.hypotension]
@@ -239,7 +243,8 @@ kind: drug                    # drug | regimen | procedure | surgery (с 0.0.45)
 class: antibiotic.penicillin
 route: oral                   # oral | inhaled | nasal | iv | im | sc (с 0.2.5: под кожу)
 cost: 150
-effects:                      # cure — на причину, relieve — облегчает самочувствие
+effects:                      # cure — на причину, relieve — облегчает самочувствие, harm (с 0.3.12) —
+                              # вредит при болезни: тромболизис при кровоизлиянии — кровотечение
   - { on: cond.strep_pharyngitis, kind: cure, band: usually, days: [1, 3] }
   - { on: cond.pneumonia_cap, kind: cure, band: usually, days: [2, 4] }
 contraindications:            # reaction — как часто вред, если назначить при нём
@@ -489,6 +494,12 @@ surgery:
   нет — это её пункты (`points.age`). Производный по баллам (`{ rule, from }`) — у правила с баллами,
   порог можно набрать. «Без лечения» списком — у каждой записи, кроме последней, есть условие `when`;
   другая болезнь `as` — есть в базе, с ней приходят, и это не сама болезнь;
+- кровоизлияния (с 0.3.12, spec 2026-10-chapter-3, часть 41в): уточнение у проверки обследования
+  (`given`) — находка, которую то же обследование проверяет раньше и которая сама не уточнение; вред
+  при болезни (`kind: harm`) — у лечения, которое в тактике этой болезни «вредно»; противоположная
+  сторона (`-$side`) — только у параметра со значениями right и left; «обязательно до перевода» в общей
+  тактике (`beforeTransfer`) — как `require`; обследование правила проверяет признак его болезней,
+  признак, которого при них не бывает (`masks`), или признак, которого нет ни у одной болезни базы;
 - операции (с 0.0.45): у болезни с `surgery` — существующая операция вида `surgery`, которая
   действует на её причину; блок `surgery` — у операций и только у них; помещение операции
   есть, бригада — из его штата, аппараты — из этого помещения, и мест под них хватает во всех

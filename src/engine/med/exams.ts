@@ -56,6 +56,8 @@ export function runExam(db: ContentDb, patient: Patient, examId: Id, rng: Rng, s
   // О том, на что пациент пожаловался сам, не переспрашивают: ответ уже известен без ошибки.
   const told = new Set(patient.complaints);
   const checks = exam.checks.filter(check => !told.has(check.f));
+  // одно число на две находки (часть 41в): ошиблись в объёме гематомы — полушарие то же, что у неё
+  const twinAttrs = (f: Id) => patient.truth.findings.find(x => x.attrs && (db.findings[x.f]?.value?.of === f || db.findings[f].value?.of === x.f))?.attrs;
   const observe = (check: ExamCheck): Observation => {
     const r = rng.fork(check.f);
     const truth = present.get(check.f);
@@ -70,24 +72,39 @@ export function runExam(db: ContentDb, patient: Patient, examId: Id, rng: Rng, s
         : sampleRange(r.fork('value'), shown ? finding.value.present : finding.value.absent, finding.value.decimals);
     }
     if (shown && finding.attrs) {
-      obs.attrs = truth?.attrs ?? Object.fromEntries(Object.keys(finding.attrs).sort().map(a => [a, r.fork(a).pick(Object.keys(finding.attrs![a]).sort())]));
+      obs.attrs = truth?.attrs ?? twinAttrs(check.f) ?? Object.fromEntries(Object.keys(finding.attrs).sort().map(a => [a, r.fork(a).pick(Object.keys(finding.attrs![a]).sort())]));
     }
     return obs;
   };
   // порог на чужом измерении (часть 33б) — после того, чьё измерение: низкое давление показывает то
   // же число, что тонометр, и «есть» — если число попало в его диапазон
   const measured = new Map<Id, Observation>();
+  // уточнение (часть 41в): не показан признак, после которого проверяют, — проверки нет, и порога
+  // на её числе тоже: объёма гематомы без крови на КТ не пишут
+  const skipped = new Set<Id>();
   const shared = (check: ExamCheck) => db.findings[check.f].value?.of !== undefined;
   for (const check of [...checks.filter(c => !shared(c)), ...checks.filter(shared)]) {
     const spec = db.findings[check.f].value;
+    if ((check.given !== undefined && measured.get(check.given)?.shown !== true) || (spec?.of !== undefined && skipped.has(spec.of))) {
+      skipped.add(check.f);
+      continue;
+    }
     const base = spec?.of ? measured.get(spec.of) : undefined;
     if (spec && base?.value !== undefined) {
-      measured.set(check.f, { f: check.f, shown: base.value >= spec.present[0] && base.value <= spec.present[1], value: base.value, exam: examId });
+      const shown = base.value >= spec.present[0] && base.value <= spec.present[1];
+      const obs: Observation = { f: check.f, shown, value: base.value, exam: examId };
+      // атрибут (часть 41в): гематома больше 30 см³ — в своём полушарии, как и до 30
+      const finding = db.findings[check.f];
+      if (shown && finding.attrs) {
+        const r = rng.fork(check.f);
+        obs.attrs = present.get(check.f)?.attrs ?? twinAttrs(check.f) ?? Object.fromEntries(Object.keys(finding.attrs).sort().map(a => [a, r.fork(a).pick(Object.keys(finding.attrs![a]).sort())]));
+      }
+      measured.set(check.f, obs);
       continue;
     }
     measured.set(check.f, observe(check));
   }
-  return checks.map(check => measured.get(check.f)!);
+  return checks.filter(check => measured.has(check.f)).map(check => measured.get(check.f)!);
 }
 
 /** Жалобы, которые пациент называет сам, — наблюдения без ошибок. */

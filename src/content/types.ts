@@ -25,8 +25,12 @@ export interface Source {
   note?: string;
 }
 
-/** Откуда брать значение атрибута признака: параметр случая, распределение или константа. */
-export type AttrSpec = { param: string } | { dist: Record<string, number> } | { value: string };
+/**
+ * Откуда брать значение атрибута признака: параметр случая, распределение или константа.
+ * `opposite` (spec 2026-10-chapter-3, часть 41в) — сторона напротив: гематома — в полушарии,
+ * противоположном слабости.
+ */
+export type AttrSpec = { param: string; opposite?: true } | { dist: Record<string, number> } | { value: string };
 
 /** Связь «причина → признак» (noisy-OR, ADR 0009). */
 export interface Link {
@@ -129,6 +133,11 @@ export interface DerivedByValue {
   f: Id;
   below: number;
   clock?: true;
+  /**
+   * по измерению (spec 2026-10-chapter-3, часть 41в): разбор судит по тому, что показало обследование, —
+   * давление снижают по тонометру; не измеряли — по правде
+   */
+  seen?: true;
 }
 
 /**
@@ -228,7 +237,11 @@ export interface Treatment {
  */
 export interface Effect {
   on: Id;
-  kind: 'cure' | 'relieve';
+  /**
+   * `harm` (spec 2026-10-chapter-3, часть 41в) — вред при этой болезни: тромболизис при
+   * кровоизлиянии в мозг — кровотечение; течение — как реакция на противопоказание
+   */
+  kind: 'cure' | 'relieve' | 'harm';
   p: P;
   days: [number, number];
   when?: Record<string, string[]>;
@@ -466,6 +479,12 @@ export interface ExamCheck {
   f: Id;
   sens: P;
   spec: P;
+  /**
+   * уточнение (spec 2026-10-chapter-3, часть 41в): проверяют, только если это же обследование
+   * показало признак `given`, — объём гематомы и кровь в бороздах ищут, когда на КТ есть кровь;
+   * не показало — наблюдения нет
+   */
+  given?: Id;
 }
 
 export interface Exam {

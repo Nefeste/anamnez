@@ -156,7 +156,7 @@ describe('срез головы: рисунок без экрана', () => {
   });
 
   test('все варианты «Проверок» рисуются', async () => {
-    expect(HEAD_CASES.length).toBe(7);
+    expect(HEAD_CASES.length).toBe(9);
     for (const k of HEAD_CASES) {
       const { png } = await draw(k.findings, k.seed, k.mode);
       expect(png.length).toBeGreaterThan(1000);

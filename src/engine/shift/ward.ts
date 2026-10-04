@@ -6,7 +6,7 @@
 // по суткам в стационаре. Так обход, итоги дня и повтор дают одно и то же.
 import type { ContentDb, Id } from '../../content/types';
 import { P_ONE, type Rng } from '../core/rng';
-import { curesOf, type Plan, type PlanEval, primaryOf, selfLimits, untreatedOf } from '../med/plan';
+import { curesOf, harmsOf, type Plan, type PlanEval, primaryOf, selfLimits, untreatedOf } from '../med/plan';
 import type { Patient } from '../med/types';
 import type { Operation } from './surgery';
 
@@ -103,6 +103,11 @@ export function wardCourse(db: ContentDb, patient: Patient, plan: Plan, ev: Plan
       out.reaction = { tx: v.tx, by: v.by, after: from + 1 };
       break;
     }
+  }
+  // вред при самой болезни (часть 41в): тромболизис при кровоизлиянии в мозг — кровотечение
+  if (!out.reaction) {
+    const harm = harmsOf(db, primary, plan.treatments).find(h => rng.fork(`harm:${h.tx}`).chance(h.p));
+    if (harm) out.reaction = { tx: harm.tx, by: primary.id, after: from + 1 };
   }
   const cures = curesOf(db, primary, plan.treatments);
   if (cures.length > 0 && rng.fork('cure').chance(anyOf(cures.map(e => e.p)))) {

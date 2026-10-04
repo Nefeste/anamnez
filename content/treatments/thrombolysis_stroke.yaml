@@ -19,10 +19,15 @@ effects:
   - { on: cond.stroke_ischemic, kind: cure, band: { pct: 22 }, days: [2, 3], when: { window: [yes], lysis90: [yes], minor: [no] } }
   - { on: cond.stroke_ischemic, kind: cure, band: { pct: 11 }, days: [2, 3], when: { window: [yes], lysis90: [no], lysis180: [yes], minor: [no] } }
   - { on: cond.stroke_ischemic, kind: cure, band: { pct: 5 }, days: [2, 3], when: { window: [yes], lysis180: [no], minor: [no] } }
+  # вред при кровоизлиянии в мозг (spec 2026-10-chapter-3, часть 41в): кровь на КТ — абсолютное противопоказание
+  # (814_1, раздел 2.4), тромболизис — одна из причин внутричерепного кровоизлияния (523_3, раздел 1.2);
+  # кровотечение — игровая оценка
+  - { on: cond.ich, kind: harm, band: usually, days: [0, 1] }
+  - { on: cond.sah, kind: harm, band: usually, days: [0, 1] }
 contraindications:
   # названные в тексте 814_1 (раздел 3.1.2.1.1): приём ПОАК меньше 48 часов назад — в игре «принимает
-  # антикоагулянты»; гипокоагуляция — «кровоточивость»; кровь на КТ (раздел 2.4) — с кровоизлияниями
-  # (часть 41в). Кровотечение при противопоказании — игровая оценка
+  # антикоагулянты»; гипокоагуляция — «кровоточивость»; кровь на КТ (раздел 2.4) — вред при кровоизлияниях
+  # (часть 41в, выше). Кровотечение при противопоказании — игровая оценка
   - { id: risk.anticoagulants, level: absolute, reaction: often }
   - { id: risk.bleeding_tendency, level: absolute, reaction: often }
 texts:

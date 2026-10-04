@@ -316,8 +316,10 @@ function conditionArticle(db: ContentDb, c: Condition): Article {
   const course: string[] = [];
   // течение может зависеть от скрытого параметра (часть 30д): «при неосложнённом — проходит само»
   if (c.selfLimiting) course.push(c.selfLimitingWhen ? e.selfLimitingIf(whenText(c.selfLimitingWhen) ?? '') : e.selfLimiting);
-  // острый период проходит в стационаре (часть 41а): у инсульта — под наблюдением, последствия могут остаться
-  if (c.settles) course.push(e.settles);
+  // острый период проходит в стационаре (часть 41а): у инсульта — под наблюдением, последствия могут остаться;
+  // нет лечения, которое бы их сняло (часть 41в: кровоизлияние в мозг), — остаются
+  const clears = Object.values(db.treatments).some(x => x.effects.some(ef => ef.on === c.id && ef.kind === 'cure'));
+  if (c.settles) course.push(clears ? e.settles : e.settlesResidual);
   // записей может быть несколько (часть 41б): риск инсульта после ТИА — по группе ABCD2, долей
   for (const u of c.untreated ?? []) {
     if (u.p <= 0) continue;

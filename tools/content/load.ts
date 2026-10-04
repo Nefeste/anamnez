@@ -67,7 +67,8 @@ function compileLink(l: LinkSrc): Link {
   if (l.attrs) {
     out.attrs = {};
     for (const [name, spec] of Object.entries(l.attrs)) {
-      out.attrs[name] = (typeof spec === 'string' ? { param: spec.slice(1) } : { dist: spec }) satisfies AttrSpec;
+      // «-$side» — сторона напротив (часть 41в): гематома — в полушарии, противоположном слабости
+      out.attrs[name] = (typeof spec !== 'string' ? { dist: spec } : spec.startsWith('-') ? { param: spec.slice(2), opposite: true } : { param: spec.slice(1) }) satisfies AttrSpec;
     }
   }
   return out;
@@ -221,8 +222,11 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       for (const [attr, spec] of Object.entries(l.attrs ?? {})) {
         if (!findings[l.f].attrs?.[attr]) errors.push(`${owner}: у признака ${l.f} нет атрибута ${attr}`);
         if (typeof spec === 'string') {
-          const param = spec.slice(1);
+          // сторона напротив (часть 41в) — только у стороны: справа и слева
+          const opposite = spec.startsWith('-');
+          const param = spec.slice(opposite ? 2 : 1);
           if (!params?.[param]) errors.push(`${owner}: параметр ${param} не объявлен`);
+          else if (opposite && Object.keys(params[param]).some(v => v !== 'right' && v !== 'left')) errors.push(`${owner}: сторона напротив — у параметра ${param}, а его значения не справа и слева`);
           else for (const v of Object.keys(params[param])) if (!findings[l.f].attrs?.[attr]?.[v]) errors.push(`${owner}: значение ${param}=${v} не описано в атрибуте ${l.f}.${attr}`);
         } else {
           for (const v of Object.keys(spec)) if (!findings[l.f].attrs?.[attr]?.[v]) errors.push(`${owner}: значение ${v} не описано в атрибуте ${l.f}.${attr}`);
@@ -424,7 +428,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       // кислород при сатурации от 90 % у ОКС — «не нужно»)
       // обязательное и при переводе (часть 39а) — так же: тромболизис при инфаркте в окне
       // группа «одно из» (часть 39в) — каждое из группы так же
-      const requires = [['обязательное', membersOf(t.require), roled] as const, ...(t.byParam ?? []).flatMap((x, i) => {
+      const requires = [['обязательное', membersOf(t.require), roled] as const, ['обязательное до перевода', t.beforeTransfer ?? [], roled] as const, ...(t.byParam ?? []).flatMap((x, i) => {
         const own = new Set([x.firstLine, x.acceptable, x.supportive, x.notIndicated, x.harmful].flat());
         return [
           [`обязательное тактики по параметру №${i + 1}`, membersOf(x.require), own] as const,
@@ -492,6 +496,11 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     for (const e of t.effects) {
       if (!(e.on in conditions)) errors.push(`${t.id}: действует на неизвестное состояние ${e.on}`);
       else checkWhen(t.id, `действие на ${e.on}`, e.when, conditions[e.on].params);
+      // вред при болезни (часть 41в): в её тактике это лечение — «вредно», иначе разбор и течение спорят
+      const x = conditions[e.on]?.treatment;
+      if (e.kind === 'harm' && x && !x.harmful.includes(t.id) && !(x.byParam ?? []).some(b => b.harmful.includes(t.id))) {
+        errors.push(`${t.id}: вредит при ${e.on}, а в её тактике оно не «вредно»`);
+      }
     }
     // операция: помещение, бригада из его штата и аппараты из этого помещения
     if ((t.kind === 'surgery') !== (t.surgery !== undefined)) errors.push(`${t.id}: у операции (kind: surgery) должен быть блок surgery, и только у неё`);
@@ -522,9 +531,16 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   for (const r of Object.values(risks)) checkLinks(r.id, r.findings);
   const revealedBy: Record<string, string[]> = {};
   for (const e of Object.values(exams)) {
-    for (const ch of e.checks) {
+    for (const [i, ch] of e.checks.entries()) {
       if (!hasF(ch.f)) errors.push(`${e.id}: проверяемый признак ${ch.f} не найден`);
       (revealedBy[ch.f] ??= []).push(e.id);
+      // уточнение (часть 41в): признак, после которого проверяют, — раньше в этом же обследовании и
+      // без своего уточнения: иначе неясно, что было показано
+      if (ch.given !== undefined) {
+        const j = e.checks.findIndex(c => c.f === ch.given);
+        if (j < 0 || j >= i) errors.push(`${e.id}: ${ch.f} уточняет ${ch.given}, а его это обследование не проверяет раньше`);
+        else if (e.checks[j].given !== undefined) errors.push(`${e.id}: ${ch.f} уточняет ${ch.given}, а тот сам — уточнение`);
+      }
     }
   }
   for (const f of Object.keys(findings)) {
@@ -627,9 +643,11 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       if (!exams[id]) { errors.push(`${x.id}: обследование ${id} не найдено`); continue; }
       const about = new Set(x.about.flatMap(c => conditions[c]?.findings.map(l => l.f) ?? []));
       // или ищет то, чего ни у одной болезни базы нет (часть 40): КТ при травме головы исключает
-      // кровь внутри черепа, а при сотрясении изменений на КТ не бывает
+      // кровь внутри черепа, а при сотрясении изменений на КТ не бывает. С частью 41в кровь на КТ — у
+      // кровоизлияний в мозг, а у болезней правила её не бывает по записи (masks)
       const anywhere = (f: string) => Object.values(conditions).some(c => c.findings.some(l => l.f === f));
-      if (!exams[id].checks.some(ch => about.has(ch.f) || !anywhere(ch.f))) errors.push(`${x.id}: ${id} не проверяет ни одного признака ${x.about.join(', ')}`);
+      const masked = new Set(x.about.flatMap(c => conditions[c]?.masks ?? []));
+      if (!exams[id].checks.some(ch => about.has(ch.f) || masked.has(ch.f) || !anywhere(ch.f))) errors.push(`${x.id}: ${id} не проверяет ни одного признака ${x.about.join(', ')}`);
     }
   }
   // сроки (spec 2026-10-chapter-3, часть 37): жалоба — признак с жалобой, обследования есть; срок у
@@ -752,7 +770,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   for (const e of Object.values(exams).sort((a, b) => (a.id < b.id ? -1 : 1))) {
     const out: Exam = {
       id: e.id, name: e.name, kind: e.kind, time: e.time, cost: e.cost, discomfort: e.discomfort,
-      checks: e.checks.map(c => ({ f: c.f, sens: Math.round(c.sens * 100), spec: Math.round(c.spec * 100) })),
+      checks: e.checks.map(c => ({ f: c.f, sens: Math.round(c.sens * 100), spec: Math.round(c.spec * 100), ...(c.given ? { given: c.given } : {}) })),
       texts: e.texts, sources: e.sources, review: e.review,
     };
     if (e.room) out.room = e.room;

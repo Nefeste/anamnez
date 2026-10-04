@@ -166,6 +166,15 @@ export function curesOf(db: ContentDb, condition: Pick<ActiveCondition, 'id' | '
 }
 
 /**
+ * Что из назначенного вредит при этой болезни (spec 2026-10-chapter-3, часть 41в): эффект `harm` с
+ * условием по её скрытым параметрам — тромболизис при кровоизлиянии в мозг. Течение — как реакция на
+ * противопоказание, с вероятностью `p`.
+ */
+export function harmsOf(db: ContentDb, condition: Pick<ActiveCondition, 'id' | 'params'>, treatments: readonly Id[]): { tx: Id; p: number }[] {
+  return treatments.flatMap(tx => (db.treatments[tx]?.effects ?? []).filter(e => e.on === condition.id && e.kind === 'harm' && whenHolds(e.when, condition.params)).map(e => ({ tx, p: e.p })));
+}
+
+/**
  * Проходит ли болезнь у этого больного сама: у записи `selfLimiting` может быть условие по
  * скрытому параметру (часть 30д: неосложнённый дивертикулит проходит и без антибиотиков, абсцесс — нет).
  */
@@ -368,8 +377,9 @@ function tellingFindings(db: ContentDb, id: Id): Id[] {
 /**
  * Параметры болезни, как их видит врач по шкале с баллами (spec 2026-10-chapter-3, часть 41б):
  * шкалу считают по тому, что показали обследования, — давление при поступлении это то, что показал
- * тонометр. Проверено всё, что меняет вывод, — значение по наблюдениям; иначе — настоящее.
- * Параметры по другим параметрам пересчитываются по ним.
+ * тонометр. Проверено всё, что меняет вывод, — значение по наблюдениям; иначе — настоящее. С частью
+ * 41в — и порог по измерению с `seen`: давление при кровоизлиянии снижают по тонометру; измеряли —
+ * по последнему числу. Параметры по другим параметрам пересчитываются по ним.
  */
 export function asSeen(db: ContentDb, patient: Patient, observations: readonly Observation[]): Record<string, string> {
   const primary = primaryOf(patient);
@@ -378,6 +388,15 @@ export function asSeen(db: ContentDb, patient: Patient, observations: readonly O
   const known = knownOf(observations);
   let changed = false;
   for (const [name, d] of Object.entries(derived)) {
+    if (byValue(d) && d.seen) {
+      const measured = observations.filter(o => o.f === d.f && o.value !== undefined);
+      const v = measured.length > 0 ? (measured[measured.length - 1].value! < d.below ? 'yes' : 'no') : undefined;
+      if (v !== undefined && v !== out[name]) {
+        out[name] = v;
+        changed = true;
+      }
+      continue;
+    }
     const r = byRule(d);
     if (!r || !db.rules[r.rule]?.points) continue;
     const v = checkRule(db.rules[r.rule], patient.age, known, r.from).verdict;
@@ -449,7 +468,8 @@ export function evaluatePlan(db: ContentDb, patient: Patient, plan: Plan, observ
     : [];
   return {
     primary,
-    roles: plan.treatments.map(tx => ({ tx, role: txRole(db, primary, tx, params) })),
+    // роли — по тому, что показали обследования (части 41б и 41в): давление снижают по тонометру
+    roles: plan.treatments.map(tx => ({ tx, role: txRole(db, primary, tx, seenParams) })),
     setting: { chosen: plan.setting, recommended: recommendedSetting(db, patient, done), ...(also.length > 0 ? { also } : {}) },
     violations,
     effective,
@@ -467,10 +487,11 @@ export function evaluatePlan(db: ContentDb, patient: Patient, plan: Plan, observ
       return ok.length > 0 && !g.some(tx => plan.treatments.includes(tx)) ? [ok[0]] : [];
     }).sort(),
     requireWhen: Object.fromEntries((base?.byParam ?? []).filter(b => whenHolds(b.when, seenParams)).flatMap(b => membersOf(b.require).map(tx => [tx, b.when] as const)).reverse()),
-    // до перевода (часть 39а) — то, что здесь можно было сделать: тромболизис у постели под монитором
-    beforeTransferMissing: beforeTransferOf(base, params)
+    // до перевода (часть 39а) — то, что здесь можно было сделать: тромболизис у постели под монитором;
+    // по тому, что показали обследования (часть 41в): давление перед переводом снижают по тонометру
+    beforeTransferMissing: beforeTransferOf(base, seenParams)
       .filter(tx => !plan.treatments.includes(tx) && txAvailable(db, tx, venue) && !db.treatments[tx]?.contraindications.some(k => knownIds.has(k.id))).sort(),
-    beforeTransferWhen: Object.fromEntries((base?.byParam ?? []).filter(b => whenHolds(b.when, params)).flatMap(b => (b.beforeTransfer ?? []).map(tx => [tx, b.when] as const)).reverse()),
+    beforeTransferWhen: Object.fromEntries((base?.byParam ?? []).filter(b => whenHolds(b.when, seenParams)).flatMap(b => (b.beforeTransfer ?? []).map(tx => [tx, b.when] as const)).reverse()),
     // спутники (часть 39а): тромболизис без клопидогрела и антикоагулянта — неполное лечение; из группы
     // хватит одного, а противопоказанное тем, о чём врач знает, в вину не ставим
     companionsMissing: plan.treatments.flatMap(of => (db.treatments[of]?.companions ?? []).flatMap(g => {
