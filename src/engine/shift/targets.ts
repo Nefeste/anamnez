@@ -1,10 +1,12 @@
 // Сроки (spec 2026-10-chapter-3, часть 37): что сделать и за сколько минут от прихода — ЭКГ при
-// боли в груди за 10 минут. Отсчёт — от прихода в больницу; сделано — пришёл результат.
-import type { ContentDb, Id, Target } from '../../content/types';
+// боли в груди за 10 минут. Отсчёт — от прихода в больницу; сделано — пришёл результат. С частью 39б
+// — и от находки (тромболизис за 10 минут от ЭКГ с подъёмом ST), и решения: назначение и перевод
+// сделаны в минуту, когда врач закрыл приём.
+import type { ContentDb, Id, Setting, Target } from '../../content/types';
 import type { Grade } from '../med/score';
 import type { ShiftPatient } from './types';
 
-/** Срок закрытого приёма: через сколько минут от прихода пришёл результат; нет — не сделали. */
+/** Срок закрытого приёма: через сколько минут от начала отсчёта сделано; нет — не сделали. */
 export interface TargetResult {
   id: Id;
   minutes?: number;
@@ -18,15 +20,30 @@ export interface TargetPlace {
   bedside(exam: Id): boolean;
 }
 
+/** Решение врача (часть 39б): когда закрыл приём и что назначил, куда направил. */
+export interface TargetDecision {
+  t: number;
+  plan: { treatments: readonly Id[]; setting: Setting };
+}
+
+type Seen = Pick<ShiftPatient, 'patient' | 'bay' | 'results'>;
+
+/** Когда пришёл первый результат, показавший одну из находок срока; не показал — undefined. */
+function foundAt(p: Pick<ShiftPatient, 'results'>, t: Target): number | undefined {
+  const at = p.results.filter(r => r.obs.some(o => o.shown && t.findings.includes(o.f))).reduce((m, r) => Math.min(m, r.at), Infinity);
+  return at === Infinity ? undefined : at;
+}
+
 /**
- * Какие сроки к пациенту относятся: жалоба при поступлении — из записи, и, если срок для лежащих
- * в помещении (смотровая приёмного), он лежит там и одно из обследований срока ему можно сделать у
- * постели — монитор стоит и смотровая работает: без него в срок не успеть не по вине игрока
- * (смотровая из сохранений до 0.3.2 — без монитора, пока его не купят).
+ * Какие сроки к пациенту относятся: жалоба при поступлении — из записи — или находка, которую уже
+ * показали обследования (часть 39б); и, если срок для лежащих в помещении (смотровая приёмного), он
+ * лежит там, а у срока на обследование одно из них ему можно сделать у постели — монитор стоит и
+ * смотровая работает: без него в срок не успеть не по вине игрока (смотровая из сохранений до 0.3.2
+ * — без монитора, пока его не купят).
  */
-export function targetsFor(db: ContentDb, p: Pick<ShiftPatient, 'patient' | 'bay'>, at: TargetPlace): Target[] {
-  return Object.values(db.targets).filter(t => t.complaints.some(f => p.patient.complaints.includes(f))
-    && (!t.room || (p.bay !== undefined && at.roomType(p.bay.room) === t.room && t.exams.some(e => at.bedside(e)))));
+export function targetsFor(db: ContentDb, p: Seen, at: TargetPlace): Target[] {
+  return Object.values(db.targets).filter(t => (t.complaints.some(f => p.patient.complaints.includes(f)) || foundAt(p, t) !== undefined)
+    && (!t.room || (p.bay !== undefined && at.roomType(p.bay.room) === t.room && (t.exams.length === 0 || t.exams.some(e => at.bedside(e))))));
 }
 
 /** В срок — A; до полутора сроков — B, до двух — C; позже или не сделано — D. */
@@ -38,15 +55,36 @@ export function targetGrade(minutes: number | undefined, limit: number): Grade {
   return 'D';
 }
 
-/** Первый пришедший результат одного из обследований срока — минуты от прихода; нет — undefined. */
-export function minutesTo(p: Pick<ShiftPatient, 'arriveT' | 'results'>, t: Target): number | undefined {
-  const at = p.results.filter(r => t.exams.includes(r.exam)).reduce((m, r) => Math.min(m, r.at), Infinity);
-  return at === Infinity ? undefined : Math.round((at - p.arriveT) / 60);
+/** С какого момента отсчёт: приход или результат с находкой (часть 39б). */
+export function targetStart(p: Pick<ShiftPatient, 'arriveT' | 'results'>, t: Target): number | undefined {
+  return t.from === 'finding' ? foundAt(p, t) : p.arriveT;
 }
 
-export function targetResults(db: ContentDb, p: Pick<ShiftPatient, 'patient' | 'bay' | 'arriveT' | 'results'>, at: TargetPlace): TargetResult[] {
-  return targetsFor(db, p, at).map(t => {
-    const minutes = minutesTo(p, t);
-    return { id: t.id, ...(minutes !== undefined ? { minutes } : {}), limit: t.minutes, grade: targetGrade(minutes, t.minutes) };
-  });
+/** Сделано ли решением (часть 39б): назначение в плане или место — то самое. */
+const decided = (t: Target, d: TargetDecision) => t.treatments.some(tx => d.plan.treatments.includes(tx)) || t.settings.includes(d.plan.setting);
+
+/**
+ * Через сколько минут от начала отсчёта сделано: первый пришедший результат обследования срока или,
+ * у срока на назначение и место, решение (часть 39б). Нет — undefined.
+ */
+export function minutesTo(p: Pick<ShiftPatient, 'arriveT' | 'results'>, t: Target, decision?: TargetDecision): number | undefined {
+  const start = targetStart(p, t);
+  if (start === undefined) return undefined;
+  const exam = p.results.filter(r => t.exams.includes(r.exam)).reduce((m, r) => Math.min(m, r.at), Infinity);
+  const at = Math.min(exam, decision && decided(t, decision) ? decision.t : Infinity);
+  return at === Infinity ? undefined : Math.round((at - start) / 60);
+}
+
+/**
+ * Сроки закрытого приёма. Срок на назначение или место — только тем, кому его сделали (часть 39б):
+ * тромболизис, которого не назначили, — строка «Не сделано до перевода» (часть 39а), а не второй
+ * штраф сроком; перевод — тем, кого перевели.
+ */
+export function targetResults(db: ContentDb, p: Seen & Pick<ShiftPatient, 'arriveT'>, at: TargetPlace, decision?: TargetDecision): TargetResult[] {
+  return targetsFor(db, p, at)
+    .filter(t => t.exams.length > 0 || (decision !== undefined && decided(t, decision)))
+    .map(t => {
+      const minutes = minutesTo(p, t, decision);
+      return { id: t.id, ...(minutes !== undefined ? { minutes } : {}), limit: t.minutes, grade: targetGrade(minutes, t.minutes) };
+    });
 }

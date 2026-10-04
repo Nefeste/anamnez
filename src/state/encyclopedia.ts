@@ -311,6 +311,16 @@ function conditionArticle(db: ContentDb, c: Condition): Article {
   else if (x?.early && x.later) course.push(e.complicationRisk(x.name.ru, x.early.hours, pct(x.early.p), x.later.every, pct(x.later.p)));
   if (course.length > 0) blocks.push({ key: 'course', title: e.course, text: course });
 
+  // после перевода (часть 39б): как открывают артерию, смертность по классу Killip, фибрилляция до того
+  const r = c.reperfusion;
+  if (r) {
+    // значения класса — римские цифры: «по классу Killip: I — 2–3 %, II — 5–12 %…»
+    const rows = Object.entries(r.death).map(([v, [lo, hi]]) => e.rscRow(v.toUpperCase(), pct(lo), pct(hi))).join(', ');
+    const text = [e.rscWay(db.economy.transfer.hours, db.economy.transfer.pci), e.rscLysis(pct(r.lysis.p)), e.rscDeath(rows)];
+    if (c.arrest) text.push(e.arrest(pct(c.arrest.perHour), c.arrest.hours));
+    blocks.push({ key: 'afterTransfer', title: e.afterTransfer, text, refs: [ref(db, r.lysis.tx)] });
+  }
+
   if (c.redFlags?.length) blocks.push({ key: 'redFlags', title: e.redFlags, text: [e.redFlagsNote], refs: c.redFlags.map(id => ref(db, id)) });
   if (c.pearls?.length) blocks.push({ key: 'pearls', title: e.pearls, text: c.pearls.map(p => p.ru) });
   blocks.push(sources(db, c));

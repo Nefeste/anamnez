@@ -28,6 +28,8 @@ export default function Rounds() {
           <P muted>{c.day}</P>
           {/* палата интенсивной терапии (spec 2026-10-chapter-3, часть 38а) */}
           {c.icu ? <P testID={`round-icu-${c.id}`}>{c.icu}</P> : null}
+          {/* фибрилляция желудочков за сутки, снятая под монитором (часть 39б) */}
+          {c.event ? <P testID={`round-event-${c.id}`}>{c.event}</P> : null}
           <Text testID={`round-state-${c.id}`} style={[styles.state, c.state === 'worse' || c.state === 'reaction' ? styles.bad : c.state === 'ready' ? styles.good : null]}>
             {c.stateText}
             {c.readyHint ? ` · ${c.readyHint}` : ''}

@@ -263,7 +263,7 @@ function ambulanceSave(): { save: string; id: string; dx: string; scale: string;
  * до него врач перевёл, чтобы места не были заняты. Часы стоят сразу после его приезда — под
  * конец рабочих часов: после приёма до «Закрыть день» на ×4 — секунды.
  */
-function bedsideSave(): { save: string; id: string; dx: string; scale: string } {
+function bedsideSave(swap?: (db: ReturnType<typeof buildDb>['db']) => ReturnType<typeof generatePatient>): { save: string; id: string; dx: string; scale: string } {
   const { db } = buildDb();
   for (let seed = 21; seed < 221; seed++) {
     const s = newSandbox(db, { seed, season: 'winter', difficulty: 'student', start: 'clinic', budget: db.economy.sandbox.budgets.generous });
@@ -282,6 +282,8 @@ function bedsideSave(): { save: string; id: string; dx: string; scale: string } 
       const p = waiting.find(q => q.bay && q.patient.complaints.includes('sym.chest_pain_pressing'));
       if (p && p.arriveT < late) break; // привезли с утра — день дожидать долго: следующее зерно
       if (p && !s.current) {
+        // инфаркт с подъёмом ST вместо того, кого привезли (часть 39б): исход перевода по часам
+        if (swap) p.patient = swap(db);
         return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s }), id: p.id, dx: p.patient.truth.conditions[0].id, scale: p.scale!.triage };
       }
       const other = waiting.find(q => !q.patient.complaints.includes('sym.chest_pain_pressing'));
@@ -1340,6 +1342,53 @@ try {
   check(targetsDay.includes('ЭКГ при боли в груди в срок: 1 из 1.'), `сроки, итоги дня: ${targetsDay.replace(/\n/g, ' · ')}`);
   await page.waitForTimeout(1500); // лист меню «Продолжить» ещё уезжает вниз (веб)
   await page.screenshot({ path: join(OUT, '17-targets-summary.png'), fullPage: true });
+
+  // исход перевода по часам (spec 2026-10-chapter-3, часть 39б): в смотровой — инфаркт с подъёмом ST
+  // в первые часы, без противопоказаний; ЭКГ у постели, тромболизис со спутниками и «Вызвать скорую» —
+  // в итоге приёма строка о сосудистом центре, в разборе — сроки тромболизиса и перевода
+  const lysisRisks = ['risk.anticoagulants', 'risk.bleeding_tendency', 'risk.recent_bleed_surgery', 'risk.stroke_history'];
+  const mi = bedsideSave(db => {
+    for (let seed = 9100; ; seed++) {
+      const x = generatePatient(db, seed, { department: 'dept.therapy', season: 'winter', primary: 'cond.acs', params: { type: 'stemi', killip: 'i' } });
+      if (x.truth.values['hx.onset_hours'] <= 3 && x.complaints.includes('sym.chest_pain_pressing') && !lysisRisks.some(r => x.truth.risks.includes(r))) return x;
+    }
+  });
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', mi.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId(`ambulance-${mi.id}`).waitFor({ timeout: 15_000 });
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId(`ambulance-${mi.id}`).click();
+  await page.getByTestId(`sort-${mi.scale}`).click();
+  await page.getByTestId('handover-sheet').waitFor({ state: 'detached', timeout: 5000 });
+  await page.getByTestId(`queue-${mi.id}`).click();
+  await visible(page, 'visit-decide').waitFor({ timeout: 10_000 });
+  await page.getByTestId('tab-order').click();
+  await page.getByTestId('exam-exam.ecg').click();
+  await page.getByTestId('done-exam.ecg').waitFor({ timeout: 10_000 });
+  // ЭКГ находит подъём ST не у каждого (чувствительность 92 %): сроки смотровой — когда нашла
+  const st = (await text(page, 'done-exam.ecg')).includes('Подъём сегмента ST в отведениях');
+  await visible(page, 'visit-decide').click();
+  await page.getByTestId('dx-cond.acs').click();
+  await page.getByTestId('decision-to-plan').click();
+  for (const tx of ['tx.thrombolysis', 'tx.aspirin_acs', 'tx.clopidogrel', 'tx.enoxaparin_acs']) await page.getByTestId(`tx-${tx}`).click();
+  await page.getByTestId('setting-ambulance').click();
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-outcome').waitFor({ timeout: 10_000 });
+  const rsc = await text(page, 'visit-outcome');
+  check(/(Переведён|Переведена) в сосудистый центр\. Тромболизис (помог|не помог)|в сосудистом центре на \d-е\u00a0сутки/.test(rsc), `исход перевода: «${rsc.replace(/\n/g, ' · ').slice(0, 220)}»`);
+  const lines: string[] = [];
+  for (let i = 0; (await page.getByTestId(`visit-target-line-${i}`).count()) > 0; i++) lines.push(await text(page, `visit-target-line-${i}`));
+  const lysisLine = lines.some(l => /^• Тромболизис при подъёме ST: через \d+\u00a0мин после ЭКГ с подъёмом ST — /.test(l));
+  const transferLine = lines.some(l => /^• Перевод при подъёме ST: через \d+\u00a0мин после прихода — в срок$/.test(l));
+  check(st ? lysisLine && transferLine : !lysisLine && !transferLine, `сроки тромболизиса и перевода (ЭКГ ${st ? 'нашла' : 'не нашла'} подъём ST): ${lines.join(' · ')}`);
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(OUT, '17-rsc-outcome.png'), fullPage: true });
+  await page.getByTestId('shift-to-queue').click();
   // операционная (spec 2026-09-chapter-2, часть 28): у вас пациент с аппендицитом — в решении
   // «В операционную» с операцией и койками; итог приёма — операция и палата; на обходе —
   // «идёт операция» и выписать нельзя; вечером — в итогах дня операционная

@@ -601,6 +601,8 @@ export function decisionOf(x: {
   patient: Patient; arrived: readonly Arrival[]; diagnosis: Id; verdict: Decision['verdict']; confidence: number;
   plan: { treatments: Id[]; setting: Setting }; ev: PlanEval; outcome: Outcome; score: CaseScore; review: ReviewData;
   targets?: readonly TargetResult[];
+  /** до решения сняли фибрилляцию желудочков разрядом под монитором (часть 39б) */
+  arrest?: boolean;
 }): Decision {
   const t = T.spikes.patient;
   const p = x.patient;
@@ -618,12 +620,12 @@ export function decisionOf(x: {
     causes: p.truth.findings
       .filter(f => seen.some(o => o.f === f.f && o.shown) || p.complaints.includes(f.f))
       .map(f => ({ finding: db.findings[f.f].name.ru, cause: f.cause === 'leak' ? t.causeLeak : (db.conditions[f.cause]?.name.ru ?? db.risks[f.cause]?.name.ru ?? f.cause) })),
-    outcome: outcomeText(x.outcome, x.plan.setting, p.sex === 'f'),
+    outcome: `${x.arrest ? `${t.outcome.arrest}. ` : ''}${outcomeText(x.outcome, x.plan.setting, p.sex === 'f')}`,
     grades: keys.map(k => ({ key: k, label: t.grade[k], grade: x.score[k] })),
     overall: x.score.overall,
     notes: x.score.notes.map(noteText),
     ...(x.targets && x.targets.length > 0
-      ? { targets: { grade: worstGrade(x.targets.map(r => r.grade)), lines: x.targets.map(r => t.targetLine(db.targets[r.id]?.name.ru ?? r.id, r.minutes, r.limit)) } }
+      ? { targets: { grade: worstGrade(x.targets.map(r => r.grade)), lines: x.targets.map(r => targetLineOf(r)) } }
       : {}),
     // не лекарство — «лечение выбора» (часть 32)
     plan: x.ev.roles.map(r => ({ name: db.treatments[r.tx].name.ru, role: (db.treatments[r.tx].kind !== 'drug' ? t.roleTx[r.role] : undefined) ?? t.role[r.role] })),
@@ -636,8 +638,24 @@ export function decisionOf(x: {
   };
 }
 
+/** Строка срока в разборе: от прихода или (часть 39б) от находки — словами записи. */
+function targetLineOf(r: TargetResult): string {
+  const target = db.targets[r.id];
+  const t = T.spikes.patient;
+  return target?.texts.from && target.texts.after
+    ? t.targetLine(target.name.ru, r.minutes, r.limit, target.texts.from.ru, target.texts.after.ru)
+    : t.targetLine(target?.name.ru ?? r.id, r.minutes, r.limit);
+}
+
 export function outcomeText(outcome: Outcome, setting: Setting, female: boolean): string {
   const out = T.spikes.patient.outcome;
+  // переведённый в сосудистый центр с подъёмом ST (часть 39б): как открыли артерию, и чем кончилось
+  if (outcome.rsc) {
+    const r = out.rsc;
+    const how = `${r[outcome.rsc.by](outcome.rsc.hours)}${outcome.rsc.loss >= 100 ? `; ${r.late}` : ''}`;
+    if (outcome.kind === 'died') return `${how}. ${r.died(outcome.day, female)}`;
+    return `${outcome.severe ? r.severe(female) : r.transferred(female)}. ${how}`;
+  }
   switch (outcome.kind) {
     case 'recovered': return out.recovered(outcome.day, female);
     case 'improved': return out.improved(female);

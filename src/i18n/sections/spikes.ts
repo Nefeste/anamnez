@@ -159,6 +159,19 @@ export const spikes = {
       // смерть в стационаре и «мягкий режим» вместо неё (часть 28б) — спокойно, без оценок
       died: (day: number, female: boolean) => `${female ? 'Умерла' : 'Умер'} в стационаре на ${day + 1}-е\u00a0сутки`,
       transferredSevere: (female: boolean) => `${female ? 'Переведена' : 'Переведён'} в областную больницу в тяжёлом состоянии`,
+      // фибрилляция желудочков до решения (часть 39б): лежал под монитором — сняли разрядом
+      arrest: 'Фибрилляция желудочков — сняли разрядом под монитором',
+      // перевод в сосудистый центр с подъёмом ST (spec 2026-10-chapter-3, часть 39б): как и когда открыли
+      // артерию; повторная ЭКГ через 60–90 минут после тромболизиса — в пути или в центре (157_5, раздел 3.1.3)
+      rsc: {
+        lysis: (h: number) => `Тромболизис помог: через 60–90\u00a0минут подъём ST снизился наполовину и больше — артерия открыта около ${h}\u00a0ч от начала. Коронарография — в сосудистом центре через 2–24\u00a0часа`,
+        rescue: (h: number) => `Тромболизис не помог: через 60–90\u00a0минут подъём ST не снизился и наполовину — в сосудистом центре спасающее вмешательство, около ${h}\u00a0ч от начала`,
+        pci: (h: number) => `Без тромболизиса: вмешательство в сосудистом центре после дороги — около ${h}\u00a0ч от начала`,
+        late: 'от начала прошло больше 12\u00a0часов — польза для сердца уже мала',
+        transferred: (female: boolean) => `${female ? 'Переведена' : 'Переведён'} в сосудистый центр`,
+        severe: (female: boolean) => `${female ? 'Переведена' : 'Переведён'} в сосудистый центр в тяжёлом состоянии`,
+        died: (day: number, female: boolean) => `${female ? 'Умерла' : 'Умер'} в сосудистом центре на ${day + 1}-е\u00a0сутки`,
+      },
     },
     outcomeLabel: 'Что было дальше',
     gradesLabel: 'Оценка случая',
@@ -173,10 +186,11 @@ export const spikes = {
       targets: 'Сроки',
       overall: 'Итог',
     } as Record<string, string>,
-    targetLine: (name: string, minutes: number | undefined, limit: number) =>
-      minutes === undefined ? `${name}: не сделано, срок — ${limit}\u00a0мин от прихода`
-        : minutes <= limit ? `${name}: через ${minutes}\u00a0мин после прихода — в срок`
-          : `${name}: через ${minutes}\u00a0мин после прихода — позже срока на ${minutes - limit}\u00a0мин`,
+    // отсчёт — от прихода или (часть 39б) от находки: «от ЭКГ с подъёмом ST», «после ЭКГ с подъёмом ST»
+    targetLine: (name: string, minutes: number | undefined, limit: number, from = 'от прихода', after = 'после прихода') =>
+      minutes === undefined ? `${name}: не сделано, срок — ${limit}\u00a0мин ${from}`
+        : minutes <= limit ? `${name}: через ${minutes}\u00a0мин ${after} — в срок`
+          : `${name}: через ${minutes}\u00a0мин ${after} — позже срока на ${minutes - limit}\u00a0мин`,
     notesLabel: 'Замечания',
     yourPlan: 'Ваше лечение',
     // приём вёл нанятый врач (spec 2026-09-hired-doctors, часть 19); уволен — пол уже не знаем
@@ -238,9 +252,10 @@ export const spikes = {
     // у постели в смотровой приёмного (часть 37): монитором, без очереди в кабинет и без описания
     costBedside: (min: number, rub: number) => (rub > 0 ? `у постели, ${min}\u00a0мин · ${rub}\u00a0₽` : `у постели, ${min}\u00a0мин`),
     // срок по рекомендации (часть 37) — справка, не таймер: сколько даёт рекомендация и сколько прошло
-    target: (name: string, limit: number, since: number) => `${name} — в первые ${limit}\u00a0минут; с прихода — ${since}\u00a0мин`,
-    targetDone: (name: string, minutes: number, limit: number) =>
-      minutes <= limit ? `${name} — через ${minutes}\u00a0мин после прихода, в срок` : `${name} — через ${minutes}\u00a0мин после прихода, позже срока на ${minutes - limit}\u00a0мин`,
+    target: (name: string, limit: number, since: number, from?: string) =>
+      from ? `${name} — в первые ${limit}\u00a0минут ${from}; прошло — ${since}\u00a0мин` : `${name} — в первые ${limit}\u00a0минут; с прихода — ${since}\u00a0мин`,
+    targetDone: (name: string, minutes: number, limit: number, after = 'после прихода') =>
+      minutes <= limit ? `${name} — через ${minutes}\u00a0мин ${after}, в срок` : `${name} — через ${minutes}\u00a0мин ${after}, позже срока на ${minutes - limit}\u00a0мин`,
   },
   // решение и итог приёма — отдельные экраны (03-game-design.md §5; отзыв на 0.0.5:
   // диагноз и лечение на одной вкладке — тесно)

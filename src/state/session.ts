@@ -24,7 +24,7 @@ import {
   apply, atDoorOf, bedsideEquipment, bedsideOf, current, freeBeds, freeIcuBeds, type HospitalCtx, hospitalCtx, icuBeds, inIcu, inpatientsOf, moreUrgent, newCampaign, newSandbox,
   newShift, newSingle, observationsOf, operationOf, type OrBlock, orBlock, orQueueOf, reviewFor, SANDBOX_VENUE, stayEquipment, targetPlace, wardBeds,
 } from '@/engine/shift/engine';
-import { minutesTo, targetsFor } from '@/engine/shift/targets';
+import { minutesTo, targetStart, targetsFor } from '@/engine/shift/targets';
 import {
   type Command, DAY, type Difficulty, type Mode, type Notice, SHIFT_END, SHIFT_SCHEMA_VERSION, type ShiftPatient, type ShiftState, type Triage,
 } from '@/engine/shift/types';
@@ -1268,6 +1268,7 @@ function record(sess: Session, notices: Notice[]) {
     else if (n.kind === 'resultsReady' && p && p.status === 'waiting') item('results', T.shift.notice.results(nameOf(p), female(p)));
     else if (n.kind === 'left' && p) item('left', T.shift.notice.left(nameOf(p), female(p)));
     else if (n.kind === 'ambulance' && p) item('red', T.shift.notice.ambulance(nameOf(p), complaintOf(p)));
+    else if (n.kind === 'arrest' && p) item('red', T.shift.notice.arrest(nameOf(p)));
     else if (n.kind === 'shiftEnd') item('end', T.shift.notice.end);
   }
   sess.log.length = Math.min(sess.log.length, LOG_SIZE);
@@ -1288,6 +1289,7 @@ function meanwhileOf(s: ShiftState, p: ShiftPatient, notices: Notice[], justDone
   for (const n of notices) {
     const q = n.kind === 'shiftEnd' ? undefined : s.patients[n.id];
     if (n.kind === 'left' && q) out.push(T.shift.notice.left(nameOf(q), female(q)));
+    if (n.kind === 'arrest' && q) out.push(T.shift.notice.arrest(nameOf(q)));
     if (n.kind === 'resultsReady' && q && q.id !== p.id && q.status === 'waiting') out.push(T.shift.notice.results(nameOf(q), female(q)));
     if (n.kind === 'shiftEnd') out.push(T.shift.notice.end);
   }
@@ -1620,6 +1622,8 @@ export interface RoundCard {
   canTransfer: boolean;
   /** лежит в палате интенсивной терапии, под монитором (spec 2026-10-chapter-3, часть 38а) */
   icu?: string;
+  /** что случилось за сутки: фибрилляция желудочков под монитором ПИТ (часть 39б) */
+  event?: string;
 }
 
 const fmtVital = (f: Id, v: number) => {
@@ -1681,6 +1685,7 @@ export function roundsView(): RoundCard[] {
       canDischarge: !op || op.done === true,
       canTransfer: !op || op.done === true || op.start === undefined,
       ...(inIcu(db, s, p) ? { icu: t.inIcu } : {}),
+      ...(stay.shock !== undefined && days === stay.shock + 1 ? { event: t.shock } : {}),
     };
   });
 }
@@ -1792,6 +1797,7 @@ function decisionFor(meta: Pick<ShiftState['meta'], 'seed' | 'department'>, p: S
   const d = decisionOf({
     patient: p.patient, arrived, diagnosis: c.diagnosis, verdict: c.verdict, confidence: c.confidence, plan: c.plan, ev, outcome: c.outcome,
     score: { ...c.grades, notes: c.notes }, review, ...(c.targets ? { targets: c.targets } : {}),
+    ...(c.arrest ? { arrest: true } : {}),
   });
   const out = known ? d : { ...d, outcome: T.shift.outcomeLater };
   decisions.set(key, out);
@@ -1891,7 +1897,10 @@ function targetLines(s: ShiftState, p: ShiftPatient): string[] {
   const t = T.spikes.patient;
   return targetsFor(db, p, targetPlace(db, s, p)).map(target => {
     const done = minutesTo(p, target);
-    return done !== undefined ? t.targetDone(target.name.ru, done, target.minutes) : t.target(target.name.ru, target.minutes, Math.round((s.t - p.arriveT) / 60));
+    // от находки (часть 39б): «в первые 10 минут от ЭКГ с подъёмом ST; прошло — N мин»
+    const start = targetStart(p, target) ?? p.arriveT;
+    if (done !== undefined) return t.targetDone(target.name.ru, done, target.minutes, target.texts.after?.ru);
+    return t.target(target.name.ru, target.minutes, Math.round((s.t - start) / 60), target.texts.from?.ru);
   });
 }
 

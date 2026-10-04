@@ -491,6 +491,33 @@ describe('каталог больницы', () => {
     expect(has(second, 'cond.anaphylaxis: гасит признак vital.bp_higher, а его нет')).toBe(true);
   });
 
+  test('исход перевода и фибрилляция (часть 39б): параметры объявлены, у каждого класса границы, часы по возрастанию, тромболизис из базы; срок — кому, что и от чего', () => {
+    const C = 'conditions/therapy/acs.yaml';
+    const T = 'targets/lysis_stemi.yaml';
+    const has = (errors: string[], text: string) => errors.some(e => e.includes(text));
+    const first = broken(d => {
+      edit(d, C, 'by: killip', 'by: killipp');
+      edit(d, C, 'loss: [[1, 0], [2, 43], [6, 60], [12, 69]]', 'loss: [[1, 0], [2, 43], [2, 30], [12, 69]]');
+      edit(d, C, 'lysis: { tx: tx.thrombolysis, pct: 63, hours: 1 }', 'lysis: { tx: tx.thrombolysys, pct: 63, hours: 1 }');
+      edit(d, C, '  when: { type: [stemi] }\n  perHour: 1', '  when: { type: [stemy] }\n  perHour: 1');
+      edit(d, T, 'treatments: [tx.thrombolysis]', 'treatments: [tx.thrombolysys]');
+      edit(d, T, 'findings: [ecg.st_elevation]', 'findings: [ecg.st_elevated]');
+    });
+    expect(has(first, 'cond.acs: исход перевода — по необъявленному параметру killipp')).toBe(true);
+    expect(has(first, 'cond.acs: исход перевода — часы потери по возрастанию, доля не убывает')).toBe(true);
+    expect(has(first, 'cond.acs: исход перевода — тромболизис tx.thrombolysys не найден')).toBe(true);
+    expect(has(first, 'cond.acs: фибрилляция желудочков — у параметра type нет значения stemy')).toBe(true);
+    expect(has(first, 'target.lysis_stemi: лечение tx.thrombolysys не найдено')).toBe(true);
+    expect(has(first, 'target.lysis_stemi: находка ecg.st_elevated не найдена')).toBe(true);
+    const second = broken(d => {
+      edit(d, C, 'death: { i: [2, 3], ii: [5, 12], iii: [10, 20], iv: [50, 81] }', 'death: { i: [3, 2], ii: [5, 12], iii: [10, 20] }');
+      edit(d, T, '  from: { ru: "от ЭКГ с подъёмом ST" }\n', '');
+    });
+    expect(has(second, 'cond.acs: исход перевода — нет смертности для killip=iv')).toBe(true);
+    expect(has(second, 'cond.acs: исход перевода — у killip=i нижняя граница выше верхней')).toBe(true);
+    expect(has(second, 'срок от находки — с находками и словами «от чего» (texts.from, texts.after)')).toBe(true);
+  });
+
   test('палата интенсивной терапии (часть 38а): койки есть, мест под мониторы не меньше коек, не палата; аппарат — в разных помещениях, в ПИТ без своего места', () => {
     const I = 'hospital/rooms/icu.yaml';
     const M = 'hospital/equipment/monitor_defib.yaml';

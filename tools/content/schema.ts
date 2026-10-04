@@ -222,6 +222,29 @@ export const conditionSchema = z.strictObject({
   }).refine(x => (x.after !== undefined) !== (x.early !== undefined && x.later !== undefined) && (x.early === undefined) === (x.later === undefined), {
     message: 'осложнённая стадия — либо по риску (early и later), либо по сроку (after)',
   }).optional(),
+  /**
+   * исход перевода по часам до реперфузии (spec 2026-10-chapter-3, часть 39б): при этих значениях
+   * параметров (подъём ST) артерию открывают тромболизисом здесь или вмешательством в сосудистом
+   * центре; смертность — в границах класса параметра `by` (Killip, 157_5, приложение А3), %, тем
+   * ближе к верхней, чем позже реперфузия: `loss` — до какого часа (не включая) какая доля потери, %
+   */
+  reperfusion: z.strictObject({
+    when: z.record(z.string(), z.array(z.string()).min(1)),
+    by: z.string(),
+    death: z.record(z.string(), z.tuple([z.number().min(0).max(100), z.number().min(0).max(100)])),
+    loss: z.array(z.tuple([z.number().int().min(1).max(48), z.number().int().min(0).max(100)])).min(1),
+    /** тромболизис: какое лечение, у скольких удаётся, %, и за сколько часов открывает артерию */
+    lysis: z.strictObject({ tx: txId, pct: z.number().min(0).max(100), hours: z.number().int().min(0).max(6) }),
+  }).optional(),
+  /**
+   * фибрилляция желудочков до реперфузии (часть 39б): доля в час, %, пока от начала болезни меньше
+   * `hours` часов; под монитором — разряд, без него — смерть
+   */
+  arrest: z.strictObject({
+    when: z.record(z.string(), z.array(z.string()).min(1)),
+    perHour: z.number().min(0).max(100),
+    hours: z.number().int().min(1).max(48),
+  }).optional(),
   /** у того, с чем приходят, — не меньше трёх (валидатор); у хронического фона хватит одного */
   findings: z.array(link).min(1),
   /** признаки, которых при этом состоянии не бывает, откуда бы ни пришли (часть 39а): шок гасит высокое давление */
@@ -576,6 +599,8 @@ export const economySchema = z.strictObject({
   ward: z.strictObject({ bedDay: int, interrupted: pct }),
   /** палата интенсивной терапии (часть 38а): койко-день — дороже палатного, ₽ */
   icu: z.strictObject({ bedDay: int }),
+  /** перевод в сосудистый центр (часть 39б): часов пути и часов от приезда до вмешательства */
+  transfer: z.strictObject({ hours: z.number().int().min(1).max(12), pci: z.number().int().min(0).max(6) }),
   /**
    * скорая (spec 2026-09-chapter-2, часть 27): машин за смену, если работает смотровая приёмного;
    * вес болезни по тяжести (с распространённостью) и доля тяжёлых среди тех, у кого тяжесть есть, %
@@ -791,14 +816,25 @@ export const ruleSchema = z.strictObject({
 export const targetSchema = z.strictObject({
   id: z.string().regex(/^target\.[a-z0-9_]+$/),
   name: text,
-  complaints: z.array(z.string().regex(/^sym\.[a-z0-9_]+$/)).min(1),
+  /** кому: по жалобе при поступлении или (часть 39б) по находке, которую показали обследования */
+  complaints: z.array(z.string().regex(/^sym\.[a-z0-9_]+$/)).default([]),
+  findings: z.array(z.string().regex(/^[a-z]+\.[a-z0-9_]+$/)).default([]),
   room: roomId.optional(),
-  exams: z.array(z.string().regex(/^exam\.[a-z0-9_]+$/)).min(1),
+  /** что: обследование — пришёл результат; назначение или место (часть 39б) — решение */
+  exams: z.array(z.string().regex(/^exam\.[a-z0-9_]+$/)).default([]),
+  treatments: z.array(txId).default([]),
+  settings: z.array(setting).default([]),
+  /** отсчёт: от прихода или от результата с находкой (часть 39б) */
+  from: z.enum(['arrival', 'finding']).default('arrival'),
   minutes: z.number().int().min(1).max(24 * 60),
-  texts: z.strictObject({ hint }),
+  texts: z.strictObject({ hint, from: text.optional(), after: text.optional() }),
   sources: z.array(source).min(1),
   review,
-});
+}).refine(x => x.complaints.length + x.findings.length > 0, { message: 'срок — кому: жалоба или находка' })
+  .refine(x => x.exams.length + x.treatments.length + x.settings.length > 0, { message: 'срок — что: обследование, назначение или место' })
+  .refine(x => x.from === 'arrival' || (x.findings.length > 0 && x.texts.from !== undefined && x.texts.after !== undefined), {
+    message: 'срок от находки — с находками и словами «от чего» (texts.from, texts.after)',
+  });
 
 export const versionSchema = z.strictObject({ contentVersion: z.number().int().min(1) });
 
