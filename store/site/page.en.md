@@ -71,7 +71,7 @@ in Russian.
 - **Campaign.** A young doctor at a village clinic, and then at a district hospital with an
   emergency department, wards and an operating room. The first shift is with a mentor; after that
   come letters and tasks without deadlines.
-- **Your own hospital.** Offices, a lab, X-ray and ultrasound rooms, an emergency department, wards
+- **Your own hospital.** Offices, a lab, X-ray, ultrasound and CT rooms, an emergency department, wards
   and an operating room, hiring, the cash desk. Doctors you hire see patients on their own. Insurance
   pays for a justified diagnosis and for tests that were indicated.
 - **Emergency department.** The ambulance brings in the seriously ill, and urgency is checked
@@ -92,8 +92,8 @@ in Russian.
 - The images are drawn by the program and differ for every patient: chest, abdominal and bone X-rays
   with the fracture line and displaced fragments, air and blood in the chest after trauma,
   abdominal, leg vein and leg artery ultrasound — a vein with a clot won’t compress under the probe,
-  a blocked artery looks grey inside — and 12-lead ECGs with ST elevation in the leads of the
-  affected wall and atrial fibrillation.
+  a blocked artery looks grey inside — 12-lead ECGs with ST elevation in the leads of the
+  affected wall and atrial fibrillation, and a CT slice of the head.
 - Decision rules from clinical guidelines: whether an ankle, foot or knee X-ray is needed, whether a
   CT scan is needed after a blow to the head, whether a leg vein ultrasound is needed for leg pain —
   by the Wells score and D-dimer.
@@ -132,6 +132,6 @@ see a doctor; in an emergency, call your local emergency number (112 in Russia a
 
 ## What’s next
 
-Coming up: new campaign chapters and departments: cardiology, neurology, CT and MRI. The game is
+Coming up: new campaign chapters and departments: cardiology, neurology and MRI. The game is
 being prepared for release in RuStore for Android, in Russian first. Questions:
 support@gornitsa.games.

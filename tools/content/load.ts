@@ -321,6 +321,14 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
         for (const s of x.settings) if (main.includes(s)) errors.push(`${owner}: ${what} — ${s} и так место при этих значениях`);
       }
       for (const r of t.setting.risks ?? []) if (!(r.id in risks)) errors.push(`${owner}: место лечения зависит от неизвестного фактора ${r.id}`);
+      // место после обследования (часть 40): обследование есть, признаки у болезни бывают, а до
+      // обследования место от чего-то зависит — иначе менять нечего
+      const after = t.setting.after;
+      if (after) {
+        for (const id of after.exams) if (!(id in exams)) errors.push(`${owner}: место после ${id} — такого обследования нет`);
+        for (const f of after.flags?.any ?? []) if (!c.findings.some(l => l.f === f)) errors.push(`${owner}: место после обследования — по признаку ${f}, а у болезни его нет`);
+        if (!t.setting.param && !t.setting.redFlag) errors.push(`${owner}: место после обследования, а до него оно не зависит ни от параметра, ни от красного флага`);
+      }
       if (t.setting.default === 'home' && t.firstLine.length === 0) errors.push(`${owner}: лечат дома, а первой линии нет`);
       for (const id of t.plan ?? []) if (![...t.firstLine, ...t.acceptable, ...t.supportive].includes(id)) errors.push(`${owner}: в типичном назначении ${id} — не из первой линии, допустимых или облегчающих`);
       // тактика и действие лечения не спорят: то, что лечит причину, не бывает «не показано»,
@@ -558,7 +566,10 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     for (const id of x.exams) {
       if (!exams[id]) { errors.push(`${x.id}: обследование ${id} не найдено`); continue; }
       const about = new Set(x.about.flatMap(c => conditions[c]?.findings.map(l => l.f) ?? []));
-      if (!exams[id].checks.some(ch => about.has(ch.f))) errors.push(`${x.id}: ${id} не проверяет ни одного признака ${x.about.join(', ')}`);
+      // или ищет то, чего ни у одной болезни базы нет (часть 40): КТ при травме головы исключает
+      // кровь внутри черепа, а при сотрясении изменений на КТ не бывает
+      const anywhere = (f: string) => Object.values(conditions).some(c => c.findings.some(l => l.f === f));
+      if (!exams[id].checks.some(ch => about.has(ch.f) || !anywhere(ch.f))) errors.push(`${x.id}: ${id} не проверяет ни одного признака ${x.about.join(', ')}`);
     }
   }
   // сроки (spec 2026-10-chapter-3, часть 37): жалоба — признак с жалобой, обследования есть; срок у

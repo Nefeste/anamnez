@@ -161,7 +161,7 @@ describe('валидатор базы', () => {
 describe('каталог больницы', () => {
   test('собран: у помещений — что открывают, у аппаратов — какие обследования, у должностей — где работают', () => {
     const { db } = buildDb();
-    expect(Object.keys(db.rooms)).toHaveLength(15);
+    expect(Object.keys(db.rooms)).toHaveLength(16);
     // нанятый врач (spec 2026-09-hired-doctors): встаёт на место врача, нужна ординаторская с местами
     expect(db.roles['role.therapist']).toMatchObject({ hire: true, stands: 'role.doctor', needs: 'room.staff', rooms: ['room.office'] });
     expect(db.rooms['room.staff'].sizes.map(z => z.places)).toEqual([2, 4]);
@@ -276,7 +276,7 @@ describe('каталог больницы', () => {
     expect(has(broken(d => edit(d, O, 'exams: [exam.xray_ankle]', 'exams: [exam.xray_wrist]')), 'rule.ottawa_ankle: exam.xray_wrist не проверяет ни одного признака cond.ankle_fracture, cond.ankle_sprain')).toBe(true);
   });
 
-  test('правило КТ (часть 32г): дополнительные признаки, возраст, круг применимости, обследование вне игры; производный параметр', () => {
+  test('правило КТ (часть 32г): дополнительные признаки, возраст, круг применимости, обследование правила; производный параметр', () => {
     const R = 'rules/ct_head.yaml';
     const C = 'conditions/trauma/concussion.yaml';
     const has = (errors: string[], text: string) => errors.some(e => e.includes(text));
@@ -292,7 +292,8 @@ describe('каталог больницы', () => {
     const a = broken(d => {
       edit(d, R, minor, 'minor: { any: [sym.vomiting], count: 2 }');
       drop(d, R, '  na: ');
-      drop(d, R, '  exam: ');
+      // без обследования правила (часть 40) — нужен текст о нём, как до кабинета КТ
+      drop(d, R, 'exams: ');
     });
     expect(has(a, 'rule.ct_head: sym.vomiting — и основной, и дополнительный признак')).toBe(true);
     expect(has(a, 'rule.ct_head: у правила с кругом применимости нужен текст «не применяется» (texts.na)')).toBe(true);
@@ -315,6 +316,23 @@ describe('каталог больницы', () => {
     expect(has(c, 'cond.concussion: правило rule.ct_brain параметра ct не найдено')).toBe(true);
     expect(has(c, 'cond.concussion: признак sym.nausea зависит от производного параметра ct, а тот — от признаков')).toBe(true);
     expect(has(broken(d => edit(d, C, 'ct: { no: 32, yes: 68 }', 'ct: { none: 32, yes: 68 }')), 'cond.concussion: у производного параметра ct значения — no и yes')).toBe(true);
+  });
+
+  test('место после обследования (часть 40): обследование есть, признак — у болезни, до обследования место от чего-то зависит; обследование правила ищет своё', () => {
+    const has = (errors: string[], text: string) => errors.some(e => e.includes(text));
+    const C = 'conditions/trauma/concussion.yaml';
+    const a = broken(d => {
+      edit(d, C, '      exams: [exam.ct_head]', '      exams: [exam.ct_brain]');
+      edit(d, C, 'flags: { any: [sign.gcs_low], setting: ambulance }', 'flags: { any: [sign.peritoneal_signs], setting: ambulance }');
+      // у ушиба место ни от чего не зависит — после обследования менять нечего
+      edit(d, 'conditions/trauma/head_bruise.yaml', 'setting: { default: home }', 'setting: { default: home, after: { exams: [exam.ct_head], setting: home } }');
+      // правило КТ ведёт на снимок груди: он ищет то, что у болезней базы есть, а у этих — нет
+      edit(d, 'rules/ct_head.yaml', 'exams: [exam.ct_head]', 'exams: [exam.xray_chest]');
+    });
+    expect(has(a, 'cond.concussion: место после exam.ct_brain — такого обследования нет')).toBe(true);
+    expect(has(a, 'cond.concussion: место после обследования — по признаку sign.peritoneal_signs, а у болезни его нет')).toBe(true);
+    expect(has(a, 'cond.head_bruise: место после обследования, а до него оно не зависит ни от параметра, ни от красного флага')).toBe(true);
+    expect(has(a, 'rule.ct_head: exam.xray_chest не проверяет ни одного признака cond.concussion, cond.head_bruise')).toBe(true);
   });
 
   test('возраст «и старше» (часть 32д): у колена — с 55 лет; вместе со «старше» или внутри дополнительного — ошибка', () => {

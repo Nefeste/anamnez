@@ -951,7 +951,7 @@ function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
     plan: ev, outcome, selfLimiting: selfLimits(db, primaryOf(patient)),
     redFlags: (cond.redFlags ?? []).filter(f => present.has(f)).map(f => ({ f, seen: obs.some(o => o.f === f && o.shown) })),
     // что было правильно выбрать здесь: со своей палатой — положить в неё, со своей операционной — оперировать
-    should: choiceFor(recommendedSetting(db, patient), venueOf(db, s, plan.setting === 'admit' || plan.setting === 'surgery', operationFor(db, truth, primaryOf(patient).params) ?? null, plan.setting === 'icu')),
+    should: choiceFor(recommendedSetting(db, patient, p.results.map(r => r.exam)), venueOf(db, s, plan.setting === 'admit' || plan.setting === 'surgery', operationFor(db, truth, primaryOf(patient).params) ?? null, plan.setting === 'icu')),
     ...(targets.length > 0 ? { targets: targets.map(t => t.grade) } : {}),
   });
   const { notes, targets: _worst, ...grades } = score;
@@ -1300,7 +1300,7 @@ function finishOperation(db: ContentDb, s: ShiftState, p: ShiftPatient | undefin
   // срок — у операции, которая по правде была нужна, или после наблюдения; оперировали то, что
   // лечат без операции (часть 30д: дивертикулит без перитонита), — строки срока нет, разбор скажет
   // «больше нужного»
-  const needed = recommendedSetting(db, p.patient) === 'surgery';
+  const needed = recommendedSetting(db, p.patient, p.results.map(r => r.exam)) === 'surgery';
   if (plan && (needed || plan.observe !== undefined)) {
     const fromOnset = plan.from === 'onset';
     const rounded = fromOnset ? Math.round(hours * 10) / 10 : Math.round((op.start - p.closed!.at) / 360) / 10;
@@ -1429,8 +1429,10 @@ function closeStay(db: ContentDb, s: ShiftState, p: ShiftPatient, end: StayEnd, 
   p.status = 'done';
   if (s.economy) {
     const chosen = stay.plan.setting === 'surgery' ? 'surgery' : stay.plan.setting === 'icu' ? 'icu' : 'admit';
-    const recommended = recommendedSetting(db, p.patient);
-    const over = settingFit(recommended, chosen, alsoSettings(db, p.patient)) === 'over';
+    // место — по пришедшим результатам (часть 40): после КТ без крови палата при сотрясении — не ошибка
+    const done = p.results.map(r => r.exam);
+    const recommended = recommendedSetting(db, p.patient, done);
+    const over = settingFit(recommended, chosen, alsoSettings(db, p.patient, done)) === 'over';
     const close: WardClose = over ? 'unindicated' : p.afterEarly ? 'repeat' : end === 'discharged' || end === 'died' ? 'full' : 'interrupted';
     const ledger = ledgerOf(s);
     ledger.ward ??= { cases: 0, income: 0, interrupted: 0, unindicated: 0 };

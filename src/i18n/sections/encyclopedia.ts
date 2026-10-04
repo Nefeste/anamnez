@@ -192,6 +192,9 @@ export const encyclopedia = {
   whereAlso: (when: string, s: string, flags = false, risks = false) =>
     `${when[0].toUpperCase()}${when.slice(1)}${flags || risks ? ` без ${[flags ? 'красных флагов' : '', risks ? 'факторов риска' : ''].filter(Boolean).join(' и ')}` : ''} — можно и ${s}.`,
   whereRisk: (risk: string, s: string) => `Если есть «${risk}» — ${s}.`,
+  // после обследования (spec 2026-10-chapter-3, часть 40): «После обследования «КТ головного мозга» — дома.»
+  whereAfter: (exams: string[], s: string) => `После обследования «${exams.join('» или «')}» — ${s}.`,
+  whereAfterFlags: (exams: string[], flags: string[], s: string) => `После обследования «${exams.join('» или «')}», если есть «${flags.join('» или «')}», — ${s}.`,
   // операция и срок стационара (spec 2026-09-chapter-2, части 26 и 28)
   // срока нет (часть 32: закрытый перелом) — без срока
   whereSurgery: (op: string, hours: number | undefined, onset = false) =>

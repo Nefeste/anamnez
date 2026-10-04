@@ -248,18 +248,52 @@ export function surgeriesOf(db: ContentDb, condId: Id): Id[] {
   return s ? [...new Set([s.tx, ...(s.byParam ?? []).map(b => b.tx)])] : [];
 }
 
+type SettingRule = Tactics['setting'];
+
+/** Запись «после обследования» (часть 40), если пришёл результат одного из её обследований. */
+function afterOf(rule: SettingRule, done: (exam: Id) => boolean): SettingRule['after'] {
+  return rule.after?.exams.some(done) ? rule.after : undefined;
+}
+
+/**
+ * Где лечить по записи места: по умолчанию, по скрытому параметру, при красном флаге и факторе
+ * риска — что выше. Пришёл результат обследования из `after` (часть 40) — вместо места по
+ * параметру и красного флага его место и его признаки: после КТ без крови сотрясение лечат дома,
+ * а оглушённого — в стационаре (734_2, приложение Б). Правда о больном или то, что знает врач, —
+ * решает тот, кто спрашивает.
+ */
+export function settingOf(rule: SettingRule, redFlags: readonly Id[], o: { params: Record<string, string>; has: (f: Id) => boolean; risk: (id: Id) => boolean; done: (exam: Id) => boolean }): Setting {
+  let best: Setting = rule.default;
+  const raise = (s: Setting | undefined) => {
+    if (s && SETTING_ORDER[s] > SETTING_ORDER[best]) best = s;
+  };
+  const after = afterOf(rule, o.done);
+  if (after) {
+    raise(after.setting);
+    if (after.flags?.any.some(o.has)) raise(after.flags.setting);
+  } else {
+    if (rule.param) raise(rule.param.map[o.params[rule.param.name]]);
+    if (rule.redFlag && redFlags.some(o.has)) raise(rule.redFlag);
+  }
+  for (const r of rule.risks ?? []) if (o.risk(r.id)) raise(r.setting);
+  return best;
+}
+
 /**
  * Ещё места, которые у этого больного не ошибка, — по правде о его скрытых параметрах (часть 32б).
  * Послабление — только к месту по параметру: красный флаг или фактор риска из правила места его
- * отменяют (кожа натянута над отломком ключицы — только операция, `853_1`, раздел 6).
+ * отменяют (кожа натянута над отломком ключицы — только операция, `853_1`, раздел 6). После
+ * обследования из `after` (часть 40) отменяют его признаки: судороги после КТ без крови — не довод.
+ * `done` — обследования, результат которых пришёл.
  */
-export function alsoSettings(db: ContentDb, patient: Patient): Setting[] {
+export function alsoSettings(db: ContentDb, patient: Patient, done: readonly Id[] = []): Setting[] {
   const primary = primaryOf(patient);
   const cond = db.conditions[primary.id];
   const rule = cond?.treatment?.setting;
   if (!rule?.also) return [];
   const has = new Set(patient.truth.findings.map(f => f.f));
-  if (rule.redFlag && (cond.redFlags ?? []).some(f => has.has(f))) return [];
+  const after = afterOf(rule, e => done.includes(e));
+  if (after ? after.flags?.any.some(f => has.has(f)) : rule.redFlag && (cond.redFlags ?? []).some(f => has.has(f))) return [];
   if ((rule.risks ?? []).some(r => patient.truth.risks.includes(r.id))) return [];
   return [...new Set(rule.also.filter(a => whenHolds(a.when, primary.params)).flatMap(a => a.settings))];
 }
@@ -285,21 +319,17 @@ export function tacticsFor(t: Tactics, params: Record<string, string> = {}): Tac
   };
 }
 
-/** Где на самом деле надо лечить: место по умолчанию, по тяжести случая, при красном флаге. */
-export function recommendedSetting(db: ContentDb, patient: Patient): Setting {
+/**
+ * Где на самом деле надо лечить: место по умолчанию, по тяжести случая, при красном флаге; после
+ * обследования из `after` (часть 40) — его место. `done` — обследования, результат которых пришёл.
+ */
+export function recommendedSetting(db: ContentDb, patient: Patient, done: readonly Id[] = []): Setting {
   const primary = primaryOf(patient);
   const cond = db.conditions[primary.id];
   const rule = cond.treatment?.setting;
   if (!rule) return 'home';
-  let best: Setting = rule.default;
-  const raise = (s: Setting | undefined) => {
-    if (s && SETTING_ORDER[s] > SETTING_ORDER[best]) best = s;
-  };
-  if (rule.param) raise(rule.param.map[primary.params[rule.param.name]]);
   const has = new Set(patient.truth.findings.map(f => f.f));
-  if (rule.redFlag && (cond.redFlags ?? []).some(f => has.has(f))) raise(rule.redFlag);
-  for (const r of rule.risks ?? []) if (patient.truth.risks.includes(r.id)) raise(r.setting);
-  return best;
+  return settingOf(rule, cond.redFlags ?? [], { params: primary.params, has: f => has.has(f), risk: id => patient.truth.risks.includes(id), done: e => done.includes(e) });
 }
 
 /**
@@ -337,13 +367,15 @@ export function evaluatePlan(db: ContentDb, patient: Patient, plan: Plan, observ
   const params = primaryOf(patient).params;
   const base = db.conditions[primary].treatment;
   const tactics = base && tacticsFor(base, params);
-  const also = alsoSettings(db, patient);
+  // место — по пришедшим результатам (часть 40): после КТ без крови сотрясение лечат дома
+  const done = [...new Set(observations.map(o => o.exam))];
+  const also = alsoSettings(db, patient, done);
   const firstLineBlocked = (tactics?.firstLine ?? [])
     .some(tx => db.treatments[tx]?.contraindications.some(k => knownIds.has(k.id)));
   return {
     primary,
     roles: plan.treatments.map(tx => ({ tx, role: txRole(db, primary, tx, params) })),
-    setting: { chosen: plan.setting, recommended: recommendedSetting(db, patient), ...(also.length > 0 ? { also } : {}) },
+    setting: { chosen: plan.setting, recommended: recommendedSetting(db, patient, done), ...(also.length > 0 ? { also } : {}) },
     violations,
     effective,
     unaskedRisk: unaskedRisk.sort(),

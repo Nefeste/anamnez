@@ -37,12 +37,14 @@ const FIGURE = 1.15;
 /** Свет работающего аппарата и лампы над дверью (часть 23): ореол гаснет к краю. */
 const GLOW = 'rgba(120, 222, 170, 0.55)';
 const GLOW_XRAY = 'rgba(255, 214, 110, 0.6)';
+/** Томограф светится голубым кольцом (spec 2026-10-chapter-3, часть 40). */
+const GLOW_CT = 'rgba(110, 190, 235, 0.55)';
 const LAMP_ON = '#FFC94D';
 const LAMP_HALO = 'rgba(255, 201, 77, 0.6)';
 const LAMP_OFF = '#A7B1B3';
 const CLEAR = 'rgba(0, 0, 0, 0)';
-/** Где аппараты светятся: на ЭКГ и рентгене — пока пациент у аппарата, в лаборатории — пока идут анализы. */
-const GLOWING: ReadonlySet<string> = new Set(['ecg', 'xray', 'lab', 'or', 'ultrasound', 'emergency', 'icu']);
+/** Где аппараты светятся: на ЭКГ, рентгене и КТ — пока пациент у аппарата, в лаборатории — пока идут анализы. */
+const GLOWING: ReadonlySet<string> = new Set(['ecg', 'xray', 'lab', 'or', 'ultrasound', 'emergency', 'icu', 'ct']);
 
 /** Где на кадре человек из места `i` буферов (в клетках); нет его или исчез у выхода — null. */
 function pointAt(m: number[], pts: number[], i: number, clock: number): [number, number] | null {
@@ -107,7 +109,7 @@ export function ClinicMap({ layout, people, signs = [], width, active, label, se
     return layout.objects.flatMap((o, i) => {
       const room = owners[i];
       if (!LIT_KINDS.includes(o.kind) || room < 0 || !GLOWING.has(layout.rooms[room].type)) return [];
-      return [{ room, x: (o.x + 0.5) * CELL_PX, y: (o.y + 0.5) * CELL_PX, color: o.kind === 'xray' ? GLOW_XRAY : GLOW, sprite: atlas.objectRect(o.kind, true), xform: cellXform(angleOf(turned[i]), o.x, o.y, px) }];
+      return [{ room, x: (o.x + 0.5) * CELL_PX, y: (o.y + 0.5) * CELL_PX, color: o.kind === 'xray' ? GLOW_XRAY : o.kind === 'ct' ? GLOW_CT : GLOW, sprite: atlas.objectRect(o.kind, true), xform: cellXform(angleOf(turned[i]), o.x, o.y, px) }];
     });
   }, [layout, atlas, turned, px]);
   const litSprites = useMemo(() => machines.map(m => m.sprite), [machines]);

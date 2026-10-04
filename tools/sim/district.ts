@@ -308,7 +308,8 @@ function run(seed: number, player: Player): Run {
         closedStays.add(p.id);
         const end = p.closed.stay.end;
         const chosen = p.stay.plan.setting === 'surgery' ? 'surgery' : 'admit';
-        const over = settingFit(recommendedSetting(db, p.patient), chosen, alsoSettings(db, p.patient)) === 'over';
+        const done = p.results.map(r => r.exam);
+        const over = settingFit(recommendedSetting(db, p.patient, done), chosen, alsoSettings(db, p.patient, done)) === 'over';
         const close: WardClose = over ? 'unindicated' : p.afterEarly ? 'repeat' : end === 'discharged' || end === 'died' ? 'full' : 'interrupted';
         out.money.closedBedDays += p.closed.stay.days * db.economy.ward.bedDay;
         if (op?.done) {
