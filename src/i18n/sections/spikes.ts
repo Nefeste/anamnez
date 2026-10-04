@@ -102,6 +102,9 @@ export const spikes = {
     ruleAgeFrom: (years: number) => `возраст ${years}\u00a0лет и старше`,
     ruleAgeRange: (from: number, to: number) => `возраст ${from}–${to}\u00a0лет`,
     ruleMinor: (list: string) => `${list} — дополнительные признаки`,
+    // часть 41б: шкала с баллами — сколько набрано и за что
+    rulePoints: (n: number, list: string) => `${n}\u00a0${pluralRu(n, 'балл', 'балла', 'баллов')}${list ? ` — ${list}` : ''}`,
+    rulePointsNo: (n: number, no: string) => `${n}\u00a0${pluralRu(n, 'балл', 'балла', 'баллов')}: ${lowerFirst(no)}`,
     outOf10: (n: number) => `${n} из 10`,
     similar: (n: number) => `у ${n} из 10 похожих пациентов`,
     correct: 'Верно',
@@ -155,6 +158,8 @@ export const spikes = {
       improved: (female: boolean) => `Через неделю ${female ? 'ей' : 'ему'} лучше, но болезнь ещё не прошла`,
       unchanged: 'Через неделю без изменений — придёт снова',
       worse: (day: number) => `${day === 0 ? 'В тот же день' : day === 1 ? 'На следующий день' : `На ${day}-й день`} стало хуже — вернётся на приём`,
+      // хуже — другая болезнь (часть 41б): после ТИА без профилактики — инсульт, человека привезёт скорая
+      worseAs: (day: number, name: string) => `${day === 0 ? 'В тот же день' : day === 1 ? 'На следующий день' : `На ${day}-й день`} — ${name}: человека привезёт скорая`,
       reaction: (tx: string, by: string) => `На следующий день — реакция на ${lowerFirst(tx)} (${lowerFirst(by)}): вернётся на приём`,
       ward: (female: boolean) => (female ? 'Направлена в стационар' : 'Направлен в стационар'),
       ambulance: 'Увезла скорая',

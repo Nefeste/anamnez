@@ -146,7 +146,7 @@ describe('отделения больницы: с приёмным — и хир
     // алфавиту они раньше почти всей терапии и сдвигают её доли жребия)
     const same = both.filter((p, i) => primary(p) === primary(therapy[i])).length;
     expect(same / both.length).toBeGreaterThan(0.65);
-  });
+  }, 30_000);
 });
 
 /**

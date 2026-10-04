@@ -19,8 +19,11 @@ export interface Outcome {
   kind: OutcomeKind;
   /** на какой день после приёма это стало ясно */
   day: number;
-  /** вернётся ли пациент новым обращением и когда */
-  returns?: { day: number; reason: 'worse' | 'reaction' | 'unchanged' };
+  /**
+   * вернётся ли пациент новым обращением и когда; `as` (spec 2026-10-chapter-3, часть 41б) — с
+   * другой болезнью: после ТИА без профилактики — с инсультом
+   */
+  returns?: { day: number; reason: 'worse' | 'reaction' | 'unchanged'; as?: Id };
   /** подействовало ли лечение на причину — для разбора */
   cured: boolean;
   /** что вызвало реакцию: назначение и противопоказание к нему */
@@ -92,7 +95,7 @@ export function observe(db: ContentDb, patient: Patient, plan: Plan, ev: PlanEva
   const untreated = untreatedOf(db, primary);
   if (untreated && rng.fork('worse').chance(untreated.p)) {
     const day = Math.min(OBSERVE_DAYS, rng.fork('worse-day').range(untreated.days[0], untreated.days[1]));
-    return { kind: 'worse', day, returns: { day, reason: 'worse' }, cured: false };
+    return { kind: 'worse', day, returns: { day, reason: 'worse', ...(untreated.as ? { as: untreated.as } : {}) }, cured: false };
   }
   if (selfLimits(db, primary)) {
     // проходит к концу последней стадии, считая от дня болезни на приёме

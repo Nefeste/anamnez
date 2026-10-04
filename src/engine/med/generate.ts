@@ -3,7 +3,7 @@
 // Каждый бросок берётся из своей именованной ветви зерна (`fork`), поэтому добавление
 // новой записи в базу не сдвигает случайность у остальных признаков и золотые случаи
 // меняются только там, где изменилась медицина.
-import type { Condition, ContentDb, Id, Link, Onset, Risk, Season } from '../../content/types';
+import { byRule, byValue, type Condition, type ContentDb, type Id, type Link, type Onset, type Risk, type Season } from '../../content/types';
 import { P_ONE, Rng } from '../core/rng';
 import { checkRule } from './rules';
 import type { ActiveCondition, Patient, Sex, TrueFinding } from './types';
@@ -197,7 +197,8 @@ function presentationDay(c: Condition, rng: Rng): { day: number; stage: string }
 
 /**
  * Производные параметры (spec 2026-09-chapter-2, часть 32г): «yes», если правило решения выполнено
- * на настоящих признаках и возрасте, иначе «no» — показана ли КТ при сотрясении. Признаки от них не
+ * на настоящих признаках и возрасте, иначе «no» — показана ли КТ при сотрясении; по баллам шкалы
+ * (часть 41б) — если их не меньше порога параметра: высокий риск по ABCD2. Признаки от них не
  * зависят (валидатор), поэтому считаются после признаков; новых бросков нет. Уже посчитанные не
  * трогает: так при загрузке досчитываются пациенты из сохранений до появления параметра (часть 39в:
  * коронарография в первые сутки при ОКС).
@@ -205,9 +206,10 @@ function presentationDay(c: Condition, rng: Rng): { day: number; stage: string }
 export function deriveParams(db: ContentDb, conditions: ActiveCondition[], age: number, findings: readonly Pick<TrueFinding, 'f'>[]): void {
   const has = new Set(findings.map(x => x.f));
   for (const c of conditions) {
-    for (const [name, ruleId] of Object.entries(db.conditions[c.id].derived ?? {})) {
-      if (typeof ruleId !== 'string' || c.params[name] !== undefined) continue;
-      c.params[name] = checkRule(db.rules[ruleId], age, f => has.has(f)).verdict === 'yes' ? 'yes' : 'no';
+    for (const [name, d] of Object.entries(db.conditions[c.id].derived ?? {})) {
+      const r = byRule(d);
+      if (!r || c.params[name] !== undefined) continue;
+      c.params[name] = checkRule(db.rules[r.rule], age, f => has.has(f), r.from).verdict === 'yes' ? 'yes' : 'no';
     }
   }
 }
@@ -221,7 +223,7 @@ export function deriveParams(db: ContentDb, conditions: ActiveCondition[], age: 
 export function deriveByValue(db: ContentDb, conditions: ActiveCondition[], values: Record<Id, number>): void {
   for (const c of conditions) {
     for (const [name, d] of Object.entries(db.conditions[c.id].derived ?? {})) {
-      if (typeof d === 'string' || 'all' in d || c.params[name] !== undefined) continue;
+      if (!byValue(d) || c.params[name] !== undefined) continue;
       c.params[name] = (values[d.f] ?? Infinity) < d.below ? 'yes' : 'no';
     }
   }
@@ -252,7 +254,7 @@ export function freezeClock(db: ContentDb, patient: Pick<Patient, 'truth'>, minu
   const derived = db.conditions[primary.id]?.derived ?? {};
   const before = { ...primary.params };
   for (const [name, d] of Object.entries(derived)) {
-    if (typeof d === 'string' || 'all' in d || !d.clock) continue;
+    if (!byValue(d) || !d.clock) continue;
     const v = patient.truth.values[d.f];
     if (v !== undefined) primary.params[name] = v + minutes / 60 < d.below ? 'yes' : 'no';
   }

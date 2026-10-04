@@ -481,8 +481,14 @@ function planDay(db: ContentDb, s: ShiftState) {
     const minute = Math.min(w.range(0, 330), w.range(0, 330)); // меньшее из двух — ближе к утру
     plan.push({ t: base + SHIFT_START + minute * MIN, kind: 'walkIn', key: `walk:${i}` });
   }
+  // вернулся с другой болезнью (часть 41б): инсульт после ТИА привозит скорая — туда, где его
+  // принимают; больница его не принимает — человека увезли в другую
+  const admits = departmentsOf(db, s);
   for (const ret of s.returns.filter(x => x.day === d)) {
-    plan.push({ t: base + SHIFT_START + r.fork(`return:${ret.of}`).range(0, 120) * MIN, kind: 'return', key: `return:${ret.of}`, ret });
+    const as = ret.as ? db.conditions[ret.as] : undefined;
+    if (as && !admits.includes(as.department)) continue;
+    const kind: VisitKind = as?.arrival === 'ambulance' ? 'ambulance' : 'return';
+    plan.push({ t: base + SHIFT_START + r.fork(`return:${ret.of}`).range(0, 120) * MIN, kind, key: `return:${ret.of}`, ret });
   }
   // кампания: в первый день главы первые пришедшие — с болезнями, заданными главой (обучение
   // с наставником); человек — тот же, что пришёл бы, если болезнь у него обычна
@@ -558,8 +564,9 @@ function returningPatient(db: ContentDb, s: ShiftState, ret: PlannedReturn) {
   const prev = s.patients[ret.of];
   let visit = 1;
   for (let x = prev; x?.returnOf; x = s.patients[x.returnOf]) visit++;
-  const primary = prev.patient.truth.conditions[0].id;
-  const severe = ret.reason === 'worse' && db.conditions[primary].params?.severity?.severe !== undefined;
+  // вернулся с другой болезнью (часть 41б) — тот же человек, болезнь новая
+  const primary = ret.as ?? prev.patient.truth.conditions[0].id;
+  const severe = !ret.as && ret.reason === 'worse' && db.conditions[primary].params?.severity?.severe !== undefined;
   return generatePatient(db, prev.patient.seed, {
     department: s.meta.department, season: s.meta.season, primary, visit, ...(severe ? { params: { severity: 'severe' } } : {}),
   });
@@ -637,7 +644,8 @@ function settle(db: ContentDb, s: ShiftState) {
   const change = reputationAfter(db, e.reputation ?? db.economy.reputation.start, {
     arrived: s.summary.arrived, left: s.summary.left, unseen: s.summary.unseen,
     correct: col.reduce((n, c) => n + c.correct, s.summary.correct), wrong: col.reduce((n, c) => n + c.wrong, s.summary.wrong),
-    returned: today.filter(p => p.kind === 'return' && (p.returnReason === 'worse' || p.returnReason === 'reaction')).length,
+    // вернувшийся с другой болезнью (часть 41б) — тоже: инсульт после ТИА привозит скорая
+    returned: today.filter(p => p.returnOf !== undefined && (p.returnReason === 'worse' || p.returnReason === 'reaction')).length,
     ...(waits.length > 0 ? { meanWait: waits.reduce((a, b) => a + b, 0) / waits.length } : {}),
     toilet: ctx.plan.rooms.some(r => r.type === 'room.toilet' && ctx.plan.connected[r.id]),
     died: s.summary.ward?.died ?? 0,
@@ -889,7 +897,7 @@ function closePatient(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase
   }
   const back = closed.outcome.returns;
   if (back) {
-    s.returns.push({ day: s.day + Math.max(1, back.day), of: p.id, reason: back.reason });
+    s.returns.push({ day: s.day + Math.max(1, back.day), of: p.id, reason: back.reason, ...(back.as ? { as: back.as } : {}) });
     sum.returnsPlanned++;
   }
   if (closed.plan.setting === 'admit' || closed.plan.setting === 'surgery' || closed.plan.setting === 'icu') admit(db, s, p);
@@ -1608,6 +1616,8 @@ function arriveByAmbulance(db: ContentDb, s: ShiftState, p: ShiftPatient, notice
   const bay = freeBays(db, s)[0];
   if (bay) p.bay = bay;
   s.summary.arrived++;
+  // вернулся с другой болезнью (часть 41б): инсульт после ТИА — тоже повторное обращение
+  if (p.returnOf !== undefined) s.summary.returnsToday++;
   ambulanceDay(s).arrived++;
   // фибрилляция желудочков до реперфузии (часть 39б): лежит в смотровой под монитором, ждёт у входа — с
   // бригадой скорой и её дефибриллятором

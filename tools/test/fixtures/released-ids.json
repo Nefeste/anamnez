@@ -1,6 +1,6 @@
 {
-  "version": "0.3.10",
-  "base": 51,
+  "version": "0.3.11",
+  "base": 52,
   "ids": {
     "achievements": [
       "ach.allergy_10",
@@ -132,6 +132,7 @@
       "cond.stroke_ischemic",
       "cond.superficial_thrombophlebitis",
       "cond.tension_headache",
+      "cond.tia",
       "cond.traumatic_hemothorax",
       "cond.traumatic_pneumothorax",
       "cond.ulcer_bleeding",
@@ -230,6 +231,7 @@
       "cond.stroke_ischemic/acute",
       "cond.superficial_thrombophlebitis/acute",
       "cond.tension_headache/episode",
+      "cond.tia/acute",
       "cond.traumatic_hemothorax/acute",
       "cond.traumatic_pneumothorax/acute",
       "cond.ulcer_bleeding/early",
@@ -276,6 +278,7 @@
       "exam.ask_reaction",
       "exam.ask_stroke",
       "exam.ask_tetanus",
+      "exam.ask_tia",
       "exam.ask_urinary",
       "exam.burn_depth_tests",
       "exam.burn_exam",
@@ -380,6 +383,9 @@
       "hx.stroke_history",
       "hx.tetanus_recent",
       "hx.tetanus_records",
+      "hx.tia_long",
+      "hx.tia_mid",
+      "hx.tia_short",
       "hx.travel",
       "hx.trigger_drug",
       "hx.trigger_food",
@@ -652,6 +658,8 @@
       "sym.suprapubic_pain",
       "sym.sweating",
       "sym.thirst",
+      "sym.transient_speech",
+      "sym.transient_weakness",
       "sym.vomiting",
       "sym.weakness_one_side",
       "sym.weight_gain",
@@ -753,6 +761,7 @@
       "room.xray/M"
     ],
     "rules": [
+      "rule.abcd2",
       "rule.acs_invasive",
       "rule.ct_head",
       "rule.lysis_mi",

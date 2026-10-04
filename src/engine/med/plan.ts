@@ -1,8 +1,9 @@
 // План лечения и его проверка (`docs/04-medical-model.md` §8). План оценивается по правде:
 // роль каждого назначения при настоящем основном заболевании, где на самом деле надо
 // лечить и какие противопоказания нарушены — и знал ли о них врач.
-import { type ContentDb, type Effect, type Id, membersOf, type Setting, type Tactics } from '../../content/types';
+import { byRule, byValue, type ContentDb, type Effect, type Id, membersOf, type Setting, type Tactics, type Untreated } from '../../content/types';
 import { knownFacts } from './infer';
+import { checkRule, knownOf } from './rules';
 import type { ActiveCondition, Observation, Patient } from './types';
 
 export interface Plan {
@@ -174,9 +175,9 @@ export function selfLimits(db: ContentDb, condition: Pick<ActiveCondition, 'id' 
 }
 
 /** Что будет без действенного лечения у этого больного — запись `untreated`, если её условие совпало (часть 30д). */
-export function untreatedOf(db: ContentDb, condition: Pick<ActiveCondition, 'id' | 'params'>): { p: number; days: [number, number] } | undefined {
-  const u = db.conditions[condition.id]?.untreated;
-  return u && whenHolds(u.when, condition.params) ? u : undefined;
+export function untreatedOf(db: ContentDb, condition: Pick<ActiveCondition, 'id' | 'params'>): Untreated | undefined {
+  // первая подошедшая запись (часть 41б): риск инсульта после ТИА — по группе ABCD2
+  return db.conditions[condition.id]?.untreated?.find(u => whenHolds(u.when, condition.params));
 }
 
 /**
@@ -365,6 +366,35 @@ function tellingFindings(db: ContentDb, id: Id): Id[] {
 }
 
 /**
+ * Параметры болезни, как их видит врач по шкале с баллами (spec 2026-10-chapter-3, часть 41б):
+ * шкалу считают по тому, что показали обследования, — давление при поступлении это то, что показал
+ * тонометр. Проверено всё, что меняет вывод, — значение по наблюдениям; иначе — настоящее.
+ * Параметры по другим параметрам пересчитываются по ним.
+ */
+export function asSeen(db: ContentDb, patient: Patient, observations: readonly Observation[]): Record<string, string> {
+  const primary = primaryOf(patient);
+  const derived = db.conditions[primary.id]?.derived ?? {};
+  const out = { ...primary.params };
+  const known = knownOf(observations);
+  let changed = false;
+  for (const [name, d] of Object.entries(derived)) {
+    const r = byRule(d);
+    if (!r || !db.rules[r.rule]?.points) continue;
+    const v = checkRule(db.rules[r.rule], patient.age, known, r.from).verdict;
+    if (v !== 'unknown' && v !== out[name]) {
+      out[name] = v;
+      changed = true;
+    }
+  }
+  if (!changed) return out;
+  for (const d of Object.entries(derived)) {
+    const [name, x] = d;
+    if (typeof x !== 'string' && 'all' in x) out[name] = Object.entries(x.all).every(([k, values]) => values.includes(out[k])) ? 'yes' : 'no';
+  }
+  return out;
+}
+
+/**
  * Проверка плана по правде о пациенте. `before` — значения параметров при поступлении, которые к
  * решению изменились (часть 41а, `freezeClock`): окно тромболизиса закрылось, пока шло обследование.
  */
@@ -385,6 +415,7 @@ export function evaluatePlan(db: ContentDb, patient: Patient, plan: Plan, observ
   }
   const effective = curesOf(db, primaryOf(patient), plan.treatments).length > 0;
   const params = primaryOf(patient).params;
+  const seenParams = asSeen(db, patient, observations);
   const base = db.conditions[primary].treatment;
   const tactics = base && tacticsFor(base, params);
   // место — по пришедшим результатам (часть 40): после КТ без крови сотрясение лечат дома
@@ -409,7 +440,7 @@ export function evaluatePlan(db: ContentDb, patient: Patient, plan: Plan, observ
     const derived = db.conditions[primary]?.derived ?? {};
     const lefts = Object.keys(entry?.when ?? {}).flatMap(k => {
       const d = derived[k];
-      return k in before && d && typeof d !== 'string' && !('all' in d) && d.clock ? [Math.round((d.below - (onsetH ?? 0)) * 60)] : [];
+      return k in before && byValue(d) && d.clock ? [Math.round((d.below - (onsetH ?? 0)) * 60)] : [];
     });
     return lefts.length > 0 ? Math.min(...lefts) : 0;
   };
@@ -430,11 +461,12 @@ export function evaluatePlan(db: ContentDb, patient: Patient, plan: Plan, observ
     // из группы хватит одного (часть 39в); противопоказанное тем, о чём врач знает, в вину не ставим —
     // из группы называем первое, что можно
     // и то, что здесь не сделать (часть 41а): тромболизис без монитора у постели — не в вину
-    requireMissing: requireOf(base, params).flatMap(g => {
+    // по шкале с баллами (часть 41б) — по тому, что показали обследования (`asSeen`)
+    requireMissing: requireOf(base, seenParams).flatMap(g => {
       const ok = g.filter(can);
       return ok.length > 0 && !g.some(tx => plan.treatments.includes(tx)) ? [ok[0]] : [];
     }).sort(),
-    requireWhen: Object.fromEntries((base?.byParam ?? []).filter(b => whenHolds(b.when, params)).flatMap(b => membersOf(b.require).map(tx => [tx, b.when] as const)).reverse()),
+    requireWhen: Object.fromEntries((base?.byParam ?? []).filter(b => whenHolds(b.when, seenParams)).flatMap(b => membersOf(b.require).map(tx => [tx, b.when] as const)).reverse()),
     // до перевода (часть 39а) — то, что здесь можно было сделать: тромболизис у постели под монитором
     beforeTransferMissing: beforeTransferOf(base, params)
       .filter(tx => !plan.treatments.includes(tx) && txAvailable(db, tx, venue) && !db.treatments[tx]?.contraindications.some(k => knownIds.has(k.id))).sort(),

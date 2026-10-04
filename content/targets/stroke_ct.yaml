@@ -1,8 +1,9 @@
 id: target.stroke_ct
 name: { ru: "КТ при подозрении на инсульт" }
-# кому: признаки инсульта (часть 41а); что: КТ головы или КТ-ангиография — с заключением; за 40 минут от
-# поступления: КТ исключает кровь — без неё тромболизис не решить
-complaints: [sym.weakness_one_side, sym.speech_trouble, sym.face_droop]
+# кому: признаки инсульта (часть 41а), с частью 41б — и прошедшие: всем с признаками ОНМК (814_1, раздел
+# 2.4); что: КТ головы или КТ-ангиография — с заключением; за 40 минут от поступления: КТ исключает кровь
+# — без неё тромболизис не решить
+complaints: [sym.weakness_one_side, sym.speech_trouble, sym.face_droop, sym.transient_weakness, sym.transient_speech]
 exams: [exam.ct_head, exam.cta_head]
 minutes: 40
 texts:

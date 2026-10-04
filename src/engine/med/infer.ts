@@ -4,7 +4,7 @@
 // По пользе обследования решают страховая песочницы и нанятые врачи — а это меняет состояние
 // партии, поэтому логарифм здесь свой, из `core/math.ts` (ADR 0004): одинаковый в Hermes, V8 и
 // JavaScriptCore.
-import type { Condition, ContentDb, DerivedByParams, DerivedByValue, Id, Link, Season } from '../../content/types';
+import { byRule, byValue, type Condition, type ContentDb, type DerivedByParams, type DerivedByValue, type Id, type Link, type Season } from '../../content/types';
 import { log2 } from '../core/math';
 import { P_ONE } from '../core/rng';
 import { chronicChance, presentingWeight } from './generate';
@@ -400,13 +400,15 @@ export function paramBeliefs(db: ContentDb, condId: Id, name: string, observatio
   const dist = c?.params?.[name];
   if (!dist) return [];
   const derived = c.derived?.[name];
-  if (typeof derived === 'string') return derivedBeliefs(dist, checkRule(db.rules[derived], age, knownOf(observations)).verdict);
+  // по правилу или баллам его шкалы (часть 41б) — по выводу на известном
+  const rule = byRule(derived);
+  if (rule) return derivedBeliefs(dist, checkRule(db.rules[rule.rule], age, knownOf(observations), rule.from).verdict);
   // по другим параметрам (часть 41а): «yes» — вероятность, что у каждого из них нужное значение
-  if (derived && 'all' in derived) {
+  if (derived && typeof derived !== 'string' && 'all' in derived) {
     const yes = allHolds(db, condId, derived, observations, age, minutes);
     return Object.keys(dist).map(value => ({ value, p: value === 'yes' ? yes : 1 - yes }));
   }
-  if (derived) return derivedBeliefs(dist, valueVerdict(derived, observations, minutes));
+  if (byValue(derived)) return derivedBeliefs(dist, valueVerdict(derived, observations, minutes));
   const grouped = byFinding(observations);
   const telling = tellingOf(c, name).filter(f => grouped.has(f));
   const weighted = Object.entries(dist).map(([value, share]) => {
@@ -483,13 +485,14 @@ export function paramGain(db: ContentDb, condId: Id, name: string, examId: Id, o
   if (derived && typeof derived !== 'string' && 'all' in derived) {
     return Object.keys(derived.all).reduce((sum, k) => sum + paramGain(db, condId, k, examId, observations, age, minutes) * allHolds(db, condId, derived, observations, age, minutes, k), 0);
   }
-  if (typeof derived === 'string') {
-    const { left } = checkRule(db.rules[derived], age, knownOf(observations));
+  const rule = byRule(derived);
+  if (rule) {
+    const { left } = checkRule(db.rules[rule.rule], age, knownOf(observations), rule.from);
     const covered = left.filter(f => exam.checks.some(k => k.f === f)).length;
     return left.length > 0 ? (entropy(beliefs.map(b => ({ id: b.value, p: b.p }))) * covered) / left.length : 0;
   }
   // порог на измерении (часть 38б): обследование, которое меряет число, снимает всю неопределённость
-  if (derived) return exam.checks.some(k => k.f === derived.f) ? entropy(beliefs.map(b => ({ id: b.value, p: b.p }))) : 0;
+  if (byValue(derived)) return exam.checks.some(k => k.f === derived.f) ? entropy(beliefs.map(b => ({ id: b.value, p: b.p }))) : 0;
   const observed = new Set(observations.map(o => o.f));
   const telling = new Set(tellingOf(c, name));
   const h0 = entropy(beliefs.map(b => ({ id: b.value, p: b.p })));

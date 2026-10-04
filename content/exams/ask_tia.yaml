@@ -1,0 +1,25 @@
+id: exam.ask_tia
+name: { ru: "Расспрос: что было и сколько длилось" }
+kind: ask
+time: { procedure: 2 }
+cost: 0
+discomfort: 0
+# каждому, у кого слабость или нарушение речи уже прошли (spec 2026-10-chapter-3, часть 41б): что
+# именно было и сколько длилось — пункты шкалы ABCD2 (814_1, приложение Г17); точность — игровая
+# оценка, длительность больной или родные называют без ошибки, как время начала
+complaints: [sym.transient_weakness, sym.transient_speech]
+routineFor: [sym.transient_weakness, sym.transient_speech]
+checks:
+  - { f: sym.transient_weakness, sens: 95, spec: 99 }
+  - { f: sym.transient_speech, sens: 92, spec: 98 }
+  - { f: hx.tia_short, sens: 100, spec: 100 }
+  - { f: hx.tia_mid, sens: 100, spec: 100 }
+  - { f: hx.tia_long, sens: 100, spec: 100 }
+texts:
+  hint:
+    ru: "Что ослабло и нарушалась ли речь, сколько это длилось и прошло ли совсем. От этого — баллы шкалы ABCD2: риск инсульта в ближайшие дни и сколько антиагрегантов нужно."
+  summary:
+    ru: "Слабость в руке и ноге, речь, сколько длился эпизод — у самого больного и у родных."
+sources:
+  - { kind: guideline, title: "Ишемический инсульт и транзиторная ишемическая атака", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/814_1", note: "ID 814_1, опубликованы 20.11.2024, применяются; сверено с рубрикатором 03.10.2026; раздел 1.1: ТИА — симптомы не дольше 24 часов; приложение Г17: шкала ABCD2 — клиника и продолжительность; точность расспроса — игровая оценка" }
+review: draft

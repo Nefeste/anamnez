@@ -2,6 +2,10 @@ import { pluralRu } from '../plural';
 import { lowerFirst } from '../case';
 
 const decimal = (x: number) => String(x).replace('.', ',');
+/** «в 2 раза», «в 5 раз», «в 1,5 раза»: при дробном — всегда «раза» */
+const timesWord = (x: number) => (Number.isInteger(x) ? pluralRu(x, 'раз', 'раза', 'раз') : 'раза');
+/** «1 балл», «2 балла», «5 баллов» */
+const pointsWord = (n: number) => `${n}\u00a0${pluralRu(n, 'балл', 'балла', 'баллов')}`;
 
 export const encyclopedia = {
   title: 'Энциклопедия',
@@ -74,6 +78,21 @@ export const encyclopedia = {
     'thrombectomy:no': 'без показаний к тромбэктомии',
     'dysphagia:yes': 'при нарушении глотания',
     'dysphagia:no': 'без нарушения глотания',
+    // транзиторная ишемическая атака (часть 41б): что было, сколько длилось, группа по шкале ABCD2
+    'episode:weakness': 'при слабости в руке и ноге',
+    'episode:weakness_speech': 'при слабости и нарушении речи',
+    'episode:speech': 'при нарушении речи без слабости',
+    'episode:weakness|weakness_speech': 'при слабости в руке и ноге',
+    'episode:speech|weakness_speech': 'при нарушении речи',
+    'duration:short': 'если прошло быстрее чем за 10\u00a0минут',
+    'duration:mid': 'если длилось 10–59\u00a0минут',
+    'duration:long': 'если длилось час и дольше',
+    'dapt:yes': 'при ABCD2 больше 3\u00a0баллов',
+    'dapt:no': 'при ABCD2 до 3\u00a0баллов',
+    'moderate:yes': 'при ABCD2 4–5\u00a0баллов',
+    'moderate:no': 'при ABCD2 до 3 или от 6\u00a0баллов',
+    'high:yes': 'при ABCD2 6\u00a0баллов и больше',
+    'high:no': 'при ABCD2 до 5\u00a0баллов',
     // что выпало при инсульте — шаблон; у признаков — набор шаблонов одной подписью (ключ — значения
     // по алфавиту через «|»)
     'deficit:motor': 'при слабости только в руке и ноге',
@@ -196,7 +215,7 @@ export const encyclopedia = {
   season: { winter: 'Чаще зимой.', spring: 'Чаще весной.', summer: 'Чаще летом.', autumn: 'Чаще осенью.' },
   requires: 'Бывает только при',
   riskFactors: 'Факторы риска',
-  times: (x: number) => `в ${decimal(x)}\u00a0раза чаще`,
+  times: (x: number) => `в ${decimal(x)}\u00a0${timesWord(x)} чаще`,
   confirm: 'Как подтвердить',
   clinical: 'Отдельного подтверждающего обследования нет: диагноз ставят по жалобам и осмотру, исключив опасное.',
   similar: 'С чем спутать',
@@ -274,6 +293,9 @@ export const encyclopedia = {
   // срок одним днём (часть 33б: анафилактический шок — в тот же день)
   untreated: (band: string, from: number, to: number, when?: string) =>
     `${when ? `${when[0].toUpperCase()}${when.slice(1)} без` : 'Без'} действенного лечения ${band.toLowerCase()} становится хуже — ${from !== to ? `на ${from}–${to}-й день` : from === 0 ? 'в тот же день' : `на ${from}-й день`}.`,
+  // часть 41б: хуже — другая болезнь, с долей из записи: «без действенного лечения на 1–7-й день — ишемический инсульт у 6 %»
+  untreatedAs: (pct: string, from: number, to: number, name: string, when?: string) =>
+    `${when ? `${when[0].toUpperCase()}${when.slice(1)} без` : 'Без'} действенного лечения ${from !== to ? `на ${from}–${to}-й день` : from === 0 ? 'в тот же день' : `на ${from}-й день`} — ${name} у ${pct}\u00a0%.`,
   redFlags: 'Красные флаги',
   redFlagsNote: 'Признаки опасного течения: с ними тактика другая.',
   pearls: 'Что запомнить',
@@ -334,6 +356,14 @@ export const encyclopedia = {
   ruleAgeFrom: (years: number) => `Возраст ${years}\u00a0лет и старше — тоже основной признак.`,
   ruleMinor: (count: number) => `Или не меньше ${count === 2 ? 'двух' : count} из этих`,
   ruleAgeMinor: (from: number, to: number) => `Возраст ${from}–${to}\u00a0лет — тоже дополнительный признак.`,
+  // часть 41б: шкала с баллами — пункты с весами и порог
+  rulePointsTitle: 'Баллы',
+  // у пункта-признака — подпись к ссылке на него, возраст — строкой
+  rulePointsItem: (w: number) => pointsWord(w),
+  rulePointsUnless: (w: number, unless: string[]) => `${pointsWord(w)}, если нет ${unless.length > 1 ? 'пунктов' : 'пункта'} ${unless.map(u => `«${u}»`).join(', ')}`,
+  rulePointsAge: (years: number, w: number) => `Возраст ${years}\u00a0лет и старше — ${pointsWord(w)}`,
+  rulePointsYes: (from: number) => `Если баллов ${from} и больше`,
+  rulePointsNo: (from: number) => `Если меньше ${from}`,
   ruleExams: 'Какое обследование',
   // правило о лечении (часть 39а): «Можно ли тромболизис»
   ruleDecides: 'О каком лечении',
@@ -382,8 +412,8 @@ export const encyclopedia = {
   upgradedBy: 'Можно заменить на',
   prices: 'Цена',
   priceLine: (price: string, upkeep: string) => `${price}, обслуживание — ${upkeep} в\u00a0день.`,
-  slower: (x: number) => `Обследование идёт в\u00a0${decimal(x)}\u00a0раза дольше обычного.`,
-  faster: (x: number) => `Обследование идёт в\u00a0${decimal(x)}\u00a0раза быстрее обычного.`,
+  slower: (x: number) => `Обследование идёт в\u00a0${decimal(x)}\u00a0${timesWord(x)} дольше обычного.`,
+  faster: (x: number) => `Обследование идёт в\u00a0${decimal(x)}\u00a0${timesWord(x)} быстрее обычного.`,
   worse: (sens: number, spec: number) => `Точность ниже обычной: чувствительность — на\u00a0${sens}, специфичность — на\u00a0${spec}\u00a0${pluralRu(spec, 'процентный пункт', 'процентных пункта', 'процентных пунктов')}.`,
   better: (sens: number, spec: number) => `Точность выше обычной: чувствительность — на\u00a0${sens}, специфичность — на\u00a0${spec}\u00a0${pluralRu(spec, 'процентный пункт', 'процентных пункта', 'процентных пунктов')}.`,
   roleKind: 'Должность',

@@ -139,7 +139,26 @@ export interface DerivedByParams {
   all: Record<string, string[]>;
 }
 
-export type Derived = Id | DerivedByValue | DerivedByParams;
+/**
+ * Производный параметр по баллам шкалы (spec 2026-10-chapter-3, часть 41б): «yes», если баллов
+ * правила `rule` у пациента не меньше `from`; высокий риск по ABCD2 — 6 баллов и больше.
+ */
+export interface DerivedByRule {
+  rule: Id;
+  from: number;
+}
+
+export type Derived = Id | DerivedByValue | DerivedByParams | DerivedByRule;
+
+/** Производный по числу признака (части 38б и 41а), а не по правилу или другим параметрам. */
+export function byValue(d: Derived | undefined): d is DerivedByValue {
+  return d !== undefined && typeof d !== 'string' && 'f' in d;
+}
+
+/** Производный по правилу (часть 32г) или по баллам его шкалы (часть 41б): правило и порог баллов. */
+export function byRule(d: Derived | undefined): { rule: Id; from?: number } | undefined {
+  return d === undefined ? undefined : typeof d === 'string' ? { rule: d } : 'rule' in d ? d : undefined;
+}
 
 /**
  * Часов от начала болезни до прихода (spec 2026-10-chapter-3, часть 39а): интервалы — верхняя
@@ -357,8 +376,12 @@ export interface Condition {
   selfLimiting?: boolean;
   /** проходит само только при этих значениях скрытого параметра (часть 30д: неосложнённый дивертикулит) */
   selfLimitingWhen?: Record<string, string[]>;
-  /** без действенного лечения: вероятность ухудшения и на какой день; `when` — при каких значениях параметра (часть 30д) */
-  untreated?: { p: P; days: [number, number]; when?: Record<string, string[]> };
+  /**
+   * без действенного лечения: вероятность ухудшения и на какой день; `when` — при каких значениях
+   * параметра (часть 30д). Записей может быть несколько — берётся первая подошедшая (часть 41б: риск
+   * инсульта после ТИА по группе ABCD2)
+   */
+  untreated?: Untreated[];
   /** в стационаре при действенном лечении: через сколько суток можно выписывать */
   stay?: [number, number];
   /**
@@ -840,6 +863,25 @@ export interface Score {
  * 33а — признаки, при которых правило не применяют (`excludes`), и «ещё не решено — узнать, что
  * осталось»: шкала Уэллса меньше двух — D-димер.
  */
+/**
+ * Что будет без действенного лечения (spec 2026-09-chapter-2, часть 30д): с какой вероятностью и на
+ * какой день становится хуже. `as` (spec 2026-10-chapter-3, часть 41б) — хуже значит другая болезнь:
+ * после ТИА без профилактики человек возвращается с инсультом.
+ */
+export interface Untreated {
+  p: P;
+  days: [number, number];
+  when?: Record<string, string[]>;
+  as?: Id;
+}
+
+/** Баллы шкалы у правила (часть 41б). */
+export interface RulePoints {
+  items: { f: Id; w: number; unless?: Id[] }[];
+  age?: { from: number; w: number };
+  from: number;
+}
+
 export interface Rule {
   id: Id;
   name: Text;
@@ -848,6 +890,12 @@ export interface Rule {
   any: Id[];
   /** дополнительные: нужно не меньше `count` (возраст из `age.minor` — тоже один) */
   minor?: { any: Id[]; count: number };
+  /**
+   * баллы шкалы (spec 2026-10-chapter-3, часть 41б): у пункта свой вес; пункт с `unless` не
+   * считается, если есть хоть один из тех признаков (ABCD2: нарушение речи — балл, только если
+   * слабости нет); `age` — столько баллов с этого возраста. Правило выполнено от `from` баллов
+   */
+  points?: RulePoints;
   /**
    * возраст: старше `main` — основной признак (КТ головы: старше 60 лет); `from` и старше — тоже
    * основной (оттавские правила для колена: 55 лет и старше, часть 32д); в пределах `minor` —

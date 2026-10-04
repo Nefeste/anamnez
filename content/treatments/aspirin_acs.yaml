@@ -6,6 +6,10 @@ route: oral
 cost: 50
 effects:
   - { on: cond.acs, kind: cure, band: sometimes, days: [3, 7] }
+  # ТИА (spec 2026-10-chapter-3, часть 41б): вторичная профилактика снижает риск нового нарушения
+  # мозгового кровообращения на 20–30 % (814_1, раздел 5.1) — игровая оценка: 30 %; два антиагреганта —
+  # 51 %; помогло — инсульта за неделю нет
+  - { on: cond.tia, kind: cure, band: { pct: 30 }, days: [1, 2] }
 contraindications:
   - { id: risk.allergy_nsaid, level: absolute, reaction: often }
 texts:

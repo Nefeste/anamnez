@@ -542,10 +542,14 @@ function rulesOf(p: Patient, obs: readonly Observation[]): VisitView['rules'] {
     const age = r.age?.main !== undefined ? t.ruleAgeOver(r.age.main) : r.age?.from !== undefined ? t.ruleAgeFrom(r.age.from) : undefined;
     const main = [...names(x.main), ...(x.ageMain && age ? [age] : [])];
     const minor = [...names(x.minor), ...(x.ageMinor && r.age?.minor ? [t.ruleAgeRange(r.age.minor[0], r.age.minor[1])] : [])];
-    const why = main.length > 0 ? main.join(', ') : t.ruleMinor(minor.join(', '));
+    // шкала с баллами (часть 41б): сколько набрано и за какие пункты
+    const counted = (r.points?.items ?? []).filter(i => known(i.f) === true && !(i.unless ?? []).some(u => known(u) === true)).map(i => i.f);
+    const scored = r.points && x.points ? t.rulePoints(x.points.min, [...(r.points.age && p.age >= r.points.age.from ? [t.ruleAgeFrom(r.points.age.from)] : []), ...names(counted)].join(', ')) : undefined;
+    const why = scored ?? (main.length > 0 ? main.join(', ') : t.ruleMinor(minor.join(', ')));
+    const no = x.points && x.points.min === x.points.max && x.applies !== false ? t.rulePointsNo(x.points.min, r.texts.no.ru) : r.texts.no.ru;
     const text =
       x.verdict === 'yes' ? t.ruleYes(r.texts.yes.ru, why)
-      : x.verdict === 'no' ? (x.applies === false ? r.texts.na?.ru ?? r.texts.no.ru : r.texts.no.ru)
+      : x.verdict === 'no' ? (x.applies === false ? r.texts.na?.ru ?? r.texts.no.ru : no)
       : t.ruleCheck(names(x.left).join(', '));
     return { id: r.id, name: r.name.ru, text };
   });
@@ -675,7 +679,7 @@ export function outcomeText(outcome: Outcome, setting: Setting, female: boolean)
     case 'recovered': return outcome.settled === 'clear' ? out.settledClear(outcome.day) : outcome.settled === 'residual' ? out.settledResidual(outcome.day) : out.recovered(outcome.day, female);
     case 'improved': return out.improved(female);
     case 'unchanged': return out.unchanged;
-    case 'worse': return out.worse(outcome.day);
+    case 'worse': return outcome.returns?.as ? out.worseAs(outcome.day, lowerFirst(db.conditions[outcome.returns.as]?.name.ru ?? '')) : out.worse(outcome.day);
     case 'reaction': return outcome.reaction ? out.reaction(db.treatments[outcome.reaction.tx].name.ru, riskName(outcome.reaction.by)) : out.unchanged;
     case 'transferred':
       if (outcome.severe) return out.transferredSevere(female);

@@ -319,6 +319,8 @@ export interface PlannedReturn {
   day: number;
   of: string;
   reason: ReturnReason;
+  /** с другой болезнью (spec 2026-10-chapter-3, часть 41б): после ТИА без профилактики — с инсультом */
+  as?: Id;
 }
 
 export interface ShiftState {
