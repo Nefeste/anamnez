@@ -190,13 +190,15 @@ function presentationDay(c: Condition, rng: Rng): { day: number; stage: string }
 /**
  * Производные параметры (spec 2026-09-chapter-2, часть 32г): «yes», если правило решения выполнено
  * на настоящих признаках и возрасте, иначе «no» — показана ли КТ при сотрясении. Признаки от них не
- * зависят (валидатор), поэтому считаются после признаков; новых бросков нет.
+ * зависят (валидатор), поэтому считаются после признаков; новых бросков нет. Уже посчитанные не
+ * трогает: так при загрузке досчитываются пациенты из сохранений до появления параметра (часть 39в:
+ * коронарография в первые сутки при ОКС).
  */
-function deriveParams(db: ContentDb, conditions: ActiveCondition[], age: number, findings: readonly TrueFinding[]): void {
+export function deriveParams(db: ContentDb, conditions: ActiveCondition[], age: number, findings: readonly Pick<TrueFinding, 'f'>[]): void {
   const has = new Set(findings.map(x => x.f));
   for (const c of conditions) {
     for (const [name, ruleId] of Object.entries(db.conditions[c.id].derived ?? {})) {
-      if (typeof ruleId !== 'string') continue;
+      if (typeof ruleId !== 'string' || c.params[name] !== undefined) continue;
       c.params[name] = checkRule(db.rules[ruleId], age, f => has.has(f)).verdict === 'yes' ? 'yes' : 'no';
     }
   }

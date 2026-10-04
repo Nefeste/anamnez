@@ -194,11 +194,15 @@ describe('готовая амбулатория', () => {
     const plan = planOf(db, presetHospital(db, clinic).hospital);
     const working = workingRooms(db, plan, presetStaff);
     expect(working.size).toBe(plan.rooms.length);
-    // кабинета УЗИ в амбулатории нет (spec 2026-09-chapter-2): практика — прежняя амбулатория
+    // кабинета УЗИ в амбулатории нет (spec 2026-09-chapter-2): практика — прежняя амбулатория; кровь на
+    // тропонин берут в смотровой приёмного (spec 2026-10-chapter-3, часть 39в) — её в амбулатории тоже нет
     const us = Object.keys(db.exams).filter(id => db.exams[id].room === 'room.ultrasound');
     expect(us).toEqual(['exam.us_abdomen', 'exam.us_kidney', 'exam.us_leg_arteries', 'exam.us_leg_veins']);
-    for (const id of Object.keys(db.exams).filter(x => !us.includes(x))) expect({ id, ...examWhere(db, plan, working, presetStaff, id) }).toMatchObject({ id, rooms: expect.any(Array) });
+    const ed = Object.keys(db.exams).filter(id => db.exams[id].collect === 'room.emergency');
+    expect(ed).toEqual(['exam.troponin_hs']);
+    for (const id of Object.keys(db.exams).filter(x => !us.includes(x) && !ed.includes(x))) expect({ id, ...examWhere(db, plan, working, presetStaff, id) }).toMatchObject({ id, rooms: expect.any(Array) });
     for (const id of us) expect(examWhere(db, plan, working, presetStaff, id)).toEqual({ block: { kind: 'noRoom', room: 'room.ultrasound' } });
+    for (const id of ed) expect(examWhere(db, plan, working, presetStaff, id)).toEqual({ block: { kind: 'noRoom', room: 'room.emergency' } });
     expect(openBlocks(db, plan, working, presetStaff)).toEqual([]);
   });
 

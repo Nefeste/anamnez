@@ -5,7 +5,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, join, relative } from 'node:path';
 import { parse } from 'yaml';
 import type { z } from 'zod';
-import type { AttrSpec, Cell, Condition, ContentDb, Equipment, Exam, Finding, Link, Preset, Risk, RoomType, StaffRole, Treatment } from '../../src/content/types';
+import { type AttrSpec, type Cell, type Condition, type ContentDb, type Equipment, type Exam, type Finding, type Link, membersOf, type Preset, type Risk, type RoomType, type StaffRole, type Treatment } from '../../src/content/types';
 import { planOf, presetHospital } from '../../src/engine/hospital/build';
 import { problemsOf } from '../../src/engine/hospital/requirements';
 import { ALLERGY_EXAM } from '../../src/engine/career/achievements';
@@ -375,10 +375,11 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       // списке тактики, по параметру — не в списках той же записи (при других значениях роль своя:
       // кислород при сатурации от 90 % у ОКС — «не нужно»)
       // обязательное и при переводе (часть 39а) — так же: тромболизис при инфаркте в окне
-      const requires = [['обязательное', t.require ?? [], roled] as const, ...(t.byParam ?? []).flatMap((x, i) => {
+      // группа «одно из» (часть 39в) — каждое из группы так же
+      const requires = [['обязательное', membersOf(t.require), roled] as const, ...(t.byParam ?? []).flatMap((x, i) => {
         const own = new Set([x.firstLine, x.acceptable, x.supportive, x.notIndicated, x.harmful].flat());
         return [
-          [`обязательное тактики по параметру №${i + 1}`, x.require ?? [], own] as const,
+          [`обязательное тактики по параметру №${i + 1}`, membersOf(x.require), own] as const,
           [`обязательное до перевода тактики по параметру №${i + 1}`, x.beforeTransfer ?? [], own] as const,
         ];
       })];
@@ -689,6 +690,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (e.routine) out.routine = true;
     if (e.routineFor) out.routineFor = e.routineFor;
     if (e.bedside) out.bedside = e.bedside;
+    if (e.repeat) out.repeat = e.repeat;
     if (e.sex) out.sex = e.sex;
     if (e.ageMin !== undefined) out.ageMin = e.ageMin;
     if (e.ageMax !== undefined) out.ageMax = e.ageMax;
@@ -993,6 +995,14 @@ function checkHospital(c: {
       }
       if (e.kind !== 'functional' && e.kind !== 'imaging') errors.push(`${e.id}: у постели — то, что иначе делают в своём кабинете в очереди (функциональное или снимок)`);
     }
+    // повторный забор (часть 39в): у анализа, его проверки — из проверок обследования, и не все:
+    // первый забор что-то показывает сам
+    if (e.repeat) {
+      const own = new Set(e.checks.map(c => c.f));
+      if (e.kind !== 'lab') errors.push(`${e.id}: повторный забор — у анализа (kind: lab)`);
+      for (const f of e.repeat.checks) if (!own.has(f)) errors.push(`${e.id}: повторный забор проверяет ${f}, а обследование — нет`);
+      if (e.repeat.checks.length >= own.size) errors.push(`${e.id}: повторный забор проверяет всё — первому нечего показать`);
+    }
   }
   // пациент приходит туда, где берут материал, и туда, где обследование делают с ним самим
   const visited = new Set(exList.flatMap(e => (e.collect ? [e.collect] : e.room ? [e.room] : [])));
@@ -1034,7 +1044,8 @@ function checkHospital(c: {
         spot(role, cell, ['chair']);
       }
       if (z.patient) spot('пациента', z.patient, ['chair', 'couch', 'slot']);
-      else if (visited.has(r.id)) errors.push(`${at}: сюда приходят пациенты, а места для пациента нет`);
+      // в смотровой приёмного пациент лежит на койке: кровь на тропонин берут у постели (часть 39в)
+      else if (visited.has(r.id) && !r.emergency) errors.push(`${at}: сюда приходят пациенты, а места для пациента нет`);
       if (r.seats && !z.objects.some(([kind]) => kind === 'chair')) errors.push(`${at}: зона ожидания без стульев`);
       if (r.beds && !z.objects.some(([kind]) => kind === 'bed')) errors.push(`${at}: палата без коек`);
       if (r.emergency && !z.objects.some(([kind]) => kind === 'bed')) errors.push(`${at}: смотровая приёмного без мест для скорой`);

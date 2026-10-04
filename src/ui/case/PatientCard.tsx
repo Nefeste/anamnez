@@ -173,11 +173,15 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
               // сделанное — с ответом на месте: не нужно листать вверх к «Известно» (отзыв на 0.0.37);
               // только что пришедшее — целиком, прежнее — строкой «что нашли», касание раскрывает
               if (v.done.includes(id)) {
-                const g = v.groups.find(x => x.exam === id);
+                // все результаты назначения — и повторного забора (часть 39в: тропонин через час), новые сверху
+                const gs = v.groups.filter(x => x.exam === id);
+                const g = gs[0];
+                const lines = gs.flatMap(x => x.lines);
                 const wait = v.pending.find(x => x.exam === id);
                 const key = `done:${id}`;
                 const open = !!g && (g.fresh || isOpen(key));
-                const summary = g ? g.lines.filter(l => l.shown).map(l => l.text).join('; ') || t.nothingFound : wait ? t.readyAt(wait.at) : t.done;
+                const seen = lines.filter(l => l.shown).map(l => l.text).join('; ') || t.nothingFound;
+                const summary = g ? (wait ? `${seen} · ${t.readyAt(wait.at)}` : seen) : wait ? t.readyAt(wait.at) : t.done;
                 return (
                   <Animated.View key={id} entering={FadeInDown.duration(250)} testID={`done-${id}`} style={[styles.done, g?.fresh && styles.groupFresh]}>
                     <Pressable accessibilityRole="button" aria-expanded={open} accessibilityLabel={`${info.name}: ${open ? t.collapse : t.expand}`} disabled={!g || g.fresh}
@@ -185,7 +189,7 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
                       <Text style={styles.groupTitle}>{`✓ ${info.name}`}</Text>
                       {g?.fresh ? <Text style={styles.badge}>{t.fresh}</Text> : g ? <Text style={styles.chevron}>{open ? '▴' : '▾'}</Text> : null}
                     </Pressable>
-                    {open ? <Chips>{g!.lines.map((r, i) => <Chip key={`${r.f}${i}`} text={r.text} strong={r.shown} onPress={() => explain(findingInfo(r.f))} />)}</Chips>
+                    {open ? <Chips>{lines.map((r, i) => <Chip key={`${r.f}${i}`} text={r.text} strong={r.shown} onPress={() => explain(findingInfo(r.f))} />)}</Chips>
                       : <Text numberOfLines={2} style={styles.summary}>{summary}</Text>}
                   </Animated.View>
                 );

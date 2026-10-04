@@ -1,6 +1,6 @@
 {
-  "version": "0.3.6",
-  "base": 47,
+  "version": "0.3.7",
+  "base": 48,
   "ids": {
     "achievements": [
       "ach.allergy_10",
@@ -307,6 +307,7 @@
       "exam.spine_exam",
       "exam.strep_rapid",
       "exam.throat",
+      "exam.troponin_hs",
       "exam.tsh",
       "exam.urinalysis",
       "exam.urine_dipstick",
@@ -427,6 +428,8 @@
       "lab.mcv_low",
       "lab.sars_ag",
       "lab.strep_ag",
+      "lab.troponin_high",
+      "lab.troponin_rise",
       "lab.tsh_high",
       "lab.urine_blood",
       "lab.urine_glucose",
@@ -721,6 +724,7 @@
       "room.xray/M"
     ],
     "rules": [
+      "rule.acs_invasive",
       "rule.ct_head",
       "rule.lysis_mi",
       "rule.ottawa_ankle",

@@ -193,7 +193,12 @@ export interface Arrival {
   /** минуты от полуночи — для подписи «в 08:35» */
   at: number;
   obs: Observation[];
+  /** повторный забор того же назначения (spec 2026-10-chapter-3, часть 39в): тропонин через час */
+  repeat?: true;
 }
+
+/** Как назвать результат: повторный забор (часть 39в) — своим именем, «Тропонин через час». */
+export const resultName = (exam: Id, repeat?: true): string => (repeat && db.exams[exam].repeat?.name.ru) || db.exams[exam].name.ru;
 
 /** Всё, из чего строится вид приёма: у прототипа и у смены — свои источники. */
 export interface CaseInput {
@@ -205,7 +210,7 @@ export interface CaseInput {
   money: number;
   step: number;
   arrived: Arrival[];
-  pending: { exam: Id; readyAt: number }[];
+  pending: { exam: Id; readyAt: number; repeat?: true }[];
   meanwhile: string[];
   urgent?: boolean;
   done: Id[];
@@ -562,11 +567,11 @@ export function makeCaseView(c: CaseInput): VisitView {
     groups: c.arrived
       .map((a, i) => {
         const image = imageOf(a.exam, a.obs, obs, fnv1a(`${p.seed}:${a.exam}`), p.seed);
-        return { key: `${i}:${a.exam}`, exam: a.exam, name: db.exams[a.exam].name.ru, at: hhmm(a.at), fresh: c.step > 0 && a.step === c.step, lines: a.obs.filter(visible).map(line), ...(image ? { image } : {}) };
+        return { key: `${i}:${a.exam}`, exam: a.exam, name: resultName(a.exam, a.repeat), at: hhmm(a.at), fresh: c.step > 0 && a.step === c.step, lines: a.obs.filter(visible).map(line), ...(image ? { image } : {}) };
       })
       .reverse(),
     freshCount: c.arrived.filter(a => c.step > 0 && a.step === c.step).reduce((n, a) => n + a.obs.filter(visible).length, 0),
-    pending: c.pending.map(x => ({ exam: x.exam, name: db.exams[x.exam].name.ru, at: hhmm(x.readyAt) })),
+    pending: c.pending.map(x => ({ exam: x.exam, name: resultName(x.exam, x.repeat), at: hhmm(x.readyAt) })),
     meanwhile: c.meanwhile,
     ...(c.urgent ? { urgent: true } : {}),
     done: c.done,

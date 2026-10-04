@@ -10,7 +10,7 @@ import { useSyncExternalStore } from 'react';
 import { db } from '@/content';
 import type { Id, Mission, Season, Setting } from '@/content/types';
 import { complaintObservations } from '@/engine/med/exams';
-import { deriveByValue } from '@/engine/med/generate';
+import { deriveByValue, deriveParams } from '@/engine/med/generate';
 import { evaluatePlan, primaryOf } from '@/engine/med/plan';
 import type { Grade } from '@/engine/med/score';
 import { complaintText, observationText } from '@/engine/med/text';
@@ -31,7 +31,7 @@ import {
 import { T } from '@/i18n';
 import { lowerFirst } from '@/i18n/case';
 import {
-  type Arrival, type Decision, decisionOf, hhmm, makeCaseView, outcomeText, patientName, type SettingOption, treatmentGroupsFor, type VisitView,
+  type Arrival, type Decision, decisionOf, hhmm, makeCaseView, outcomeText, patientName, resultName, type SettingOption, treatmentGroupsFor, type VisitView,
 } from './caseView';
 import { daysIn, stayNorm, vitalOn, WARD_VITALS, type WardState, wardState } from '@/engine/shift/ward';
 import { CLINIC, type Doing, type Placement, placements } from './clinicMap';
@@ -319,8 +319,12 @@ export function loadShift(which?: Mode, careerNo?: number): Promise<void> {
   loading = loadSlot<ShiftState>(st, slotOf(want, wantCareer), e => fits(e, want, wantCareer))
     .then(r => {
       if (r && !session) {
-        // пациенты из сохранений до 0.3.4 — без порогов на измерении: досчитать по их числам (часть 38б)
-        for (const p of Object.values(r.envelope.data.patients)) deriveByValue(db, p.patient.truth.conditions, p.patient.truth.values);
+        // пациенты из сохранений до 0.3.4 — без порогов на измерении: досчитать по их числам (часть 38б);
+        // до 0.3.7 — без коронарографии в первые сутки при ОКС: по правилу на их признаках (часть 39в)
+        for (const p of Object.values(r.envelope.data.patients)) {
+          deriveByValue(db, p.patient.truth.conditions, p.patient.truth.values);
+          deriveParams(db, p.patient.truth.conditions, p.patient.age, p.patient.truth.findings);
+        }
         session = fresh(r.envelope.data, r.from === 'prev-1' || r.from === 'prev-2');
         // приёмы, закрытые до профиля (0.0.14 и раньше) или до сбоя, — в профиль; повторы он отбросит
         recordCases(closedCases(session.s));
@@ -1283,7 +1287,7 @@ function meanwhileOf(s: ShiftState, p: ShiftPatient, notices: Notice[], justDone
   const arrived = notices.filter((n): n is Extract<Notice, { kind: 'arrived' }> => n.kind === 'arrived');
   for (const n of notices) if (n.kind === 'ambulance') out.push(T.shift.notice.ambulance(nameOf(s.patients[n.id]), complaintOf(s.patients[n.id])));
   for (const n of arrived) if (n.triage === 'red') out.push(T.shift.notice.red(nameOf(s.patients[n.id]), complaintOf(s.patients[n.id])));
-  for (const r of p.results) if (r.step === p.step && r.exam !== justDone) out.push(T.spikes.patient.ready(db.exams[r.exam].name.ru));
+  for (const r of p.results) if (r.step === p.step && r.exam !== justDone) out.push(T.spikes.patient.ready(resultName(r.exam, r.repeat)));
   const others = arrived.filter(n => n.triage !== 'red').length;
   if (others > 0) out.push(T.shift.notice.more(others));
   for (const n of notices) {
@@ -1806,7 +1810,7 @@ function decisionFor(meta: Pick<ShiftState['meta'], 'seed' | 'department'>, p: S
 
 /** Пришедшие результаты; `until` — только готовые к этому времени (приём врача идёт: что он выясняет сейчас, ещё не известно). */
 const arrivedOf = (p: ShiftPatient, until = Infinity): Arrival[] =>
-  p.results.filter(r => r.at <= until).map(r => ({ exam: r.exam, step: r.step, at: minuteOfDay(r.at), obs: r.obs }));
+  p.results.filter(r => r.at <= until).map(r => ({ exam: r.exam, step: r.step, at: minuteOfDay(r.at), obs: r.obs, ...(r.repeat ? { repeat: r.repeat } : {}) }));
 
 /** Ваши закрытые приёмы смены — для профиля (profile.ts, recordCases); приёмы нанятых врачей не в счёт. */
 function closedCases(s: ShiftState) {
@@ -1931,7 +1935,7 @@ function buildCaseView(): VisitView | undefined {
     money: p.spent.money,
     step: p.step,
     arrived,
-    pending: [...asking, ...p.pending.map(x => ({ exam: x.exam, readyAt: minuteOfDay(x.readyAt) }))],
+    pending: [...asking, ...p.pending.map(x => ({ exam: x.exam, readyAt: minuteOfDay(x.readyAt), ...(x.repeat ? { repeat: x.repeat } : {}) }))],
     meanwhile: p.id === s.current ? sess.meanwhile : [],
     urgent: p.id === s.current && sess.urgent,
     done: p.done,

@@ -1,7 +1,7 @@
 // План лечения и его проверка (`docs/04-medical-model.md` §8). План оценивается по правде:
 // роль каждого назначения при настоящем основном заболевании, где на самом деле надо
 // лечить и какие противопоказания нарушены — и знал ли о них врач.
-import type { ContentDb, Effect, Id, Setting, Tactics } from '../../content/types';
+import { type ContentDb, type Effect, type Id, membersOf, type Setting, type Tactics } from '../../content/types';
 import { knownFacts } from './infer';
 import type { ActiveCondition, Observation, Patient } from './types';
 
@@ -176,12 +176,20 @@ export function preventOf(t: Tactics | undefined, params?: Record<string, string
 /**
  * Обязательное при лечении здесь (часть 38б): общее и из подошедших записей `byParam`; без
  * параметров — только общее: при других значениях у того же лечения может быть другая роль
- * (кислород у ОКС при сатурации от 90 % — «не нужно»).
+ * (кислород у ОКС при сатурации от 90 % — «не нужно»). Каждое — группа: одно лечение или «одно из»
+ * (часть 39в: антикоагулянт при ОКС без подъёма ST — фондапаринукс, эноксапарин или гепарин).
  */
-export function requireOf(t: Tactics | undefined, params?: Record<string, string>): Id[] {
+export function requireOf(t: Tactics | undefined, params?: Record<string, string>): Id[][] {
+  return requireListOf(t, params).map(g => (typeof g === 'string' ? [g] : g));
+}
+
+/** То же списком записи: лечение — строкой, группа — списком (для `tacticsFor`). */
+function requireListOf(t: Tactics | undefined, params?: Record<string, string>): (Id | Id[])[] {
   if (!t) return [];
   const over = params ? (t.byParam ?? []).filter(b => whenHolds(b.when, params)) : [];
-  return [...new Set([...(t.require ?? []), ...over.flatMap(b => b.require ?? [])])];
+  const all = [...(t.require ?? []), ...over.flatMap(b => b.require ?? [])];
+  const key = (g: Id | Id[]) => (typeof g === 'string' ? g : g.join());
+  return all.filter((g, i) => all.findIndex(x => key(x) === key(g)) === i);
 }
 
 /**
@@ -213,7 +221,7 @@ export function preHospitalOf(db: ContentDb, t: Tactics | undefined, params: Rec
 export function txRole(db: ContentDb, condId: Id, tx: Id, params?: Record<string, string>): TxRole {
   const t = db.conditions[condId]?.treatment;
   if (preventOf(t, params).includes(tx)) return 'prevent';
-  if (requireOf(t, params).includes(tx)) return 'require';
+  if (requireOf(t, params).some(g => g.includes(tx))) return 'require';
   if (beforeTransferOf(t, params).includes(tx)) return 'beforeTransfer';
   const x = params && t?.byParam?.find(b => whenHolds(b.when, params) && ROLES.some(role => b[role].includes(tx)));
   if (x) return ROLES.find(role => x[role].includes(tx))!;
@@ -264,11 +272,11 @@ export function tacticsFor(t: Tactics, params: Record<string, string> = {}): Tac
   const over = (t.byParam ?? []).filter(b => whenHolds(b.when, params));
   if (over.length === 0) return t;
   // обязательное по параметру (часть 38б) и до перевода (часть 39а) тоже названо: из общих списков оно уходит
-  const named = new Set(over.flatMap(b => [...ROLES.flatMap(role => b[role]), ...(b.require ?? []), ...(b.beforeTransfer ?? [])]));
+  const named = new Set(over.flatMap(b => [...ROLES.flatMap(role => b[role]), ...membersOf(b.require), ...(b.beforeTransfer ?? [])]));
   const lists = Object.fromEntries(ROLES.map(role => [role, [...new Set([...over.flatMap(b => b[role]), ...t[role].filter(id => !named.has(id))])]])) as Record<ListRole, Id[]>;
   const plan = over.find(b => b.plan)?.plan ?? t.plan?.filter(id => lists.firstLine.includes(id) || lists.acceptable.includes(id) || lists.supportive.includes(id));
   const prevent = preventOf(t, params);
-  const require = requireOf(t, params);
+  const require = requireListOf(t, params);
   const beforeTransfer = beforeTransferOf(t, params);
   const preHospital = [...new Set(over.flatMap(b => b.preHospital ?? []))];
   return {
@@ -343,8 +351,13 @@ export function evaluatePlan(db: ContentDb, patient: Patient, plan: Plan, observ
     preHospital: preHospitalOf(db, base, params),
     // профилактику, противопоказанную тем, о чём врач знает (аллергия на пенициллины), в вину не ставим
     preventMissing: preventOf(base, params).filter(tx => !plan.treatments.includes(tx) && !db.treatments[tx]?.contraindications.some(k => knownIds.has(k.id))).sort(),
-    requireMissing: requireOf(base, params).filter(tx => !plan.treatments.includes(tx) && !db.treatments[tx]?.contraindications.some(k => knownIds.has(k.id))).sort(),
-    requireWhen: Object.fromEntries((base?.byParam ?? []).filter(b => whenHolds(b.when, params)).flatMap(b => (b.require ?? []).map(tx => [tx, b.when] as const)).reverse()),
+    // из группы хватит одного (часть 39в); противопоказанное тем, о чём врач знает, в вину не ставим —
+    // из группы называем первое, что можно
+    requireMissing: requireOf(base, params).flatMap(g => {
+      const can = g.filter(tx => !db.treatments[tx]?.contraindications.some(k => knownIds.has(k.id)));
+      return can.length > 0 && !g.some(tx => plan.treatments.includes(tx)) ? [can[0]] : [];
+    }).sort(),
+    requireWhen: Object.fromEntries((base?.byParam ?? []).filter(b => whenHolds(b.when, params)).flatMap(b => membersOf(b.require).map(tx => [tx, b.when] as const)).reverse()),
     // до перевода (часть 39а) — то, что здесь можно было сделать: тромболизис у постели под монитором
     beforeTransferMissing: beforeTransferOf(base, params)
       .filter(tx => !plan.treatments.includes(tx) && txAvailable(db, tx, venue) && !db.treatments[tx]?.contraindications.some(k => knownIds.has(k.id))).sort(),

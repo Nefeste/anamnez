@@ -56,6 +56,8 @@ const link = z.strictObject({
 });
 const riskMultiplier = z.strictObject({ id: z.string(), x: z.number().positive() });
 const txId = z.string().regex(/^tx\.[a-z0-9_]+$/);
+/** обязательное (часть 38б): лечение или группа «одно из» — не меньше двух, первое — выбора (часть 39в) */
+const required = z.array(z.union([txId, z.array(txId).min(2)])).min(1);
 /**
  * Где лечить — что нужно пациенту; `admit` («в палату») — только выбор врача, в базе его нет;
  * `icu` — палата интенсивной терапии (spec 2026-10-chapter-3, часть 38а): своя — «В ПИТ», нет её —
@@ -139,9 +141,10 @@ export const conditionSchema = z.strictObject({
     prevent: z.array(txId).min(1).optional(),
     /**
      * обязательно при лечении здесь (часть 38б): без этого лечение неполное — кислород через
-     * маску при сатурации ниже порога рекомендации
+     * маску при сатурации ниже порога рекомендации; группа — хоть одно из неё, первое — выбора
+     * (часть 39в: антикоагулянт при ОКС без подъёма ST)
      */
-    require: z.array(txId).min(1).optional(),
+    require: required.optional(),
     /**
      * тактика по скрытому параметру (spec 2026-09-chapter-2, часть 32): при таких значениях у
      * названных здесь лечений — эта роль, у остальных — из общих списков; своё типичное назначение
@@ -157,8 +160,8 @@ export const conditionSchema = z.strictObject({
       plan: z.array(txId).min(1).optional(),
       /** обязательная профилактика при этих значениях — вдобавок к общей */
       prevent: z.array(txId).min(1).optional(),
-      /** обязательно при этих значениях — вдобавок к общему (часть 38б) */
-      require: z.array(txId).min(1).optional(),
+      /** обязательно при этих значениях — вдобавок к общему (часть 38б); группа — одно из (часть 39в) */
+      require: required.optional(),
       /**
        * что сделать до приезда скорой при этих значениях — хоть одно (часть 32д-2): обширный ожог
        * лечат не дома, хотя место по умолчанию — дом, и до перевода ставят капельницу
@@ -336,6 +339,15 @@ export const examSchema = z.strictObject({
     room: roomId,
     equipment: z.array(eqId).min(1),
     time: z.strictObject({ procedure: z.number().int().min(1) }),
+  }).optional(),
+  /**
+   * повторный забор по тому же назначению (spec 2026-10-chapter-3, часть 39в): через `minutes` минут;
+   * его проверки — из `checks` обследования, приходят с ним; `name` — как назвать его результат
+   */
+  repeat: z.strictObject({
+    minutes: z.number().int().min(1),
+    checks: z.array(z.string()).min(1),
+    name: text,
   }).optional(),
   texts: z.strictObject({ summary: text, hint }),
   sources: z.array(source).min(1),
