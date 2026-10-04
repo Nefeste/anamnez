@@ -482,6 +482,29 @@ function ctSave(): { save: string; id: string } {
  * глюкоза, КТ, вопросы перед тромболизисом и тест глотания готовы («Студент»: без ошибок).
  */
 function strokeSave(): { save: string; id: string } {
+  const fits = (x: ReturnType<typeof generatePatient>) => {
+    const c = x.truth.conditions[0].params;
+    return x.age >= 40 && x.truth.values['hx.onset_hours'] === 2 && c.minor === 'no' && c.thrombectomy === 'no' && c.dysphagia === 'no'
+      && x.complaints.includes('sym.weakness_one_side') && !x.truth.risks.some(r => r === 'risk.anticoagulants' || r === 'risk.bleeding_tendency');
+  };
+  return neuroSave('cond.stroke_ischemic', fits, ['exam.neuro_exam', 'exam.ask_stroke', 'exam.glucometer', 'exam.ct_head', 'exam.ask_lysis', 'exam.swallow_test']);
+}
+
+/**
+ * Песочница с приёмным, КТ и ПИТ (часть 41б): первая машина скорой везёт транзиторную ишемическую
+ * атаку высокого риска — 60 лет и старше, слабость прошла, длилось час и дольше, давление высокое; всё,
+ * что меняет баллы ABCD2, проверено.
+ */
+function tiaSave(): { save: string; id: string } {
+  const fits = (x: ReturnType<typeof generatePatient>) => {
+    const has = (f: string) => x.truth.findings.some(y => y.f === f);
+    return x.age >= 60 && has('sym.transient_weakness') && has('hx.tia_long') && has('vital.bp_high') && !x.truth.risks.includes('risk.allergy_nsaid');
+  };
+  return neuroSave('cond.tia', fits, ['exam.neuro_exam', 'exam.ask_tia', 'exam.vitals', 'exam.ask_chronic', 'exam.ct_head', 'exam.ask_allergies']);
+}
+
+/** Больница с приёмным, КТ и ПИТ; первую машину скорой подменяет больной `primary`, для которого верно `fits`; сделаны `exams`. */
+function neuroSave(primary: string, fits: (x: ReturnType<typeof generatePatient>) => boolean, exams: string[]): { save: string; id: string } {
   const { db } = buildDb();
   const s = newSandbox(db, { seed: 25, season: 'winter', difficulty: 'student', start: 'clinic', budget: db.economy.sandbox.budgets.generous });
   // томограф дороже «щедрого» бюджета
@@ -504,28 +527,23 @@ function strokeSave(): { save: string; id: string } {
   apply(db, s, { kind: 'assign', id: s.staff!.find(m => m.role === 'role.nurse' && m.room === 'r7')!.id, room: er });
   for (const [role, to] of [['role.radiographer', ct], ['role.radiologist', ct], ['role.nurse', icu], ['role.anesthetist', icu]] as const) {
     const c = s.candidates!.find(x => x.role === role && !s.staff!.some(m => m.id === x.id));
-    if (!c) throw new Error(`strokeSave: среди кандидатов нет ${role}`);
+    if (!c) throw new Error(`neuroSave: среди кандидатов нет ${role}`);
     apply(db, s, { kind: 'hire', id: c.id });
     apply(db, s, { kind: 'assign', id: c.id, room: to });
   }
   apply(db, s, { kind: 'nextDay' });
   const p = Object.values(s.patients).filter(q => q.kind === 'ambulance' && q.status === 'coming').sort((a, b) => a.arriveT - b.arriveT)[0];
-  if (!p?.departments?.includes('dept.neurology')) throw new Error('strokeSave: кабинет КТ не работает — неврологию не принимают');
-  const fits = (x: ReturnType<typeof generatePatient>) => {
-    const c = x.truth.conditions[0].params;
-    return x.age >= 40 && x.truth.values['hx.onset_hours'] === 2 && c.minor === 'no' && c.thrombectomy === 'no' && c.dysphagia === 'no'
-      && x.complaints.includes('sym.weakness_one_side') && !x.truth.risks.some(r => r === 'risk.anticoagulants' || r === 'risk.bleeding_tendency');
-  };
-  const stroke = (seed: number) => generatePatient(db, seed, { department: 'dept.neurology', departments: p.departments!, season: 'winter', primary: 'cond.stroke_ischemic' });
+  if (!p?.departments?.includes('dept.neurology')) throw new Error('neuroSave: кабинет КТ не работает — неврологию не принимают');
+  const make = (seed: number) => generatePatient(db, seed, { department: 'dept.neurology', departments: p.departments!, season: 'winter', primary });
   let seed = 4800;
-  while (!fits(stroke(seed))) seed++;
-  p.patient = stroke(seed);
+  while (!fits(make(seed))) seed++;
+  p.patient = make(seed);
   for (let i = 0; i < 600 && p.status === 'coming'; i++) apply(db, s, { kind: 'advance', seconds: 60 });
   apply(db, s, { kind: 'sort', id: p.id, triage: p.scale!.triage });
   apply(db, s, { kind: 'call', id: p.id });
-  for (const exam of ['exam.neuro_exam', 'exam.ask_stroke', 'exam.glucometer', 'exam.ct_head', 'exam.ask_lysis', 'exam.swallow_test']) apply(db, s, { kind: 'exam', exam });
+  for (const exam of exams) apply(db, s, { kind: 'exam', exam });
   for (let i = 0; i < 20 && p.pending.length > 0; i++) apply(db, s, { kind: 'waitResults' });
-  if (!p.results.some(r => r.exam === 'exam.ct_head')) throw new Error('strokeSave: КТ не пришла');
+  if (!p.results.some(r => r.exam === 'exam.ct_head')) throw new Error('neuroSave: КТ не пришла');
   return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s }), id: p.id };
 }
 
@@ -624,12 +642,19 @@ try {
   // «мягкий режим» (spec 2026-09-chapter-2, часть 28б): по умолчанию выключен
   check((await page.getByTestId('settings-soft').getAttribute('aria-checked')) === 'false' && (await text(page, 'settings-soft')).includes('перевод в областную больницу'),
     `настройки: мягкий режим — выключен, ${(await text(page, 'settings-soft')).replace(/\n/g, ' · ')}`);
+  // больные (spec 2026-10-variety): по умолчанию — «Реализм», выбор остаётся после перезапуска
+  check((await page.getByTestId('patients-real').getAttribute('aria-checked')) === 'true' && (await text(page, 'patients-varied')).includes('редкие болезни чаще'),
+    `настройки: больные — «Реализм»; ${(await text(page, 'patients-varied')).replace(/\n/g, ' · ')}`);
   await page.getByTestId('settings-vibration').click();
   await page.getByTestId('sound-1').click();
+  await page.getByTestId('patients-varied').click();
   await page.screenshot({ path: join(OUT, '10-settings.png'), fullPage: true });
   await page.goto(`${base}/settings`);
   await page.getByTestId('settings-vibration').waitFor({ timeout: 10_000 });
   check((await vibration()) === 'false' && (await quiet()) === 'true', 'настройки: вибрация и громкость — те же после перезапуска');
+  // «Разнообразие» — тоже; дальше сценарий — на частотах жизни
+  check((await page.getByTestId('patients-varied').getAttribute('aria-checked')) === 'true', 'настройки: «Разнообразие» — то же после перезапуска');
+  await page.getByTestId('patients-real').click();
   await page.getByTestId('settings-vibration').click();
   await page.getByTestId('sound-3').click();
   // размер текста: «Крупный» — шрифт в 1,3 раза больше; вернуть «Обычный»
@@ -1805,6 +1830,49 @@ try {
   await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
   const settles = await page.locator('text=Острый период проходит под наблюдением в стационаре').first().isVisible().catch(() => false);
   check((await visibleText(page, 'enc-article-title')) === 'Ишемический инсульт' && settles, `энциклопедия, инсульт: ${await visibleText(page, 'enc-article-title')} — острый период в стационаре`);
+
+  // транзиторная ишемическая атака (часть 41б): у вас — ТИА высокого риска, всё для шкалы проверено;
+  // в карте — строка ABCD2 с баллами; два антиагреганта и «В ПИТ» — разбор без замечаний; в
+  // энциклопедии — баллы шкалы и риск инсульта по группам
+  const tv = tiaSave();
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', tv.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId('shift-continue').waitFor({ timeout: 15_000 });
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId('shift-continue').click();
+  await visible(page, 'visit-decide').waitFor({ timeout: 10_000 });
+  const tiaCard = await page.locator('body').innerText();
+  check(tiaCard.includes('Шкала ABCD2 после транзиторной ишемической атаки') && /Риск инсульта выше — нужны два антиагреганта, ацетилсалициловая кислота и клопидогрел: \d\u00a0балл/.test(tiaCard),
+    `ТИА: в карте — строка ABCD2 с баллами («${tiaCard.replace(/\n/g, ' · ').slice(0, 300)}»)`);
+  await page.screenshot({ path: join(OUT, '21-tia-card.png'), fullPage: true });
+  await visible(page, 'visit-decide').click();
+  await visible(page, 'dx-cond.tia').click();
+  await visible(page, 'decision-to-plan').click();
+  await page.getByTestId('tx-tx.aspirin_acs').waitFor({ timeout: 5000 });
+  await page.getByTestId('tx-tx.aspirin_acs').click();
+  await page.getByTestId('tx-tx.clopidogrel').click();
+  await page.getByTestId('setting-icu').click();
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
+  const tiaReview = await page.locator('body').innerText();
+  check(tiaReview.includes('Транзиторная ишемическая атака') && tiaReview.includes('Осмотр при подозрении на инсульт') && !/Не назначено|не показано|Недооценили тяжесть/.test(tiaReview),
+    `ТИА: два антиагреганта и ПИТ, разбор — «${tiaReview.replace(/\n/g, ' · ').slice(0, 300)}»`);
+  await page.screenshot({ path: join(OUT, '21-tia-review.png'), fullPage: true });
+  await page.goto(`${base}/encyclopedia/article/rule.abcd2`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  // заголовки разделов на экране — заглавными, и innerText отдаёт их так же: порог — без учёта регистра
+  const scale = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  check((await visibleText(page, 'enc-article-title')) === 'Шкала ABCD2 после транзиторной ишемической атаки' && scale.includes('Прошедшая слабость в руке и ноге · 2 балла') && /если баллов 4 и больше/i.test(scale),
+    `энциклопедия, ABCD2: ${await visibleText(page, 'enc-article-title')} — баллы и порог`);
+  await page.goto(`${base}/encyclopedia/article/cond.tia`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const strokeRisk = await page.locator('text=ишемический инсульт у 12').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'Транзиторная ишемическая атака' && strokeRisk, `энциклопедия, ТИА: ${await visibleText(page, 'enc-article-title')} — риск инсульта по группам`);
 
   // хирургия живота (spec 2026-09-chapter-2, часть 30): со смотровой приёмного больница принимает
   // и хирургию — у вас больной острым холециститом; УЗИ — желчный пузырь с камнями и толстой

@@ -3,7 +3,7 @@
 // Здесь только вид: разделы, статьи, поиск; экраны — src/app/encyclopedia. База приходит
 // параметром, как у движка: тесты подставляют ту же собранную базу.
 import {
-  type Condition, type ContentDb, type Equipment, type Exam, type Finding, type Id, type Link, membersOf, type P, type Risk, type RoomType, type Rule, type Score, type StaffRole, SYSTEMS,
+  type Condition, type ContentDb, type Equipment, type Exam, type Finding, type Id, type Link, membersOf, type P, type Risk, type RoomType, type Rule, type RulePoints, type Score, type StaffRole, SYSTEMS,
   type Tactics, type Tip, type Treatment,
 } from '@/content/types';
 import { surgeriesOf } from '@/engine/med/plan';
@@ -318,7 +318,11 @@ function conditionArticle(db: ContentDb, c: Condition): Article {
   if (c.selfLimiting) course.push(c.selfLimitingWhen ? e.selfLimitingIf(whenText(c.selfLimitingWhen) ?? '') : e.selfLimiting);
   // острый период проходит в стационаре (часть 41а): у инсульта — под наблюдением, последствия могут остаться
   if (c.settles) course.push(e.settles);
-  if (c.untreated && c.untreated.p > 0) course.push(e.untreated(e.band[bandOf(c.untreated.p)], c.untreated.days[0], c.untreated.days[1], whenText(c.untreated.when)));
+  // записей может быть несколько (часть 41б): риск инсульта после ТИА — по группе ABCD2, долей
+  for (const u of c.untreated ?? []) {
+    if (u.p <= 0) continue;
+    course.push(u.as ? e.untreatedAs(pct(u.p), u.days[0], u.days[1], lowerFirst(nameOf(db, u.as)), whenText(u.when)) : e.untreated(e.band[bandOf(u.p)], u.days[0], u.days[1], whenText(u.when)));
+  }
   const x = c.complication;
   if (x?.after !== undefined) course.push(e.complicationAfter(x.name.ru, x.after, whenText(x.when)));
   else if (x?.early && x.later) course.push(e.complicationRisk(x.name.ru, x.early.hours, pct(x.early.p), x.later.every, pct(x.later.p)));
@@ -492,6 +496,15 @@ function scoreArticle(db: ContentDb, x: Score): Article {
   return { id: x.id, section: 'scores', title: x.name.ru, subtitle: e.scoreKind, blocks };
 }
 
+/**
+ * Пункты шкалы с весами (часть 41б): ссылка на признак с подписью — «2 балла», «1 балл, если нет
+ * пункта «Прошедшая слабость в руке и ноге»»; возраст — строкой над ними (`rulePointsAge`).
+ */
+function pointRefs(db: ContentDb, p: RulePoints): Ref[] {
+  const e = T.encyclopedia;
+  return p.items.map(i => ref(db, i.f, i.unless ? e.rulePointsUnless(i.w, i.unless.map(u => nameOf(db, u))) : e.rulePointsItem(i.w)));
+}
+
 /** Правило решения (часть 32): когда применяют, какие признаки, какое обследование, при каких болезнях. */
 function ruleArticle(db: ContentDb, x: Rule): Article {
   const e = T.encyclopedia;
@@ -502,9 +515,12 @@ function ruleArticle(db: ContentDb, x: Rule): Article {
     ...(x.requires ? [{ key: 'requires', title: e.ruleRequires, refs: x.requires.map(id => ref(db, id)), text: [x.texts.na?.ru ?? ''] }] : []),
     // часть 33а: при тромбофлебите и беременности шкалу Уэллса и D-димер не применяют
     ...(x.excludes ? [{ key: 'excludes', title: e.ruleExcludes, refs: x.excludes.map(id => ref(db, id)), ...(x.requires ? {} : { text: [x.texts.na?.ru ?? ''] }) }] : []),
-    { key: 'any', title: e.ruleAny, text: [x.texts.yes.ru, ...(x.age?.main !== undefined ? [e.ruleAgeMain(x.age.main)] : x.age?.from !== undefined ? [e.ruleAgeFrom(x.age.from)] : [])], refs: x.any.map(id => ref(db, id)) },
+    // шкала с баллами (часть 41б): пункты с весами, затем что значит сумма
+    ...(x.points ? [{ key: 'points', title: e.rulePointsTitle, ...(x.points.age ? { text: [e.rulePointsAge(x.points.age.from, x.points.age.w)] } : {}), refs: pointRefs(db, x.points) }] : []),
+    ...(x.any.length > 0 || !x.points ? [{ key: 'any', title: e.ruleAny, text: [x.texts.yes.ru, ...(x.age?.main !== undefined ? [e.ruleAgeMain(x.age.main)] : x.age?.from !== undefined ? [e.ruleAgeFrom(x.age.from)] : [])], refs: x.any.map(id => ref(db, id)) }] : []),
+    ...(x.points ? [{ key: 'pointsYes', title: e.rulePointsYes(x.points.from), text: [x.texts.yes.ru] }] : []),
     ...(x.minor ? [{ key: 'minor', title: e.ruleMinor(x.minor.count), refs: x.minor.any.map(id => ref(db, id)), text: x.age?.minor ? [e.ruleAgeMinor(x.age.minor[0], x.age.minor[1])] : [] }] : []),
-    { key: 'none', title: x.minor ? e.ruleNoneMinor : e.ruleNone, text: [x.texts.no.ru] },
+    { key: 'none', title: x.points ? e.rulePointsNo(x.points.from) : x.minor ? e.ruleNoneMinor : e.ruleNone, text: [x.texts.no.ru] },
     // обследования, которого в игре нет (КТ, часть 32г), — словами; правило о лечении (часть 39а) — лечение
     x.decides
       ? { key: 'decides', title: e.ruleDecides, refs: [ref(db, x.decides)] }

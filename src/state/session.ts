@@ -397,7 +397,7 @@ export function seasonOf(d: Date): Season {
 /** Новая практика: день 1, 08:00. Прежнее сохранение перезаписывается. */
 /** Новая практика; сложность выбирает игрок, без выбора — «Врач», как было до 0.0.16. */
 export function startShift(seed?: number, season?: Season, difficulty: Difficulty = 'doctor') {
-  begin(newShift(db, { seed: seed ?? Date.now() % 0x7fffffff, season: season ?? seasonOf(new Date()), difficulty }));
+  begin(newShift(db, { seed: seed ?? Date.now() % 0x7fffffff, season: season ?? seasonOf(new Date()), difficulty, variety: settings().variety }));
 }
 
 export type Budget = 'modest' | 'normal' | 'generous';
@@ -406,7 +406,7 @@ export type Budget = 'modest' | 'normal' | 'generous';
 export function startSandbox(opts: { start: 'empty' | 'clinic'; budget: Budget; difficulty: Difficulty; seed?: number; season?: Season }) {
   begin(newSandbox(db, {
     seed: opts.seed ?? Date.now() % 0x7fffffff, season: opts.season ?? seasonOf(new Date()), difficulty: opts.difficulty, start: opts.start,
-    budget: db.economy.sandbox.budgets[opts.budget],
+    budget: db.economy.sandbox.budgets[opts.budget], variety: settings().variety,
   }));
 }
 
@@ -481,7 +481,7 @@ export async function startSingle(opts: { venue: Id; difficulty: Difficulty; see
   } else if (!db.presets[opts.venue]) return false;
   begin(newSingle(db, {
     seed: (opts.seed ?? Date.now() % 0x7fffffff) >>> 0, season: opts.season ?? seasonOf(new Date()), difficulty: opts.difficulty, venue: opts.venue,
-    ...(own ? { hospital: own.hospital, staff: own.staff } : {}),
+    ...(own ? { hospital: own.hospital, staff: own.staff } : {}), variety: settings().variety,
   }));
   return true;
 }
@@ -516,6 +516,10 @@ function run(sess: Session, cmd: Command): Notice[] {
   // «мягкий режим» из настроек (часть 28б) — в состояние смены раньше команды: ночью по нему решают
   const soft = settings().softMode;
   if ((sess.s.meta.soft ?? false) !== soft) apply(db, sess.s, { kind: 'soft', on: soft });
+  // «Больные: разнообразие» (spec 2026-10-variety) — так же; день по нему разыгрывают утром, в
+  // кампании его нет
+  const variety = settings().variety && sess.s.meta.mode !== 'campaign';
+  if ((sess.s.meta.variety ?? false) !== variety) apply(db, sess.s, { kind: 'variety', on: variety });
   const notices = apply(db, sess.s, cmd);
   record(sess, notices);
   if (sess.s.t - sess.savedT >= SAVE_EVERY) save();

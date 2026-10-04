@@ -104,11 +104,24 @@ export function hospitalCtx(db: ContentDb, s: ShiftState): HospitalCtx {
 const exact = (s: ShiftState) => s.meta.difficulty === 'student';
 const STUDENT_PATIENCE = 1.5;
 
-export function newShift(db: ContentDb, opts: { seed: number; season: Season; department?: Id; difficulty?: Difficulty }): ShiftState {
-  const s: ShiftState = {
+/** Как пришли бы больные (spec 2026-10-variety): `variety` — «разнообразие» из настроек; нет — как в жизни. */
+interface Variety {
+  variety?: boolean;
+}
+
+export function newShift(db: ContentDb, opts: { seed: number; season: Season; department?: Id; difficulty?: Difficulty } & Variety): ShiftState {
+  const s = shiftBase(db, opts);
+  planDay(db, s);
+  return s;
+}
+
+/** Практика в первый день, 08:00, без разыгранного дня: его разыгрывают, когда известна больница. */
+function shiftBase(db: ContentDb, opts: { seed: number; season: Season; department?: Id; difficulty?: Difficulty } & Variety): ShiftState {
+  return {
     meta: {
       schemaVersion: SHIFT_SCHEMA_VERSION, contentVersion: db.contentVersion, rngVersion: RNG_VERSION, mode: 'shift',
       seed: opts.seed >>> 0, season: opts.season, department: opts.department ?? 'dept.therapy', difficulty: opts.difficulty ?? 'doctor',
+      ...(opts.variety ? { variety: true } : {}),
     },
     t: SHIFT_START,
     day: 1,
@@ -123,8 +136,6 @@ export function newShift(db: ContentDb, opts: { seed: number; season: Season; de
     history: [],
     journal: [],
   };
-  planDay(db, s);
-  return s;
 }
 
 /**
@@ -132,7 +143,7 @@ export function newShift(db: ContentDb, opts: { seed: number; season: Season; de
  * по выбранному бюджету. С готовой амбулаторией — та же амбулатория, что в практике, в углу
  * участка, а денег — только доля бюджета.
  */
-export function newSandbox(db: ContentDb, opts: { seed: number; season: Season; difficulty?: Difficulty; start: 'empty' | 'clinic'; budget: number }): ShiftState {
+export function newSandbox(db: ContentDb, opts: { seed: number; season: Season; difficulty?: Difficulty; start: 'empty' | 'clinic'; budget: number } & Variety): ShiftState {
   const sb = db.economy.sandbox;
   const [w, h] = sb.plot;
   const hospital = opts.start === 'clinic'
@@ -145,6 +156,7 @@ export function newSandbox(db: ContentDb, opts: { seed: number; season: Season; 
     meta: {
       schemaVersion: SHIFT_SCHEMA_VERSION, contentVersion: db.contentVersion, rngVersion: RNG_VERSION, mode: 'sandbox', start: opts.start,
       seed: opts.seed >>> 0, season: opts.season, department: 'dept.therapy', difficulty: opts.difficulty ?? 'doctor',
+      ...(opts.variety ? { variety: true } : {}),
     },
     t: 0,
     day: 0,
@@ -177,9 +189,9 @@ export const SANDBOX_VENUE = 'sandbox';
  */
 export function newSingle(
   db: ContentDb,
-  opts: { seed: number; season: Season; difficulty?: Difficulty; venue: Id; hospital?: HospitalState; staff?: StaffMember[] },
+  opts: { seed: number; season: Season; difficulty?: Difficulty; venue: Id; hospital?: HospitalState; staff?: StaffMember[] } & Variety,
 ): ShiftState {
-  const s = newShift(db, opts);
+  const s = shiftBase(db, opts);
   s.meta.mode = 'single';
   s.meta.venue = opts.venue;
   // амбулатория практики — та, что у движка по умолчанию; другая готовая — из её записи
@@ -192,6 +204,9 @@ export function newSingle(
     s.hospital = JSON.parse(JSON.stringify(opts.hospital)) as HospitalState;
     s.staff = JSON.parse(JSON.stringify(opts.staff ?? [])) as StaffMember[];
   }
+  // день — в этой больнице (spec 2026-10-variety, «Заодно»): прежде он разыгрывался до неё, и в
+  // районной больнице приходили только с терапией, без скорой
+  planDay(db, s);
   return s;
 }
 
@@ -378,6 +393,10 @@ export function apply(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
       if (cmd.on) s.meta.soft = true;
       else delete s.meta.soft;
       return [];
+    case 'variety':
+      if (cmd.on) s.meta.variety = true;
+      else delete s.meta.variety;
+      return [];
     case 'nextChapter':
       nextChapter(db, s);
       return [];
@@ -481,8 +500,14 @@ function planDay(db: ContentDb, s: ShiftState) {
     const minute = Math.min(w.range(0, 330), w.range(0, 330)); // меньшее из двух — ближе к утру
     plan.push({ t: base + SHIFT_START + minute * MIN, kind: 'walkIn', key: `walk:${i}` });
   }
+  // вернулся с другой болезнью (часть 41б): инсульт после ТИА привозит скорая — туда, где его
+  // принимают; больница его не принимает — человека увезли в другую
+  const admits = departmentsOf(db, s);
   for (const ret of s.returns.filter(x => x.day === d)) {
-    plan.push({ t: base + SHIFT_START + r.fork(`return:${ret.of}`).range(0, 120) * MIN, kind: 'return', key: `return:${ret.of}`, ret });
+    const as = ret.as ? db.conditions[ret.as] : undefined;
+    if (as && !admits.includes(as.department)) continue;
+    const kind: VisitKind = as?.arrival === 'ambulance' ? 'ambulance' : 'return';
+    plan.push({ t: base + SHIFT_START + r.fork(`return:${ret.of}`).range(0, 120) * MIN, kind, key: `return:${ret.of}`, ret });
   }
   // кампания: в первый день главы первые пришедшие — с болезнями, заданными главой (обучение
   // с наставником); человек — тот же, что пришёл бы, если болезнь у него обычна
@@ -505,9 +530,11 @@ function planDay(db: ContentDb, s: ShiftState) {
   const taught = new Set<number>();
   // какие отделения больница принимает сегодня (часть 30): с работающей смотровой приёмного — и хирургию
   const departments = departmentsOf(db, s);
+  // «Больные: разнообразие» (spec 2026-10-variety) — кроме кампании: на частоты жизни настроены главы
+  const varied = s.meta.variety === true && s.meta.mode !== 'campaign';
   plan.forEach((a, i) => {
     const id = `${d}-${String(i + 1).padStart(2, '0')}`;
-    const gen = { department: s.meta.department, departments, season: s.meta.season };
+    const gen = { department: s.meta.department, departments, season: s.meta.season, ...(varied ? { variety: true } : {}) };
     const k = a.ret ? -1 : tutorial.findIndex((x, j) => !taught.has(j) && !!x.ambulance === (a.kind === 'ambulance'));
     const teach = k >= 0 ? tutorial[k] : undefined;
     if (teach) taught.add(k);
@@ -516,7 +543,7 @@ function planDay(db: ContentDb, s: ShiftState) {
       : teach
         ? typicalPatient(db, n => fnv1a(`${s.meta.seed}:${d}:${a.key}${n ? `:${n}` : ''}`), { ...gen, primary: teach.condition, ...(teach.params ? { params: teach.params } : {}) }, TUTORIAL_TRIES, teach.age)
         : a.kind === 'ambulance'
-          ? ambulancePatient(db, s, d, a.key, departments)
+          ? ambulancePatient(db, s, d, a.key, departments, varied)
           // пришёл сам (часть 41а): инсульта у него нет — его привозит скорая
           : generatePatient(db, fnv1a(`${s.meta.seed}:${d}:${a.key}`), { ...gen, walkIn: true });
     // вернувшийся — и с теми отделениями, с какими его приняли в первый раз
@@ -542,11 +569,11 @@ function planDay(db: ContentDb, s: ShiftState) {
  * него (возраст, привычки, камни — часть 30) и по тяжести: лёгкое не везут. У болезни с тяжестью
  * — чаще тяжёлая, жребий ветви машины.
  */
-function ambulancePatient(db: ContentDb, s: ShiftState, d: number, key: string, departments: readonly Id[]) {
+function ambulancePatient(db: ContentDb, s: ShiftState, d: number, key: string, departments: readonly Id[], variety: boolean) {
   const a = db.economy.ambulance;
   const severe = branch(s, `ambulance:${d}:${key}`).fork('severe').chance(a.severe * 100);
   return generatePatient(db, fnv1a(`${s.meta.seed}:${d}:${key}`), {
-    department: s.meta.department, departments, season: s.meta.season, carried: a.weight, ...(severe ? { params: { severity: 'severe' } } : {}),
+    department: s.meta.department, departments, season: s.meta.season, carried: a.weight, ...(severe ? { params: { severity: 'severe' } } : {}), ...(variety ? { variety: true } : {}),
   });
 }
 
@@ -558,8 +585,9 @@ function returningPatient(db: ContentDb, s: ShiftState, ret: PlannedReturn) {
   const prev = s.patients[ret.of];
   let visit = 1;
   for (let x = prev; x?.returnOf; x = s.patients[x.returnOf]) visit++;
-  const primary = prev.patient.truth.conditions[0].id;
-  const severe = ret.reason === 'worse' && db.conditions[primary].params?.severity?.severe !== undefined;
+  // вернулся с другой болезнью (часть 41б) — тот же человек, болезнь новая
+  const primary = ret.as ?? prev.patient.truth.conditions[0].id;
+  const severe = !ret.as && ret.reason === 'worse' && db.conditions[primary].params?.severity?.severe !== undefined;
   return generatePatient(db, prev.patient.seed, {
     department: s.meta.department, season: s.meta.season, primary, visit, ...(severe ? { params: { severity: 'severe' } } : {}),
   });
@@ -637,7 +665,8 @@ function settle(db: ContentDb, s: ShiftState) {
   const change = reputationAfter(db, e.reputation ?? db.economy.reputation.start, {
     arrived: s.summary.arrived, left: s.summary.left, unseen: s.summary.unseen,
     correct: col.reduce((n, c) => n + c.correct, s.summary.correct), wrong: col.reduce((n, c) => n + c.wrong, s.summary.wrong),
-    returned: today.filter(p => p.kind === 'return' && (p.returnReason === 'worse' || p.returnReason === 'reaction')).length,
+    // вернувшийся с другой болезнью (часть 41б) — тоже: инсульт после ТИА привозит скорая
+    returned: today.filter(p => p.returnOf !== undefined && (p.returnReason === 'worse' || p.returnReason === 'reaction')).length,
     ...(waits.length > 0 ? { meanWait: waits.reduce((a, b) => a + b, 0) / waits.length } : {}),
     toilet: ctx.plan.rooms.some(r => r.type === 'room.toilet' && ctx.plan.connected[r.id]),
     died: s.summary.ward?.died ?? 0,
@@ -889,7 +918,7 @@ function closePatient(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase
   }
   const back = closed.outcome.returns;
   if (back) {
-    s.returns.push({ day: s.day + Math.max(1, back.day), of: p.id, reason: back.reason });
+    s.returns.push({ day: s.day + Math.max(1, back.day), of: p.id, reason: back.reason, ...(back.as ? { as: back.as } : {}) });
     sum.returnsPlanned++;
   }
   if (closed.plan.setting === 'admit' || closed.plan.setting === 'surgery' || closed.plan.setting === 'icu') admit(db, s, p);
@@ -1608,6 +1637,8 @@ function arriveByAmbulance(db: ContentDb, s: ShiftState, p: ShiftPatient, notice
   const bay = freeBays(db, s)[0];
   if (bay) p.bay = bay;
   s.summary.arrived++;
+  // вернулся с другой болезнью (часть 41б): инсульт после ТИА — тоже повторное обращение
+  if (p.returnOf !== undefined) s.summary.returnsToday++;
   ambulanceDay(s).arrived++;
   // фибрилляция желудочков до реперфузии (часть 39б): лежит в смотровой под монитором, ждёт у входа — с
   // бригадой скорой и её дефибриллятором

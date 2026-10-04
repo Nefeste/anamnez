@@ -219,6 +219,8 @@ export type Command =
   | { kind: 'operate'; id: string }
   /** «мягкий режим» из настроек (часть 28б): вместо смерти — перевод в тяжёлом состоянии */
   | { kind: 'soft'; on: boolean }
+  /** «Больные: разнообразие» из настроек (spec 2026-10-variety): со следующего разыгранного дня */
+  | { kind: 'variety'; on: boolean }
   /** кампания (часть 34): основные задания главы выполнены — в больницу следующей главы */
   | { kind: 'nextChapter' };
 
@@ -319,6 +321,8 @@ export interface PlannedReturn {
   day: number;
   of: string;
   reason: ReturnReason;
+  /** с другой болезнью (spec 2026-10-chapter-3, часть 41б): после ТИА без профилактики — с инсультом */
+  as?: Id;
 }
 
 export interface ShiftState {
@@ -340,6 +344,11 @@ export interface ShiftState {
     difficulty?: Difficulty;
     /** «мягкий режим» (spec 2026-09-chapter-2, часть 28б): вместо смерти — перевод в тяжёлом состоянии */
     soft?: boolean;
+    /**
+     * «Больные: разнообразие» (spec 2026-10-variety, 0.3.11): день разыгрывается со сглаженными
+     * частотами болезней; в кампании — нет. Нет поля — как в жизни
+     */
+    variety?: boolean;
   };
   t: number;
   day: number;

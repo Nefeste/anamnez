@@ -5,7 +5,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, join, relative } from 'node:path';
 import { parse } from 'yaml';
 import type { z } from 'zod';
-import { type AttrSpec, type Cell, type Condition, type ContentDb, type Equipment, type Exam, type Finding, type Link, membersOf, type Preset, type Risk, type RoomType, type StaffRole, type Treatment } from '../../src/content/types';
+import { type AttrSpec, type Cell, type Condition, type ContentDb, type Equipment, type Exam, type Finding, type Link, membersOf, type Preset, type Risk, type RoomType, type RulePoints, type StaffRole, type Treatment } from '../../src/content/types';
 import { planOf, presetHospital } from '../../src/engine/hospital/build';
 import { problemsOf } from '../../src/engine/hospital/requirements';
 import { ALLERGY_EXAM } from '../../src/engine/career/achievements';
@@ -71,6 +71,25 @@ function compileLink(l: LinkSrc): Link {
     }
   }
   return out;
+}
+
+/** Записи «без лечения» списком (часть 41б): одна запись — список из неё. */
+function untreatedList<T>(u: T | T[] | undefined): T[] {
+  return u === undefined ? [] : Array.isArray(u) ? u : [u];
+}
+
+/**
+ * Сколько баллов можно набрать по шкале правила (часть 41б): пункт с «не считается при» — не вместе
+ * с теми пунктами. Перебор наборов: пунктов у шкал — до десятка.
+ */
+function pointsMax(p: RulePoints): number {
+  let best = 0;
+  for (let mask = 0; mask < 1 << p.items.length; mask++) {
+    const on = p.items.filter((_, i) => mask & (1 << i));
+    if (on.some(i => (i.unless ?? []).some(u => on.some(o => o.f === u)))) continue;
+    best = Math.max(best, on.reduce((a, i) => a + i.w, 0));
+  }
+  return best + (p.age?.w ?? 0);
 }
 
 export function buildDb(dir = CONTENT_DIR): BuildResult {
@@ -230,6 +249,11 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       else if (Object.keys(p).sort().join() !== 'no,yes') errors.push(`${owner}: у производного параметра ${name} значения — no и yes`);
       if (typeof d === 'string') {
         if (!rules[d]) errors.push(`${owner}: правило ${d} параметра ${name} не найдено`);
+      } else if ('rule' in d) {
+        // по баллам шкалы (часть 41б): у правила есть баллы, и порог можно набрать
+        const pts = rules[d.rule]?.points;
+        if (!pts) errors.push(`${owner}: параметр ${name} — по баллам ${d.rule}, а у него нет баллов`);
+        else if (d.from > pointsMax(pts)) errors.push(`${owner}: параметр ${name} — от ${d.from} баллов, а у ${d.rule} их не больше ${pointsMax(pts)}`);
       } else if ('all' in d) {
         // по другим параметрам (часть 41а): они объявлены, значения у них есть, и сами они — не такие же
         for (const [other, values] of Object.entries(d.all)) {
@@ -455,7 +479,14 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (!c.course.selfLimiting && c.presenting && !c.course.untreated) warnings.push(`${owner}: не проходит само, но не сказано, что будет без лечения`);
     // течение по скрытому параметру (часть 30д): параметр объявлен, значения — из его списка
     if (typeof c.course.selfLimiting === 'object') checkWhen(owner, 'проходит само', c.course.selfLimiting.when, c.params);
-    checkWhen(owner, 'без лечения', c.course.untreated?.when, c.params);
+    // списком (часть 41б): у каждой записи — свои значения параметров; другая болезнь — из базы, с
+    // ней приходят, и это не сама болезнь
+    const untreated = untreatedList(c.course.untreated);
+    for (const u of untreated) {
+      checkWhen(owner, 'без лечения', u.when, c.params);
+      if (u.as !== undefined && (u.as === c.id || !conditions[u.as]?.presenting)) errors.push(`${owner}: без лечения возвращаются с ${u.as}, а такой болезни нет, с ней не приходят или это она сама`);
+    }
+    if (untreated.length > 1 && untreated.slice(0, -1).some(u => !u.when)) errors.push(`${owner}: в списке «без лечения» запись без условия — только последняя`);
   }
   for (const t of Object.values(treatments)) {
     for (const e of t.effects) {
@@ -557,6 +588,19 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   for (const x of Object.values(rules)) {
     for (const f of x.complaints) if (!findings[f]?.texts.complaint) errors.push(`${x.id}: жалоба ${f} не найдена или без текста жалобы`);
     for (const f of x.any) if (!hasF(f)) errors.push(`${x.id}: признак ${f} не найден`);
+    // часть 41б: у правила есть основные признаки или баллы; пункты шкалы — признаки базы, каждый
+    // один раз, «не считается при» — другие её пункты; порог можно набрать, возраст — пунктом шкалы
+    if (x.any.length === 0 && !x.points) errors.push(`${x.id}: у правила нет ни основных признаков, ни баллов`);
+    if (x.points) {
+      const items = x.points.items.map(i => i.f);
+      for (const f of items) if (!hasF(f)) errors.push(`${x.id}: пункт ${f} не найден`);
+      if (new Set(items).size !== items.length) errors.push(`${x.id}: пункт шкалы повторяется`);
+      for (const i of x.points.items) for (const u of i.unless ?? []) if (u === i.f || !items.includes(u)) errors.push(`${x.id}: пункт ${i.f} не считается при ${u}, а это не другой пункт шкалы`);
+      for (const f of items) if (x.any.includes(f) || (x.requires ?? []).includes(f) || (x.excludes ?? []).includes(f)) errors.push(`${x.id}: ${f} — и пункт шкалы, и признак правила`);
+      if (x.points.from > pointsMax(x.points)) errors.push(`${x.id}: порог ${x.points.from} больше, чем можно набрать (${pointsMax(x.points)})`);
+      if (x.minor) errors.push(`${x.id}: у шкалы с баллами дополнительные признаки — её пункты`);
+      if (x.age) errors.push(`${x.id}: у шкалы с баллами возраст — её пункт (points.age)`);
+    }
     // часть 32г: дополнительные признаки, возраст и круг применимости
     for (const f of [...(x.minor?.any ?? []), ...(x.requires ?? []), ...(x.excludes ?? [])]) if (!hasF(f)) errors.push(`${x.id}: признак ${f} не найден`);
     // часть 33а: признак, при котором правило не применяют, не может его же и выполнять
@@ -664,8 +708,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       if (typeof c.course.selfLimiting === 'object') out.selfLimitingWhen = c.course.selfLimiting.when;
     }
     if (c.course.untreated) {
-      const u = c.course.untreated;
-      out.untreated = { p: prob(u.band), days: u.days, ...(u.when ? { when: u.when } : {}) };
+      out.untreated = untreatedList(c.course.untreated).map(u => ({ p: prob(u.band), days: u.days, ...(u.when ? { when: u.when } : {}), ...(u.as ? { as: u.as } : {}) }));
     }
     if (c.course.stay) out.stay = c.course.stay;
     if (c.course.settles) out.settles = true;

@@ -1,5 +1,6 @@
 // Настройки (03-game-design.md §12, spec 2026-09-first-shift): звук, вибрация, автопауза
-// смены, тема (spec 2026-09-own-look) и размер текста; перенос на другой телефон; «Сообщить об ошибке»; «Об игре»; прототипы первого этапа — ими на телефоне меряют отпечаток движка,
+// смены, мягкий режим, больные — реализм или разнообразие (spec 2026-10-variety), тема (spec
+// 2026-09-own-look) и размер текста; перенос на другой телефон; «Сообщить об ошибке»; «Об игре»; прототипы первого этапа — ими на телефоне меряют отпечаток движка,
 // кадры карты и запись сохранения.
 import { type Href, router } from 'expo-router';
 import { useEffect } from 'react';
@@ -11,6 +12,8 @@ import { Button, Card, Choice, H, P, Screen, Tabs, Toggle } from '@/ui/component
 
 type Level = '0' | '1' | '2' | '3';
 type Size = '0' | '1' | '2';
+type Patients = 'real' | 'varied';
+const PATIENTS: readonly Patients[] = ['real', 'varied'];
 
 /** Ближайшая ступень громкости — файл могла записать и другая версия игры. */
 const levelOf = (sound: number): Level => {
@@ -56,6 +59,14 @@ export default function SettingsScreen() {
         <Toggle testID="settings-pause-red" title={t.pauseOnRed} hint={t.pauseHint} value={s.pauseOnRed} onChange={v => updateSettings({ pauseOnRed: v })} />
         <Toggle testID="settings-pause-results" title={t.pauseOnResults} value={s.pauseOnResults} onChange={v => updateSettings({ pauseOnResults: v })} />
         <Toggle testID="settings-soft" title={t.softMode} hint={t.softModeHint} value={s.softMode} onChange={v => updateSettings({ softMode: v })} />
+        <P muted>{t.patients}</P>
+        <Choice<Patients>
+          testPrefix="patients"
+          value={s.variety ? 'varied' : 'real'}
+          onChange={k => updateSettings({ variety: k === 'varied' })}
+          items={PATIENTS.map(key => ({ key, title: t.patientChoices[key], hint: t.patientHints[key] }))}
+        />
+        <P muted>{t.patientsNote}</P>
       </Card>
       <Card>
         <H>{t.screen}</H>

@@ -1,8 +1,9 @@
 id: target.stroke_exam
 name: { ru: "Осмотр при подозрении на инсульт" }
-# кому: внезапная слабость, нарушение речи или перекошенное лицо (spec 2026-10-chapter-3, часть 41а);
-# что: неврологический осмотр с NIHSS и шкалой комы Глазго; за 10 минут от поступления
-complaints: [sym.weakness_one_side, sym.speech_trouble, sym.face_droop]
+# кому: внезапная слабость, нарушение речи или перекошенное лицо (spec 2026-10-chapter-3, часть 41а), с
+# частью 41б — и прошедшие: всем с предположительным диагнозом ОНМК (814_1, раздел 2.2); что:
+# неврологический осмотр с NIHSS и шкалой комы Глазго; за 10 минут от поступления
+complaints: [sym.weakness_one_side, sym.speech_trouble, sym.face_droop, sym.transient_weakness, sym.transient_speech]
 exams: [exam.neuro_exam]
 minutes: 10
 texts:

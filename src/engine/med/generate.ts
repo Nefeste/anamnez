@@ -3,7 +3,7 @@
 // Каждый бросок берётся из своей именованной ветви зерна (`fork`), поэтому добавление
 // новой записи в базу не сдвигает случайность у остальных признаков и золотые случаи
 // меняются только там, где изменилась медицина.
-import type { Condition, ContentDb, Id, Link, Onset, Risk, Season } from '../../content/types';
+import { byRule, byValue, type Condition, type ContentDb, type Id, type Link, type Onset, type Risk, type Season } from '../../content/types';
 import { P_ONE, Rng } from '../core/rng';
 import { checkRule } from './rules';
 import type { ActiveCondition, Patient, Sex, TrueFinding } from './types';
@@ -37,7 +37,18 @@ export interface GenContext {
    * нет — инсульт привозят в смотровую приёмного
    */
   walkIn?: boolean;
+  /**
+   * «Разнообразие» из настроек (spec 2026-10-variety, 0.3.11): основное заболевание — по сглаженным
+   * весу записи и сезону (`VARIETY_POWER`); человек и вывод — как в жизни
+   */
+  variety?: boolean;
 }
+
+/**
+ * Степень, в которую с «Разнообразием» берутся вес записи и сезонный множитель (spec
+ * 2026-10-variety): при ½ ОРВИ и грипп остаются по 9–10 % пришедших, при 0 пропадает сезон.
+ */
+export const VARIETY_POWER = 0.25;
 
 /** Возрастная пирамида обращающихся взрослых: [от, до, вес]. Черновик для среза. */
 const AGE_BANDS: [number, number, number][] = [
@@ -80,7 +91,7 @@ export function generatePatient(db: ContentDb, seed: number, ctx: GenContext): P
   });
 
   // Основное заболевание.
-  const primaryId = ctx.primary ?? pickPrimary(db, root.fork('primary'), { sex, age, season: ctx.season, departments: ctx.departments ?? [ctx.department], risks, chronic, walkIn: ctx.walkIn === true }, ctx.carried);
+  const primaryId = ctx.primary ?? pickPrimary(db, root.fork('primary'), { sex, age, season: ctx.season, departments: ctx.departments ?? [ctx.department], risks, chronic, walkIn: ctx.walkIn === true }, ctx.carried, ctx.variety === true);
   const primary = db.conditions[primaryId];
   if (!primary) throw new Error(`generatePatient: unknown condition ${primaryId}`);
 
@@ -166,9 +177,20 @@ export function presentingWeight(c: Condition, who: Omit<Who, 'departments'>): n
   return w;
 }
 
-function pickPrimary(db: ContentDb, rng: Rng, who: Who, carried?: GenContext['carried']): Id {
+/**
+ * Вес для жребия с «Разнообразием» (spec 2026-10-variety): вес записи и сезон — в степени
+ * `VARIETY_POWER`, пол, пик возраста, привычки и хронические болезни — как в жизни. Вывод врача
+ * берёт прежний `presentingWeight`.
+ */
+function variedWeight(c: Condition, who: Omit<Who, 'departments'>): number {
+  const w = presentingWeight(c, who);
+  const base = c.weight * (c.season ? c.season[who.season] : 1);
+  return w > 0 && base > 0 ? (w / base) * base ** VARIETY_POWER : 0;
+}
+
+function pickPrimary(db: ContentDb, rng: Rng, who: Who, carried?: GenContext['carried'], variety = false): Id {
   const ids = sortedKeys(db.conditions).filter(id => who.departments.includes(db.conditions[id].department) && !(who.walkIn && db.conditions[id].arrival === 'ambulance'));
-  const base = ids.map(id => presentingWeight(db.conditions[id], who));
+  const base = ids.map(id => (variety ? variedWeight : presentingWeight)(db.conditions[id], who));
   // скорая: вес ещё и по тяжести; ничего из того, что везут, у этого человека не бывает — как пришёл сам
   const carriedBy = carried && ids.map((id, i) => base[i] * carriedWeight(db.conditions[id], carried));
   const w = carriedBy && carriedBy.some(x => Math.round(x * 100) > 0) ? carriedBy : base;
@@ -197,7 +219,8 @@ function presentationDay(c: Condition, rng: Rng): { day: number; stage: string }
 
 /**
  * Производные параметры (spec 2026-09-chapter-2, часть 32г): «yes», если правило решения выполнено
- * на настоящих признаках и возрасте, иначе «no» — показана ли КТ при сотрясении. Признаки от них не
+ * на настоящих признаках и возрасте, иначе «no» — показана ли КТ при сотрясении; по баллам шкалы
+ * (часть 41б) — если их не меньше порога параметра: высокий риск по ABCD2. Признаки от них не
  * зависят (валидатор), поэтому считаются после признаков; новых бросков нет. Уже посчитанные не
  * трогает: так при загрузке досчитываются пациенты из сохранений до появления параметра (часть 39в:
  * коронарография в первые сутки при ОКС).
@@ -205,9 +228,10 @@ function presentationDay(c: Condition, rng: Rng): { day: number; stage: string }
 export function deriveParams(db: ContentDb, conditions: ActiveCondition[], age: number, findings: readonly Pick<TrueFinding, 'f'>[]): void {
   const has = new Set(findings.map(x => x.f));
   for (const c of conditions) {
-    for (const [name, ruleId] of Object.entries(db.conditions[c.id].derived ?? {})) {
-      if (typeof ruleId !== 'string' || c.params[name] !== undefined) continue;
-      c.params[name] = checkRule(db.rules[ruleId], age, f => has.has(f)).verdict === 'yes' ? 'yes' : 'no';
+    for (const [name, d] of Object.entries(db.conditions[c.id].derived ?? {})) {
+      const r = byRule(d);
+      if (!r || c.params[name] !== undefined) continue;
+      c.params[name] = checkRule(db.rules[r.rule], age, f => has.has(f), r.from).verdict === 'yes' ? 'yes' : 'no';
     }
   }
 }
@@ -221,7 +245,7 @@ export function deriveParams(db: ContentDb, conditions: ActiveCondition[], age: 
 export function deriveByValue(db: ContentDb, conditions: ActiveCondition[], values: Record<Id, number>): void {
   for (const c of conditions) {
     for (const [name, d] of Object.entries(db.conditions[c.id].derived ?? {})) {
-      if (typeof d === 'string' || 'all' in d || c.params[name] !== undefined) continue;
+      if (!byValue(d) || c.params[name] !== undefined) continue;
       c.params[name] = (values[d.f] ?? Infinity) < d.below ? 'yes' : 'no';
     }
   }
@@ -252,7 +276,7 @@ export function freezeClock(db: ContentDb, patient: Pick<Patient, 'truth'>, minu
   const derived = db.conditions[primary.id]?.derived ?? {};
   const before = { ...primary.params };
   for (const [name, d] of Object.entries(derived)) {
-    if (typeof d === 'string' || 'all' in d || !d.clock) continue;
+    if (!byValue(d) || !d.clock) continue;
     const v = patient.truth.values[d.f];
     if (v !== undefined) primary.params[name] = v + minutes / 60 < d.below ? 'yes' : 'no';
   }

@@ -63,6 +63,7 @@ export const shift = {
     more: (n: number) => `${pluralRu(n, 'Пришёл', 'Пришли', 'Пришли')} ещё ${patients(n)}`,
   },
   checkup: 'профосмотр',
+  // вернулся с другой болезнью (часть 41б) — тоже «стало хуже»: диагноз пометка не подсказывает
   returnNote: (reason: 'worse' | 'reaction' | 'unchanged', day: number, female: boolean) =>
     reason === 'worse' ? `Повторно: после приёма в день ${day} стало хуже`
       : reason === 'reaction' ? `Повторно: после приёма в день ${day} — реакция на лечение`

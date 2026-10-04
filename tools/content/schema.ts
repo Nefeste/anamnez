@@ -67,6 +67,14 @@ export const SETTINGS = ['home', 'ward', 'ambulance', 'surgery', 'transfer', 'ic
 const setting = z.enum(SETTINGS);
 const season = z.strictObject({ winter: z.number(), spring: z.number(), summer: z.number(), autumn: z.number() });
 
+/** Что будет без действенного лечения (часть 30д; часть 41б — списком и другой болезнью). */
+const untreatedSchema = z.strictObject({
+  band: probability,
+  days: z.tuple([z.number().int().min(0), z.number().int().min(0)]),
+  when: z.record(z.string(), z.array(z.string())).optional(),
+  as: z.string().regex(/^cond\.[a-z0-9_]+$/).optional(),
+});
+
 export const conditionSchema = z.strictObject({
   id: z.string().regex(/^cond\.[a-z0-9_]+$/),
   name: text,
@@ -115,6 +123,11 @@ export const conditionSchema = z.strictObject({
      * тромбэктомия — окклюзия, NIHSS 6 и больше и меньше 6 часов от начала
      */
     z.strictObject({ all: z.record(z.string(), z.array(z.string()).min(1)) }),
+    /**
+     * по баллам шкалы (часть 41б): «yes», если баллов правила у пациента не меньше `from` — высокий
+     * риск по ABCD2 с 6 баллов
+     */
+    z.strictObject({ rule: z.string().regex(/^rule\.[a-z0-9_]+$/), from: z.number().int().min(1) }),
   ])).optional(),
   course: z.strictObject({
     stages: z.array(z.strictObject({ id: z.string(), days: z.tuple([z.number(), z.number()]), needs: z.literal('treatment').optional() })).min(1),
@@ -125,8 +138,12 @@ export const conditionSchema = z.strictObject({
      * значениях скрытого параметра (часть 30д: неосложнённый дивертикулит — да, абсцесс — нет)
      */
     selfLimiting: z.union([z.boolean(), z.strictObject({ when: z.record(z.string(), z.array(z.string())) })]).optional(),
-    /** без действенного лечения: с какой вероятностью и на какой день становится хуже; `when` — при каких значениях параметра */
-    untreated: z.strictObject({ band: probability, days: z.tuple([z.number().int().min(0), z.number().int().min(0)]), when: z.record(z.string(), z.array(z.string())).optional() }).optional(),
+    /**
+     * без действенного лечения: с какой вероятностью и на какой день становится хуже; `when` — при
+     * каких значениях параметра. Списком (часть 41б) — первая подошедшая запись; `as` — хуже значит
+     * другая болезнь: после ТИА без профилактики возвращаются с инсультом
+     */
+    untreated: z.union([untreatedSchema, z.array(untreatedSchema).min(2)]).optional(),
     /** в стационаре при действенном лечении: через сколько суток можно выписывать (spec 2026-09-chapter-2, часть 26) */
     stay: z.tuple([z.number().int().min(1), z.number().int().min(1)]).optional(),
     /**
@@ -820,10 +837,20 @@ export const ruleSchema = z.strictObject({
   id: z.string().regex(/^rule\.[a-z0-9_]+$/),
   name: text,
   complaints: z.array(z.string()).min(1),
-  /** основные признаки: хватит одного */
-  any: z.array(z.string()).min(1),
+  /** основные признаки: хватит одного; у шкалы с баллами (часть 41б) их может не быть */
+  any: z.array(z.string()).default([]),
   /** дополнительные признаки: нужно не меньше `count` (часть 32г) */
   minor: z.strictObject({ any: z.array(z.string()).min(1), count: z.number().int().min(2) }).optional(),
+  /**
+   * баллы шкалы (spec 2026-10-chapter-3, часть 41б): у пункта вес; пункт с `unless` не считается,
+   * если есть хоть один из тех признаков (ABCD2: речь — балл, только если слабости нет); `age` —
+   * столько баллов с этого возраста. Правило выполнено от `from` баллов
+   */
+  points: z.strictObject({
+    items: z.array(z.strictObject({ f: z.string(), w: z.number().int().min(1), unless: z.array(z.string()).min(1).optional() })).min(1),
+    age: z.strictObject({ from: z.number().int().min(1).max(120), w: z.number().int().min(1) }).optional(),
+    from: z.number().int().min(1),
+  }).optional(),
   /** возраст: старше `main` — основной признак, в пределах `minor` — дополнительный (часть 32г) */
   age: z.strictObject({ main: z.number().int().min(1).max(120).optional(), from: z.number().int().min(1).max(120).optional(), minor: z.tuple([z.number().int().min(0), z.number().int().max(120)]).optional() }).optional(),
   /** применимо, только если есть хоть один из этих признаков (часть 32г: лёгкая ЧМТ) */

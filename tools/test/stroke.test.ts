@@ -409,9 +409,11 @@ describe('правило «Можно ли тромболизис при инс�
 
 describe('сроки', () => {
   test('осмотр — 10 минут, КТ или КТ-ангиография — 40, тест глотания — 3 часа, и только тем, кто остаётся у нас', () => {
+    // с частью 41б осмотр и КТ — и при прошедших слабости и нарушении речи: всем с подозрением на ОНМК
+    const onmk = [...SYMS, 'sym.transient_weakness', 'sym.transient_speech'];
     expect([db.targets['target.stroke_exam'], db.targets['target.stroke_ct'], db.targets['target.stroke_swallow']].map(t => [t.complaints, t.exams, t.minutes, t.stays ?? false])).toEqual([
-      [SYMS, [NEURO], 10, false],
-      [SYMS, [CT, CTA], 40, false],
+      [onmk, [NEURO], 10, false],
+      [onmk, [CT, CTA], 40, false],
       [SYMS, [SWALLOW], 180, true],
     ]);
     const p = find(x => x.complaints.includes('sym.weakness_one_side'));
