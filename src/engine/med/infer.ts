@@ -4,7 +4,7 @@
 // По пользе обследования решают страховая песочницы и нанятые врачи — а это меняет состояние
 // партии, поэтому логарифм здесь свой, из `core/math.ts` (ADR 0004): одинаковый в Hermes, V8 и
 // JavaScriptCore.
-import { byRule, byValue, type Condition, type ContentDb, type DerivedByParams, type DerivedByValue, type ExamCheck, type Id, type Link, type Rule, type Season } from '../../content/types';
+import { byParams, byRule, byValue, crosses, paramsOf, type Condition, type ContentDb, type DerivedByParams, type DerivedByValue, type ExamCheck, type Id, type Link, type Rule, type Season } from '../../content/types';
 import { log2 } from '../core/math';
 import { P_ONE } from '../core/rng';
 import { chronicChance, presentingWeight } from './generate';
@@ -404,9 +404,10 @@ export function paramBeliefs(db: ContentDb, condId: Id, name: string, observatio
   // по правилу или баллам его шкалы (часть 41б) — по выводу на известном
   const rule = byRule(derived);
   if (rule) return derivedBeliefs(dist, checkRule(db.rules[rule.rule], age, knownForRule(c, db.rules[rule.rule], observations), rule.from).verdict);
-  // по другим параметрам (часть 41а): «yes» — вероятность, что у каждого из них нужное значение
-  if (derived && typeof derived !== 'string' && 'all' in derived) {
-    const yes = allHolds(db, condId, derived, observations, age, minutes);
+  // по другим параметрам (часть 41а): «yes» — вероятность, что у каждого из них нужное значение; или (часть 43в)
+  // хоть у одного
+  if (byParams(derived)) {
+    const yes = holds(db, condId, derived, observations, age, minutes);
     return Object.keys(dist).map(value => ({ value, p: value === 'yes' ? yes : 1 - yes }));
   }
   if (byValue(derived)) return derivedBeliefs(dist, valueVerdict(derived, observations, minutes));
@@ -450,17 +451,25 @@ function valueVerdict(d: DerivedByValue, observations: readonly Observation[], m
   const measured = observations.filter(o => o.f === d.f && o.value !== undefined);
   if (measured.length === 0) return 'unknown';
   // с ходом времени (часть 41а): часы от начала — плюс часы от прихода до решения
-  return measured[measured.length - 1].value! + (d.clock ? minutes / 60 : 0) < d.below ? 'yes' : 'no';
+  return crosses(d, measured[measured.length - 1].value! + (d.clock ? minutes / 60 : 0)) ? 'yes' : 'no';
 }
 
-/** Вероятность, что у каждого параметра из `all` — одно из названных значений (часть 41а): произведение. */
-function allHolds(db: ContentDb, condId: Id, d: DerivedByParams, observations: readonly Observation[], age: Who, minutes: number, skip?: string): number {
-  let p = 1;
-  for (const [k, values] of Object.entries(d.all)) {
+/**
+ * Вероятность «yes» производного по параметрам: у каждого из `all` — одно из названных значений (часть 41а) —
+ * произведение; хоть у одного из `any` (часть 43в) — дополнение произведения «не»; параметры считаются
+ * независимыми. С `skip` — без него: насколько от него одного зависит ответ — для `all` — вероятность, что
+ * остальные уже такие, для `any` — что ни один из остальных не такой.
+ */
+function holds(db: ContentDb, condId: Id, d: DerivedByParams, observations: readonly Observation[], age: Who, minutes: number, skip?: string): number {
+  let all = 1, none = 1;
+  for (const [k, values] of Object.entries(paramsOf(d))) {
     if (k === skip) continue;
-    p *= paramBeliefs(db, condId, k, observations, age, minutes).filter(b => values.includes(b.value)).reduce((a, b) => a + b.p, 0);
+    const p = paramBeliefs(db, condId, k, observations, age, minutes).filter(b => values.includes(b.value)).reduce((a, b) => a + b.p, 0);
+    all *= p;
+    none *= 1 - p;
   }
-  return p;
+  if (d.all) return all;
+  return skip === undefined ? 1 - none : none;
 }
 
 /**
@@ -517,9 +526,9 @@ export function paramGain(db: ContentDb, condId: Id, name: string, examId: Id, o
   const derived = c.derived?.[name];
   // по другим параметрам (часть 41а) — приближение: польза для каждого из них, умноженная на
   // вероятность, что остальные уже такие, как нужно; окклюзию ищут, только если NIHSS 6 и больше и
-  // окно ещё открыто
-  if (derived && typeof derived !== 'string' && 'all' in derived) {
-    return Object.keys(derived.all).reduce((sum, k) => sum + paramGain(db, condId, k, examId, observations, age, minutes) * allHolds(db, condId, derived, observations, age, minutes, k), 0);
+  // окно ещё открыто. «Хоть один» (часть 43в) — на вероятность, что остальные ответа не дают
+  if (byParams(derived)) {
+    return Object.keys(paramsOf(derived)).reduce((sum, k) => sum + paramGain(db, condId, k, examId, observations, age, minutes) * holds(db, condId, derived, observations, age, minutes, k), 0);
   }
   const rule = byRule(derived);
   if (rule) {

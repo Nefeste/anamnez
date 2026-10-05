@@ -1,7 +1,7 @@
 // Снимки кодом (spec 2026-09-ct-mri-ultrasound): срез головы на КТ и МРТ (часть 20) и сектор УЗИ
 // (часть 21; подвздошная область с отростком — часть 29), обзорный снимок живота стоя (spec
 // 2026-09-chapter-2, часть 30б), снимок груди при травме (часть 32в), срез груди на КТ-ангиографии
-// (spec 2026-10-chapter-3, часть 43а) — геометрия очагов, и сам рисунок без экрана (Skia через
+// (spec 2026-10-chapter-3, часть 43а), застой и большое сердце на снимке груди (часть 43в) — геометрия очагов, и сам рисунок без экрана (Skia через
 // CanvasKit, tools/imaging/headless.ts): где светло и где темно, то же зерно — тот же рисунок.
 import { beforeAll, describe, expect, test } from 'bun:test';
 import { brainRadius, headGeometry, type HeadFindings, type HeadFocus, inside, skullInnerRadius } from '../../src/render/ct/geometry';
@@ -844,6 +844,42 @@ describe('снимок груди при травме: геометрия', () =
     }
     expect(chest.ribLayout(5, false)).toEqual(layout);
   });
+
+  test('большое сердце (часть 43в) — шире на пятую часть, при эмфиземе — уже', () => {
+    expect(chest.heartScale({})).toBe(1);
+    expect(chest.heartScale({ cardiomegaly: true })).toBeCloseTo(1.22);
+    expect(chest.heartScale({ hyperinflation: true })).toBeLessThan(1);
+  });
+
+  test('линии Керли (часть 43в) — короткие горизонтальные у боковой стенки в нижнем отделе, от стенки внутрь; по зерну одни', () => {
+    for (const s of [-1, 1] as const) {
+      const dome = chest.domeY(s, {});
+      const lines = chest.kerleyLines(s, {}, 3);
+      expect(lines.length).toBeGreaterThanOrEqual(5);
+      expect(lines.length).toBeLessThanOrEqual(7);
+      for (const [a, b] of lines) {
+        expect(a[1]).toBe(b[1]);
+        expect(Math.abs(a[0] - 0.5)).toBeGreaterThan(0.33);
+        expect(Math.abs(b[0] - 0.5)).toBeLessThan(Math.abs(a[0] - 0.5));
+        expect(Math.abs(a[0] - b[0])).toBeLessThan(0.05);
+        expect(a[1]).toBeLessThan(dome);
+        expect(a[1]).toBeGreaterThan(dome - 0.2);
+      }
+      expect(chest.kerleyLines(s, {}, 3)).toEqual(lines);
+    }
+  });
+
+  test('жидкость в синусе при застое — мениск у стенки выше, к середине уходит под купол; «крылья бабочки» — у корня, у стенки прозрачно', () => {
+    for (const s of [-1, 1] as const) {
+      const m = chest.sinusFluid(s, {});
+      expect(m[0][1]).toBeLessThan(m[m.length - 1][1]);
+      expect(Math.abs(m[0][0] - 0.5)).toBeGreaterThan(Math.abs(m[m.length - 1][0] - 0.5));
+      expect(m[m.length - 1][1]).toBeGreaterThan(chest.domeY(s, {}));
+      const { center, rx } = chest.batWing(s);
+      expect(Math.abs(center[0] - chest.HILUM[s][0])).toBeLessThan(0.1);
+      expect(Math.abs(center[0] - 0.5) + rx).toBeLessThan(0.3);
+    }
+  });
 });
 
 describe('снимок груди при травме: рисунок без экрана', () => {
@@ -883,13 +919,34 @@ describe('снимок груди при травме: рисунок без э�
     expect(Math.abs(at(on, [0.7, 0.62]) - at(off, [0.7, 0.62]))).toBeLessThan(3);
   });
 
+  test('застой (часть 43в): в синусах у стенок — жидкость, корни шире и светлее', async () => {
+    const off = (await draw({}, 3)).rgba;
+    const on = (await draw({ congestion: {} }, 3)).rgba;
+    for (const p of [[0.12, 0.7], [0.88, 0.75]] as [number, number][]) expect(at(on, p) - at(off, p)).toBeGreaterThan(30);
+    for (const p of [[0.4, 0.4], [0.65, 0.35]] as [number, number][]) expect(at(on, p) - at(off, p)).toBeGreaterThan(10);
+  });
+
+  test('отёк лёгких: вокруг корней светлее — «крылья бабочки», у боковых стенок так же прозрачно', async () => {
+    const off = (await draw({}, 3)).rgba;
+    const on = (await draw({ congestion: { edema: true } }, 3)).rgba;
+    for (const p of [[0.35, 0.4], [0.65, 0.4], [0.3, 0.5], [0.7, 0.45]] as [number, number][]) expect(at(on, p) - at(off, p)).toBeGreaterThan(50);
+    for (const p of [[0.15, 0.3], [0.85, 0.35], [0.2, 0.45]] as [number, number][]) expect(Math.abs(at(on, p) - at(off, p))).toBeLessThan(5);
+  });
+
+  test('большое сердце: тень шире в обе стороны, лёгкие у стенок те же', async () => {
+    const off = (await draw({}, 3)).rgba;
+    const on = (await draw({ cardiomegaly: true }, 3)).rgba;
+    for (const p of [[0.75, 0.6], [0.4, 0.55]] as [number, number][]) expect(at(on, p) - at(off, p)).toBeGreaterThan(40);
+    expect(Math.abs(at(on, [0.15, 0.4]) - at(off, [0.15, 0.4]))).toBeLessThan(3);
+  });
+
   test('то же зерно — те же байты; все варианты «Проверок» рисуются', async () => {
     const a = await draw({ ribFractures: { side: 'right', ribs: [5, 6, 7] } }, 9);
     const b = await draw({ ribFractures: { side: 'right', ribs: [5, 6, 7] } }, 9);
     expect(Buffer.from(a.png).equals(Buffer.from(b.png))).toBe(true);
     const plain = await draw({}, 9);
     expect(Buffer.from(a.png).equals(Buffer.from(plain.png))).toBe(false);
-    expect(CHEST_CASES.map(k => k.key)).toEqual(['chest-small', 'chest-large', 'chest-tension', 'chest-fluid', 'chest-massive', 'chest-level', 'chest-rib', 'chest-mediastinum']);
+    expect(CHEST_CASES.map(k => k.key)).toEqual(['chest-small', 'chest-large', 'chest-tension', 'chest-fluid', 'chest-massive', 'chest-level', 'chest-rib', 'chest-mediastinum', 'chest-congestion', 'chest-edema']);
     for (const k of CHEST_CASES) {
       expect((await draw(k.findings, k.seed)).png.length).toBeGreaterThan(1000);
       expect(k.label.length).toBeGreaterThan(0);

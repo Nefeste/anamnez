@@ -5,7 +5,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, join, relative } from 'node:path';
 import { parse } from 'yaml';
 import type { z } from 'zod';
-import { type AttrSpec, beyond, type Cell, type Condition, type ContentDb, type Equipment, type Exam, type Finding, type Link, membersOf, type Preset, type Risk, type RoomType, type RulePoints, type StaffRole, type Treatment } from '../../src/content/types';
+import { type AttrSpec, beyond, byParams, type Cell, type Condition, type ContentDb, type Equipment, type Exam, type Finding, type Link, membersOf, type Preset, type Risk, type RoomType, type RulePoints, type StaffRole, type Treatment } from '../../src/content/types';
 import { planOf, presetHospital } from '../../src/engine/hospital/build';
 import { problemsOf } from '../../src/engine/hospital/requirements';
 import { ALLERGY_EXAM } from '../../src/engine/career/achievements';
@@ -261,14 +261,14 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
         const pts = rules[d.rule]?.points;
         if (!pts) errors.push(`${owner}: параметр ${name} — по баллам ${d.rule}, а у него нет баллов`);
         else if (d.from > pointsMax(pts)) errors.push(`${owner}: параметр ${name} — от ${d.from} баллов, а у ${d.rule} их не больше ${pointsMax(pts)}`);
-      } else if ('all' in d) {
-        // по другим параметрам (часть 41а): они объявлены, значения у них есть, и сами они — не такие же
-        for (const [other, values] of Object.entries(d.all)) {
+      } else if ('all' in d || 'any' in d) {
+        // по другим параметрам (части 41а и 43в): они объявлены, значения у них есть, и сами они — не такие же
+        for (const [other, values] of Object.entries('all' in d ? d.all : d.any)) {
           const q = c.params?.[other];
           if (other === name || !q) errors.push(`${owner}: параметр ${name} — по параметру ${other}, а его нет или это он сам`);
           else for (const v of values) if (!(v in q)) errors.push(`${owner}: параметр ${name} — по ${other}=${v}, а такого значения нет`);
           const od = c.derived?.[other];
-          if (od && typeof od !== 'string' && 'all' in od) errors.push(`${owner}: параметр ${name} — по ${other}, а тот сам по параметрам`);
+          if (byParams(od)) errors.push(`${owner}: параметр ${name} — по ${other}, а тот сам по параметрам`);
         }
       } else {
         const v = findings[d.f]?.value;
@@ -276,7 +276,10 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
         else {
           const lo = Math.min(v.present[0], v.absent[0]);
           const hi = Math.max(v.present[1], v.absent[1]);
-          if (d.below <= lo || d.below > hi) errors.push(`${owner}: порог ${d.below} параметра ${name} вне диапазонов ${d.f} (${lo}–${hi})`);
+          // ниже порога или (часть 43в) выше — бывает не у всех и не ни у кого: «ниже» нижнего края и «выше» верхнего — никогда
+          const at = d.below ?? d.above ?? NaN;
+          const inside = d.below !== undefined ? at > lo && at <= hi : at >= lo && at < hi;
+          if (!inside) errors.push(`${owner}: порог ${at} параметра ${name} вне диапазонов ${d.f} (${lo}–${hi})`);
           // с ходом времени (часть 41а) — только часы: к ним прибавляются часы от прихода до решения
           if (d.clock && v.unit !== 'ч') errors.push(`${owner}: порог параметра ${name} идёт со временем, а ${d.f} — не в часах`);
         }

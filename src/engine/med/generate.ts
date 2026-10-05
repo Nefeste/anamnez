@@ -3,7 +3,7 @@
 // Каждый бросок берётся из своей именованной ветви зерна (`fork`), поэтому добавление
 // новой записи в базу не сдвигает случайность у остальных признаков и золотые случаи
 // меняются только там, где изменилась медицина.
-import { byRule, byValue, type Condition, type ContentDb, type Id, type Link, type Onset, type Risk, type Season } from '../../content/types';
+import { byParams, byRule, byValue, crosses, paramsHold, type Condition, type ContentDb, type Id, type Link, type Onset, type Risk, type Season } from '../../content/types';
 import { P_ONE, Rng } from '../core/rng';
 import { checkRule, type Who as RuleWho } from './rules';
 import type { ActiveCondition, Patient, Sex, TrueFinding } from './types';
@@ -246,7 +246,8 @@ export function deriveByValue(db: ContentDb, conditions: ActiveCondition[], valu
   for (const c of conditions) {
     for (const [name, d] of Object.entries(db.conditions[c.id].derived ?? {})) {
       if (!byValue(d) || c.params[name] !== undefined) continue;
-      c.params[name] = (values[d.f] ?? Infinity) < d.below ? 'yes' : 'no';
+      const v = values[d.f];
+      c.params[name] = v !== undefined && crosses(d, v) ? 'yes' : 'no';
     }
   }
 }
@@ -259,8 +260,8 @@ export function deriveByValue(db: ContentDb, conditions: ActiveCondition[], valu
 export function deriveByParams(db: ContentDb, conditions: ActiveCondition[]): void {
   for (const c of conditions) {
     for (const [name, d] of Object.entries(db.conditions[c.id].derived ?? {})) {
-      if (typeof d === 'string' || !('all' in d) || c.params[name] !== undefined) continue;
-      c.params[name] = Object.entries(d.all).every(([k, values]) => values.includes(c.params[k])) ? 'yes' : 'no';
+      if (!byParams(d) || c.params[name] !== undefined) continue;
+      c.params[name] = paramsHold(d, c.params) ? 'yes' : 'no';
     }
   }
 }
@@ -278,11 +279,11 @@ export function freezeClock(db: ContentDb, patient: Pick<Patient, 'truth'>, minu
   for (const [name, d] of Object.entries(derived)) {
     if (!byValue(d) || !d.clock) continue;
     const v = patient.truth.values[d.f];
-    if (v !== undefined) primary.params[name] = v + minutes / 60 < d.below ? 'yes' : 'no';
+    if (v !== undefined) primary.params[name] = crosses(d, v + minutes / 60) ? 'yes' : 'no';
   }
   for (const [name, d] of Object.entries(derived)) {
-    if (typeof d === 'string' || !('all' in d)) continue;
-    primary.params[name] = Object.entries(d.all).every(([k, values]) => values.includes(primary.params[k])) ? 'yes' : 'no';
+    if (!byParams(d)) continue;
+    primary.params[name] = paramsHold(d, primary.params) ? 'yes' : 'no';
   }
   return Object.fromEntries(Object.entries(before).filter(([k, v]) => primary.params[k] !== v));
 }

@@ -169,7 +169,8 @@ describe('каталог больницы', () => {
     expect(db.rooms['room.lab'].exams).toContain('exam.cbc');
     expect(db.rooms['room.procedure'].collects).toContain('exam.cbc');
     expect(db.rooms['room.lab'].equipment).toContain('eq.biochem_analyzer');
-    expect(db.equipment['eq.immuno_analyzer'].exams).toEqual(['exam.d_dimer', 'exam.troponin_hs', 'exam.tsh']);
+    // NT-proBNP (часть 43в) — тоже на иммунохимическом
+    expect(db.equipment['eq.immuno_analyzer'].exams).toEqual(['exam.d_dimer', 'exam.nt_probnp', 'exam.troponin_hs', 'exam.tsh']);
     expect(db.equipment['eq.xray_digital'].upgradeOf).toBe('eq.xray_analog');
     expect(db.roles['role.nurse'].rooms).toEqual(['room.ecg', 'room.emergency', 'room.icu', 'room.procedure', 'room.triage', 'room.ward']);
     // палата (spec 2026-09-chapter-2, часть 26): койки — места лежащих
@@ -436,9 +437,10 @@ describe('каталог больницы', () => {
     expect(unknown.some(e => e.includes('exam.tsh: аппарат eq.immuno не найден'))).toBe(true);
     const foreign = broken(d => {
       edit(d, 'exams/tsh.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.ecg]');
-      // D-димер (часть 33а) — и на биохимическом анализаторе; тропонин (часть 39в) — тоже на нём
+      // D-димер (часть 33а) — и на биохимическом анализаторе; тропонин (часть 39в) и NT-proBNP (часть 43в) — тоже на нём
       edit(d, 'exams/d_dimer.yaml', 'equipment: [eq.biochem_analyzer, eq.immuno_analyzer]', 'equipment: [eq.biochem_analyzer]');
       edit(d, 'exams/troponin_hs.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.biochem_analyzer]');
+      edit(d, 'exams/nt_probnp.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.biochem_analyzer]');
     });
     expect(foreign.some(e => e.includes('exam.tsh: аппарат eq.ecg стоит в room.ecg'))).toBe(true);
     // и тогда иммунохимическим анализатором ничего не делают
@@ -472,6 +474,20 @@ describe('каталог больницы', () => {
     expect(has(broken(d => edit(d, C, block, '    - when: { spo2_below90: [yes] }\n      require: [tx.appendectomy]')), 'cond.pneumonia_cap: обязательное тактики по параметру №1 — операцию tx.appendectomy выбирают местом, а не назначением')).toBe(true);
     const supportive = '  supportive: [tx.iv_fluids, tx.steroid_iv, tx.antihistamine_parenteral, tx.salbutamol]';
     expect(has(broken(d => edit(d, A, supportive, '  supportive: [tx.iv_fluids, tx.steroid_iv, tx.antihistamine_parenteral, tx.salbutamol, tx.oxygen_mask]')), 'cond.anaphylaxis: обязательное — tx.oxygen_mask стоит и в списке тактики')).toBe(true);
+  });
+
+  test('сердечная недостаточность (часть 43в): порог — ниже или выше, одно из двух, со временем — только ниже, внутри диапазонов; «хоть один из» — по объявленным параметрам и их значениям', () => {
+    const C = 'conditions/therapy/adhf.yaml';
+    const has = (errors: string[], text: string) => errors.some(e => e.includes(text));
+    const rr = '  rr_above25: { f: vital.tachypnea, above: 25 }';
+    const icu = '  icu: { any: { type: [edema, cold], rr_above25: [yes], spo2_below90: [yes] } }';
+    expect(has(broken(d => edit(d, C, rr, '  rr_above25: { f: vital.tachypnea, above: 25, below: 30 }')), 'порог — либо below, либо above')).toBe(true);
+    expect(has(broken(d => edit(d, C, rr, '  rr_above25: { f: vital.tachypnea, above: 25, clock: true }')), 'порог со временем — только below')).toBe(true);
+    // «выше» верхнего края — не бывает никогда, «выше» нижнего — у всех: частота дыхания 13–32
+    expect(has(broken(d => edit(d, C, rr, '  rr_above25: { f: vital.tachypnea, above: 32 }')), 'cond.adhf: порог 32 параметра rr_above25 вне диапазонов vital.tachypnea (13–32)')).toBe(true);
+    expect(has(broken(d => edit(d, C, rr, '  rr_above25: { f: vital.tachypnea, above: 12 }')), 'cond.adhf: порог 12 параметра rr_above25 вне диапазонов vital.tachypnea (13–32)')).toBe(true);
+    expect(has(broken(d => edit(d, C, icu, '  icu: { any: { type: [edema, shock], rr_above25: [yes] } }')), 'cond.adhf: параметр icu — по type=shock, а такого значения нет')).toBe(true);
+    expect(has(broken(d => edit(d, C, icu, '  icu: { any: { type: [edema], pulse: [yes] } }')), 'cond.adhf: параметр icu — по параметру pulse, а его нет или это он сам')).toBe(true);
   });
 
   test('инфаркт с подъёмом ST (часть 39а): часы от начала, маска, признак-последователь, тромболизис у постели и его спутники, правило о лечении, атрибут для старых записей', () => {

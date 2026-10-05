@@ -107,7 +107,7 @@ const ch = T.spikes.imaging.chest;
 
 /**
  * Снимок груди при травме (часть 32в): пневмоторакс малый, большой и напряжённый, кровь, уровень,
- * переломы рёбер; с частью 43а — расширенное верхнее средостение.
+ * переломы рёбер; с частью 43а — расширенное верхнее средостение; с частью 43в — застой и отёк лёгких.
  */
 export const CHEST_CASES: ChestCase[] = [
   { key: 'chest-small', findings: { pneumothorax: { side: 'right', size: 'small' } }, seed: 4, label: ch.small },
@@ -118,6 +118,9 @@ export const CHEST_CASES: ChestCase[] = [
   { key: 'chest-level', findings: { effusion: { side: 'left', air: true }, pneumothorax: { side: 'left', size: 'small' } }, seed: 9, label: ch.level },
   { key: 'chest-rib', findings: { ribFractures: { side: 'right', ribs: [5, 6, 7] } }, seed: 10, label: ch.rib },
   { key: 'chest-mediastinum', findings: { wideMediastinum: true }, seed: 11, label: ch.mediastinum },
+  // часть 43в: застой и отёк лёгких при сердечной недостаточности, большая тень сердца
+  { key: 'chest-congestion', findings: { congestion: {}, cardiomegaly: true }, seed: 12, label: ch.congestion },
+  { key: 'chest-edema', findings: { congestion: { edema: true }, cardiomegaly: true }, seed: 13, label: ch.edema },
 ];
 
 export interface BoneCase {

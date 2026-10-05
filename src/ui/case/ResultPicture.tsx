@@ -76,6 +76,8 @@ export function ResultPicture({ image }: { image: ResultImage }) {
           ...(image.effusion ? { effusion: image.effusion } : {}),
           ...(image.ribFractures ? { ribFractures: image.ribFractures } : {}),
           wideMediastinum: image.wideMediastinum,
+          ...(image.congestion ? { congestion: { edema: image.congestion === 'edema' } } : {}),
+          cardiomegaly: image.cardiomegaly,
         }} />
       </View>
     );

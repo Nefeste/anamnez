@@ -5,12 +5,12 @@
 // сердце и средостение — одним силуэтом, который снизу сливается с тенью живота. Правая
 // сторона пациента — слева на снимке. Координаты — доли ширины (x) и высоты (y); геометрия —
 // в chestGeometry.ts: контур полей, рёбра, а с травмой груди (часть 32в) — воздух и кровь в
-// плевральной полости, смещение средостения, перелом ребра.
+// плевральной полости, смещение средостения, перелом ребра; с частью 43в — застой и отёк лёгких, большое сердце.
 import { BlendMode, BlurStyle, ClipOp, PaintStyle, Skia, type SkPaint, type SkPath, type SkPicture, StrokeCap, TileMode } from '@shopify/react-native-skia';
 import { Rng } from '@/engine/core/rng';
 import {
-  bezier, collapsedLung, domeY, type FilmSide as Side, filmSide, fluidTop, hemithorax, lungScale, mediastinalShift, mirror, type Pt,
-  ribBack, ribFractureAt, ribFront, ribLayout, XRAY_ASPECT, type XrayFindings,
+  batWing, bezier, collapsedLung, domeY, type FilmSide as Side, filmSide, fluidTop, heartScale, hemithorax, kerleyLines, lungScale,
+  mediastinalShift, mirror, type Pt, ribBack, ribFractureAt, ribFront, ribLayout, sinusFluid, XRAY_ASPECT, type XrayFindings,
 } from './chestGeometry';
 
 export { XRAY_ASPECT, type XrayFindings };
@@ -170,7 +170,9 @@ export function recordChestXray(width: number, findings: XrayFindings, seed: num
     const bend = jitter(len * 0.12);
     p.quadTo(X((x + x2) / 2 + bend), Y((y + y2) / 2 - bend), X(x2), Y(y2));
     const lower = Math.max(0, Math.min(1, (y2 - 0.3) / 0.35));
-    const alpha = (0.42 - depth * 0.07) * (0.75 + 0.45 * lower) * (1 - far * 2) * (emph ? 0.6 : 1);
+    // при застое (часть 43в) кровь уходит в верхние доли: их сосуды заметнее нижних
+    const zone = findings.congestion ? 0.9 + 0.35 * (1 - lower) : 0.75 + 0.45 * lower;
+    const alpha = (0.42 - depth * 0.07) * zone * (1 - far * 2) * (emph ? 0.6 : 1);
     if (alpha > 0.02) c.drawPath(p, paint('#a8a8a8', { alpha, blend: BlendMode.Screen, stroke: w, blur: w * 0.6 }));
     if (depth < 4) {
       const spread = 0.28 + (rng.int(1000) / 1000) * 0.22;
@@ -221,6 +223,39 @@ export function recordChestXray(width: number, findings: XrayFindings, seed: num
     }
   }
 
+  // 5в. Застой (часть 43в): у боковых стенок над синусами — линии Керли, в синусах — немного жидкости; отёк лёгких —
+  // облако «крыльев бабочки» вокруг корней, периферия прозрачная.
+  if (findings.congestion) {
+    for (const s of [-1, 1] as Side[]) {
+      c.save();
+      c.clipPath(lungs[s], ClipOp.Intersect, true);
+      for (const [a, b] of kerleyLines(s, findings, seed)) {
+        const p = Skia.Path.Make();
+        p.moveTo(X(a[0]), Y(a[1]));
+        p.lineTo(X(b[0]), Y(b[1]));
+        c.drawPath(p, paint('#b4b4b4', { alpha: 0.4, blend: BlendMode.Screen, stroke: 0.0022, blur: 0.0008 }));
+      }
+      const meniscus = sinusFluid(s, findings);
+      const fluid = Skia.Path.Make();
+      fluid.moveTo(X(meniscus[0][0]), Y(meniscus[0][1]));
+      for (const q of meniscus.slice(1)) fluid.lineTo(X(q[0]), Y(q[1]));
+      fluid.lineTo(X(meniscus[meniscus.length - 1][0]), H);
+      fluid.lineTo(X(meniscus[0][0]), H);
+      fluid.close();
+      c.drawPath(fluid, paint('#8e8e8e', { alpha: 0.9, blur: 0.006 }));
+      if (findings.congestion.edema) {
+        const { center, rx, ry } = batWing(s);
+        for (let i = 0; i < 18; i++) {
+          const ox = jitter(rx * 0.8), oy = jitter(ry * 0.8);
+          const r = 0.035 + (rng.int(1000) / 1000) * 0.04;
+          c.drawOval(Skia.XYWHRect(X(center[0] + ox - r), Y(center[1] + oy - r * 0.9), X(2 * r), Y(1.8 * r)),
+            paint('#b0b0b0', { alpha: 0.2, blend: BlendMode.Screen, blur: 0.022 }));
+        }
+      }
+      c.restore();
+    }
+  }
+
   // 5б. Травма груди (часть 32в). Воздух в плевральной полости — чёрный, без сосудистого
   // рисунка, от стенки до края спавшегося лёгкого; край — тонкая светлая линия висцеральной
   // плевры. Кровь — однородное затенение снизу: синус и купол под ней не видны, у стенки выше;
@@ -262,10 +297,11 @@ export function recordChestXray(width: number, findings: XrayFindings, seed: num
   }
   c.restore();
 
-  // корни лёгких плотнее: там крупные артерии и бронхи
+  // корни лёгких плотнее: там крупные артерии и бронхи; при застое (часть 43в) — шире и размыты
+  const hilar = findings.congestion ? { r: 0.05, alpha: 0.45, blur: 0.03 } : { r: 0.035, alpha: 0.32, blur: 0.018 };
   for (const s of [-1, 1] as Side[]) {
     const [hx0, hy0] = hila[s];
-    c.drawOval(Skia.XYWHRect(X(hx0 - 0.035), Y(hy0 - 0.06), X(0.07), Y(0.12)), paint('#9a9a9a', { alpha: 0.32, blend: BlendMode.Screen, blur: 0.018 }));
+    c.drawOval(Skia.XYWHRect(X(hx0 - hilar.r), Y(hy0 - 0.06), X(2 * hilar.r), Y(0.12)), paint('#9a9a9a', { alpha: hilar.alpha, blend: BlendMode.Screen, blur: hilar.blur }));
   }
 
   // 6. Рёбра. Задний отрезок идёт от позвоночника почти горизонтально, выгибается вверх и
@@ -330,7 +366,7 @@ export function recordChestXray(width: number, findings: XrayFindings, seed: num
   // предсердие, слева — дуга аорты, лёгочный ствол, ушко, левый желудочек до верхушки.
   // Кладётся поверх рёбер чуть прозрачным: сквозь тень сердца рёбра видны еле-еле.
   const heart = Skia.Path.Make();
-  const k = emph ? 0.82 : 1; // «капельное» сердце при эмфиземе — уже
+  const k = heartScale(findings); // «капельное» сердце при эмфиземе — уже, при кардиомегалии (часть 43в) — шире
   const hx = (x: number) => X(0.52 + (x - 0.52) * k);
   const lo = emph ? 0.06 : 0; // и ниже вместе с куполами
   // расширенное верхнее средостение (часть 43а): справа выбухает восходящая аорта, слева — дуга

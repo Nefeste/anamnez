@@ -133,12 +133,14 @@ export interface Tactics {
 
 /**
  * Производный параметр по числу (часть 38б): «yes», если значение признака `f` у пациента ниже
- * `below`. `clock` (spec 2026-10-chapter-3, часть 41а) — с ходом времени: к часам от начала
+ * `below` — или выше `above` (spec 2026-10-chapter-3, часть 43в: частота дыхания выше 25); порог —
+ * один из двух. `clock` (часть 41а) — с ходом времени, только «ниже»: к часам от начала
  * прибавляются часы от прихода до решения — окно тромболизиса закрывается, пока идёт обследование.
  */
 export interface DerivedByValue {
   f: Id;
-  below: number;
+  below?: number;
+  above?: number;
   clock?: true;
   /**
    * по измерению (spec 2026-10-chapter-3, часть 41в): разбор судит по тому, что показало обследование, —
@@ -149,11 +151,11 @@ export interface DerivedByValue {
 
 /**
  * Производный параметр по другим параметрам (часть 41а): «yes», если у каждого из `all` — одно из
- * названных значений; тромбэктомия — окклюзия, NIHSS 6 и больше и меньше 6 часов от начала.
+ * названных значений; тромбэктомия — окклюзия, NIHSS 6 и больше и меньше 6 часов от начала. Или
+ * (spec 2026-10-chapter-3, часть 43в) хоть у одного из `any`: при острой сердечной недостаточности —
+ * ПИТ при отёке лёгких, гипоперфузии, частоте дыхания выше 25 или сатурации ниже 90. Одно из двух.
  */
-export interface DerivedByParams {
-  all: Record<string, string[]>;
-}
+export type DerivedByParams = { all: Record<string, string[]>; any?: undefined } | { any: Record<string, string[]>; all?: undefined };
 
 /**
  * Производный параметр по баллам шкалы (spec 2026-10-chapter-3, часть 41б): «yes», если баллов
@@ -169,6 +171,27 @@ export type Derived = Id | DerivedByValue | DerivedByParams | DerivedByRule;
 /** Производный по числу признака (части 38б и 41а), а не по правилу или другим параметрам. */
 export function byValue(d: Derived | undefined): d is DerivedByValue {
   return d !== undefined && typeof d !== 'string' && 'f' in d;
+}
+
+/** Производный по другим параметрам (части 41а и 43в). */
+export function byParams(d: Derived | undefined): d is DerivedByParams {
+  return d !== undefined && typeof d !== 'string' && ('all' in d || 'any' in d);
+}
+
+/** Параметры, от которых зависит производный по параметрам, и какие значения нужны. */
+export function paramsOf(d: DerivedByParams): Record<string, string[]> {
+  return d.all ?? d.any;
+}
+
+/** «yes» производного по параметрам: у каждого из `all` или хоть у одного из `any` — нужное значение. */
+export function paramsHold(d: DerivedByParams, params: Readonly<Record<string, string>>): boolean {
+  const ok = ([k, values]: [string, string[]]) => values.includes(params[k]);
+  return d.all ? Object.entries(d.all).every(ok) : Object.entries(d.any).some(ok);
+}
+
+/** Число за порогом производного параметра: ниже `below` или выше `above` (часть 43в). */
+export function crosses(d: DerivedByValue, v: number): boolean {
+  return d.below !== undefined ? v < d.below : d.above !== undefined && v > d.above;
 }
 
 /**
