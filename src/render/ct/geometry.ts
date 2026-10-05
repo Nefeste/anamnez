@@ -27,6 +27,11 @@ export interface HeadFindings {
   focus?: HeadFocus;
   /** 0–1: смещение срединных структур в сторону, противоположную очагу; без очага — нет */
   shift?: number;
+  /**
+   * 0–1: кровь под паутинной оболочкой (spec 2026-10-chapter-3, часть 41в) — в боковых и
+   * межполушарной щели и в такой доле борозд; светлое вместо тёмного
+   */
+  sah?: number;
 }
 
 export interface HeadGeometry {
@@ -37,9 +42,14 @@ export interface HeadGeometry {
   skullInner: Pt[];
   /** поверхность мозга: у серпа и линзы — отодвинута от свода */
   brain: Pt[];
-  /** борозды — от поверхности вглубь (толщина у поверхности — доля ширины), и боковые (сильвиевы) щели */
-  sulci: { path: Pt[]; width: number }[];
+  /**
+   * борозды — от поверхности вглубь (толщина у поверхности — доля ширины), и боковые (сильвиевы)
+   * щели; `blood` — в борозде кровь (часть 41в)
+   */
+  sulci: { path: Pt[]; width: number; blood?: true }[];
   sylvian: Pt[][];
+  /** кровь под паутинной оболочкой (часть 41в): в боковых и межполушарной щели */
+  sah?: true;
   /** межполушарная щель спереди и сзади и серп мозга по ней */
   fissure: Pt[][];
   /** серое вещество в глубине: головки хвостатых ядер, чечевицеобразные ядра, зрительные бугры, островки */
@@ -311,5 +321,13 @@ export function headGeometry(findings: HeadFindings, seed: number): HeadGeometry
     { c: move([CX, 0.59]), r: 0.006 },
   ];
 
-  return { head, skullOuter, skullInner, brain, sulci, sylvian, fissure, deepGray, ventricles, calcifications, midline: mx, ...(focus ? { focus } : {}) };
+  // кровь под паутинной оболочкой (часть 41в): в доле борозд — от своей ветви зерна, чтобы борозды и
+  // остальной срез были те же, что без неё; в щелях — всегда
+  const sah = clamp01(findings.sah ?? 0);
+  if (sah > 0) {
+    const blood = Rng.seeded(seed).fork('sah');
+    for (const s of sulci) if (blood.int(1000) / 1000 < sah) s.blood = true;
+  }
+
+  return { head, skullOuter, skullInner, brain, sulci, sylvian, fissure, deepGray, ventricles, calcifications, midline: mx, ...(focus ? { focus } : {}), ...(sah > 0 ? { sah: true as const } : {}) };
 }

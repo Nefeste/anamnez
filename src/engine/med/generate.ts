@@ -366,6 +366,9 @@ function ensureManifest(db: ContentDb, rng: Rng, out: TrueFinding[], primary: Ac
   return [...out, attrs ? { f: link.f, cause: primary.id, attrs } : { f: link.f, cause: primary.id }].sort((a, b) => (a.f < b.f ? -1 : 1));
 }
 
+/** Сторона напротив (часть 41в): слабость справа — гематома в левом полушарии. */
+const OPPOSITE: Record<string, string> = { right: 'left', left: 'right' };
+
 function realizeAttrs(db: ContentDb, rng: Rng, f: Id, link: Link | undefined, cond: ActiveCondition | undefined): Record<string, string> | undefined {
   const options = db.findings[f]?.attrs;
   if (!options) return undefined;
@@ -373,7 +376,7 @@ function realizeAttrs(db: ContentDb, rng: Rng, f: Id, link: Link | undefined, co
   for (const name of Object.keys(options).sort()) {
     const spec = link?.attrs?.[name];
     const r = rng.fork(name);
-    if (spec && 'param' in spec && cond?.params[spec.param]) attrs[name] = cond.params[spec.param];
+    if (spec && 'param' in spec && cond?.params[spec.param]) attrs[name] = spec.opposite ? OPPOSITE[cond.params[spec.param]] ?? cond.params[spec.param] : cond.params[spec.param];
     else if (spec && 'dist' in spec) attrs[name] = r.weightedKey(spec.dist);
     else if (spec && 'value' in spec) attrs[name] = spec.value;
     else attrs[name] = r.pick(Object.keys(options[name]).sort());

@@ -288,7 +288,8 @@ const TX_GROUPS: [string, string[]][] = [
   ['digestive', ['acid']],
   // растворы для питья и капельница (часть 32д-2): и при кишечной инфекции, и при обширном ожоге
   ['fluids', ['rehydration']],
-  ['metabolic', ['antidiabetic', 'hormone', 'mineral']],
+  // с частью 41в — гемостатики: протромбиновый комплекс, витамин K1, транексамовая кислота
+  ['metabolic', ['antidiabetic', 'hormone', 'mineral', 'hemostatic']],
   // травма (часть 32): гипсовая лонгета и закрытая репозиция
   ['trauma', ['immobilization']],
   // травма груди (часть 32в): плевральная пункция и дренирование
@@ -296,6 +297,8 @@ const TX_GROUPS: [string, string[]][] = [
   // раны (часть 32г-2): повязка, обработка со швом и без; анатоксин, вакцина, иммуноглобулины
   ['wounds', ['wound']],
   ['vaccines', ['vaccine']],
+  // консультация нейрохирурга при кровоизлиянии (часть 41в), в том числе по телемедицине
+  ['consult', ['consult']],
 ];
 
 /** Порядок групп лечения — для решения и энциклопедии. */
@@ -435,10 +438,25 @@ function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observat
   // артерии ноги (часть 33б): тот же срез бедра, в артерии — тромб или эмбол, если его показало УЗИ
   if (exam === 'exam.us_leg_arteries') return { kind: 'us', view: 'vein', arterial: shown('img.us_artery_occluded') ? 1 : 0, seed };
   // КТ головы (часть 40): кровь внутри черепа — светлое пятно в веществе на стороне находки; без
-  // неё — обычный срез
-  if (exam === 'exam.ct_head') {
+  // неё — обычный срез. С частью 41в — и КТ-ангиография (её первая серия — без контраста): гематома —
+  // пятно по объёму, больше 30 см³ — со смещением срединных структур; кровь под паутинной оболочкой —
+  // светлые борозды и щели
+  if (exam === 'exam.ct_head' || exam === 'exam.cta_head') {
+    const hematoma = shown('img.ct_hematoma_large') ?? shown('img.ct_hematoma');
+    const sah = shown('img.ct_sah') !== undefined;
     const blood = shown('img.ct_blood') ? sideOf('img.ct_blood') : undefined;
-    return { kind: 'head', seed, findings: blood ? { focus: { density: 'high', shape: 'blob', side: blood, region: 'middle', size: 0.45 } } : {} };
+    const side = hematoma ? sideOf(hematoma.f) : !sah ? blood : undefined;
+    // площадь пятна на срезе — как объём в степени 2/3; 80 см³ — наибольшее
+    const size = hematoma?.value !== undefined ? Math.min(1, Math.max(0.15, (hematoma.value / 80) ** (2 / 3))) : 0.45;
+    const shift = hematoma?.value !== undefined && hematoma.value >= 30 ? Math.min(1, (hematoma.value - 20) / 60) : 0;
+    return {
+      kind: 'head', seed,
+      findings: {
+        ...(side ? { focus: { density: 'high' as const, shape: 'blob' as const, side, region: 'middle' as const, size } } : {}),
+        ...(side && shift > 0 ? { shift } : {}),
+        ...(sah ? { sah: 0.7 } : {}),
+      },
+    };
   }
   // кости (часть 32): что нашёл рентгенолог — линия перелома, смещение, признаки нестабильности;
   // сторона — из жалобы или находки

@@ -11,7 +11,11 @@ time: { procedure: 12, report: 18 }
 cost: 6000
 discomfort: 1
 checks:
-  - { f: img.ct_blood, sens: 95, spec: 100 }
+  # первая серия — та же КТ без контраста (часть 41в): кровь, где она и сколько её — как у КТ
+  - { f: img.ct_blood, sens: 99, spec: 100 }
+  - { f: img.ct_hematoma, sens: 99, spec: 98, given: img.ct_blood }
+  - { f: img.ct_hematoma_large, sens: 98, spec: 100 }
+  - { f: img.ct_sah, sens: 98, spec: 99, given: img.ct_blood }
   - { f: img.cta_occlusion, sens: 95, spec: 97 }
 texts:
   hint:

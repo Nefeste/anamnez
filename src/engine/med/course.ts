@@ -6,7 +6,7 @@
 // (ADR 0004): одинаковый исход на телефоне и в тестах.
 import type { ContentDb, Id } from '../../content/types';
 import { P_ONE, type Rng } from '../core/rng';
-import { curesOf, type Plan, type PlanEval, primaryOf, selfLimits, SETTING_ORDER, untreatedOf, whenHolds } from './plan';
+import { curesOf, harmsOf, type Plan, type PlanEval, primaryOf, selfLimits, SETTING_ORDER, untreatedOf, whenHolds } from './plan';
 import type { Patient } from './types';
 
 /** Сколько дней после приёма модель следит за пациентом, отпущенным домой. */
@@ -77,6 +77,10 @@ export function observe(db: ContentDb, patient: Patient, plan: Plan, ev: PlanEva
     if (rng.fork(`reaction:${v.tx}:${v.by}`).chance(k.reaction)) {
       return { kind: 'reaction', day: 1, returns: { day: 1, reason: 'reaction' }, cured: false, reaction: { tx: v.tx, by: v.by } };
     }
+  }
+  // вред при самой болезни (часть 41в): тромболизис при кровоизлиянии в мозг — кровотечение
+  for (const h of harmsOf(db, primary, plan.treatments)) {
+    if (rng.fork(`harm:${h.tx}`).chance(h.p)) return { kind: 'reaction', day: 1, returns: { day: 1, reason: 'reaction' }, cured: false, reaction: { tx: h.tx, by: primary.id } };
   }
 
   // 2. Лечение причины. Дома то, что надо лечить в стационаре, помогает вдвое реже.

@@ -24,6 +24,9 @@ export const HEAD_CASES: HeadCase[] = [
   { key: 'ct-crescent', mode: 'ct', findings: { focus: { density: 'high', shape: 'crescent', side: 'right', size: 0.7 }, shift: 0.7 }, seed: 3, label: t.ctCrescent },
   { key: 'ct-lens', mode: 'ct', findings: { focus: { density: 'high', shape: 'lens', side: 'left', size: 0.7 } }, seed: 4, label: t.ctLens },
   { key: 'ct-wedge', mode: 'ct', findings: { focus: { density: 'low', shape: 'wedge', side: 'left', region: 'middle', size: 0.7 } }, seed: 5, label: t.ctWedge },
+  // кровоизлияния (часть 41в): кровь под паутинной оболочкой; гематома больше 30 см³ со смещением
+  { key: 'ct-sah', mode: 'ct', findings: { sah: 0.7 }, seed: 8, label: t.ctSah },
+  { key: 'ct-blob-large', mode: 'ct', findings: { focus: { density: 'high', shape: 'blob', side: 'left', region: 'middle', size: 0.85 }, shift: 0.6 }, seed: 9, label: t.ctBlobLarge },
   { key: 'mri-normal', mode: 'mri', findings: {}, seed: 6, label: t.mriNormal },
   { key: 'mri-wedge', mode: 'mri', findings: { focus: { density: 'high', shape: 'wedge', side: 'right', region: 'middle', size: 0.6 } }, seed: 7, label: t.mriWedge },
 ];

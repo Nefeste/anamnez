@@ -66,12 +66,13 @@ interface Condition {
     chronic?: boolean;                  // бывает сопутствующим
   };
   params?: Record<string, Record<string, number>>;       // скрытые параметры: значение → вес
-  derived?: Record<string, Id | { f: Id; below: number; clock?: true } | { all: Record<string, string[]> } | { rule: Id; from: number }>;
+  derived?: Record<string, Id | { f: Id; below: number; clock?: true; seen?: true } | { all: Record<string, string[]> } | { rule: Id; from: number }>;
                                         // с 0.2.1: параметр — вывод правила решения (rule.*) на настоящих
                                         // признаках и возрасте, no/yes; веса в params — для вывода врача;
                                         // с 0.3.4 — порог по числу; с 0.3.10 — с ходом времени (clock:
                                         // к часам от начала — часы от прихода) и по другим параметрам (all);
-                                        // с 0.3.11 — по баллам шкалы правила со своим порогом (rule, from)
+                                        // с 0.3.11 — по баллам шкалы правила со своим порогом (rule, from);
+                                        // с 0.3.12 — разбор судит по измеренному (seen: давление по тонометру)
   course: {
     stages: { id: string; days: [number, number]; needs?: 'treatment' }[];
     presentation?: [number, number];    // в какие дни болезни обычно обращаются
@@ -149,7 +150,7 @@ interface Link {
   stages?: string[];                     // на каких стадиях
   when?: Cond;                           // условие по скрытым параметрам
   age65?: { p: P };                      // поправка для пожилых (пример поправки)
-  attrs?: Record<string, string | Record<string, number>>;   // '$side' — из параметра
+  attrs?: Record<string, string | Record<string, number>>;   // '$side' — из параметра, '-$side' — напротив (0.3.12)
   value?: { dist: 'normal' | 'uniform'; mean?: number; sd?: number; min?: number; max?: number };
 }
 type Cond = Record<string, string[]>;    // { severity: ['moderate', 'severe'] }
@@ -200,7 +201,8 @@ interface Exam {
   sex?: 'm' | 'f'; ageMin?: number; ageMax?: number;  // кому делают: о беременности — женщинам 12–50
   complaints?: Id[];                     // с 0.2.1: только с этими жалобами — о травме головы при травме головы
   contraindications?: { id: Id; level: 'relative' | 'absolute' }[];   // позже: рентген при беременности
-  checks: { f: Id; sens: P; spec: P }[];         // какие признаки проверяет и как точно
+  checks: { f: Id; sens: P; spec: P; given?: Id }[];  // какие признаки проверяет и как точно; given — с 0.3.12:
+                                                 // только если это обследование показало given (уточнение)
   modifiers?: { by: Id; sens?: number; spec?: number }[];  // ожирение, навык, уровень аппарата
   texts: { summary: Text; hint: Text };          // как делают; что показывает — простыми словами
   sources: Source[]; review: Review; replacedBy?: Id;
@@ -244,8 +246,9 @@ interface Treatment {
   class?: string;                        // 'antibiotic.penicillin'
   route?: 'oral' | 'inhaled' | 'nasal' | 'iv' | 'im' | 'sc'; // sc — под кожу, с 0.2.5
   cost: number;
-  // cure — на причину: к выздоровлению с вероятностью p за days дней; relieve — облегчает
-  effects: { on: Id; kind: 'cure' | 'relieve'; p: P; days: [number, number]; when?: Record<string, string[]> }[]; // when — только при таких значениях параметров болезни (0.0.50)
+  // cure — на причину: к выздоровлению с вероятностью p за days дней; relieve — облегчает;
+  // harm — с 0.3.12: вредит при болезни с вероятностью p (тромболизис при кровоизлиянии — кровотечение)
+  effects: { on: Id; kind: 'cure' | 'relieve' | 'harm'; p: P; days: [number, number]; when?: Record<string, string[]> }[]; // when — только при таких значениях параметров болезни (0.0.50)
   // противопоказание — фактор риска (аллергия) или состояние; reaction — вероятность
   // вреда, если назначить, когда оно у пациента есть (знал врач или нет)
   contraindications: { id: Id; level: 'relative' | 'absolute'; reaction: P }[];
@@ -465,6 +468,14 @@ interface Patient {
   обследований — «попросить подождать», когда ждёт кто-то срочнее: пациент — в очередь по времени
   прихода. Схема сохранения прежняя: всё новое — необязательные поля; у смотровой из прежних
   сохранений места под монитор нет — стройка добавляет его пустым.
+- С 0.3.12 — внутримозговое и субарахноидальное кровоизлияние (spec 2026-10-chapter-3, часть 41в): у
+  проверки обследования — `given` (уточнение только при показанной находке; не показана — наблюдения нет,
+  и у порога на его числе тоже), у эффекта лечения — вид `harm`, у производного по числу — `seen`, у
+  атрибута признака болезни — `opposite` (в YAML `-$side`), у тактики — `beforeTransfer` и в общей части.
+  Движок: `harmsOf` (вред — реакцией дома и строкой обхода в ПИТ), `asSeen` и по измеренному числу — им
+  же решаются роли и «обязательно до перевода»; общее измерение порога хранит атрибуты; полосы частоты
+  `extremely_rare` и `ultra_rare`. Срез КТ — `HeadFindings.sah`. Схема сохранения прежняя: всё новое —
+  необязательные поля.
 - С 0.3.11 — транзиторная ишемическая атака и шкала ABCD2 (spec 2026-10-chapter-3, часть 41б): у
   правила решения — `points` (`items` с весом `w` и `unless`, `age`, порог `from`; `any` может быть
   пустым), у проверки правила — `points: { min, max }`; у производного параметра — `{ rule, from }`;

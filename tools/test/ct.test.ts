@@ -71,12 +71,20 @@ describe('каталог: кабинет КТ, томографы, обслед�
 
   test('КТ головного мозга: в кабинете КТ, облучение среднее, 10 минут и 15 на описание; ищет кровь внутри черепа, ложной не показывает; правило КТ ведёт на неё', () => {
     expect(db.exams[CT]).toMatchObject({ kind: 'imaging', room: 'room.ct', equipment: ['eq.ct_16', 'eq.ct_64'], radiation: 'medium', time: { procedure: 10, report: 15 }, cost: 3000 });
-    expect(db.exams[CT].checks).toEqual([{ f: BLOOD, sens: 9500, spec: 10000 }]);
-    // при сотрясении изменений на КТ нет (734_2, раздел 1.1): кровь — ни у одной болезни базы
-    expect(Object.values(db.conditions).some(c => c.findings.some(l => l.f === BLOOD))).toBe(false);
+    // с частью 41в — где кровь и сколько её: уточнения, только когда кровь видна
+    expect(db.exams[CT].checks).toEqual([
+      { f: BLOOD, sens: 9900, spec: 10000 },
+      { f: 'img.ct_hematoma', sens: 9900, spec: 9800, given: BLOOD },
+      { f: 'img.ct_hematoma_large', sens: 9800, spec: 10000 },
+      { f: 'img.ct_sah', sens: 9800, spec: 9900, given: BLOOD },
+    ]);
+    // при сотрясении изменений на КТ нет (734_2, раздел 1.1): кровь — только у кровоизлияний в мозг, а у
+    // сотрясения и ушиба её не бывает по записи
+    expect(Object.values(db.conditions).filter(c => c.findings.some(l => l.f === BLOOD)).map(c => c.id).sort()).toEqual(['cond.ich', 'cond.sah']);
+    expect(db.conditions[CONC].masks).toEqual([BLOOD]);
     expect(rule.exams).toEqual([CT]);
     expect(rule.texts.exam).toBeUndefined();
-    // КТ у сотрясения — всегда без крови
+    // КТ у сотрясения — всегда без крови, и уточнять нечего
     for (const p of people(CONC, 40, 300)) expect(runExam(db, p, CT, Rng.seeded(p.seed).fork('ct'))).toEqual([{ f: BLOOD, shown: false, exam: CT }]);
   });
 });

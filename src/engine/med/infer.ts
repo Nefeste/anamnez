@@ -4,7 +4,7 @@
 // По пользе обследования решают страховая песочницы и нанятые врачи — а это меняет состояние
 // партии, поэтому логарифм здесь свой, из `core/math.ts` (ADR 0004): одинаковый в Hermes, V8 и
 // JavaScriptCore.
-import { byRule, byValue, type Condition, type ContentDb, type DerivedByParams, type DerivedByValue, type Id, type Link, type Season } from '../../content/types';
+import { byRule, byValue, type Condition, type ContentDb, type DerivedByParams, type DerivedByValue, type ExamCheck, type Id, type Link, type Season } from '../../content/types';
 import { log2 } from '../core/math';
 import { P_ONE } from '../core/rng';
 import { chronicChance, presentingWeight } from './generate';
@@ -348,25 +348,26 @@ export function expectedGain(db: ContentDb, examId: Id, beliefs: readonly Belief
   const exam = db.exams[examId];
   const h0 = entropy(beliefs);
   const shares = beliefs.map(b => sharesFor(db, b.id, ctx));
+  // P(«есть» | кандидат) для каждого кандидата
+  const yesOf = (check: ExamCheck) => beliefs.map((b, i) => {
+    const set = [b.id, ...(db.conditions[b.id].requires ?? []), ...ctx.knownConditions];
+    const p = findingProbability(db, check.f, set, ctx.knownRisks, unknownMiss(ctx, check.f, shares[i]));
+    return (check.sens / P_ONE) * p + (1 - check.spec / P_ONE) * (1 - p);
+  });
+  const shownP = (yes: readonly number[]) => beliefs.reduce((a, b, i) => a + b.p * yes[i], 0);
   let gain = 0;
   for (const check of exam.checks) {
     if (observed.has(check.f) || db.findings[check.f]?.evidence === false) continue;
-    const sens = check.sens / P_ONE;
-    const spec = check.spec / P_ONE;
-    // P(«есть» | кандидат) для каждого кандидата
-    const yes = beliefs.map((b, i) => {
-      const set = [b.id, ...(db.conditions[b.id].requires ?? []), ...ctx.knownConditions];
-      const p = findingProbability(db, check.f, set, ctx.knownRisks, unknownMiss(ctx, check.f, shares[i]));
-      return sens * p + (1 - spec) * (1 - p);
-    });
-    let pYes = 0;
-    beliefs.forEach((b, i) => (pYes += b.p * yes[i]));
+    const yes = yesOf(check);
+    const pYes = shownP(yes);
     const hGiven = (shown: boolean) => {
       const norm = shown ? pYes : 1 - pYes;
       if (norm <= 0) return 0;
       return entropy(beliefs.map((b, i) => ({ id: b.id, p: (b.p * (shown ? yes[i] : 1 - yes[i])) / norm })));
     };
-    gain += h0 - (pYes * hGiven(true) + (1 - pYes) * hGiven(false));
+    // уточнение (часть 41в) скажет что-то, только если покажут признак, после которого его проверяют
+    const base = check.given !== undefined ? exam.checks.find(c => c.f === check.given) : undefined;
+    gain += (h0 - (pYes * hGiven(true) + (1 - pYes) * hGiven(false))) * (base ? shownP(yesOf(base)) : 1);
   }
   return Math.max(0, gain);
 }

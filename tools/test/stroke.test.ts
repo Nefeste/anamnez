@@ -97,7 +97,8 @@ describe('каталог: инсульт, КТ-ангиография, тром�
 
   test('КТ-ангиография — в кабинете КТ: кровь и окклюзия за один заход; тест глотания и расспрос — при признаках инсульта', () => {
     expect(db.exams[CTA]).toMatchObject({ kind: 'imaging', room: 'room.ct', equipment: ['eq.ct_16', 'eq.ct_64'], radiation: 'high', time: { procedure: 12, report: 18 }, cost: 6000 });
-    expect(db.exams[CTA].checks).toEqual([{ f: 'img.ct_blood', sens: 9500, spec: 10000 }, { f: OCCLUSION, sens: 9500, spec: 9700 }]);
+    // первая серия — КТ без контраста, с уточнениями крови (часть 41в)
+    expect(db.exams[CTA].checks).toEqual([...db.exams[CT].checks, { f: OCCLUSION, sens: 9500, spec: 9700 }]);
     expect(db.rooms['room.ct'].exams).toEqual([CT, CTA]);
     expect(db.exams[SWALLOW]).toMatchObject({ kind: 'bedside', complaints: SYMS, checks: [{ f: 'sign.dysphagia', sens: 7200, spec: 7100 }] });
     expect(db.exams[ASK]).toMatchObject({ complaints: SYMS, routineFor: SYMS });
@@ -113,11 +114,13 @@ describe('каталог: инсульт, КТ-ангиография, тром�
     expect(t.companions ?? []).toEqual([]);
     expect(t.contraindications.map(k => [k.id, k.level])).toEqual([['risk.anticoagulants', 'absolute'], ['risk.bleeding_tendency', 'absolute']]);
     expect([txAvailable(db, LYSIS), txAvailable(db, LYSIS, BAY)]).toEqual([false, true]);
-    expect(t.effects.map(e => [e.p, e.when])).toEqual([
+    expect(t.effects.filter(e => e.kind === 'cure').map(e => [e.p, e.when])).toEqual([
       [2200, { window: ['yes'], lysis90: ['yes'], minor: ['no'] }],
       [1100, { window: ['yes'], lysis90: ['no'], lysis180: ['yes'], minor: ['no'] }],
       [500, { window: ['yes'], lysis180: ['no'], minor: ['no'] }],
     ]);
+    // при кровоизлиянии в мозг — вред (часть 41в): кровотечение
+    expect(t.effects.filter(e => e.kind === 'harm').map(e => e.on)).toEqual(['cond.ich', 'cond.sah']);
     // у инфаркта — своё имя
     expect(db.treatments['tx.thrombolysis'].name.ru).toBe('Тромболизис при инфаркте');
   });
@@ -411,10 +414,11 @@ describe('сроки', () => {
   test('осмотр — 10 минут, КТ или КТ-ангиография — 40, тест глотания — 3 часа, и только тем, кто остаётся у нас', () => {
     // с частью 41б осмотр и КТ — и при прошедших слабости и нарушении речи: всем с подозрением на ОНМК
     const onmk = [...SYMS, 'sym.transient_weakness', 'sym.transient_speech'];
-    expect([db.targets['target.stroke_exam'], db.targets['target.stroke_ct'], db.targets['target.stroke_swallow']].map(t => [t.complaints, t.exams, t.minutes, t.stays ?? false])).toEqual([
-      [onmk, [NEURO], 10, false],
-      [onmk, [CT, CTA], 40, false],
-      [SYMS, [SWALLOW], 180, true],
+    // с частью 41в КТ — и при внезапной сильнейшей головной боли, и всем, у кого КТ показала кровь
+    expect([db.targets['target.stroke_exam'], db.targets['target.stroke_ct'], db.targets['target.stroke_swallow']].map(t => [t.complaints, t.findings, t.exams, t.minutes, t.stays ?? false])).toEqual([
+      [onmk, [], [NEURO], 10, false],
+      [[...onmk, 'sym.thunderclap'], ['img.ct_blood'], [CT, CTA], 40, false],
+      [SYMS, [], [SWALLOW], 180, true],
     ]);
     const p = find(x => x.complaints.includes('sym.weakness_one_side'));
     const at = { roomType: () => undefined, bedside: () => false };
@@ -664,7 +668,8 @@ describe('энциклопедия', () => {
     const t = article(db, LYSIS)!;
     expect(t.blocks.find(b => b.key === 'where')!.refs!.map(r => r.id)).toEqual([MONITOR, 'room.emergency', 'room.icu']);
     const used = t.blocks.find(b => b.key === 'usedAs')!.rows!.map(r => [r.label, r.refs.map(x => x.id)]);
-    expect(used).toEqual([['Обязательно при', [STROKE]], ['Обязательно до перевода при', [STROKE]]]);
+    // с частью 41в — опасно при кровоизлияниях в мозг: кровь на КТ — абсолютное противопоказание
+    expect(used).toEqual([['Опасно при', ['cond.ich', 'cond.sah']], ['Обязательно при', [STROKE]], ['Обязательно до перевода при', [STROKE]]]);
     expect(article(db, 'rule.lysis_stroke')!.blocks.find(b => b.key === 'decides')!.refs!.map(r => r.id)).toEqual([LYSIS]);
     expect(article(db, CTA)!.blocks.find(b => b.key === 'where')!.refs!.map(r => r.id)).toEqual(['room.ct', 'eq.ct_16', 'eq.ct_64']);
     expect(article(db, 'room.ct')!.blocks.flatMap(b => b.refs ?? []).map(r => r.id)).toContain(CTA);

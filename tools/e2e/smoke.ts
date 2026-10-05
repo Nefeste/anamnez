@@ -503,6 +503,20 @@ function tiaSave(): { save: string; id: string } {
   return neuroSave('cond.tia', fits, ['exam.neuro_exam', 'exam.ask_tia', 'exam.vitals', 'exam.ask_chronic', 'exam.ct_head', 'exam.ask_allergies']);
 }
 
+/**
+ * Песочница с приёмным, КТ и ПИТ (часть 41в): первая машина скорой везёт внутримозговое кровоизлияние —
+ * гематома до 30 см³, давление 140 и выше, без антикоагулянтов и без нарушения глотания; осмотр,
+ * расспрос, давление, КТ, вопросы перед тромболизисом и тест глотания готовы.
+ */
+function ichSave(): { save: string; id: string } {
+  const fits = (x: ReturnType<typeof generatePatient>) => {
+    const c = x.truth.conditions[0].params;
+    return x.age >= 40 && c.volume === 'small' && c.sbp140 === 'no' && c.reversal === 'no' && c.dysphagia === 'no'
+      && x.complaints.includes('sym.weakness_one_side') && !x.truth.risks.includes('risk.allergy_nsaid');
+  };
+  return neuroSave('cond.ich', fits, ['exam.neuro_exam', 'exam.ask_stroke', 'exam.vitals', 'exam.ct_head', 'exam.ask_lysis', 'exam.swallow_test']);
+}
+
 /** Больница с приёмным, КТ и ПИТ; первую машину скорой подменяет больной `primary`, для которого верно `fits`; сделаны `exams`. */
 function neuroSave(primary: string, fits: (x: ReturnType<typeof generatePatient>) => boolean, exams: string[]): { save: string; id: string } {
   const { db } = buildDb();
@@ -878,14 +892,15 @@ try {
   await allDrawn(90_000);
   await page.screenshot({ path: join(OUT, '06-imaging.png'), fullPage: true });
   check(true, 'П5: экран снимков открылся (смотреть 06-imaging.png)');
+  // с частью 41в — и кровь в бороздах, и большая гематома со смещением: срезов головы 9
   const heads = await drawn('[data-testid^="head-ct-"] canvas, [data-testid^="head-mri-"] canvas');
   const us = await drawn('[data-testid^="us-"] canvas');
   const abd = await drawn('[data-testid^="abd-"] canvas');
   // снимок груди при травме (часть 32в): воздух, кровь, переломы рёбер
   const chest = await drawn('[data-testid^="chest-"] canvas');
   const allImages = await drawn('canvas');
-  check(heads.length === 7 && heads.every(Boolean) && us.length === 16 && us.every(Boolean) && abd.length === 3 && abd.every(Boolean) && chest.length === 7 && chest.every(Boolean) && allImages.every(Boolean),
-    `П5: срезы головы нарисованы — ${heads.filter(Boolean).length} из 7, УЗИ — ${us.filter(Boolean).length} из 16 (с венами и артерией ног), снимки живота — ${abd.filter(Boolean).length} из 3, груди при травме — ${chest.filter(Boolean).length} из 7; все рисунки экрана — ${allImages.filter(Boolean).length} из ${allImages.length} (смотреть 06-head-*.png, 06-us.png, 06-abdomen.png, 06-chest.png)`);
+  check(heads.length === 9 && heads.every(Boolean) && us.length === 16 && us.every(Boolean) && abd.length === 3 && abd.every(Boolean) && chest.length === 7 && chest.every(Boolean) && allImages.every(Boolean),
+    `П5: срезы головы нарисованы — ${heads.filter(Boolean).length} из 9, УЗИ — ${us.filter(Boolean).length} из 16 (с венами и артерией ног), снимки живота — ${abd.filter(Boolean).length} из 3, груди при травме — ${chest.filter(Boolean).length} из 7; все рисунки экрана — ${allImages.filter(Boolean).length} из ${allImages.length} (смотреть 06-head-*.png, 06-us.png, 06-abdomen.png, 06-chest.png)`);
   // ЭКГ в двенадцати отведениях (spec 2026-10-chapter-3, часть 36): ритмы, проведение, стенки инфаркта
   const ecg = await drawn('[data-testid^="ecg-"] canvas');
   check(ecg.length === 19 && ecg.every(Boolean), `П5: листы ЭКГ в двенадцати отведениях нарисованы — ${ecg.filter(Boolean).length} из 19 (смотреть 06-ecg-*.png)`);
@@ -1873,6 +1888,49 @@ try {
   await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
   const strokeRisk = await page.locator('text=ишемический инсульт у 12').first().isVisible().catch(() => false);
   check((await visibleText(page, 'enc-article-title')) === 'Транзиторная ишемическая атака' && strokeRisk, `энциклопедия, ТИА: ${await visibleText(page, 'enc-article-title')} — риск инсульта по группам`);
+
+  // внутримозговое кровоизлияние (часть 41в): у вас — привезённая скорой гематома до 30 см³; в карте — КТ с
+  // кровью и гематомой в полушарии с объёмом, срез, «тромболизис нельзя» и правило об антикоагулянте; давление
+  // в вену у постели, консультация нейрохирурга и «В ПИТ» — разбор без замечаний, со сроком нейрохирурга; в
+  // энциклопедии — перевод при гематоме больше 30 см³
+  const hv = ichSave();
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', hv.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId('shift-continue').waitFor({ timeout: 15_000 });
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId('shift-continue').click();
+  await visible(page, 'visit-decide').waitFor({ timeout: 10_000 });
+  const ichCard = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  check(ichCard.includes('Внутри черепа свежая кровь') && /Гематома в (правом|левом) полушарии — \d+ см³/.test(ichCard) && ichCard.includes('Тромболизис нельзя: кровь внутри черепа')
+    && ichCard.includes('Антикоагулянтов не принимает — нейтрализовать нечего'),
+    `ВМК: в карте — КТ с гематомой, «тромболизис нельзя» и правило об антикоагулянте («${ichCard.replace(/\n/g, ' · ').slice(0, 300)}»)`);
+  await visible(page, 'result-ct').scrollIntoViewIfNeeded();
+  check((await visible(page, 'result-ct').boundingBox() ?? { height: 0 }).height > 150, 'ВМК: КТ — срезом головы');
+  await page.screenshot({ path: join(OUT, '21-ich-card.png'), fullPage: true });
+  await visible(page, 'visit-decide').click();
+  await visible(page, 'dx-cond.ich').click();
+  await visible(page, 'decision-to-plan').click();
+  await page.getByTestId('tx-tx.bp_iv').waitFor({ timeout: 5000 });
+  check(!(await page.getByTestId('tx-tx.bp_iv').isDisabled()), `ВМК, решение: давление в вену у постели под монитором — ${await text(page, 'tx-tx.bp_iv')}`);
+  await page.getByTestId('tx-tx.bp_iv').click();
+  await page.getByTestId('tx-tx.nsg_consult').click();
+  await page.getByTestId('setting-icu').click();
+  await page.screenshot({ path: join(OUT, '21-ich-decision.png'), fullPage: true });
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
+  const ichReview = await page.locator('body').innerText();
+  check(ichReview.includes('Внутримозговое кровоизлияние') && ichReview.includes('Консультация нейрохирурга при кровоизлиянии') && !/Не назначено|не показано|вредно|Недооценили тяжесть/.test(ichReview),
+    `ВМК: давление, нейрохирург и ПИТ, разбор — «${ichReview.replace(/\n/g, ' · ').slice(0, 300)}»`);
+  await page.screenshot({ path: join(OUT, '21-ich-review.png'), fullPage: true });
+  await page.goto(`${base}/encyclopedia/article/cond.ich`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const ichWhere = await page.locator('text=При гематоме больше 30').first().isVisible().catch(() => false);
+  check((await visibleText(page, 'enc-article-title')) === 'Внутримозговое кровоизлияние' && ichWhere, `энциклопедия, ВМК: ${await visibleText(page, 'enc-article-title')} — перевод при гематоме больше 30 см³`);
 
   // хирургия живота (spec 2026-09-chapter-2, часть 30): со смотровой приёмного больница принимает
   // и хирургию — у вас больной острым холециститом; УЗИ — желчный пузырь с камнями и толстой

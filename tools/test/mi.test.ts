@@ -175,11 +175,11 @@ describe('правило «Можно ли тромболизис»', () => {
 });
 
 describe('тромболизис у постели', () => {
-  test('только под монитором с дефибриллятором — и при инсульте (часть 41а); остальное лечение — где угодно', () => {
+  test('только под монитором с дефибриллятором — и при инсульте (часть 41а), и снижение давления в вену (часть 41в); остальное лечение — где угодно', () => {
     expect(txAvailable(db, LYSIS)).toBe(false);
     expect(txAvailable(db, LYSIS, BAY)).toBe(true);
     expect(txAvailable(db, LYSIS, { bedside: ['eq.ecg'] })).toBe(false);
-    expect(Object.values(db.treatments).filter(t => !txAvailable(db, t.id)).map(t => t.id)).toEqual([LYSIS, 'tx.thrombolysis_stroke']);
+    expect(Object.values(db.treatments).filter(t => !txAvailable(db, t.id)).map(t => t.id).sort()).toEqual(['tx.bp_iv', LYSIS, 'tx.thrombolysis_stroke'].sort());
   });
 
   test('в карте: без монитора у постели кнопка серая и сказано почему; под монитором — обычная', () => {

@@ -14,13 +14,19 @@ export const BANDS = {
 } as const;
 export type Band = keyof typeof BANDS;
 
-/** Распространённость → относительный вес основного заболевания. */
+/**
+ * Распространённость → относительный вес основного заболевания. С частью 41в (spec 2026-10-chapter-3)
+ * — ещё две полосы для редких угроз жизни: скорая везёт тяжёлых охотнее, и внутримозговое и
+ * субарахноидальное кровоизлияние иначе приходили бы втрое-вдесятеро чаще, чем по 523_3.
+ */
 export const PREVALENCE = {
   very_common: 1000,
   common: 300,
   uncommon: 100,
   rare: 30,
   very_rare: 10,
+  extremely_rare: 3,
+  ultra_rare: 1,
 } as const;
 
 const band = z.enum(Object.keys(BANDS) as [Band, ...Band[]]);
@@ -42,7 +48,8 @@ const source = z.strictObject({
 });
 const weights = z.record(z.string(), z.number().int().positive());
 const attrSpec = z.union([
-  z.string().regex(/^\$[a-z_]+$/, 'ссылка на параметр пишется как $имя'),
+  // «-$имя» — сторона напротив (spec 2026-10-chapter-3, часть 41в): гематома — в полушарии напротив слабости
+  z.string().regex(/^-?\$[a-z_]+$/, 'ссылка на параметр пишется как $имя, сторона напротив — как -$имя'),
   weights,
 ]);
 const link = z.strictObject({
@@ -117,7 +124,8 @@ export const conditionSchema = z.strictObject({
      * `clock` (spec 2026-10-chapter-3, часть 41а) — порог по числу с ходом времени: к часам от
      * начала прибавляются часы от прихода до решения; окно тромболизиса — 4,5 часа до его начала
      */
-    z.strictObject({ f: z.string().regex(/^[a-z]+\.[a-z0-9_]+$/), below: z.number(), clock: z.literal(true).optional() }),
+    // `seen` (часть 41в) — разбор судит по измеренному: давление снижают по тонометру
+    z.strictObject({ f: z.string().regex(/^[a-z]+\.[a-z0-9_]+$/), below: z.number(), clock: z.literal(true).optional(), seen: z.literal(true).optional() }),
     /**
      * по другим параметрам (часть 41а): «yes», если у каждого из `all` — одно из названных значений;
      * тромбэктомия — окклюзия, NIHSS 6 и больше и меньше 6 часов от начала
@@ -182,6 +190,12 @@ export const conditionSchema = z.strictObject({
      * (часть 39в: антикоагулянт при ОКС без подъёма ST)
      */
     require: required.optional(),
+    /**
+     * обязательно и при переводе — сделать до него (spec 2026-10-chapter-3, часть 41в: консультация
+     * нейрохирурга при кровоизлиянии — и тем, кого оставляют, и тем, кого переводят); по параметру —
+     * в его записи
+     */
+    beforeTransfer: z.array(txId).min(1).optional(),
     /**
      * тактика по скрытому параметру (spec 2026-09-chapter-2, часть 32): при таких значениях у
      * названных здесь лечений — эта роль, у остальных — из общих списков; своё типичное назначение
@@ -377,8 +391,12 @@ export const examSchema = z.strictObject({
   ageMax: z.number().int().min(0).max(120).optional(),
   /** кому делают: только пришедшим с одной из этих жалоб (часть 32г: расспрос о травме головы) */
   complaints: z.array(z.string().regex(/^sym\.[a-z0-9_]+$/)).min(1).optional(),
-  /** чувствительность и специфичность — в процентах */
-  checks: z.array(z.strictObject({ f: z.string(), sens: accuracy, spec: accuracy })).min(1),
+  /**
+   * чувствительность и специфичность — в процентах; `given` (spec 2026-10-chapter-3, часть 41в) —
+   * уточнение: проверяют, только если это же обследование показало тот признак (объём гематомы —
+   * когда на КТ кровь)
+   */
+  checks: z.array(z.strictObject({ f: z.string(), sens: accuracy, spec: accuracy, given: z.string().optional() })).min(1),
   /**
    * у постели (spec 2026-10-chapter-3, часть 37): лежащему в смотровой приёмного, где стоит этот
    * аппарат, обследование делают на месте — врачом, без очереди в кабинет и без описания
@@ -412,10 +430,14 @@ export const treatmentSchema = z.strictObject({
   /** как вводят; `sc` — под кожу (часть 33а: низкомолекулярный гепарин, фондапаринукс натрия) */
   route: z.enum(['oral', 'inhaled', 'nasal', 'iv', 'im', 'sc']).optional(),
   cost: z.number().int().min(0),
-  /** cure — действует на причину: переводит болезнь к выздоровлению с вероятностью за столько дней */
+  /**
+   * cure — действует на причину: переводит болезнь к выздоровлению с вероятностью за столько дней;
+   * harm (spec 2026-10-chapter-3, часть 41в) — вредит при этой болезни: с такой вероятностью
+   * реакция, как при противопоказании (тромболизис при кровоизлиянии в мозг — кровотечение)
+   */
   effects: z.array(z.strictObject({
     on: z.string().regex(/^cond\.[a-z0-9_]+$/),
-    kind: z.enum(['cure', 'relieve']),
+    kind: z.enum(['cure', 'relieve', 'harm']),
     band: probability,
     days: z.tuple([z.number().int().min(0), z.number().int().min(0)]),
     /** действует, только если у болезни такое значение скрытого параметра (часть 30в: без ишемии кишки) */
