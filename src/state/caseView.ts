@@ -11,7 +11,7 @@ import { type Belief, contextOf, knownFacts, posterior } from '@/engine/med/infe
 import { bedsideLack, type PlanEval } from '@/engine/med/plan';
 import type { ReviewData } from '@/engine/med/review';
 import { type CaseScore, type Grade, type ScoreNote, worstGrade } from '@/engine/med/score';
-import { checkRule, knownOf, rulesFor } from '@/engine/med/rules';
+import { ageBand, checkRule, knownOf, rulesFor } from '@/engine/med/rules';
 import { complaintText, observationText } from '@/engine/med/text';
 import type { Observation, Patient } from '@/engine/med/types';
 import type { TargetResult } from '@/engine/shift/targets';
@@ -283,8 +283,9 @@ const TX_GROUPS: [string, string[]][] = [
   ['nose', ['nasal', 'steroid.intranasal', 'antihistamine']],
   // сердце и сосуды: с частью 33а — антикоагулянты, компрессионный трикотаж и гель при тромбофлебите;
   // с частью 33б — эпинефрин при анафилактическом шоке (АТХ C01CA24 — сердечно-сосудистая система);
-  // с частью 39а — тромболизис при инфаркте; с частью 39г — статин (АТХ C10 — сердечно-сосудистая система)
-  ['heart', ['antihypertensive', 'antiplatelet', 'antianginal', 'anticoagulant', 'vascular', 'adrenergic', 'thrombolytic', 'lipid']],
+  // с частью 39а — тромболизис при инфаркте; с частью 39г — статин (АТХ C10 — сердечно-сосудистая система);
+  // с частью 42а — кардиоверсия, амиодарон и верапамил при фибрилляции предсердий
+  ['heart', ['antihypertensive', 'antiplatelet', 'antianginal', 'anticoagulant', 'vascular', 'adrenergic', 'thrombolytic', 'lipid', 'antiarrhythmic']],
   ['digestive', ['acid']],
   // растворы для питья и капельница (часть 32д-2): и при кишечной инфекции, и при обширном ожоге
   ['fluids', ['rehydration']],
@@ -405,13 +406,15 @@ function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observat
   if (exam === 'exam.ecg') {
     const pulse = known.find(o => o.f === 'vital.tachycardia' && o.value !== undefined)?.value;
     const stemi = shown('ecg.st_elevation');
+    // фибрилляция или трепетание (часть 42а) — по виду в строке находки: пилообразные волны F
+    const af = shown('ecg.af');
     return {
       kind: 'ecg',
       seed,
       // на ленте — то же, что в строках находок: депрессия ST с инверсией T — в V4–V6
       ecg: {
         rate: pulse !== undefined ? Math.round(pulse) : 72,
-        ...(shown('ecg.af') ? { rhythm: 'af' as const } : {}),
+        ...(af ? { rhythm: af.attrs?.kind === 'flutter' ? ('flutter' as const) : ('af' as const) } : {}),
         ...(stemi ? { stemi: wallOf(stemi.attrs?.wall) } : {}),
         ...(shown('ecg.st_depression') ? { stDepression: true, tInversion: 'lateral' as const } : {}),
         ...(shown('ecg.lvh') ? { lvh: true } : {}),
@@ -556,13 +559,17 @@ function rulesOf(p: Patient, obs: readonly Observation[]): VisitView['rules'] {
   const names = (ids: Id[]) => ids.map(f => lowerFirst(db.findings[f].name.ru));
   const known = knownOf(obs);
   return rulesFor(db, p).map(r => {
-    const x = checkRule(r, p.age, known);
+    const x = checkRule(r, p, known);
     const age = r.age?.main !== undefined ? t.ruleAgeOver(r.age.main) : r.age?.from !== undefined ? t.ruleAgeFrom(r.age.from) : undefined;
     const main = [...names(x.main), ...(x.ageMain && age ? [age] : [])];
     const minor = [...names(x.minor), ...(x.ageMinor && r.age?.minor ? [t.ruleAgeRange(r.age.minor[0], r.age.minor[1])] : [])];
     // шкала с баллами (часть 41б): сколько набрано и за какие пункты
     const counted = (r.points?.items ?? []).filter(i => known(i.f) === true && !(i.unless ?? []).some(u => known(u) === true)).map(i => i.f);
-    const scored = r.points && x.points ? t.rulePoints(x.points.min, [...(r.points.age && p.age >= r.points.age.from ? [t.ruleAgeFrom(r.points.age.from)] : []), ...names(counted)].join(', ')) : undefined;
+    // возраст — по своей полосе, пол — если за него балл (часть 42а: CHA₂DS₂-VASc)
+    const band = r.points ? ageBand(r.points, p.age) : undefined;
+    const byAge = band ? [band.to !== undefined ? t.ruleAgeRange(band.from, band.to) : t.ruleAgeFrom(band.from)] : [];
+    const bySex = r.points?.sex?.[p.sex] ? [t.ruleSex(p.sex)] : [];
+    const scored = r.points && x.points ? t.rulePoints(x.points.min, [...byAge, ...bySex, ...names(counted)].join(', ')) : undefined;
     const why = scored ?? (main.length > 0 ? main.join(', ') : t.ruleMinor(minor.join(', ')));
     const no = x.points && x.points.min === x.points.max && x.applies !== false ? t.rulePointsNo(x.points.min, r.texts.no.ru) : r.texts.no.ru;
     const text =
@@ -697,7 +704,9 @@ export function outcomeText(outcome: Outcome, setting: Setting, female: boolean)
     case 'recovered': return outcome.settled === 'clear' ? out.settledClear(outcome.day) : outcome.settled === 'residual' ? out.settledResidual(outcome.day) : out.recovered(outcome.day, female);
     case 'improved': return out.improved(female);
     case 'unchanged': return out.unchanged;
-    case 'worse': return outcome.returns?.as ? out.worseAs(outcome.day, lowerFirst(db.conditions[outcome.returns.as]?.name.ru ?? '')) : out.worse(outcome.day);
+    case 'worse':
+      if (outcome.returns?.as && outcome.harmBy) return out.worseAfter(outcome.day, lowerFirst(db.conditions[outcome.returns.as]?.name.ru ?? ''), db.treatments[outcome.harmBy]?.name.ru ?? outcome.harmBy);
+      return outcome.returns?.as ? out.worseAs(outcome.day, lowerFirst(db.conditions[outcome.returns.as]?.name.ru ?? '')) : out.worse(outcome.day);
     case 'reaction': return outcome.reaction ? out.reaction(db.treatments[outcome.reaction.tx].name.ru, riskName(outcome.reaction.by)) : out.unchanged;
     case 'transferred':
       if (outcome.severe) return out.transferredSevere(female);

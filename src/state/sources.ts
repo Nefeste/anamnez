@@ -11,10 +11,14 @@ export interface SourceGroup {
 /** Порядок разделов: сначала рекомендации, на которых база стоит. */
 const ORDER: Source['kind'][] = ['guideline', 'textbook', 'review', 'paper', 'score', 'dataset'];
 
-/** «Минздрав РФ. Название, 2024» — год, если его нет в самом названии. */
+/**
+ * «Минздрав РФ. Название, 2024» — год, если его нет в самом названии. Название с точкой в конце, как
+ * в рубрикаторе (`687_3`), — перед годом без неё: не «… путей., 2025».
+ */
 export function sourceLine(s: Source): string {
   const year = s.year !== undefined && !s.title.includes(String(s.year)) ? `, ${s.year}` : '';
-  return `${s.org ? `${s.org}. ` : ''}${s.title}${year}`;
+  const title = year && s.title.endsWith('.') ? s.title.slice(0, -1) : s.title;
+  return `${s.org ? `${s.org}. ` : ''}${title}${year}`;
 }
 
 export function sourceGroups(db: ContentDb): SourceGroup[] {

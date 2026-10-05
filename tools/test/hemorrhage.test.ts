@@ -302,7 +302,7 @@ describe('тактика и разбор', () => {
 
   test('тромболизис при кровоизлиянии — кровотечение: дома — реакция и возврат, в ПИТ — реакция на обходе', () => {
     const p = find(ICH);
-    expect(harmsOf(db, paramsOf(p) && p.truth.conditions[0], [LYSIS, BP])).toEqual([{ tx: LYSIS, p: 7500 }]);
+    expect(harmsOf(db, paramsOf(p) && p.truth.conditions[0], [LYSIS, BP])).toEqual([{ tx: LYSIS, p: 7500, days: [0, 1] }]);
     let reactions = 0;
     for (let i = 0; i < 200; i++) {
       const plan = ICU([LYSIS], 'home');

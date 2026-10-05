@@ -23,7 +23,8 @@ interface Clinrec {
   age: number;
 }
 
-const norm = (s: string) => s.replace(/\s+/g, ' ').replace(/ё/g, 'е').trim().toLowerCase();
+// «й» в рубрикаторе бывает записана двумя знаками — «и» и кратка (у 382_2): сравнивают после NFC
+const norm = (s: string) => s.normalize('NFC').replace(/\s+/g, ' ').replace(/ё/g, 'е').trim().toLowerCase();
 
 type Source = { org?: string; title: string; url?: string; year?: number; note?: string };
 export type Cited = { title: string; url?: string; year?: number; note?: string; files: string[] };

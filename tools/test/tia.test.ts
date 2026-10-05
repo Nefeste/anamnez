@@ -91,7 +91,7 @@ describe('каталог', () => {
         { f: BP, w: 1 }, { f: WEAK, w: 2 }, { f: SPEECH, w: 1, unless: [WEAK] },
         { f: LONG, w: 2 }, { f: MID, w: 1 }, { f: DIAB, w: 1 },
       ],
-      age: { from: 60, w: 1 },
+      age: [{ from: 60, w: 1 }],
       from: 4,
     });
     expect(r).toMatchObject({ complaints: [WEAK, SPEECH], decides: CLOP, about: [TIA], exams: [] });

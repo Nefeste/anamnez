@@ -28,7 +28,7 @@ import { choosePlan, decisionLimit, examMinutes, MIN_GAIN, nextStep, runDoctor, 
 import {
   apply, candidatesOf, current, freeBeds, hospitalCtx, inpatientsOf, moreUrgent, newCampaign, observationsOf, operationOf, targetPlace,
 } from '../../src/engine/shift/engine';
-import { targetStart, targetsFor } from '../../src/engine/shift/targets';
+import { minutesTo, targetStart, targetsFor } from '../../src/engine/shift/targets';
 import { type Command, DAY, SHIFT_END, type ShiftPatient, type ShiftState } from '../../src/engine/shift/types';
 import { daysIn, wardState } from '../../src/engine/shift/ward';
 import { buildDb } from '../content/load';
@@ -123,6 +123,29 @@ function minutesLeft(s: ShiftState, p: ShiftPatient): number | undefined {
   return left.length > 0 ? Math.min(...left) : undefined;
 }
 
+/**
+ * Кого звать (spec 2026-10-chapter-3, часть 42а): разумный из тех, кто в очереди первым по срочности, —
+ * того, у кого раньше кончается идущий срок (ЭКГ при боли в груди — 10 минут от прихода): вернувшийся
+ * с результатами той же срочности стоит в очереди раньше привезённого, а ему срок не нужен. Сроков нет —
+ * первого в очереди.
+ */
+function firstDue(s: ShiftState): string {
+  const rank = (p: ShiftPatient) => (p.triaged === false ? 'green' : p.triage);
+  const top = rank(s.patients[s.queue[0]]);
+  let best: { id: string; left: number } | undefined;
+  for (const id of s.queue) {
+    const p = s.patients[id];
+    if (rank(p) !== top) continue;
+    for (const t of targetsFor(db, p, targetPlace(db, s, p))) {
+      const start = targetStart(p, t);
+      if (start === undefined || minutesTo(p, t) !== undefined) continue;
+      const left = t.minutes - (s.t - start) / 60;
+      if (!best || left < best.left) best = { id, left };
+    }
+  }
+  return best?.id ?? s.queue[0];
+}
+
 function beliefsOf(s: ShiftState, p: ShiftPatient) {
   const obs = observationsOf(p);
   return { obs, beliefs: posterior(db, candidatesOf(db, p.departments ?? s.meta.department), obs, contextOf(db, p.patient, obs)) };
@@ -166,7 +189,7 @@ function playDay(s: ShiftState, player: Player) {
     }
     const waiting = Object.values(s.patients).some(p => p.status === 'away' || p.status === 'coming' || (p.kind === 'ambulance' && p.status === 'waiting' && !p.sorted));
     if (s.t % DAY >= SHIFT_END && s.queue.length === 0 && !s.current && !waiting) break;
-    if (!s.current && s.queue.length > 0) step({ kind: 'call', id: s.queue[0] });
+    if (!s.current && s.queue.length > 0) step({ kind: 'call', id: player === 'rational' ? firstDue(s) : s.queue[0] });
     const p = current(s);
     if (!p) {
       step({ kind: 'advance', seconds: 60 });

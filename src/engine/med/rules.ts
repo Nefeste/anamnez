@@ -7,7 +7,37 @@
 // считает по тому, что известно; диагноз оно не ставит. С частью 41б — шкала с баллами: у пункта
 // свой вес (ABCD2 после транзиторной ишемической атаки), правило выполнено от порога.
 import type { ContentDb, Id, Rule, RulePoints } from '../../content/types';
-import type { Observation } from './types';
+import type { Observation, Sex } from './types';
+
+/**
+ * О ком правило (часть 42а): возраст и, если шкала считает пол, пол — CHA₂DS₂-VASc даёт балл
+ * женщине, и порог у неё свой. Число — только возраст: так считают правила без пола.
+ */
+export type Who = number | { age: number; sex?: Sex };
+
+export const whoOf = (w: Who): { age: number; sex?: Sex } => (typeof w === 'number' ? { age: w } : { age: w.age, ...(w.sex ? { sex: w.sex } : {}) });
+
+/**
+ * Полоса возраста шкалы (части 41б и 42а): последняя, до которой дорос, — с какого возраста, до
+ * какого (у последней верхней нет) и сколько баллов. Не дорос ни до одной — нет.
+ */
+export function ageBand(p: RulePoints, age: number): { from: number; to?: number; w: number } | undefined {
+  const bands = p.age ?? [];
+  let i = bands.length - 1;
+  while (i >= 0 && age < bands[i].from) i--;
+  if (i < 0) return undefined;
+  return { from: bands[i].from, ...(i + 1 < bands.length ? { to: bands[i + 1].from - 1 } : {}), w: bands[i].w };
+}
+
+/** Баллы за возраст: по полосе. */
+export function ageWeight(p: RulePoints, age: number): number {
+  return ageBand(p, age)?.w ?? 0;
+}
+
+/** Порог шкалы (часть 42а): свой у пола, иначе общий. */
+export function pointsFrom(p: RulePoints, sex?: Sex): number {
+  return (sex && p.fromSex?.[sex]) ?? p.from;
+}
 
 export type RuleVerdict = 'yes' | 'no' | 'unknown';
 
@@ -52,10 +82,12 @@ export function knownOf(observations: readonly Observation[]): Known {
  * Баллы шкалы по известному (часть 41б): пункт считается, если признак есть и нет ни одного из его
  * «не считается при». Непроверенные признаки перебираются: `min` и `max` — по всем ответам на них.
  */
-export function pointsOf(p: RulePoints, age: number, known: Known): { min: number; max: number; open: Id[] } {
+export function pointsOf(p: RulePoints, who: Who, known: Known): { min: number; max: number; open: Id[] } {
+  const { age, sex } = whoOf(who);
   const ids = [...new Set(p.items.flatMap(i => [i.f, ...(i.unless ?? [])]))];
   const open = ids.filter(f => known(f) === undefined);
-  const base = p.age && age >= p.age.from ? p.age.w : 0;
+  // возраст и пол известны всегда (часть 42а: женский пол — балл CHA₂DS₂-VASc)
+  const base = ageWeight(p, age) + (sex ? (p.sex?.[sex] ?? 0) : 0);
   let min = Infinity;
   let max = -Infinity;
   for (let mask = 0; mask < 1 << open.length; mask++) {
@@ -78,7 +110,10 @@ export function pointsOf(p: RulePoints, age: number, known: Known): { min: numbe
  * применимым: ждать проверки всего не нужно. `from` — свой порог баллов вместо порога шкалы: высокий
  * риск по ABCD2 — с 6 баллов, а двойная антиагрегантная терапия — с 4.
  */
-export function checkRule(rule: Rule, age: number, known: Known, from: number | undefined = rule.points?.from): RuleCheck {
+export function checkRule(rule: Rule, who: Who, known: Known, own?: number): RuleCheck {
+  const { age, sex } = whoOf(who);
+  // порог: свой у параметра (ABCD2: высокий риск — с 6), иначе у шкалы — с части 42а и по полу
+  const from = own ?? (rule.points ? pointsFrom(rule.points, sex) : undefined);
   const req = rule.requires ?? [];
   const excluded = (rule.excludes ?? []).some(f => known(f) === true);
   const applies = excluded ? false : req.length === 0 || req.some(f => known(f) === true) ? true : req.every(f => known(f) === false) ? false : undefined;
@@ -93,7 +128,7 @@ export function checkRule(rule: Rule, age: number, known: Known, from: number | 
   const mainOpen = rule.any.filter(f => known(f) === undefined);
   const minorOpen = minorAll.filter(f => known(f) === undefined);
   const minorCanReach = count + minorOpen.length >= need;
-  const pts = rule.points ? pointsOf(rule.points, age, known) : undefined;
+  const pts = rule.points ? pointsOf(rule.points, who, known) : undefined;
   const ptsHit = pts !== undefined && from !== undefined && pts.min >= from;
   const ptsCan = pts !== undefined && from !== undefined && pts.max >= from;
   const canHit = hit || ptsHit || mainOpen.length > 0 || minorCanReach || ptsCan;
@@ -129,9 +164,9 @@ export function rulesFor(db: ContentDb, patient: { complaints: readonly Id[]; ag
  * (832_2, раздел 2.4: правила решают, нужен ли снимок). Отрицательное правило снимок не запрещает:
  * «можно не делать» — и разумный врач делает его, только если снимок что-то добавит к диагнозу.
  */
-export function ruleExams(db: ContentDb, patient: { complaints: readonly Id[]; age: number }, observations: readonly Observation[]): Id[] {
+export function ruleExams(db: ContentDb, patient: { complaints: readonly Id[]; age: number; sex?: Sex }, observations: readonly Observation[]): Id[] {
   const known = knownOf(observations);
-  return [...new Set(rulesFor(db, patient).filter(r => checkRule(r, patient.age, known).verdict === 'yes').flatMap(r => r.exams))];
+  return [...new Set(rulesFor(db, patient).filter(r => checkRule(r, patient, known).verdict === 'yes').flatMap(r => r.exams))];
 }
 
 /**
@@ -144,13 +179,13 @@ export function ruleExams(db: ContentDb, patient: { complaints: readonly Id[]; a
  * правила уже сделано — решать, нужно ли оно, поздно: такое правило не доводят. Поровну — дешевле
  * (`cost`), потом по идентификатору. Разумный врач делает первое из них, страховая их оплачивает.
  */
-export function openRuleExams(db: ContentDb, patient: { complaints: readonly Id[]; age: number }, observations: readonly Observation[], cost: (exam: Id) => number = () => 0): Id[] {
+export function openRuleExams(db: ContentDb, patient: { complaints: readonly Id[]; age: number; sex?: Sex }, observations: readonly Observation[], cost: (exam: Id) => number = () => 0): Id[] {
   const known = knownOf(observations);
   const done = new Set(observations.map(o => o.exam));
   const covers = new Map<Id, number>();
   for (const r of rulesFor(db, patient)) {
     if (r.exams.length > 0 && r.exams.every(e => done.has(e))) continue;
-    const x = checkRule(r, patient.age, known);
+    const x = checkRule(r, patient, known);
     if (x.verdict !== 'unknown') continue;
     for (const f of x.left) for (const e of db.revealedBy[f] ?? []) covers.set(e, (covers.get(e) ?? 0) + 1);
   }

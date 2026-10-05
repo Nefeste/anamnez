@@ -176,7 +176,9 @@ describe('обследования ошибаются с заданной час
       const present = new Set(p.truth.findings.map(f => f.f));
       const obs = runExam(db, p, 'exam.vitals', Rng.seeded(i).fork('v'));
       for (const o of obs) {
-        const spec = db.findings[o.f].value!;
+        // не число (часть 42а: ритмичный ли пульс) — диапазонов нет
+        const spec = db.findings[o.f].value;
+        if (!spec) continue;
         // порог на чужом измерении (часть 33б): число — то, что показал тонометр, «есть» — если оно в
         // диапазоне порога
         if (spec.of) {

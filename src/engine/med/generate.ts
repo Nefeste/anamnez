@@ -5,7 +5,7 @@
 // меняются только там, где изменилась медицина.
 import { byRule, byValue, type Condition, type ContentDb, type Id, type Link, type Onset, type Risk, type Season } from '../../content/types';
 import { P_ONE, Rng } from '../core/rng';
-import { checkRule } from './rules';
+import { checkRule, type Who as RuleWho } from './rules';
 import type { ActiveCondition, Patient, Sex, TrueFinding } from './types';
 
 export interface GenContext {
@@ -112,7 +112,7 @@ export function generatePatient(db: ContentDb, seed: number, ctx: GenContext): P
   });
 
   const findings = oneMeasure(db, followers(db, unmasked(db, conditions, realizeFindings(db, again('findings'), conditions, risks))));
-  deriveParams(db, conditions, age, findings);
+  deriveParams(db, conditions, { age, sex }, findings);
   const values = realizeValues(db, again('values'), findings);
   // часы от начала (часть 39а): число признака — по долям записи, из своей ветви зерна
   if (primary.onset && findings.some(x => x.f === primary.onset!.f)) values[primary.onset.f] = onsetValue(primary.onset, root.fork('onset'));
@@ -220,18 +220,18 @@ function presentationDay(c: Condition, rng: Rng): { day: number; stage: string }
 /**
  * Производные параметры (spec 2026-09-chapter-2, часть 32г): «yes», если правило решения выполнено
  * на настоящих признаках и возрасте, иначе «no» — показана ли КТ при сотрясении; по баллам шкалы
- * (часть 41б) — если их не меньше порога параметра: высокий риск по ABCD2. Признаки от них не
- * зависят (валидатор), поэтому считаются после признаков; новых бросков нет. Уже посчитанные не
- * трогает: так при загрузке досчитываются пациенты из сохранений до появления параметра (часть 39в:
- * коронарография в первые сутки при ОКС).
+ * (часть 41б) — если их не меньше порога параметра: высокий риск по ABCD2; с частью 42а — и по полу
+ * (CHA₂DS₂-VASc). Признаки от них не зависят (валидатор), поэтому считаются после признаков; новых
+ * бросков нет. Уже посчитанные не трогает: так при загрузке досчитываются пациенты из сохранений до
+ * появления параметра (часть 39в: коронарография в первые сутки при ОКС).
  */
-export function deriveParams(db: ContentDb, conditions: ActiveCondition[], age: number, findings: readonly Pick<TrueFinding, 'f'>[]): void {
+export function deriveParams(db: ContentDb, conditions: ActiveCondition[], who: RuleWho, findings: readonly Pick<TrueFinding, 'f'>[]): void {
   const has = new Set(findings.map(x => x.f));
   for (const c of conditions) {
     for (const [name, d] of Object.entries(db.conditions[c.id].derived ?? {})) {
       const r = byRule(d);
       if (!r || c.params[name] !== undefined) continue;
-      c.params[name] = checkRule(db.rules[r.rule], age, f => has.has(f), r.from).verdict === 'yes' ? 'yes' : 'no';
+      c.params[name] = checkRule(db.rules[r.rule], who, f => has.has(f), r.from).verdict === 'yes' ? 'yes' : 'no';
     }
   }
 }

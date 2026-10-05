@@ -6,7 +6,7 @@ import { Rng } from '../core/rng';
 import { complaintObservations, examFits, runExam } from './exams';
 import { type Belief, contextOf, expectedGain, knownFacts, likelyParams, paramBeliefs, paramGain, posterior } from './infer';
 import { choiceFor, type Plan, possibleFor, settingOf, tacticsFor, txAvailable, type Venue, whenHolds } from './plan';
-import { openRuleExams, ruleExams } from './rules';
+import { openRuleExams, ruleExams, type Who } from './rules';
 import type { Observation, Patient } from './types';
 
 export type Strategy = 'rational' | 'lazy' | 'shotgun';
@@ -73,7 +73,7 @@ function askingExam(db: ContentDb, contraindication: Id): Id | undefined {
  * при сотрясении — перевод, а после КТ без крови — дома (часть 40). Операцию выбирают местом «В
  * операционную», не в назначении.
  */
-export function choosePlan(db: ContentDb, diagnosis: Id, observations: readonly Observation[], age: number, venue: Venue = {}): Plan {
+export function choosePlan(db: ContentDb, diagnosis: Id, observations: readonly Observation[], age: Who, venue: Venue = {}): Plan {
   const base = db.conditions[diagnosis]?.treatment;
   if (!base) return { treatments: [], setting: 'home' };
   // окна по часам — на минуту решения (часть 41а): пришёл через 3 часа, и полтора часа ушло на обследование
@@ -149,7 +149,7 @@ export function urgentExam(db: ContentDb, patient: Patient, done: readonly Id[],
 }
 
 /** Польза обследования для тактики болезни `condId` (часть 41а): лучшая по её параметрам тактики, биты. */
-function tacticGain(db: ContentDb, condId: Id, examId: Id, obs: readonly Observation[], age: number, minutes = 0): number {
+function tacticGain(db: ContentDb, condId: Id, examId: Id, obs: readonly Observation[], age: Who, minutes = 0): number {
   return tacticParams(db, condId).reduce((best, name) => Math.max(best, paramGain(db, condId, name, examId, obs, age, minutes)), 0);
 }
 
@@ -194,7 +194,7 @@ export function indicated(db: ContentDb, patient: Patient, obs: readonly Observa
   // уточняет тактику при самом вероятном диагнозе (часть 41а): окклюзию на КТ-ангиографии ищут при
   // NIHSS 6 и больше в первые 6 часов — от неё зависит перевод на тромбэктомию
   const top = beliefs[0];
-  return top !== undefined && quantize(tacticGain(db, top.id, examId, obs, patient.age, minutes)) >= quantize(MIN_GAIN);
+  return top !== undefined && quantize(tacticGain(db, top.id, examId, obs, patient, minutes)) >= quantize(MIN_GAIN);
 }
 
 /** Где разумный врач в приёме: ищет диагноз или, уже решив, спрашивает о противопоказаниях. */
@@ -257,7 +257,7 @@ export function tacticParams(db: ContentDb, condId: Id): string[] {
  * польза ниже `minGain` — не назначается. Перелом со штыкообразной деформацией — ещё снимок:
  * смещён он или нестабилен, решает он.
  */
-function tacticExam(db: ContentDb, diagnosis: Id, obs: readonly Observation[], age: number, done: readonly Id[], opt: StepOptions): Id | undefined {
+function tacticExam(db: ContentDb, diagnosis: Id, obs: readonly Observation[], age: Who, done: readonly Id[], opt: StepOptions): Id | undefined {
   let best: Id | undefined;
   let bestScore = 0;
   const minutes = opt.venue?.minutes ?? 0;
@@ -287,7 +287,7 @@ const invasive = (db: ContentDb, tx: Id) => db.treatments[tx]?.class?.startsWith
  * характере содержимого плевральной полости, — 728_2, раздел 2.4). Без них его не требуем: грипп
  * лечат и без экспресс-теста.
  */
-function confirmBeforeInvasive(db: ContentDb, diagnosis: Id, obs: readonly Observation[], age: number, done: readonly Id[], exams: readonly Id[]): Id | undefined {
+function confirmBeforeInvasive(db: ContentDb, diagnosis: Id, obs: readonly Observation[], age: Who, done: readonly Id[], exams: readonly Id[]): Id | undefined {
   const c = db.conditions[diagnosis];
   if (!c || c.confirm === 'clinical' || c.confirm.some(id => done.includes(id))) return undefined;
   const plan = choosePlan(db, diagnosis, obs, age, { ward: true, or: true });
@@ -322,7 +322,7 @@ export function nextStep(db: ContentDb, patient: Patient, obs: readonly Observat
     // если окклюзия решает тактику при самом вероятном диагнозе
     const later = urgentExam(db, patient, done, opt.exams, Infinity, e => {
       const top = posterior(db, opt.candidates, obs, contextOf(db, patient, obs))[0];
-      return top ? tacticGain(db, top.id, e, obs, patient.age, opt.venue?.minutes ?? 0) : 0;
+      return top ? tacticGain(db, top.id, e, obs, patient, opt.venue?.minutes ?? 0) : 0;
     });
     if (later) return { step: { kind: 'exam', exam: later }, phase: now };
     // положительное правило решения велит обследование — его делают (часть 32д): оттавские правила
@@ -342,14 +342,14 @@ export function nextStep(db: ContentDb, patient: Patient, obs: readonly Observat
     }
     const top = beliefs[0];
     // диагноз ясен — уточняет то, от чего зависит лечение (часть 32): смещение отломков видно на снимке
-    const tactic = tacticExam(db, top.id, obs, patient.age, done, opt);
+    const tactic = tacticExam(db, top.id, obs, patient, done, opt);
     if (tactic) return { step: { kind: 'exam', exam: tactic }, phase: now };
     // перед операцией, пункцией и дренажом — подтверждающее обследование из рекомендации (части
     // 32 и 32в): нестабильный перелом с деформацией не оперируют, пневмоторакс не дренируют без снимка
-    const confirm = confirmBeforeInvasive(db, top.id, obs, patient.age, done, opt.exams);
+    const confirm = confirmBeforeInvasive(db, top.id, obs, patient, done, opt.exams);
     if (confirm) return { step: { kind: 'exam', exam: confirm }, phase: now };
     // что здесь можно (часть 39а): о противопоказаниях тромболизиса спрашивают там, где его делают
-    const plan = choosePlan(db, top.id, obs, patient.age, opt.venue);
+    const plan = choosePlan(db, top.id, obs, patient, opt.venue);
     const risks = [...new Set(plan.treatments.flatMap(tx => db.treatments[tx].contraindications.map(k => k.id)))].sort();
     const ask: Id[] = [];
     for (const k of risks) {
@@ -362,7 +362,7 @@ export function nextStep(db: ContentDb, patient: Patient, obs: readonly Observat
   const ask = (now.ask ?? []).filter(id => !done.includes(id));
   if (ask.length > 0) return { step: { kind: 'exam', exam: ask[0] }, phase: { ...now, ask: ask.slice(1) } };
   const diagnosis = now.diagnosis!;
-  return { step: { kind: 'decide', diagnosis, confidence: now.confidence ?? 0, plan: choosePlan(db, diagnosis, obs, patient.age, opt.venue) }, phase: { ...now, ask: [] } };
+  return { step: { kind: 'decide', diagnosis, confidence: now.confidence ?? 0, plan: choosePlan(db, diagnosis, obs, patient, opt.venue) }, phase: { ...now, ask: [] } };
 }
 
 export function runDoctor(db: ContentDb, patient: Patient, strategy: Strategy, rng: Rng, opt: DoctorOptions): DoctorResult {
@@ -395,7 +395,7 @@ export function runDoctor(db: ContentDb, patient: Patient, strategy: Strategy, r
     // «всё подряд» спрашивает и назначает всё; ленивый решает по жалобам
     if (strategy === 'shotgun') for (const id of opt.exams) if (examFits(db.exams[id], patient)) doExam(id);
     const top = posterior(db, opt.candidates, obs, ctxOf())[0];
-    decision = { diagnosis: top.id, confidence: top.p, plan: choosePlan(db, top.id, obs, patient.age) };
+    decision = { diagnosis: top.id, confidence: top.p, plan: choosePlan(db, top.id, obs, patient) };
   }
 
   const primary = patient.truth.conditions.find(c => c.role === 'primary')!.id;

@@ -105,6 +105,15 @@ export const encyclopedia = {
     'deficit:motor|motor_face|motor_face_speech|motor_speech': 'при слабости в руке и ноге',
     'deficit:face|face_speech|motor_face|motor_face_speech': 'при парезе лица',
     'deficit:face_speech|motor_face_speech|motor_speech|speech': 'при нарушении речи',
+    // фибрилляция и трепетание предсердий (часть 42а): вид, гемодинамика, давность, шкала CHA₂DS₂-VASc
+    'type:fibrillation': 'при фибрилляции предсердий',
+    'type:flutter': 'при трепетании предсердий',
+    'unstable:yes': 'при нестабильной гемодинамике',
+    'unstable:no': 'при стабильной гемодинамике',
+    'recent:yes': 'если аритмии меньше 48\u00a0часов',
+    'recent:no': 'если аритмии 48\u00a0часов и больше',
+    'oac:yes': 'при высоком риске инсульта по CHA₂DS₂-VASc',
+    'oac:no': 'при невысоком риске инсульта по CHA₂DS₂-VASc',
     // кровоизлияния (часть 41в): объём гематомы, давление по тонометру, антикоагулянт, слабость при САК
     'volume:small': 'при гематоме до 30 см³',
     'volume:large': 'при гематоме больше 30 см³',
@@ -374,8 +383,13 @@ export const encyclopedia = {
   rulePointsItem: (w: number) => pointsWord(w),
   rulePointsUnless: (w: number, unless: string[]) => `${pointsWord(w)}, если нет ${unless.length > 1 ? 'пунктов' : 'пункта'} ${unless.map(u => `«${u}»`).join(', ')}`,
   rulePointsAge: (years: number, w: number) => `Возраст ${years}\u00a0лет и старше — ${pointsWord(w)}`,
+  // часть 42а: возраст полосами, балл за пол и порог по полу (CHA₂DS₂-VASc)
+  rulePointsAgeRange: (from: number, to: number, w: number) => `Возраст ${from}–${to}\u00a0${pluralRu(to, 'год', 'года', 'лет')} — ${pointsWord(w)}`,
+  rulePointsSex: (sex: 'm' | 'f', w: number) => `${sex === 'f' ? 'Женский' : 'Мужской'} пол — ${pointsWord(w)}`,
   rulePointsYes: (from: number) => `Если баллов ${from} и больше`,
   rulePointsNo: (from: number) => `Если меньше ${from}`,
+  rulePointsYesSex: (m: number, f: number) => `Если баллов у мужчин ${m} и больше, у женщин — ${f} и больше`,
+  rulePointsNoSex: (m: number, f: number) => `Если у мужчин меньше ${m}, у женщин — меньше ${f}`,
   ruleExams: 'Какое обследование',
   // правило о лечении (часть 39а): «Можно ли тромболизис»
   ruleDecides: 'О каком лечении',

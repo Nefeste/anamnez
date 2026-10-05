@@ -265,7 +265,9 @@ export const shift = {
       worse: 'Хуже: лечение не помогает',
       ready: 'Жалоб нет, показатели в норме',
       reaction: (tx: string, by: string) => `Реакция на ${lowerFirst(tx)}: ${lowerFirst(by)}`,
-    } as Record<'better' | 'same' | 'worse' | 'ready', string> & { reaction: (tx: string, by: string) => string },
+      // вред другой болезнью (часть 42а): название лечения — в кавычках, падеж не нужен
+      harmAs: (name: string, tx: string) => `${name} после лечения «${tx}»`,
+    } as Record<'better' | 'same' | 'worse' | 'ready', string> & { reaction: (tx: string, by: string) => string; harmAs: (name: string, tx: string) => string },
     readyHint: 'можно выписывать',
     vital: {
       'vital.fever': 'Температура',

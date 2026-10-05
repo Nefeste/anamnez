@@ -245,6 +245,11 @@ export interface Effect {
   p: P;
   days: [number, number];
   when?: Record<string, string[]>;
+  /**
+   * вред — другая болезнь (часть 42а), только у `harm`: кардиоверсия при фибрилляции предсердий 48
+   * часов и дольше без трёх недель антикоагулянта — инсульт; дома — возврат с ним, как `untreated.as`
+   */
+  as?: Id;
 }
 
 export interface Surgery {
@@ -435,6 +440,8 @@ export interface NumericSpec {
    * если его измеренное значение попало в `present`.
    */
   of?: Id;
+  /** крупная единица для шаблона {amount} (часть 42а): часы от начала с двух суток — сутками */
+  long?: { from: number; per: number; unit: string };
 }
 
 export interface Finding {
@@ -894,11 +901,18 @@ export interface Untreated {
   as?: Id;
 }
 
-/** Баллы шкалы у правила (часть 41б). */
+/**
+ * Баллы шкалы у правила (часть 41б). Возраст — полосами по возрастанию, считается последняя
+ * подошедшая (часть 42а: CHA₂DS₂-VASc — 65–74 лет 1 балл, 75 и старше 2); у ABCD2 полоса одна. Пол
+ * (часть 42а) — баллы за него и свой порог: антикоагулянт при фибрилляции предсердий мужчинам — с 2
+ * баллов, женщинам — с 3 (женский пол сам даёт балл).
+ */
 export interface RulePoints {
   items: { f: Id; w: number; unless?: Id[] }[];
-  age?: { from: number; w: number };
+  age?: { from: number; w: number }[];
+  sex?: Partial<Record<'m' | 'f', number>>;
   from: number;
+  fromSex?: Partial<Record<'m' | 'f', number>>;
 }
 
 export interface Rule {

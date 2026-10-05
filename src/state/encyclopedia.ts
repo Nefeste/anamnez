@@ -7,6 +7,7 @@ import {
   type Tactics, type Tip, type Treatment,
 } from '@/content/types';
 import { surgeriesOf } from '@/engine/med/plan';
+import { pointsFrom } from '@/engine/med/rules';
 import { formatNumber } from '@/engine/med/text';
 import { T } from '@/i18n';
 import { lowerFirst } from '@/i18n/case';
@@ -502,6 +503,21 @@ function scoreArticle(db: ContentDb, x: Score): Article {
  * Пункты шкалы с весами (часть 41б): ссылка на признак с подписью — «2 балла», «1 балл, если нет
  * пункта «Прошедшая слабость в руке и ноге»»; возраст — строкой над ними (`rulePointsAge`).
  */
+/**
+ * Строки шкалы без ссылки (части 41б и 42а): возраст — каждой полосой («65–74 года — 1 балл», «75 лет
+ * и старше — 2 балла»), затем пол.
+ */
+function pointLines(p: RulePoints): string[] {
+  const e = T.encyclopedia;
+  const bands = p.age ?? [];
+  const age = bands.map((a, i) => (i + 1 < bands.length ? e.rulePointsAgeRange(a.from, bands[i + 1].from - 1, a.w) : e.rulePointsAge(a.from, a.w)));
+  const sex = (['f', 'm'] as const).filter(s => p.sex?.[s]).map(s => e.rulePointsSex(s, p.sex![s]!));
+  return [...age, ...sex];
+}
+
+/** Порог у мужчин и женщин разный (часть 42а). */
+const bySex = (p: RulePoints) => pointsFrom(p, 'm') !== pointsFrom(p, 'f');
+
 function pointRefs(db: ContentDb, p: RulePoints): Ref[] {
   const e = T.encyclopedia;
   return p.items.map(i => ref(db, i.f, i.unless ? e.rulePointsUnless(i.w, i.unless.map(u => nameOf(db, u))) : e.rulePointsItem(i.w)));
@@ -518,11 +534,11 @@ function ruleArticle(db: ContentDb, x: Rule): Article {
     // часть 33а: при тромбофлебите и беременности шкалу Уэллса и D-димер не применяют
     ...(x.excludes ? [{ key: 'excludes', title: e.ruleExcludes, refs: x.excludes.map(id => ref(db, id)), ...(x.requires ? {} : { text: [x.texts.na?.ru ?? ''] }) }] : []),
     // шкала с баллами (часть 41б): пункты с весами, затем что значит сумма
-    ...(x.points ? [{ key: 'points', title: e.rulePointsTitle, ...(x.points.age ? { text: [e.rulePointsAge(x.points.age.from, x.points.age.w)] } : {}), refs: pointRefs(db, x.points) }] : []),
+    ...(x.points ? [{ key: 'points', title: e.rulePointsTitle, ...(pointLines(x.points).length > 0 ? { text: pointLines(x.points) } : {}), refs: pointRefs(db, x.points) }] : []),
     ...(x.any.length > 0 || !x.points ? [{ key: 'any', title: e.ruleAny, text: [x.texts.yes.ru, ...(x.age?.main !== undefined ? [e.ruleAgeMain(x.age.main)] : x.age?.from !== undefined ? [e.ruleAgeFrom(x.age.from)] : [])], refs: x.any.map(id => ref(db, id)) }] : []),
-    ...(x.points ? [{ key: 'pointsYes', title: e.rulePointsYes(x.points.from), text: [x.texts.yes.ru] }] : []),
+    ...(x.points ? [{ key: 'pointsYes', title: bySex(x.points) ? e.rulePointsYesSex(pointsFrom(x.points, 'm'), pointsFrom(x.points, 'f')) : e.rulePointsYes(x.points.from), text: [x.texts.yes.ru] }] : []),
     ...(x.minor ? [{ key: 'minor', title: e.ruleMinor(x.minor.count), refs: x.minor.any.map(id => ref(db, id)), text: x.age?.minor ? [e.ruleAgeMinor(x.age.minor[0], x.age.minor[1])] : [] }] : []),
-    { key: 'none', title: x.points ? e.rulePointsNo(x.points.from) : x.minor ? e.ruleNoneMinor : e.ruleNone, text: [x.texts.no.ru] },
+    { key: 'none', title: x.points ? (bySex(x.points) ? e.rulePointsNoSex(pointsFrom(x.points, 'm'), pointsFrom(x.points, 'f')) : e.rulePointsNo(x.points.from)) : x.minor ? e.ruleNoneMinor : e.ruleNone, text: [x.texts.no.ru] },
     // обследования, которого в игре нет (КТ, часть 32г), — словами; правило о лечении (часть 39а) — лечение
     x.decides
       ? { key: 'decides', title: e.ruleDecides, refs: [ref(db, x.decides)] }
