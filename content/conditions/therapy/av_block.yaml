@@ -71,7 +71,7 @@ treatment:
   # классов (раздел 1.2 — причины брадиаритмий), трифосаденин блокирует АВ-узел
   firstLine: []
   acceptable: [tx.atropine, tx.dopamine]
-  harmful: [tx.beta_blocker, tx.verapamil, tx.verapamil_iv, tx.trifosadenine, tx.amiodarone_iv, tx.procainamide]
+  harmful: [tx.beta_blocker, tx.beta_blocker_iv, tx.verapamil, tx.verapamil_iv, tx.trifosadenine, tx.amiodarone_iv, tx.procainamide]
   notIndicated: [tx.pacing_tc, tx.vagal, tx.cardioversion]
   byParam:
     # нестабильному — до перевода (раздел 3.1.2; приложение Б, табл. 3): атропин — мост; не помог — стимуляция

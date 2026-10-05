@@ -1,6 +1,7 @@
 // Варианты снимков для «Проверок» (spec 2026-09-ct-mri-ultrasound): что нарисовать и подпись —
 // что нарисовано, а не диагноз. Их же рисует `npm run imaging` без экрана.
 import { T } from '@/i18n';
+import type { ChestCtFindings } from '@/render/ct/chestGeometry';
 import type { HeadFindings } from '@/render/ct/geometry';
 import type { EcgFindings } from '@/render/ecg/model';
 import type { UsImage } from '@/render/us/sector';
@@ -29,6 +30,22 @@ export const HEAD_CASES: HeadCase[] = [
   { key: 'ct-blob-large', mode: 'ct', findings: { focus: { density: 'high', shape: 'blob', side: 'left', region: 'middle', size: 0.85 }, shift: 0.6 }, seed: 9, label: t.ctBlobLarge },
   { key: 'mri-normal', mode: 'mri', findings: {}, seed: 6, label: t.mriNormal },
   { key: 'mri-wedge', mode: 'mri', findings: { focus: { density: 'high', shape: 'wedge', side: 'right', region: 'middle', size: 0.6 } }, seed: 7, label: t.mriWedge },
+];
+
+export interface ChestCtCase {
+  key: string;
+  findings: ChestCtFindings;
+  seed: number;
+  label: string;
+}
+
+const cc = T.spikes.imaging.chestCt;
+
+/** КТ-ангиография груди (часть 43а): без расслоения, расслоение типа A и типа B. */
+export const CHEST_CT_CASES: ChestCtCase[] = [
+  { key: 'cta-chest-normal', findings: {}, seed: 1, label: cc.normal },
+  { key: 'cta-chest-a', findings: { dissection: 'a' }, seed: 2, label: cc.typeA },
+  { key: 'cta-chest-b', findings: { dissection: 'b' }, seed: 3, label: cc.typeB },
 ];
 
 export interface UsCase {
@@ -86,7 +103,10 @@ export interface ChestCase {
 
 const ch = T.spikes.imaging.chest;
 
-/** Снимок груди при травме (часть 32в): пневмоторакс малый, большой и напряжённый, кровь, уровень, переломы рёбер. */
+/**
+ * Снимок груди при травме (часть 32в): пневмоторакс малый, большой и напряжённый, кровь, уровень,
+ * переломы рёбер; с частью 43а — расширенное верхнее средостение.
+ */
 export const CHEST_CASES: ChestCase[] = [
   { key: 'chest-small', findings: { pneumothorax: { side: 'right', size: 'small' } }, seed: 4, label: ch.small },
   { key: 'chest-large', findings: { pneumothorax: { side: 'left', size: 'large' } }, seed: 5, label: ch.large },
@@ -95,6 +115,7 @@ export const CHEST_CASES: ChestCase[] = [
   { key: 'chest-massive', findings: { effusion: { side: 'right', massive: true } }, seed: 8, label: ch.massive },
   { key: 'chest-level', findings: { effusion: { side: 'left', air: true }, pneumothorax: { side: 'left', size: 'small' } }, seed: 9, label: ch.level },
   { key: 'chest-rib', findings: { ribFractures: { side: 'right', ribs: [5, 6, 7] } }, seed: 10, label: ch.rib },
+  { key: 'chest-mediastinum', findings: { wideMediastinum: true }, seed: 11, label: ch.mediastinum },
 ];
 
 export interface BoneCase {

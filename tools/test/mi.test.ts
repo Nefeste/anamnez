@@ -175,11 +175,11 @@ describe('правило «Можно ли тромболизис»', () => {
 });
 
 describe('тромболизис у постели', () => {
-  test('только под монитором с дефибриллятором — и при инсульте (часть 41а), снижение давления в вену (часть 41в), кардиоверсия и амиодарон (часть 42а), трифосаденин, верапамил и прокаинамид в вену (часть 42б), атропин, допамин и наружная стимуляция (часть 42в); остальное лечение — где угодно', () => {
+  test('только под монитором с дефибриллятором — и при инсульте (часть 41а), снижение давления в вену (часть 41в), кардиоверсия и амиодарон (часть 42а), трифосаденин, верапамил и прокаинамид в вену (часть 42б), атропин, допамин и наружная стимуляция (часть 42в), морфин, бета-адреноблокатор и нитроглицерин в вену (часть 43а); остальное лечение — где угодно', () => {
     expect(txAvailable(db, LYSIS)).toBe(false);
     expect(txAvailable(db, LYSIS, BAY)).toBe(true);
     expect(txAvailable(db, LYSIS, { bedside: ['eq.ecg'] })).toBe(false);
-    expect(Object.values(db.treatments).filter(t => !txAvailable(db, t.id)).map(t => t.id).sort()).toEqual(['tx.amiodarone_iv', 'tx.atropine', 'tx.bp_iv', 'tx.cardioversion', 'tx.dopamine', 'tx.pacing_tc', 'tx.procainamide', LYSIS, 'tx.thrombolysis_stroke', 'tx.trifosadenine', 'tx.verapamil_iv'].sort());
+    expect(Object.values(db.treatments).filter(t => !txAvailable(db, t.id)).map(t => t.id).sort()).toEqual(['tx.amiodarone_iv', 'tx.atropine', 'tx.beta_blocker_iv', 'tx.bp_iv', 'tx.cardioversion', 'tx.dopamine', 'tx.morphine_iv', 'tx.nitroglycerin_iv', 'tx.pacing_tc', 'tx.procainamide', LYSIS, 'tx.thrombolysis_stroke', 'tx.trifosadenine', 'tx.verapamil_iv'].sort());
   });
 
   test('в карте: без монитора у постели кнопка серая и сказано почему; под монитором — обычная', () => {

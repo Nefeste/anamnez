@@ -99,14 +99,28 @@ const ref = (db: ContentDb, id: Id, note?: string): Ref => (note ? { id, title: 
 const byTitle = (a: { title: string }, b: { title: string }) => (a.title < b.title ? -1 : a.title > b.title ? 1 : 0);
 const unique = (xs: string[]) => [...new Set(xs)];
 
-/** У признака в записи бывает несколько связей (по тяжести, по типу) — берём самую частую. */
-function strongest(links: readonly Link[]): Link[] {
+/**
+ * У признака в записи бывает несколько связей (по тяжести, по типу) — берём самую частую. Одинаково
+ * частые при всех значениях одного параметра — без условия (часть 43а): рвущая боль при расслоении
+ * аорты — у 85 из 100 и при типе A, и при типе B, а связей две, потому что болит в разных местах.
+ */
+function strongest(links: readonly Link[], params?: Condition['params']): Link[] {
   const best = new Map<Id, Link>();
   for (const l of links) {
     const b = best.get(l.f);
     if (!b || l.p > b.p) best.set(l.f, l);
   }
-  return [...best.values()];
+  // условие у ряда — только для подписи: без него связь та же
+  return [...best.values()].map(b => (params && everyValue(params, links.filter(l => l.f === b.f && l.p === b.p)) ? { f: b.f, p: b.p } : b));
+}
+
+/** Связи — каждая при значениях одного и того же параметра, а вместе — при всех его значениях. */
+function everyValue(params: NonNullable<Condition['params']>, links: readonly Link[]): boolean {
+  const names = new Set(links.map(l => Object.keys(l.when ?? {}).join('|')));
+  const [name] = [...names];
+  if (links.length < 2 || names.size !== 1 || name === undefined || !(name in params)) return false;
+  const seen = new Set(links.flatMap(l => l.when?.[name] ?? []));
+  return Object.keys(params[name]).every(v => seen.has(v));
 }
 
 
@@ -273,7 +287,7 @@ function whoLines(c: Condition): string[] {
 function conditionArticle(db: ContentDb, c: Condition): Article {
   const e = T.encyclopedia;
   const blocks: Block[] = [{ key: 'what', title: e.what, text: [c.texts.summary.ru] }];
-  blocks.push({ key: 'signs', title: e.signs, rows: byBand(db, strongest(c.findings).map(l => ({ id: l.f, p: l.p, note: whenText(l.when) }))) });
+  blocks.push({ key: 'signs', title: e.signs, rows: byBand(db, strongest(c.findings, c.params).map(l => ({ id: l.f, p: l.p, note: whenText(l.when) }))) });
 
   const who = whoLines(c);
   const whoRows: Row[] = [];
@@ -362,7 +376,7 @@ function findingArticle(db: ContentDb, f: Finding): Article {
   if (by.length > 0) blocks.push({ key: 'howFound', title: e.howFound, refs: by.map(id => ref(db, id)) });
 
   const inConditions = Object.values(db.conditions).flatMap(c => {
-    const l = strongest(c.findings.filter(x => x.f === f.id))[0];
+    const l = strongest(c.findings.filter(x => x.f === f.id), c.params)[0];
     return l ? [{ id: c.id, p: l.p, note: whenText(l.when) }] : [];
   });
   const rows = byBand(db, inConditions);

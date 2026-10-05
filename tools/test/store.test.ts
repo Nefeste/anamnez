@@ -82,7 +82,8 @@ describe('store: тексты', () => {
     const ill = come.filter(c => c.kind === 'disease' || c.kind === 'syndrome');
     const diseases = ill.length;
     const injuries = come.filter(c => c.kind === 'injury').length;
-    const therapy = ill.filter(c => c.department === 'dept.therapy').length;
+    // в поликлинике — терапия без тех, с кем приходят только со скорой (часть 43а: расслоение аорты)
+    const therapy = ill.filter(c => c.department === 'dept.therapy' && c.arrival !== 'ambulance').length;
     const surgery = ill.filter(c => c.department === 'dept.surgery').length;
     const ru = { ill: /(\d+)\s+болезн/g, injury: /(\d+)\s+травм/g, surgery: /(\d+)\s+хирургическ/g };
     const en = { ill: /(\d+)\s+conditions?\b/g, injury: /(\d+)\s+injur/g, surgery: /(\d+)\s+more surgical/g };

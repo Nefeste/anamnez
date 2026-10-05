@@ -333,8 +333,10 @@ export function recordChestXray(width: number, findings: XrayFindings, seed: num
   const k = emph ? 0.82 : 1; // «капельное» сердце при эмфиземе — уже
   const hx = (x: number) => X(0.52 + (x - 0.52) * k);
   const lo = emph ? 0.06 : 0; // и ниже вместе с куполами
-  heart.moveTo(X(0.44), 0);
-  heart.cubicTo(X(0.44), Y(0.12), X(0.443), Y(0.28), hx(0.447), Y(0.4));
+  // расширенное верхнее средостение (часть 43а): справа выбухает восходящая аорта, слева — дуга
+  const wm = findings.wideMediastinum ? 1 : 0;
+  heart.moveTo(X(0.44 - 0.02 * wm), 0);
+  heart.cubicTo(X(0.44 - 0.035 * wm), Y(0.12), X(0.443 - 0.05 * wm), Y(0.28), hx(0.447), Y(0.4));
   heart.cubicTo(hx(0.427), Y(0.46 + lo / 2), hx(0.395), Y(0.54 + lo), hx(0.405), Y(0.62 + lo));
   heart.cubicTo(hx(0.41), Y(0.67 + lo), hx(0.44), Y(0.71 + lo), hx(0.47), Y(0.725 + lo));
   heart.lineTo(hx(0.66), Y(0.745 + lo));
@@ -342,9 +344,9 @@ export function recordChestXray(width: number, findings: XrayFindings, seed: num
   heart.cubicTo(hx(0.75), Y(0.645 + lo), hx(0.735), Y(0.53 + lo), hx(0.655), Y(0.47 + lo / 2));
   heart.quadTo(hx(0.625), Y(0.445), hx(0.618), Y(0.41));
   heart.quadTo(hx(0.63), Y(0.38), hx(0.608), Y(0.35));
-  heart.quadTo(X(0.59), Y(0.335), X(0.598), Y(0.31));
-  heart.cubicTo(X(0.611), Y(0.29), X(0.607), Y(0.248), X(0.576), Y(0.236));
-  heart.cubicTo(X(0.565), Y(0.2), X(0.565), Y(0.09), X(0.565), 0);
+  heart.quadTo(X(0.59 + 0.01 * wm), Y(0.335), X(0.598 + 0.025 * wm), Y(0.31));
+  heart.cubicTo(X(0.611 + 0.04 * wm), Y(0.29), X(0.607 + 0.04 * wm), Y(0.248), X(0.576 + 0.03 * wm), Y(0.236));
+  heart.cubicTo(X(0.565 + 0.03 * wm), Y(0.2), X(0.565 + 0.025 * wm), Y(0.09), X(0.565 + 0.02 * wm), 0);
   heart.close();
   const heartPaint = paint('#909090', { alpha: 0.86, blur: 0.004 });
   heartPaint.setShader(Skia.Shader.MakeLinearGradient(

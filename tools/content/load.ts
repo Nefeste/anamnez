@@ -540,13 +540,14 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       else if (id === t.id || treatments[id].kind === 'surgery') errors.push(`${t.id}: спутник ${id} — само лечение или операция`);
     }
     if (new Set(companions).size !== companions.length) errors.push(`${t.id}: спутники повторяются`);
-    // спутники при болезнях (часть 42б): спутники есть, болезни есть и не повторяются, лечение при них действует
+    // спутники при болезнях (часть 42б): спутники есть, болезни есть и не повторяются, лечение при них действует —
+    // с частью 43а и облегчением: нитроглицерин в вену при расслоении аорты снижает давление, а причину не лечит
     if (t.companionsFor) {
       if (companions.length === 0) errors.push(`${t.id}: спутники нужны при ${t.companionsFor.join(', ')}, а спутников нет`);
       if (new Set(t.companionsFor).size !== t.companionsFor.length) errors.push(`${t.id}: болезни спутников повторяются`);
       for (const id of t.companionsFor) {
         if (!(id in conditions)) errors.push(`${t.id}: спутники при ${id} — такой болезни нет`);
-        else if (!t.effects.some(e => e.on === id && e.kind === 'cure')) errors.push(`${t.id}: спутники при ${id}, а при ней лечение не действует`);
+        else if (!t.effects.some(e => e.on === id && e.kind !== 'harm')) errors.push(`${t.id}: спутники при ${id}, а при ней лечение не действует`);
       }
     }
   }

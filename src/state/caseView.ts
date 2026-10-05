@@ -17,6 +17,7 @@ import type { Observation, Patient } from '@/engine/med/types';
 import type { TargetResult } from '@/engine/shift/targets';
 import type { Difficulty } from '@/engine/shift/types';
 import type { EcgFindings, Wall } from '@/render/ecg/model';
+import type { ChestCtFindings } from '@/render/ct/chestGeometry';
 import type { HeadFindings } from '@/render/ct/geometry';
 import type { BoneFindings, BoneFracture } from '@/render/xray/boneGeometry';
 import { fracturedRibs, type XrayFindings } from '@/render/xray/chestGeometry';
@@ -39,11 +40,12 @@ export interface Line {
 export type ResultImage =
   /**
    * обзорный снимок груди: инфильтрат, эмфизема; с травмой груди (часть 32в) — воздух и кровь в
-   * плевральной полости, переломы рёбер
+   * плевральной полости, переломы рёбер; с частью 43а — расширенное верхнее средостение
    */
   | {
     kind: 'xray'; infiltrate?: 'right' | 'left' | 'both'; hyperinflation: boolean;
-    pneumothorax?: XrayFindings['pneumothorax']; effusion?: XrayFindings['effusion']; ribFractures?: XrayFindings['ribFractures']; seed: number;
+    pneumothorax?: XrayFindings['pneumothorax']; effusion?: XrayFindings['effusion']; ribFractures?: XrayFindings['ribFractures'];
+    wideMediastinum?: boolean; seed: number;
   }
   /** лента в двенадцати отведениях (spec 2026-10-chapter-3, часть 36): ритм, частота и находки, которые показало обследование */
   | { kind: 'ecg'; seed: number; ecg: EcgFindings }
@@ -64,7 +66,9 @@ export type ResultImage =
   /** снимок костей (часть 32): запястье или голеностоп в двух проекциях — линия перелома и смещение, что нашёл рентгенолог */
   | ({ kind: 'bone'; seed: number } & BoneFindings)
   /** срез головы на КТ (spec 2026-10-chapter-3, часть 40): кровь внутри черепа — светлое пятно, если её показала КТ */
-  | { kind: 'head'; seed: number; findings: HeadFindings };
+  | { kind: 'head'; seed: number; findings: HeadFindings }
+  /** срез груди на КТ-ангиографии (часть 43а): расслоение аорты — тип A или B, если его показала КТ */
+  | { kind: 'chestCt'; seed: number; findings: ChestCtFindings };
 
 /** Результаты одного обследования. `fresh` — пришли за последнее действие игрока. */
 export interface ResultGroup {
@@ -401,8 +405,15 @@ function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observat
       ...(air ? { pneumothorax: { side: air, size: shown('img.cxr_pneumothorax_large') ? 'large' : 'small', ...(shift && !blood ? { tension: true } : {}) } } : {}),
       ...(blood ? { effusion: { side: blood, ...(shown('img.cxr_hemothorax_large') || (shift && !air) ? { massive: true } : {}), ...(air ? { air: true } : {}) } } : {}),
       ...(ribs ? { ribFractures: { side: ribs, ribs: fracturedRibs(patientSeed, shown('img.xr_rib_multiple') !== undefined) } } : {}),
+      ...(shown('img.cxr_wide_mediastinum') ? { wideMediastinum: true } : {}),
       seed,
     };
+  }
+  // КТ-ангиография груди (часть 43а): расслоение — интима в восходящей и нисходящей аорте (тип A) или
+  // только в нисходящей (тип B), по виду в строке находки; без него — обычный срез
+  if (exam === 'exam.cta_chest') {
+    const dissection = shown('img.cta_aortic_dissection');
+    return { kind: 'chestCt', seed, findings: dissection ? { dissection: dissection.attrs?.extent === 'b' ? 'b' : 'a' } : {} };
   }
   if (exam === 'exam.ecg') {
     const pulse = known.find(o => o.f === 'vital.tachycardia' && o.value !== undefined)?.value;

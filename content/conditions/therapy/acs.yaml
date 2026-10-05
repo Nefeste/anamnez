@@ -159,8 +159,9 @@ treatment:
   firstLine: [tx.aspirin_acs, tx.nitroglycerin]
   # антитромботическое лечение (часть 39а; 157_5, разделы 3.2.3.1–3.2.3.2): парентеральный антикоагулянт —
   # всем с ИМпST при любой стратегии (ЕОК IA), ингибитор P2Y12 до вмешательства — не ошибка ни так, ни
-  # так; при тромболизисе — его обязательные спутники
-  supportive: [tx.clopidogrel, tx.enoxaparin_acs, tx.fondaparinux, tx.heparin_iv]
+  # так; при тромболизисе — его обязательные спутники. С частью 43а — морфин в вену: для обезболивания
+  # (157_5 и 154_4, раздел 3.1.1, ЕОК I C)
+  supportive: [tx.clopidogrel, tx.enoxaparin_acs, tx.fondaparinux, tx.heparin_iv, tx.morphine_iv]
   harmful: [tx.ibuprofen]
   notIndicated: [tx.ppi, tx.antacid, tx.amoxicillin, tx.amoxicillin_clavulanate, tx.macrolide]
   byParam:
