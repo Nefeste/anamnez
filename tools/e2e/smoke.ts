@@ -531,6 +531,16 @@ function afSave(): { save: string; id: string } {
   return neuroSave('cond.af', fits, ['exam.ecg', 'exam.vitals', 'exam.ask_chronic', 'exam.ask_onset']);
 }
 
+/**
+ * Песочница с приёмным, КТ и ПИТ (часть 42б): первая машина скорой везёт приступ наджелудочковой тахикардии —
+ * стабильный, без астмы: трифосаденин можно; ЭКГ у постели, пульс, давление и хронические болезни готовы.
+ */
+function svtSave(): { save: string; id: string } {
+  const fits = (x: ReturnType<typeof generatePatient>) => x.age >= 15 && x.truth.conditions[0].params.unstable === 'no'
+    && !x.truth.conditions.some(k => k.id === 'cond.asthma') && x.truth.risks.length <= 2;
+  return neuroSave('cond.svt', fits, ['exam.ecg', 'exam.vitals', 'exam.ask_chronic']);
+}
+
 /** Больница с приёмным, КТ и ПИТ; первую машину скорой подменяет больной `primary`, для которого верно `fits`; сделаны `exams`. */
 function neuroSave(primary: string, fits: (x: ReturnType<typeof generatePatient>) => boolean, exams: string[]): { save: string; id: string } {
   const { db } = buildDb();
@@ -1991,6 +2001,56 @@ try {
   check((await visibleText(page, 'enc-article-title')) === 'Шкала CHA₂DS₂-VASc при фибрилляции предсердий' && cha.includes('Возраст 65–74 года — 1 балл') && cha.includes('Женский пол — 1 балл')
     && /если баллов у мужчин 2 и больше, у женщин — 3 и больше/i.test(cha),
     `энциклопедия, CHA₂DS₂-VASc: ${await visibleText(page, 'enc-article-title')} — возраст полосами и порог по полу`);
+
+  // наджелудочковая тахикардия (часть 42б): у вас — привезённый скорой приступ; в карте — ЭКГ с узкими
+  // комплексами, пульс 150 и чаще, сердцебиение «ровно»; вагусные пробы и трифосаденин у постели под
+  // монитором и «Домой» — разбор без замечаний; в энциклопедии — без монитора у постели ПИТ, у разряда —
+  // спутники только при фибрилляции предсердий
+  const svt = svtSave();
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', svt.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId('shift-continue').waitFor({ timeout: 15_000 });
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId('shift-continue').click();
+  await visible(page, 'visit-decide').waitFor({ timeout: 10_000 });
+  const svtCard = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  check(svtCard.includes('комплексы QRS узкие, зубцов P перед ними нет — наджелудочковая тахикардия') && svtCard.includes('Пульс очень частый: 150 в минуту и чаще')
+    && svtCard.includes('часто-часто и ровно'),
+    `НЖТ: в карте — ЭКГ с узкими комплексами, пульс 150 и чаще, сердцебиение ровно («${svtCard.replace(/\n/g, ' · ').slice(0, 300)}»)`);
+  await visible(page, 'result-ecg').scrollIntoViewIfNeeded();
+  check((await visible(page, 'result-ecg').boundingBox() ?? { height: 0 }).height > 100, 'НЖТ: ЭКГ — лентой');
+  await page.screenshot({ path: join(OUT, '22-svt-card.png'), fullPage: true });
+  await visible(page, 'visit-decide').click();
+  await visible(page, 'dx-cond.svt').click();
+  await visible(page, 'decision-to-plan').click();
+  await page.getByTestId('tx-tx.trifosadenine').waitFor({ timeout: 5000 });
+  check(!(await page.getByTestId('tx-tx.trifosadenine').isDisabled()), `НЖТ, решение: трифосаденин у постели под монитором — ${await text(page, 'tx-tx.trifosadenine')}`);
+  await page.getByTestId('tx-tx.vagal').click();
+  await page.getByTestId('tx-tx.trifosadenine').click();
+  await page.getByTestId('setting-home').click();
+  await page.screenshot({ path: join(OUT, '22-svt-decision.png'), fullPage: true });
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
+  const svtReview = await page.locator('body').innerText();
+  check(svtReview.includes('Пароксизмальная наджелудочковая тахикардия') && !/[Нн]е назначено|не показано|вредно|Недооценили тяжесть/.test(svtReview),
+    `НЖТ: вагусные пробы, трифосаденин и дом, разбор — «${svtReview.replace(/\n/g, ' · ').slice(0, 300)}»`);
+  await page.screenshot({ path: join(OUT, '22-svt-review.png'), fullPage: true });
+  await page.goto(`${base}/encyclopedia/article/cond.svt`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const svtArticle = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  check((await visibleText(page, 'enc-article-title')) === 'Пароксизмальная наджелудочковая тахикардия'
+    && svtArticle.includes('Без монитора с дефибриллятором у постели — палата интенсивной терапии.'),
+    `энциклопедия, НЖТ: ${await visibleText(page, 'enc-article-title')} — без монитора у постели ПИТ`);
+  await page.goto(`${base}/encyclopedia/article/tx.cardioversion`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const cvArticle = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  check(cvArticle.includes('Только при') && cvArticle.includes('Фибрилляция и трепетание предсердий'),
+    `энциклопедия, кардиоверсия: спутники — только при фибрилляции предсердий`);
 
   // хирургия живота (spec 2026-09-chapter-2, часть 30): со смотровой приёмного больница принимает
   // и хирургию — у вас больной острым холециститом; УЗИ — желчный пузырь с камнями и толстой

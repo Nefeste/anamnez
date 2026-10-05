@@ -406,15 +406,18 @@ function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observat
   if (exam === 'exam.ecg') {
     const pulse = known.find(o => o.f === 'vital.tachycardia' && o.value !== undefined)?.value;
     const stemi = shown('ecg.st_elevation');
-    // фибрилляция или трепетание (часть 42а) — по виду в строке находки: пилообразные волны F
+    // фибрилляция или трепетание (часть 42а) — по виду в строке находки: пилообразные волны F; с частью
+    // 42б — наджелудочковая тахикардия с узкими комплексами и желудочковая с широкими
     const af = shown('ecg.af');
+    const rhythm: EcgFindings['rhythm'] = af ? (af.attrs?.kind === 'flutter' ? 'flutter' : 'af') : shown('ecg.vt') ? 'vt' : shown('ecg.svt') ? 'svt' : undefined;
     return {
       kind: 'ecg',
       seed,
       // на ленте — то же, что в строках находок: депрессия ST с инверсией T — в V4–V6
       ecg: {
-        rate: pulse !== undefined ? Math.round(pulse) : 72,
-        ...(af ? { rhythm: af.attrs?.kind === 'flutter' ? ('flutter' as const) : ('af' as const) } : {}),
+        // пульс не мерили — у тахикардии лента со своей частотой, у остальных — 72 в минуту
+        ...(pulse !== undefined ? { rate: Math.round(pulse) } : rhythm === 'svt' || rhythm === 'vt' ? {} : { rate: 72 }),
+        ...(rhythm ? { rhythm } : {}),
         ...(stemi ? { stemi: wallOf(stemi.attrs?.wall) } : {}),
         ...(shown('ecg.st_depression') ? { stDepression: true, tInversion: 'lateral' as const } : {}),
         ...(shown('ecg.lvh') ? { lvh: true } : {}),

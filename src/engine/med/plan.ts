@@ -76,6 +76,15 @@ export function bedsideLack(db: ContentDb, tx: Id, venue: Venue = {}): Id | unde
   return db.treatments[tx]?.bedside?.equipment.find(e => venue.bedside?.includes(e) !== true);
 }
 
+/**
+ * Спутники лечения при этой болезни (часть 39а): с частью 42б — у `companionsFor` только при названных
+ * болезнях: антикоагулянт рядом с кардиоверсией — при фибрилляции предсердий, при тахикардиях — нет.
+ */
+export function companionsOf(db: ContentDb, tx: Id, condition: Id): (Id | Id[])[] {
+  const t = db.treatments[tx];
+  return !t?.companions || (t.companionsFor && !t.companionsFor.includes(condition)) ? [] : t.companions;
+}
+
 /** Можно ли назначить здесь: лечению у постели (часть 39а) нужны его аппараты у постели больного. */
 export function txAvailable(db: ContentDb, tx: Id, venue: Venue = {}): boolean {
   return bedsideLack(db, tx, venue) === undefined;
@@ -287,9 +296,10 @@ function afterOf(rule: SettingRule, done: (exam: Id) => boolean): SettingRule['a
  * риска — что выше. Пришёл результат обследования из `after` (часть 40) — вместо места по
  * параметру и красного флага его место и его признаки: после КТ без крови сотрясение лечат дома,
  * а оглушённого — в стационаре (734_2, приложение Б). Правда о больном или то, что знает врач, —
- * решает тот, кто спрашивает.
+ * решает тот, кто спрашивает. `bedside` — аппараты у постели больного (часть 42б): без монитора
+ * приступ наджелудочковой тахикардии не снять — место из `without`.
  */
-export function settingOf(rule: SettingRule, redFlags: readonly Id[], o: { params: Record<string, string>; has: (f: Id) => boolean; risk: (id: Id) => boolean; done: (exam: Id) => boolean }): Setting {
+export function settingOf(rule: SettingRule, redFlags: readonly Id[], o: { params: Record<string, string>; has: (f: Id) => boolean; risk: (id: Id) => boolean; done: (exam: Id) => boolean; bedside?: readonly Id[] }): Setting {
   let best: Setting = rule.default;
   const raise = (s: Setting | undefined) => {
     if (s && SETTING_ORDER[s] > SETTING_ORDER[best]) best = s;
@@ -303,6 +313,7 @@ export function settingOf(rule: SettingRule, redFlags: readonly Id[], o: { param
     if (rule.redFlag && redFlags.some(o.has)) raise(rule.redFlag);
   }
   for (const r of rule.risks ?? []) if (o.risk(r.id)) raise(r.setting);
+  if (rule.without && !rule.without.equipment.every(e => o.bedside?.includes(e) === true)) raise(rule.without.setting);
   return best;
 }
 
@@ -348,15 +359,16 @@ export function tacticsFor(t: Tactics, params: Record<string, string> = {}): Tac
 
 /**
  * Где на самом деле надо лечить: место по умолчанию, по тяжести случая, при красном флаге; после
- * обследования из `after` (часть 40) — его место. `done` — обследования, результат которых пришёл.
+ * обследования из `after` (часть 40) — его место. `done` — обследования, результат которых пришёл;
+ * `bedside` — аппараты у постели в момент решения (часть 42б): без монитора приступ не снять.
  */
-export function recommendedSetting(db: ContentDb, patient: Patient, done: readonly Id[] = []): Setting {
+export function recommendedSetting(db: ContentDb, patient: Patient, done: readonly Id[] = [], bedside: readonly Id[] = []): Setting {
   const primary = primaryOf(patient);
   const cond = db.conditions[primary.id];
   const rule = cond.treatment?.setting;
   if (!rule) return 'home';
   const has = new Set(patient.truth.findings.map(f => f.f));
-  return settingOf(rule, cond.redFlags ?? [], { params: primary.params, has: f => has.has(f), risk: id => patient.truth.risks.includes(id), done: e => done.includes(e) });
+  return settingOf(rule, cond.redFlags ?? [], { params: primary.params, has: f => has.has(f), risk: id => patient.truth.risks.includes(id), done: e => done.includes(e), bedside });
 }
 
 /**
@@ -471,7 +483,7 @@ export function evaluatePlan(db: ContentDb, patient: Patient, plan: Plan, observ
     primary,
     // роли — по тому, что показали обследования (части 41б и 41в): давление снижают по тонометру
     roles: plan.treatments.map(tx => ({ tx, role: txRole(db, primary, tx, seenParams) })),
-    setting: { chosen: plan.setting, recommended: recommendedSetting(db, patient, done), ...(also.length > 0 ? { also } : {}) },
+    setting: { chosen: plan.setting, recommended: recommendedSetting(db, patient, done, venue.bedside), ...(also.length > 0 ? { also } : {}) },
     violations,
     effective,
     unaskedRisk: unaskedRisk.sort(),
@@ -495,7 +507,8 @@ export function evaluatePlan(db: ContentDb, patient: Patient, plan: Plan, observ
     beforeTransferWhen: Object.fromEntries((base?.byParam ?? []).filter(b => whenHolds(b.when, seenParams)).flatMap(b => (b.beforeTransfer ?? []).map(tx => [tx, b.when] as const)).reverse()),
     // спутники (часть 39а): тромболизис без клопидогрела и антикоагулянта — неполное лечение; из группы
     // хватит одного, а противопоказанное тем, о чём врач знает, в вину не ставим
-    companionsMissing: plan.treatments.flatMap(of => (db.treatments[of]?.companions ?? []).flatMap(g => {
+    // при болезни, где они нужны (часть 42б): кардиоверсия при тахикардии — без антикоагулянта
+    companionsMissing: plan.treatments.flatMap(of => companionsOf(db, of, primary).flatMap(g => {
       const group = typeof g === 'string' ? [g] : g;
       const can = group.filter(tx => !db.treatments[tx]?.contraindications.some(k => knownIds.has(k.id)));
       return can.length > 0 && !group.some(tx => plan.treatments.includes(tx)) ? [{ tx: can[0], of }] : [];

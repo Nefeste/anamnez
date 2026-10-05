@@ -93,7 +93,7 @@ export function caseFacts(db: ContentDb, p: ShiftPatient): CaseFacts {
   const antibiotics = c.plan.treatments.filter(id => db.treatments[id]?.class?.startsWith('antibiotic.'));
   // место — по пришедшим результатам (часть 40): после КТ без крови сотрясение лечат дома
   const done = p.results.map(r => r.exam);
-  const recommended = recommendedSetting(db, p.patient, done);
+  const recommended = recommendedSetting(db, p.patient, done, c.bedside);
   const danger = SETTING_ORDER[recommended] > SETTING_ORDER.home;
   return {
     correct: c.verdict === 'correct',

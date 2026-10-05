@@ -5,12 +5,13 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, join, relative } from 'node:path';
 import { parse } from 'yaml';
 import type { z } from 'zod';
-import { type AttrSpec, type Cell, type Condition, type ContentDb, type Equipment, type Exam, type Finding, type Link, membersOf, type Preset, type Risk, type RoomType, type RulePoints, type StaffRole, type Treatment } from '../../src/content/types';
+import { type AttrSpec, beyond, type Cell, type Condition, type ContentDb, type Equipment, type Exam, type Finding, type Link, membersOf, type Preset, type Risk, type RoomType, type RulePoints, type StaffRole, type Treatment } from '../../src/content/types';
 import { planOf, presetHospital } from '../../src/engine/hospital/build';
 import { problemsOf } from '../../src/engine/hospital/requirements';
 import { ALLERGY_EXAM } from '../../src/engine/career/achievements';
 import { fingerprint } from '../../src/engine/core/hash';
 import { P_ONE } from '../../src/engine/core/rng';
+import { SETTING_ORDER } from '../../src/engine/med/plan';
 import { findBrand } from './brands';
 import {
   BANDS, type ChapterSrc, chapterSchema, type CharacterSrc, characterSchema, type ConditionSrc, conditionSchema, type EconomySrc, economySchema, type EquipmentSrc, equipmentSchema, type ExamSrc, examSchema, type FindingSrc, findingSchema,
@@ -375,6 +376,12 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
         for (const f of after.flags?.any ?? []) if (!c.findings.some(l => l.f === f)) errors.push(`${owner}: место после обследования — по признаку ${f}, а у болезни его нет`);
         if (!t.setting.param && !t.setting.redFlag) errors.push(`${owner}: место после обследования, а до него оно не зависит ни от параметра, ни от красного флага`);
       }
+      // без аппаратов у постели (часть 42б): аппараты есть в каталоге, место — выше обычного
+      const without = t.setting.without;
+      if (without) {
+        for (const id of without.equipment) if (!equipment[id]) errors.push(`${owner}: место без аппарата ${id} у постели — такого аппарата нет`);
+        if (SETTING_ORDER[without.setting] <= SETTING_ORDER[t.setting.default]) errors.push(`${owner}: место без аппаратов у постели — ${without.setting}, не выше обычного ${t.setting.default}`);
+      }
       if (t.setting.default === 'home' && t.firstLine.length === 0) errors.push(`${owner}: лечат дома, а первой линии нет`);
       for (const id of t.plan ?? []) if (![...t.firstLine, ...t.acceptable, ...t.supportive].includes(id)) errors.push(`${owner}: в типичном назначении ${id} — не из первой линии, допустимых или облегчающих`);
       // тактика и действие лечения не спорят: то, что лечит причину, не бывает «не показано»,
@@ -533,6 +540,15 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       else if (id === t.id || treatments[id].kind === 'surgery') errors.push(`${t.id}: спутник ${id} — само лечение или операция`);
     }
     if (new Set(companions).size !== companions.length) errors.push(`${t.id}: спутники повторяются`);
+    // спутники при болезнях (часть 42б): спутники есть, болезни есть и не повторяются, лечение при них действует
+    if (t.companionsFor) {
+      if (companions.length === 0) errors.push(`${t.id}: спутники нужны при ${t.companionsFor.join(', ')}, а спутников нет`);
+      if (new Set(t.companionsFor).size !== t.companionsFor.length) errors.push(`${t.id}: болезни спутников повторяются`);
+      for (const id of t.companionsFor) {
+        if (!(id in conditions)) errors.push(`${t.id}: спутники при ${id} — такой болезни нет`);
+        else if (!t.effects.some(e => e.on === id && e.kind === 'cure')) errors.push(`${t.id}: спутники при ${id}, а при ней лечение не действует`);
+      }
+    }
   }
   for (const r of Object.values(risks)) checkLinks(r.id, r.findings);
   const revealedBy: Record<string, string[]> = {};
@@ -574,6 +590,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   // точность выведена из его измерения: чувствительность — его специфичность, специфичность — 100
   for (const f of Object.values(findings)) {
     const of = f.value?.of;
+    if (f.value?.implies && !of) errors.push(`${f.id}: «не снимает» — только у порога на чужом измерении`);
     if (!of) continue;
     const base = findings[of]?.value;
     if (!base) { errors.push(`${f.id}: измерение ${of} не найдено или без числа`); continue; }
@@ -581,6 +598,14 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (base.unit !== f.value!.unit || base.decimals !== f.value!.decimals) errors.push(`${f.id}: единица и точность числа — не те, что у ${of}`);
     const [lo, hi] = f.value!.present;
     if ([base.present, base.absent].some(([a, b]) => lo <= b && a <= hi)) errors.push(`${f.id}: диапазон «есть» пересекается с диапазонами ${of}`);
+    // не снимает того (часть 42б): «есть» — дальше от нормы по ту же сторону, и у болезни с ним есть и то
+    // измерение — пульс 150 и чаще бывает только с «чаще 100», иначе вывод не узнает в частом пульсе её
+    if (f.value!.implies) {
+      if (!beyond(f.value!, base)) errors.push(`${f.id}: не снимает ${of}, а «есть» — не дальше от нормы по ту же сторону`);
+      for (const c of Object.values(conditions)) {
+        if (c.findings.some(l => l.f === f.id) && !c.findings.some(l => l.f === of)) errors.push(`${c.id}: признак ${f.id} не снимает ${of}, а его у болезни нет`);
+      }
+    }
     for (const e of Object.values(exams)) {
       const mine = e.checks.find(c => c.f === f.id);
       if (!mine) continue;
@@ -604,6 +629,13 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   for (const x of Object.values(exams)) for (const f of x.routineFor ?? []) {
     if (!findings[f]?.texts.complaint) errors.push(`${x.id}: жалоба ${f} для обязательного обследования не найдена или без текста жалобы`);
     if (x.complaints && !x.complaints.includes(f)) errors.push(`${x.id}: обязательно при жалобе ${f}, а при ней не предлагается`);
+  }
+  // каждому, у кого увидели (часть 42б): признак есть, и его открывает другое обследование (у жалоб —
+  // `routineFor`)
+  for (const x of Object.values(exams)) for (const f of x.routineSeen ?? []) {
+    if (!findings[f]) errors.push(`${x.id}: обязательно, если видно ${f}, а такого признака нет`);
+    else if (x.checks.some(c => c.f === f)) errors.push(`${x.id}: обязательно, если видно ${f}, а его открывает само это обследование`);
+    else if (!Object.values(exams).some(e => e.checks.some(c => c.f === f))) errors.push(`${x.id}: обязательно, если видно ${f}, а его не открывает ни одно обследование`);
   }
   // правила решения (часть 32): жалобы — признаки с жалобой, признаки и обследования есть, и
   // обследование правила открывает хоть один признак болезней, о которых оно
@@ -791,6 +823,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (e.radiation) out.radiation = e.radiation;
     if (e.routine) out.routine = true;
     if (e.routineFor) out.routineFor = e.routineFor;
+    if (e.routineSeen) out.routineSeen = e.routineSeen;
     if (e.bedside) out.bedside = e.bedside;
     if (e.repeat) out.repeat = e.repeat;
     if (e.sex) out.sex = e.sex;
@@ -816,6 +849,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (t.route) out.route = t.route;
     if (t.bedside) out.bedside = t.bedside;
     if (t.companions) out.companions = t.companions;
+    if (t.companionsFor) out.companionsFor = t.companionsFor;
     if (t.surgery) {
       const x = t.surgery;
       out.surgery = {
