@@ -16,6 +16,8 @@ effects:
   - { on: cond.anaphylaxis, kind: relieve, band: sometimes, days: [0, 1] }
   # ТЭЛА при сатурации ниже 90 % (spec 2026-10-chapter-3, часть 43б; ESC 2019, раздел 6.1.1) — игровая оценка
   - { on: cond.pe, kind: relieve, band: often, days: [0, 1], when: { spo2_below90: [yes] } }
+  # острая сердечная недостаточность при сатурации ниже 90 % (часть 43в; 156_2, раздел 7.4.1.2) — игровая оценка
+  - { on: cond.adhf, kind: relieve, band: often, days: [0, 1], when: { spo2_below90: [yes] } }
 contraindications: []
 texts:
   hint:

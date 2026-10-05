@@ -40,12 +40,13 @@ export interface Line {
 export type ResultImage =
   /**
    * обзорный снимок груди: инфильтрат, эмфизема; с травмой груди (часть 32в) — воздух и кровь в
-   * плевральной полости, переломы рёбер; с частью 43а — расширенное верхнее средостение
+   * плевральной полости, переломы рёбер; с частью 43а — расширенное верхнее средостение; с частью 43в — застой
+   * или отёк лёгких и большая тень сердца
    */
   | {
     kind: 'xray'; infiltrate?: 'right' | 'left' | 'both'; hyperinflation: boolean;
     pneumothorax?: XrayFindings['pneumothorax']; effusion?: XrayFindings['effusion']; ribFractures?: XrayFindings['ribFractures'];
-    wideMediastinum?: boolean; seed: number;
+    wideMediastinum?: boolean; congestion?: 'congestion' | 'edema'; cardiomegaly?: boolean; seed: number;
   }
   /** лента в двенадцати отведениях (spec 2026-10-chapter-3, часть 36): ритм, частота и находки, которые показало обследование */
   | { kind: 'ecg'; seed: number; ecg: EcgFindings }
@@ -282,15 +283,15 @@ const TX_GROUPS: [string, string[]][] = [
   ['antivirals', ['antiviral']],
   ['pain', ['analgesic', 'antimigraine']],
   ['breathing', ['bronchodilator', 'asthma', 'steroid.systemic']],
-  // кислород через маску (spec 2026-10-chapter-3, часть 38б): при низкой сатурации
+  // кислород через маску (spec 2026-10-chapter-3, часть 38б): при низкой сатурации; с частью 43в — маска CPAP
   ['oxygen', ['oxygen']],
   ['nose', ['nasal', 'steroid.intranasal', 'antihistamine']],
   // сердце и сосуды: с частью 33а — антикоагулянты, компрессионный трикотаж и гель при тромбофлебите;
   // с частью 33б — эпинефрин при анафилактическом шоке (АТХ C01CA24 — сердечно-сосудистая система);
   // с частью 39а — тромболизис при инфаркте; с частью 39г — статин (АТХ C10 — сердечно-сосудистая система);
   // с частью 42а — кардиоверсия, амиодарон и верапамил при фибрилляции предсердий; с частью 42в — атропин,
-  // допамин и наружная стимуляция при АВ-блокаде
-  ['heart', ['antihypertensive', 'antiplatelet', 'antianginal', 'anticoagulant', 'vascular', 'adrenergic', 'thrombolytic', 'lipid', 'antiarrhythmic', 'anticholinergic']],
+  // допамин и наружная стимуляция при АВ-блокаде; с частью 43в — фуросемид в вену при сердечной недостаточности
+  ['heart', ['antihypertensive', 'antiplatelet', 'antianginal', 'anticoagulant', 'vascular', 'adrenergic', 'thrombolytic', 'lipid', 'antiarrhythmic', 'anticholinergic', 'diuretic']],
   ['digestive', ['acid']],
   // растворы для питья и капельница (часть 32д-2): и при кишечной инфекции, и при обширном ожоге
   ['fluids', ['rehydration']],
@@ -406,6 +407,9 @@ function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observat
       ...(blood ? { effusion: { side: blood, ...(shown('img.cxr_hemothorax_large') || (shift && !air) ? { massive: true } : {}), ...(air ? { air: true } : {}) } } : {}),
       ...(ribs ? { ribFractures: { side: ribs, ribs: fracturedRibs(patientSeed, shown('img.xr_rib_multiple') !== undefined) } } : {}),
       ...(shown('img.cxr_wide_mediastinum') ? { wideMediastinum: true } : {}),
+      // сердечная недостаточность (часть 43в): отёк лёгких — с застоем, застой — без него
+      ...(shown('img.cxr_edema') ? { congestion: 'edema' as const } : shown('img.cxr_congestion') ? { congestion: 'congestion' as const } : {}),
+      ...(shown('img.cxr_cardiomegaly') ? { cardiomegaly: true } : {}),
       seed,
     };
   }

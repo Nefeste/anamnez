@@ -128,12 +128,20 @@ export const conditionSchema = z.strictObject({
      * начала прибавляются часы от прихода до решения; окно тромболизиса — 4,5 часа до его начала
      */
     // `seen` (часть 41в) — разбор судит по измеренному: давление снижают по тонометру
-    z.strictObject({ f: z.string().regex(/^[a-z]+\.[a-z0-9_]+$/), below: z.number(), clock: z.literal(true).optional(), seen: z.literal(true).optional() }),
+    // порог — ниже `below` или (часть 43в) выше `above`, один из двух; с ходом времени — только «ниже»
+    z.strictObject({ f: z.string().regex(/^[a-z]+\.[a-z0-9_]+$/), below: z.number().optional(), above: z.number().optional(), clock: z.literal(true).optional(), seen: z.literal(true).optional() })
+      .refine(d => (d.below === undefined) !== (d.above === undefined), { message: 'порог — либо below, либо above' })
+      .refine(d => !d.clock || d.below !== undefined, { message: 'порог со временем — только below' }),
     /**
      * по другим параметрам (часть 41а): «yes», если у каждого из `all` — одно из названных значений;
      * тромбэктомия — окклюзия, NIHSS 6 и больше и меньше 6 часов от начала
      */
     z.strictObject({ all: z.record(z.string(), z.array(z.string()).min(1)) }),
+    /**
+     * хоть у одного из `any` — одно из названных значений (spec 2026-10-chapter-3, часть 43в): ПИТ при острой
+     * сердечной недостаточности — отёк лёгких, гипоперфузия, частота дыхания выше 25 или сатурация ниже 90
+     */
+    z.strictObject({ any: z.record(z.string(), z.array(z.string()).min(1)) }),
     /**
      * по баллам шкалы (часть 41б): «yes», если баллов правила у пациента не меньше `from` — высокий
      * риск по ABCD2 с 6 баллов

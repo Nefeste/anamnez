@@ -1,7 +1,7 @@
 // План лечения и его проверка (`docs/04-medical-model.md` §8). План оценивается по правде:
 // роль каждого назначения при настоящем основном заболевании, где на самом деле надо
 // лечить и какие противопоказания нарушены — и знал ли о них врач.
-import { byRule, byValue, type ContentDb, type Effect, type Id, membersOf, type Setting, type Tactics, type Untreated } from '../../content/types';
+import { byParams, byRule, byValue, crosses, paramsHold, type ContentDb, type Effect, type Id, membersOf, type Setting, type Tactics, type Untreated } from '../../content/types';
 import { knownFacts, knownForRule } from './infer';
 import { checkRule } from './rules';
 import type { ActiveCondition, Observation, Patient } from './types';
@@ -410,7 +410,7 @@ export function asSeen(db: ContentDb, patient: Patient, observations: readonly O
   for (const [name, d] of Object.entries(derived)) {
     if (byValue(d) && d.seen) {
       const measured = observations.filter(o => o.f === d.f && o.value !== undefined);
-      const v = measured.length > 0 ? (measured[measured.length - 1].value! < d.below ? 'yes' : 'no') : undefined;
+      const v = measured.length > 0 ? (crosses(d, measured[measured.length - 1].value!) ? 'yes' : 'no') : undefined;
       if (v !== undefined && v !== out[name]) {
         out[name] = v;
         changed = true;
@@ -429,7 +429,7 @@ export function asSeen(db: ContentDb, patient: Patient, observations: readonly O
   if (!changed) return out;
   for (const d of Object.entries(derived)) {
     const [name, x] = d;
-    if (typeof x !== 'string' && 'all' in x) out[name] = Object.entries(x.all).every(([k, values]) => values.includes(out[k])) ? 'yes' : 'no';
+    if (byParams(x)) out[name] = paramsHold(x, out) ? 'yes' : 'no';
   }
   return out;
 }
@@ -480,7 +480,7 @@ export function evaluatePlan(db: ContentDb, patient: Patient, plan: Plan, observ
     const derived = db.conditions[primary]?.derived ?? {};
     const lefts = Object.keys(entry?.when ?? {}).flatMap(k => {
       const d = derived[k];
-      return k in before && byValue(d) && d.clock ? [Math.round((d.below - (onsetH ?? 0)) * 60)] : [];
+      return k in before && byValue(d) && d.clock && d.below !== undefined ? [Math.round((d.below - (onsetH ?? 0)) * 60)] : [];
     });
     return lefts.length > 0 ? Math.min(...lefts) : 0;
   };

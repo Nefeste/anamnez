@@ -578,6 +578,19 @@ function peSave(): { save: string; id: string } {
   return neuroSave('cond.pe', fits, ['exam.ask_chronic', 'exam.ask_leg', 'exam.vitals', 'exam.cta_chest']);
 }
 
+/**
+ * Песочница с приёмным, КТ и ПИТ (часть 43в): первая машина скорой везёт острую декомпенсацию сердечной
+ * недостаточности с отёком лёгких, сатурация 90 и выше; расспрос, пульс и давление, лёгкие, NT-proBNP и снимок груди
+ * готовы.
+ */
+function adhfSave(): { save: string; id: string } {
+  const fits = (x: ReturnType<typeof generatePatient>) => {
+    const k = x.truth.conditions[0].params;
+    return x.age >= 50 && k.type === 'edema' && k.spo2_below90 === 'no' && x.truth.risks.length <= 3 && x.complaints.includes('sym.dyspnea');
+  };
+  return neuroSave('cond.adhf', fits, ['exam.ask_chronic', 'exam.ask_complaints', 'exam.vitals', 'exam.lung_auscultation', 'exam.nt_probnp', 'exam.xray_chest']);
+}
+
 /** Больница с приёмным, КТ и ПИТ; первую машину скорой подменяет больной `primary`, для которого верно `fits`; сделаны `exams`. */
 function neuroSave(primary: string, fits: (x: ReturnType<typeof generatePatient>) => boolean, exams: string[]): { save: string; id: string } {
   const { db } = buildDb();
@@ -958,14 +971,15 @@ try {
   const heads = await drawn('[data-testid^="head-ct-"] canvas, [data-testid^="head-mri-"] canvas');
   const us = await drawn('[data-testid^="us-"] canvas');
   const abd = await drawn('[data-testid^="abd-"] canvas');
-  // снимок груди при травме (часть 32в): воздух, кровь, переломы рёбер; с частью 43а — и расширенное средостение
+  // снимок груди при травме (часть 32в): воздух, кровь, переломы рёбер; с частью 43а — и расширенное средостение, с
+  // частью 43в — застой и отёк лёгких
   const chest = await drawn('[data-testid^="chest-"] canvas');
   // срез груди на КТ-ангиографии (часть 43а): без расслоения, тип A и тип B; с частью 43б — тромбоэмболия
   const ctChest = await drawn('[data-testid^="cta-chest-"] canvas');
   const allImages = await drawn('canvas');
-  check(heads.length === 9 && heads.every(Boolean) && us.length === 16 && us.every(Boolean) && abd.length === 3 && abd.every(Boolean) && chest.length === 8 && chest.every(Boolean)
+  check(heads.length === 9 && heads.every(Boolean) && us.length === 16 && us.every(Boolean) && abd.length === 3 && abd.every(Boolean) && chest.length === 10 && chest.every(Boolean)
     && ctChest.length === 5 && ctChest.every(Boolean) && allImages.every(Boolean),
-    `П5: срезы головы нарисованы — ${heads.filter(Boolean).length} из 9, УЗИ — ${us.filter(Boolean).length} из 16 (с венами и артерией ног), снимки живота — ${abd.filter(Boolean).length} из 3, груди — ${chest.filter(Boolean).length} из 8, срезы груди на КТ — ${ctChest.filter(Boolean).length} из 5; все рисунки экрана — ${allImages.filter(Boolean).length} из ${allImages.length} (смотреть 06-head-*.png, 06-us.png, 06-abdomen.png, 06-chest.png, 06-cta-chest.png)`);
+    `П5: срезы головы нарисованы — ${heads.filter(Boolean).length} из 9, УЗИ — ${us.filter(Boolean).length} из 16 (с венами и артерией ног), снимки живота — ${abd.filter(Boolean).length} из 3, груди — ${chest.filter(Boolean).length} из 10, срезы груди на КТ — ${ctChest.filter(Boolean).length} из 5; все рисунки экрана — ${allImages.filter(Boolean).length} из ${allImages.length} (смотреть 06-head-*.png, 06-us.png, 06-abdomen.png, 06-chest.png, 06-cta-chest.png)`);
   // ЭКГ в двенадцати отведениях (spec 2026-10-chapter-3, часть 36): ритмы, проведение, стенки инфаркта
   const ecg = await drawn('[data-testid^="ecg-"] canvas');
   check(ecg.length === 20 && ecg.every(Boolean), `П5: листы ЭКГ в двенадцати отведениях нарисованы — ${ecg.filter(Boolean).length} из 20 (смотреть 06-ecg-*.png)`);
@@ -2223,6 +2237,50 @@ try {
   check((await visibleText(page, 'enc-article-title')) === 'Тромбоэмболия лёгочной артерии' && peArticle.includes('При sPESI 1 балл и больше — в стационаре.')
     && peArticle.includes('Без монитора с дефибриллятором у постели — в стационаре.'),
     `энциклопедия, ТЭЛА: ${await visibleText(page, 'enc-article-title')} — место по sPESI, без монитора — в стационар`);
+
+  // острая декомпенсация сердечной недостаточности (часть 43в): у вас — отёк лёгких; в карте — хрипы над всеми полями,
+  // NT-proBNP выше порога и снимок груди с «крыльями бабочки»; фуросемид и нитроглицерин в вену, CPAP, НМГ и «В ПИТ» —
+  // разбор без замечаний; в энциклопедии — ПИТ по признакам и вред мочегонного у «холодной»
+  const hf = adhfSave();
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', hf.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId('shift-continue').waitFor({ timeout: 15_000 });
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId('shift-continue').click();
+  await visible(page, 'visit-decide').waitFor({ timeout: 10_000 });
+  const hfCard = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  check(hfCard.includes('NT-proBNP выше порога для возраста') && hfCard.includes('«крыльями бабочки»') && hfCard.includes('Над всеми полями обоих лёгких — влажные хрипы'),
+    `ОДСН: в карте — NT-proBNP, отёк лёгких на снимке и хрипы над всеми полями («${hfCard.replace(/\n/g, ' · ').slice(0, 300)}»)`);
+  await visible(page, 'result-xray').scrollIntoViewIfNeeded();
+  check((await visible(page, 'result-xray').boundingBox() ?? { height: 0 }).height > 150, 'ОДСН: рентген груди — снимком');
+  await page.screenshot({ path: join(OUT, '26-adhf-card.png'), fullPage: true });
+  await visible(page, 'visit-decide').click();
+  await visible(page, 'dx-cond.adhf').click();
+  await visible(page, 'decision-to-plan').click();
+  for (const tx of ['tx.furosemide_iv', 'tx.nitroglycerin_iv', 'tx.cpap', 'tx.lmwh']) {
+    await page.getByTestId(`tx-${tx}`).waitFor({ timeout: 5000 });
+    await page.getByTestId(`tx-${tx}`).click();
+  }
+  await page.getByTestId('setting-icu').click();
+  await page.screenshot({ path: join(OUT, '26-adhf-decision.png'), fullPage: true });
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
+  const hfReview = await page.locator('body').innerText();
+  check(hfReview.includes('Острая декомпенсация сердечной недостаточности') && !/[Нн]е назначено|не показано|вредно|Недооценили тяжесть/.test(hfReview),
+    `ОДСН с отёком лёгких: фуросемид, нитроглицерин, CPAP, НМГ и ПИТ, разбор — «${hfReview.replace(/\n/g, ' · ').slice(0, 300)}»`);
+  await page.screenshot({ path: join(OUT, '26-adhf-review.png'), fullPage: true });
+  await page.goto(`${base}/encyclopedia/article/cond.adhf`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const hfArticle = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  check((await visibleText(page, 'enc-article-title')) === 'Острая декомпенсация сердечной недостаточности'
+    && hfArticle.includes('При отёке лёгких, гипоперфузии, частоте дыхания выше 25 или сатурации ниже 90 % — палата интенсивной терапии.')
+    && hfArticle.includes('при гипоперфузии — холодной влажной коже'),
+    `энциклопедия, ОДСН: ${await visibleText(page, 'enc-article-title')} — ПИТ по признакам, лечение по формам`);
 
   // хирургия живота (spec 2026-09-chapter-2, часть 30): со смотровой приёмного больница принимает
   // и хирургию — у вас больной острым холециститом; УЗИ — желчный пузырь с камнями и толстой
