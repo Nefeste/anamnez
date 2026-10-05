@@ -261,6 +261,10 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
         const pts = rules[d.rule]?.points;
         if (!pts) errors.push(`${owner}: параметр ${name} — по баллам ${d.rule}, а у него нет баллов`);
         else if (d.from > pointsMax(pts)) errors.push(`${owner}: параметр ${name} — от ${d.from} баллов, а у ${d.rule} их не больше ${pointsMax(pts)}`);
+      } else if ('has' in d) {
+        // по признаку (часть 44а): признак есть в базе, и какое-то обследование его проверяет — иначе врач не узнает
+        if (!findings[d.has]) errors.push(`${owner}: параметр ${name} — по признаку ${d.has}, а его нет`);
+        else if (!Object.values(exams).some(e => e.checks.some(k => k.f === d.has))) errors.push(`${owner}: параметр ${name} — по признаку ${d.has}, а его не проверяет ни одно обследование`);
       } else if ('all' in d || 'any' in d) {
         // по другим параметрам (части 41а и 43в): они объявлены, значения у них есть, и сами они — не такие же
         for (const [other, values] of Object.entries('all' in d ? d.all : d.any)) {

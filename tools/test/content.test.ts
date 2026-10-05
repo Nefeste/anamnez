@@ -592,6 +592,14 @@ describe('каталог больницы', () => {
     expect(has(broken(d => edit(d, 'conditions/therapy/pe.yaml', '  spesi: rule.spesi\n', '')), 'rule.spesi: правило о месте лечения, а производного параметра по нему нет ни у одной болезни')).toBe(true);
   });
 
+  test('гипогликемия (часть 44а): параметр по признаку — признак есть в базе, и его проверяет обследование', () => {
+    const H = 'conditions/therapy/hypoglycemia.yaml';
+    const has = (errors: string[], text: string) => errors.some(e => e.includes(text));
+    expect(has(broken(d => edit(d, H, 'su: { has: hx.sulfonylurea }', 'su: { has: hx.sulfonylurea_x }')), 'cond.hypoglycemia: параметр su — по признаку hx.sulfonylurea_x, а его нет')).toBe(true);
+    const unasked = broken(d => edit(d, 'exams/ask_meds.yaml', '  - { f: hx.sulfonylurea, sens: 90, spec: 97 }\n', ''));
+    expect(has(unasked, 'cond.hypoglycemia: параметр su — по признаку hx.sulfonylurea, а его не проверяет ни одно обследование')).toBe(true);
+  });
+
   test('палата интенсивной терапии (часть 38а): койки есть, мест под мониторы не меньше коек, не палата; аппарат — в разных помещениях, в ПИТ без своего места', () => {
     const I = 'hospital/rooms/icu.yaml';
     const M = 'hospital/equipment/monitor_defib.yaml';

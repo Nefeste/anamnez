@@ -147,6 +147,11 @@ export const conditionSchema = z.strictObject({
      * риск по ABCD2 с 6 баллов
      */
     z.strictObject({ rule: z.string().regex(/^rule\.[a-z0-9_]+$/), from: z.number().int().min(1) }),
+    /**
+     * по признаку (spec 2026-10-chapter-3, часть 44а): «yes», если признак `has` у пациента есть, от какой бы
+     * причины, — пьёт таблетки сульфонилмочевины
+     */
+    z.strictObject({ has: z.string().regex(/^[a-z]+\.[a-z0-9_]+$/) }),
   ])).optional(),
   course: z.strictObject({
     stages: z.array(z.strictObject({ id: z.string(), days: z.tuple([z.number(), z.number()]), needs: z.literal('treatment').optional() })).min(1),

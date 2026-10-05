@@ -3,7 +3,7 @@
 // Каждый бросок берётся из своей именованной ветви зерна (`fork`), поэтому добавление
 // новой записи в базу не сдвигает случайность у остальных признаков и золотые случаи
 // меняются только там, где изменилась медицина.
-import { byParams, byRule, byValue, crosses, paramsHold, type Condition, type ContentDb, type Id, type Link, type Onset, type Risk, type Season } from '../../content/types';
+import { byParams, byPresence, byRule, byValue, crosses, paramsHold, type Condition, type ContentDb, type Id, type Link, type Onset, type Risk, type Season } from '../../content/types';
 import { P_ONE, Rng } from '../core/rng';
 import { checkRule, type Who as RuleWho } from './rules';
 import type { ActiveCondition, Patient, Sex, TrueFinding } from './types';
@@ -221,14 +221,20 @@ function presentationDay(c: Condition, rng: Rng): { day: number; stage: string }
  * Производные параметры (spec 2026-09-chapter-2, часть 32г): «yes», если правило решения выполнено
  * на настоящих признаках и возрасте, иначе «no» — показана ли КТ при сотрясении; по баллам шкалы
  * (часть 41б) — если их не меньше порога параметра: высокий риск по ABCD2; с частью 42а — и по полу
- * (CHA₂DS₂-VASc). Признаки от них не зависят (валидатор), поэтому считаются после признаков; новых
- * бросков нет. Уже посчитанные не трогает: так при загрузке досчитываются пациенты из сохранений до
- * появления параметра (часть 39в: коронарография в первые сутки при ОКС).
+ * (CHA₂DS₂-VASc); с частью 44а — по признаку: пьёт ли таблетки сульфонилмочевины. Признаки от них не
+ * зависят (валидатор), поэтому считаются после признаков; новых бросков нет. Уже посчитанные не трогает:
+ * так при загрузке досчитываются пациенты из сохранений до появления параметра (часть 39в: коронарография
+ * в первые сутки при ОКС).
  */
 export function deriveParams(db: ContentDb, conditions: ActiveCondition[], who: RuleWho, findings: readonly Pick<TrueFinding, 'f'>[]): void {
   const has = new Set(findings.map(x => x.f));
   for (const c of conditions) {
     for (const [name, d] of Object.entries(db.conditions[c.id].derived ?? {})) {
+      // по признаку (часть 44а): есть ли он, от какой бы причины
+      if (byPresence(d)) {
+        if (c.params[name] === undefined) c.params[name] = has.has(d.has) ? 'yes' : 'no';
+        continue;
+      }
       const r = byRule(d);
       if (!r || c.params[name] !== undefined) continue;
       c.params[name] = checkRule(db.rules[r.rule], who, f => has.has(f), r.from).verdict === 'yes' ? 'yes' : 'no';

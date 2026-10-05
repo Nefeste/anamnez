@@ -166,11 +166,26 @@ export interface DerivedByRule {
   from: number;
 }
 
-export type Derived = Id | DerivedByValue | DerivedByParams | DerivedByRule;
+/**
+ * Производный параметр по признаку (spec 2026-10-chapter-3, часть 44а): «yes», если признак `has` у пациента
+ * есть, — от какой бы причины: таблетки сульфонилмочевины пьёт и тот, у кого сахар упал от инсулина, а капельница
+ * при тяжёлой гипогликемии нужна, если он их пьёт. Врач судит по обследованию, которое признак проверяет; не
+ * проверял — по долям параметра.
+ */
+export interface DerivedByFinding {
+  has: Id;
+}
+
+export type Derived = Id | DerivedByValue | DerivedByParams | DerivedByRule | DerivedByFinding;
 
 /** Производный по числу признака (части 38б и 41а), а не по правилу или другим параметрам. */
 export function byValue(d: Derived | undefined): d is DerivedByValue {
   return d !== undefined && typeof d !== 'string' && 'f' in d;
+}
+
+/** Производный по признаку (часть 44а): есть ли он у пациента. */
+export function byPresence(d: Derived | undefined): d is DerivedByFinding {
+  return d !== undefined && typeof d !== 'string' && 'has' in d;
 }
 
 /** Производный по другим параметрам (части 41а и 43в). */

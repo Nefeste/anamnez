@@ -622,6 +622,19 @@ function periSave(): { save: string; id: string } {
 }
 
 /**
+ * Песочница с приёмным, КТ и ПИТ (часть 44а): первая машина скорой везёт тяжёлую гипогликемию от сульфонилмочевины —
+ * спутанность со слов родных, оглушение, глюкоза ниже 3,0; без нарушения речи. Готовы хронические болезни,
+ * неврологический осмотр, глюкометр и расспрос о лекарствах.
+ */
+function hypoSave(): { save: string; id: string } {
+  const fits = (x: ReturnType<typeof generatePatient>) => {
+    const k = x.truth.conditions[0].params;
+    return k.severity === 'severe' && k.drug === 'sulfonylurea' && k.speech === 'no' && x.truth.risks.length <= 2 && x.complaints.includes('sym.confusion');
+  };
+  return neuroSave('cond.hypoglycemia', fits, ['exam.ask_chronic', 'exam.neuro_exam', 'exam.glucometer', 'exam.ask_meds']);
+}
+
+/**
  * Больница с приёмным, КТ и ПИТ; первую машину скорой подменяет больной `primary`, для которого верно `fits`; сделаны
  * `exams`. С `ultrasound` (часть 43д) — ещё кабинет УЗИ под старым зданием, коридор к нему продлён влево.
  */
@@ -2409,6 +2422,45 @@ try {
   check((await visibleText(page, 'enc-article-title')) === 'Острый перикардит' && periArticle.includes('Обычно — дома.')
     && periArticle.includes('При тампонаде — палата интенсивной терапии.') && periArticle.includes('Пункция перикарда под контролем УЗИ'),
     `энциклопедия, перикардит: ${await visibleText(page, 'enc-article-title')} — дома, тампонада в ПИТ, пункция`);
+
+  // гипогликемия (часть 44а): у вас — тяжёлая от сульфонилмочевины; в карте — спутанность словами родных, глюкоза ниже
+  // 3,0 и «пьёт таблетки сульфонилмочевины»; декстроза в вену струйно и капельно, «В ПИТ» — разбор без замечаний; в
+  // энциклопедии — тяжёлая на скорой, быстрые углеводы при ней — в «Опасно»
+  const hypo = hypoSave();
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', hypo.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId('shift-continue').waitFor({ timeout: 15_000 });
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId('shift-continue').click();
+  await visible(page, 'visit-decide').waitFor({ timeout: 10_000 });
+  const hypoCard = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  check(/заговариваться|отвечает невпопад/.test(hypoCard) && /Глюкоза \d,\d ммоль\/л — гипогликемия/.test(hypoCard) && hypoCard.includes('Пьёт таблетки сульфонилмочевины'),
+    `Гипогликемия: в карте — спутанность, глюкоза ниже 3,0 и сульфонилмочевина («${hypoCard.replace(/\n/g, ' · ').slice(0, 300)}»)`);
+  await page.screenshot({ path: join(OUT, '29-hypo-card.png'), fullPage: true });
+  await visible(page, 'visit-decide').click();
+  await visible(page, 'dx-cond.hypoglycemia').click();
+  await visible(page, 'decision-to-plan').click();
+  await page.getByTestId('tx-tx.dextrose_iv').waitFor({ timeout: 5000 });
+  for (const tx of ['tx.dextrose_iv', 'tx.dextrose_infusion']) await page.getByTestId(`tx-${tx}`).click();
+  await page.getByTestId('setting-icu').click();
+  await page.screenshot({ path: join(OUT, '29-hypo-decision.png'), fullPage: true });
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
+  const hypoReview = await page.locator('body').innerText();
+  check(hypoReview.includes('Гипогликемия') && !/[Нн]е назначено|не показано|вредно|Недооценили тяжесть|Обоснованность [CD]/.test(hypoReview),
+    `Гипогликемия от сульфонилмочевины: декстроза струйно и капельно, ПИТ, разбор — «${hypoReview.replace(/\n/g, ' · ').slice(0, 300)}»`);
+  await page.screenshot({ path: join(OUT, '29-hypo-review.png'), fullPage: true });
+  await page.goto(`${base}/encyclopedia/article/cond.hypoglycemia`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const hypoArticle = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  check((await visibleText(page, 'enc-article-title')) === 'Гипогликемия' && hypoArticle.includes('При тяжёлом течении — скорая, больница.')
+    && hypoArticle.includes('Быстрые углеводы внутрь') && hypoArticle.includes('Декстроза капельно'),
+    `энциклопедия, гипогликемия: ${await visibleText(page, 'enc-article-title')} — тяжёлая на скорой, углеводы и капельница`);
 
   // хирургия живота (spec 2026-09-chapter-2, часть 30): со смотровой приёмного больница принимает
   // и хирургию — у вас больной острым холециститом; УЗИ — желчный пузырь с камнями и толстой

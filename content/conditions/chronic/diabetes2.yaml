@@ -14,6 +14,11 @@ course:
     - { id: stable, days: [0, 36500] }
 findings:
   - { f: hx.diabetes, band: usually }
+  # чем лечат (spec 2026-10-chapter-3, часть 44а): инсулин и сульфонилмочевина — и у тех, у кого сахар не падает, иначе
+  # «колет инсулин» значило бы гипогликемию; доли и пропуск еды — игровая оценка
+  - { f: hx.insulin, band: sometimes }
+  - { f: hx.sulfonylurea, band: sometimes }
+  - { f: hx.missed_meal, band: rarely }
   - { f: lab.glucose_high, band: often }
   - { f: lab.hba1c_high, band: often }
   - { f: lab.urine_glucose, band: sometimes }

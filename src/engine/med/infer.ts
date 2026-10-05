@@ -4,7 +4,7 @@
 // По пользе обследования решают страховая песочницы и нанятые врачи — а это меняет состояние
 // партии, поэтому логарифм здесь свой, из `core/math.ts` (ADR 0004): одинаковый в Hermes, V8 и
 // JavaScriptCore.
-import { byParams, byRule, byValue, crosses, paramsOf, type Condition, type ContentDb, type DerivedByParams, type DerivedByValue, type ExamCheck, type Id, type Link, type Rule, type Season } from '../../content/types';
+import { byParams, byPresence, byRule, byValue, crosses, paramsOf, type Condition, type ContentDb, type DerivedByParams, type DerivedByValue, type ExamCheck, type Id, type Link, type Rule, type Season } from '../../content/types';
 import { log2 } from '../core/math';
 import { P_ONE } from '../core/rng';
 import { chronicChance, presentingWeight } from './generate';
@@ -411,6 +411,8 @@ export function paramBeliefs(db: ContentDb, condId: Id, name: string, observatio
     return Object.keys(dist).map(value => ({ value, p: value === 'yes' ? yes : 1 - yes }));
   }
   if (byValue(derived)) return derivedBeliefs(dist, valueVerdict(derived, observations, minutes));
+  // по признаку (часть 44а): проверили — есть он или нет; не проверяли — по долям
+  if (byPresence(derived)) return derivedBeliefs(dist, presenceVerdict(derived.has, observations));
   // атрибут показанного признака взят из этого параметра (часть 42в): ЭКГ показала, какие комплексы у
   // выскальзывающего ритма, — это и есть вид блокады
   const seen = attrParam(c, name, observations);
@@ -452,6 +454,13 @@ function valueVerdict(d: DerivedByValue, observations: readonly Observation[], m
   if (measured.length === 0) return 'unknown';
   // с ходом времени (часть 41а): часы от начала — плюс часы от прихода до решения
   return crosses(d, measured[measured.length - 1].value! + (d.clock ? minutes / 60 : 0)) ? 'yes' : 'no';
+}
+
+/** Есть ли признак по обследованиям (часть 44а): найден — «yes», проверяли и не нашли — «no», не проверяли — неизвестно. */
+function presenceVerdict(f: Id, observations: readonly Observation[]): RuleVerdict {
+  const seen = observations.filter(o => o.f === f);
+  if (seen.length === 0) return 'unknown';
+  return seen.some(o => o.shown) ? 'yes' : 'no';
 }
 
 /**
@@ -538,6 +547,8 @@ export function paramGain(db: ContentDb, condId: Id, name: string, examId: Id, o
   }
   // порог на измерении (часть 38б): обследование, которое меряет число, снимает всю неопределённость
   if (byValue(derived)) return exam.checks.some(k => k.f === derived.f) ? entropy(beliefs.map(b => ({ id: b.value, p: b.p }))) : 0;
+  // по признаку (часть 44а): обследование, которое его проверяет, — тоже
+  if (byPresence(derived)) return exam.checks.some(k => k.f === derived.has) ? entropy(beliefs.map(b => ({ id: b.value, p: b.p }))) : 0;
   const observed = new Set(observations.map(o => o.f));
   const telling = new Set(tellingOf(c, name));
   const h0 = entropy(beliefs.map(b => ({ id: b.value, p: b.p })));

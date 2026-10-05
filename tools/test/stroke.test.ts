@@ -138,7 +138,8 @@ describe('кого привозят', () => {
     }
     expect(walk).toBe(0);
     expect(carried).toBeGreaterThan(20);
-  });
+    // шесть тысяч больных: на полном прогоне под нагрузкой — дольше 5 секунд
+  }, 30_000);
 });
 
 describe('признаки и скрытые параметры', () => {
@@ -670,8 +671,9 @@ describe('энциклопедия', () => {
     expect(t.blocks.find(b => b.key === 'where')!.refs!.map(r => r.id)).toEqual([MONITOR, 'room.emergency', 'room.icu']);
     const used = t.blocks.find(b => b.key === 'usedAs')!.rows!.map(r => [r.label, r.refs.map(x => x.id)]);
     // с частью 41в — опасно при кровоизлияниях в мозг: кровь на КТ — абсолютное противопоказание; с частью 43а — и при
-    // расслоении аорты; с частью 43г — и при гипертоническом кризе: давление выше 185/110 — противопоказание
-    expect(used).toEqual([['Опасно при', ['cond.ich', 'cond.hypertensive_crisis', 'cond.aortic_dissection', 'cond.sah']], ['Обязательно при', [STROKE]], ['Обязательно до перевода при', [STROKE]]]);
+    // расслоении аорты; с частью 43г — и при гипертоническом кризе: давление выше 185/110 — противопоказание; с частью
+    // 44а — и при гипогликемии: «маска» инсульта
+    expect(used).toEqual([['Опасно при', ['cond.ich', 'cond.hypertensive_crisis', 'cond.hypoglycemia', 'cond.aortic_dissection', 'cond.sah']], ['Обязательно при', [STROKE]], ['Обязательно до перевода при', [STROKE]]]);
     expect(article(db, 'rule.lysis_stroke')!.blocks.find(b => b.key === 'decides')!.refs!.map(r => r.id)).toEqual([LYSIS]);
     expect(article(db, CTA)!.blocks.find(b => b.key === 'where')!.refs!.map(r => r.id)).toEqual(['room.ct', 'eq.ct_16', 'eq.ct_64']);
     expect(article(db, 'room.ct')!.blocks.flatMap(b => b.refs ?? []).map(r => r.id)).toContain(CTA);
