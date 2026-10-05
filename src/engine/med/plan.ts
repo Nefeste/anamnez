@@ -230,12 +230,20 @@ function requireListOf(t: Tactics | undefined, params?: Record<string, string>):
 
 /**
  * Обязательное и при переводе (часть 39а): общее и из подошедших записей `byParam`; без параметров —
- * только общее, как у `requireOf`.
+ * только общее, как у `requireOf`. Группами (часть 42в): одно лечение — группой из одного, «одно из» —
+ * своей; хватит одного из группы.
  */
-export function beforeTransferOf(t: Tactics | undefined, params?: Record<string, string>): Id[] {
+export function beforeTransferOf(t: Tactics | undefined, params?: Record<string, string>): Id[][] {
+  return beforeTransferListOf(t, params).map(g => (typeof g === 'string' ? [g] : g));
+}
+
+/** То же списком записи: лечение — строкой, группа — списком (для `tacticsFor`). */
+function beforeTransferListOf(t: Tactics | undefined, params?: Record<string, string>): (Id | Id[])[] {
   if (!t) return [];
   const over = params ? (t.byParam ?? []).filter(b => whenHolds(b.when, params)) : [];
-  return [...new Set([...(t.beforeTransfer ?? []), ...over.flatMap(b => b.beforeTransfer ?? [])])];
+  const all = [...(t.beforeTransfer ?? []), ...over.flatMap(b => b.beforeTransfer ?? [])];
+  const key = (g: Id | Id[]) => (typeof g === 'string' ? g : g.join());
+  return all.filter((g, i) => all.findIndex(x => key(x) === key(g)) === i);
 }
 
 /**
@@ -258,7 +266,7 @@ export function txRole(db: ContentDb, condId: Id, tx: Id, params?: Record<string
   const t = db.conditions[condId]?.treatment;
   if (preventOf(t, params).includes(tx)) return 'prevent';
   if (requireOf(t, params).some(g => g.includes(tx))) return 'require';
-  if (beforeTransferOf(t, params).includes(tx)) return 'beforeTransfer';
+  if (beforeTransferOf(t, params).some(g => g.includes(tx))) return 'beforeTransfer';
   const x = params && t?.byParam?.find(b => whenHolds(b.when, params) && ROLES.some(role => b[role].includes(tx)));
   if (x) return ROLES.find(role => x[role].includes(tx))!;
   // своя операция болезни — первая линия (часть 28); в тактике её нет: до приезда скорой её не сделать.
@@ -344,12 +352,12 @@ export function tacticsFor(t: Tactics, params: Record<string, string> = {}): Tac
   const over = (t.byParam ?? []).filter(b => whenHolds(b.when, params));
   if (over.length === 0) return t;
   // обязательное по параметру (часть 38б) и до перевода (часть 39а) тоже названо: из общих списков оно уходит
-  const named = new Set(over.flatMap(b => [...ROLES.flatMap(role => b[role]), ...membersOf(b.require), ...(b.beforeTransfer ?? [])]));
+  const named = new Set(over.flatMap(b => [...ROLES.flatMap(role => b[role]), ...membersOf(b.require), ...membersOf(b.beforeTransfer)]));
   const lists = Object.fromEntries(ROLES.map(role => [role, [...new Set([...over.flatMap(b => b[role]), ...t[role].filter(id => !named.has(id))])]])) as Record<ListRole, Id[]>;
   const plan = over.find(b => b.plan)?.plan ?? t.plan?.filter(id => lists.firstLine.includes(id) || lists.acceptable.includes(id) || lists.supportive.includes(id));
   const prevent = preventOf(t, params);
   const require = requireListOf(t, params);
-  const beforeTransfer = beforeTransferOf(t, params);
+  const beforeTransfer = beforeTransferListOf(t, params);
   const preHospital = [...new Set(over.flatMap(b => b.preHospital ?? []))];
   return {
     ...lists, setting: t.setting, ...(plan && plan.length > 0 ? { plan } : {}), ...(prevent.length > 0 ? { prevent } : {}),
@@ -462,13 +470,13 @@ export function evaluatePlan(db: ContentDb, patient: Patient, plan: Plan, observ
   const onsetF = db.conditions[primary]?.onset?.f;
   const onsetH = onsetF !== undefined ? patient.truth.values[onsetF] : undefined;
   const wasParams = { ...params, ...before };
-  const single = (ps: Record<string, string>) => [...requireOf(base, ps).filter(g => g.length === 1).map(g => g[0]), ...beforeTransferOf(base, ps)];
+  const single = (ps: Record<string, string>) => [...requireOf(base, ps), ...beforeTransferOf(base, ps)].filter(g => g.length === 1).map(g => g[0]);
   const now = new Set(single(params));
   const was = [...new Set(single(wasParams))];
   // сколько минут окна оставалось при поступлении: из условий записи, по которой это было обязательно, —
   // пороги по часам, что закрылись к решению
   const leftOf = (tx: Id): number => {
-    const entry = (base?.byParam ?? []).find(b => whenHolds(b.when, wasParams) && (membersOf(b.require).includes(tx) || (b.beforeTransfer ?? []).includes(tx)));
+    const entry = (base?.byParam ?? []).find(b => whenHolds(b.when, wasParams) && (membersOf(b.require).includes(tx) || membersOf(b.beforeTransfer).includes(tx)));
     const derived = db.conditions[primary]?.derived ?? {};
     const lefts = Object.keys(entry?.when ?? {}).flatMap(k => {
       const d = derived[k];
@@ -501,10 +509,13 @@ export function evaluatePlan(db: ContentDb, patient: Patient, plan: Plan, observ
     }).sort(),
     requireWhen: Object.fromEntries((base?.byParam ?? []).filter(b => whenHolds(b.when, seenParams)).flatMap(b => membersOf(b.require).map(tx => [tx, b.when] as const)).reverse()),
     // до перевода (часть 39а) — то, что здесь можно было сделать: тромболизис у постели под монитором;
-    // по тому, что показали обследования (часть 41в): давление перед переводом снижают по тонометру
-    beforeTransferMissing: beforeTransferOf(base, seenParams)
-      .filter(tx => !plan.treatments.includes(tx) && txAvailable(db, tx, venue) && !db.treatments[tx]?.contraindications.some(k => knownIds.has(k.id))).sort(),
-    beforeTransferWhen: Object.fromEntries((base?.byParam ?? []).filter(b => whenHolds(b.when, seenParams)).flatMap(b => (b.beforeTransfer ?? []).map(tx => [tx, b.when] as const)).reverse()),
+    // по тому, что показали обследования (часть 41в): давление перед переводом снижают по тонометру;
+    // из группы (часть 42в) хватит одного — называем первое, что можно
+    beforeTransferMissing: beforeTransferOf(base, seenParams).flatMap(g => {
+      const ok = g.filter(tx => txAvailable(db, tx, venue) && !db.treatments[tx]?.contraindications.some(k => knownIds.has(k.id)));
+      return ok.length > 0 && !g.some(tx => plan.treatments.includes(tx)) ? [ok[0]] : [];
+    }).sort(),
+    beforeTransferWhen: Object.fromEntries((base?.byParam ?? []).filter(b => whenHolds(b.when, seenParams)).flatMap(b => membersOf(b.beforeTransfer).map(tx => [tx, b.when] as const)).reverse()),
     // спутники (часть 39а): тромболизис без клопидогрела и антикоагулянта — неполное лечение; из группы
     // хватит одного, а противопоказанное тем, о чём врач знает, в вину не ставим
     // при болезни, где они нужны (часть 42б): кардиоверсия при тахикардии — без антикоагулянта

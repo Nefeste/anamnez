@@ -541,6 +541,19 @@ function svtSave(): { save: string; id: string } {
   return neuroSave('cond.svt', fits, ['exam.ecg', 'exam.vitals', 'exam.ask_chronic']);
 }
 
+/**
+ * Песочница с приёмным, КТ и ПИТ (часть 42в): первая машина скорой везёт полную АВ-блокаду с широким
+ * выскальзывающим ритмом и низким давлением, без фибрилляции предсердий в прошлом; ЭКГ у постели, пульс,
+ * давление и хронические болезни готовы.
+ */
+function avbSave(): { save: string; id: string } {
+  const fits = (x: ReturnType<typeof generatePatient>) => {
+    const c = x.truth.conditions[0].params;
+    return x.age >= 50 && c.block === 'wide' && c.unstable === 'yes' && !x.truth.risks.includes('risk.atrial_fibrillation') && x.truth.risks.length <= 2;
+  };
+  return neuroSave('cond.av_block', fits, ['exam.ecg', 'exam.vitals', 'exam.ask_chronic']);
+}
+
 /** Больница с приёмным, КТ и ПИТ; первую машину скорой подменяет больной `primary`, для которого верно `fits`; сделаны `exams`. */
 function neuroSave(primary: string, fits: (x: ReturnType<typeof generatePatient>) => boolean, exams: string[]): { save: string; id: string } {
   const { db } = buildDb();
@@ -928,7 +941,7 @@ try {
     `П5: срезы головы нарисованы — ${heads.filter(Boolean).length} из 9, УЗИ — ${us.filter(Boolean).length} из 16 (с венами и артерией ног), снимки живота — ${abd.filter(Boolean).length} из 3, груди при травме — ${chest.filter(Boolean).length} из 7; все рисунки экрана — ${allImages.filter(Boolean).length} из ${allImages.length} (смотреть 06-head-*.png, 06-us.png, 06-abdomen.png, 06-chest.png)`);
   // ЭКГ в двенадцати отведениях (spec 2026-10-chapter-3, часть 36): ритмы, проведение, стенки инфаркта
   const ecg = await drawn('[data-testid^="ecg-"] canvas');
-  check(ecg.length === 19 && ecg.every(Boolean), `П5: листы ЭКГ в двенадцати отведениях нарисованы — ${ecg.filter(Boolean).length} из 19 (смотреть 06-ecg-*.png)`);
+  check(ecg.length === 20 && ecg.every(Boolean), `П5: листы ЭКГ в двенадцати отведениях нарисованы — ${ecg.filter(Boolean).length} из 20 (смотреть 06-ecg-*.png)`);
   for (const id of ['head-ct', 'head-mri', 'us', 'abdomen', 'chest']) {
     await page.getByTestId(id).scrollIntoViewIfNeeded();
     await page.waitForTimeout(300);
@@ -2051,6 +2064,51 @@ try {
   const cvArticle = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
   check(cvArticle.includes('Только при') && cvArticle.includes('Фибрилляция и трепетание предсердий'),
     `энциклопедия, кардиоверсия: спутники — только при фибрилляции предсердий`);
+
+  // АВ-блокада (часть 42в): у вас — полная блокада с широким выскальзывающим ритмом и низким давлением; в
+  // карте — ЭКГ с широкими редкими комплексами, пульс реже 50 и давление ниже 90; наружная стимуляция у
+  // постели под монитором и «Вызвать скорую» — перевод на кардиостимулятор, разбор без замечаний; в
+  // энциклопедии — перевод в центр и до перевода одно из по виду блокады
+  const avb = avbSave();
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', avb.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId('shift-continue').waitFor({ timeout: 15_000 });
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId('shift-continue').click();
+  await visible(page, 'visit-decide').waitFor({ timeout: 10_000 });
+  const avbCard = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  check(avbCard.includes('комплексы широкие и редкие — полная АВ-блокада') && avbCard.includes('Пульс редкий: реже 50 в минуту')
+    && avbCard.includes('Давление низкое: верхнее ниже 90'),
+    `АВ-блокада: в карте — ЭКГ с широкими редкими комплексами, пульс реже 50, давление ниже 90 («${avbCard.replace(/\n/g, ' · ').slice(0, 300)}»)`);
+  await visible(page, 'result-ecg').scrollIntoViewIfNeeded();
+  check((await visible(page, 'result-ecg').boundingBox() ?? { height: 0 }).height > 100, 'АВ-блокада: ЭКГ — лентой');
+  await page.screenshot({ path: join(OUT, '23-avb-card.png'), fullPage: true });
+  await visible(page, 'visit-decide').click();
+  await visible(page, 'dx-cond.av_block').click();
+  await visible(page, 'decision-to-plan').click();
+  await page.getByTestId('tx-tx.pacing_tc').waitFor({ timeout: 5000 });
+  check(!(await page.getByTestId('tx-tx.pacing_tc').isDisabled()) && !(await page.getByTestId('tx-tx.atropine').isDisabled()),
+    `АВ-блокада, решение: стимуляция и атропин у постели под монитором — ${await text(page, 'tx-tx.pacing_tc')}`);
+  await page.getByTestId('tx-tx.pacing_tc').click();
+  await page.getByTestId('setting-ambulance').click();
+  await page.screenshot({ path: join(OUT, '23-avb-decision.png'), fullPage: true });
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
+  const avbReview = await page.locator('body').innerText();
+  check(avbReview.includes('АВ-блокада II–III степени') && !/[Нн]е назначено|не показано|вредно|Недооценили тяжесть/.test(avbReview),
+    `АВ-блокада: стимуляция и скорая, разбор — «${avbReview.replace(/\n/g, ' · ').slice(0, 300)}»`);
+  await page.screenshot({ path: join(OUT, '23-avb-review.png'), fullPage: true });
+  await page.goto(`${base}/encyclopedia/article/cond.av_block`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const avbArticle = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  check((await visibleText(page, 'enc-article-title')) === 'АВ-блокада II–III степени' && avbArticle.includes('Обычно — скорая, перевод в центр.')
+    && avbArticle.includes('при нестабильной гемодинамике и широких комплексах или Мобитц II — блокаде ниже узла'),
+    `энциклопедия, АВ-блокада: ${await visibleText(page, 'enc-article-title')} — перевод в центр, до перевода по виду блокады`);
 
   // хирургия живота (spec 2026-09-chapter-2, часть 30): со смотровой приёмного больница принимает
   // и хирургию — у вас больной острым холециститом; УЗИ — желчный пузырь с камнями и толстой

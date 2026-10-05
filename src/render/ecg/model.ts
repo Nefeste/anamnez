@@ -39,6 +39,12 @@ export interface EcgFindings {
   lvh?: boolean;
   /** блокада левой или правой ножки пучка Гиса: широкий комплекс, ST и T против него */
   bundle?: 'lbbb' | 'rbbb';
+  /**
+   * выскальзывающий ритм полной блокады (spec 2026-10-chapter-3, часть 42в): узкий — из АВ-соединения,
+   * около 45 в минуту, комплекс как проведённый; широкий — из желудочков, реже; нет — широкий. При
+   * фибрилляции предсердий — полная блокада и у неё: ритм желудочков ровный и редкий
+   */
+  escape?: 'narrow' | 'wide';
   /** перикардит: подъём ST почти везде, депрессия PQ; в aVR — наоборот */
   pericarditis?: boolean;
   /** низкий вольтаж и чередование высоты комплексов — выпот в перикарде */
@@ -208,6 +214,12 @@ function timeline(f: EcgFindings, seconds: number, rnd: () => number, pr0: numbe
   const atria: number[] = [];
   const beats: { qrs: number; p?: number; kind: QrsKind }[] = [];
   const start = -1.5; // с запасом до начала ленты: первый комплекс не обрезан
+  if (rhythm === 'af' && f.escape) {
+    // фибрилляция с полной блокадой (часть 42в): к желудочкам не проходит ничего — их ритм ровный и редкий
+    const rr = 60 / (f.rate ?? (f.escape === 'narrow' ? 45 : 38));
+    for (let t = start + rnd() * rr; t < seconds + 0.5; t += rr * (0.99 + 0.02 * rnd())) beats.push({ qrs: t, kind: f.escape === 'narrow' ? conducted : 'ventricular' });
+    return { atria, beats };
+  }
   if (rhythm === 'af') {
     const mean = 60 / (f.rate ?? 110);
     for (let t = start + rnd() * mean; t < seconds + 0.5; ) {
@@ -234,10 +246,12 @@ function timeline(f: EcgFindings, seconds: number, rnd: () => number, pr0: numbe
     return { atria, beats };
   }
   if (rhythm === 'avb3') {
-    // предсердия и желудочки — каждые в своём ритме: выскальзывающий ритм редкий и широкий
+    // предсердия и желудочки — каждые в своём ритме: выскальзывающий ритм редкий и широкий; из
+    // АВ-соединения (часть 42в) — узкий и почаще
+    const narrow = f.escape === 'narrow';
     for (let t = start + rnd() * 0.75; t < seconds + 0.5; t += 0.75 * (0.98 + 0.04 * rnd())) atria.push(t);
-    const rr = 60 / (f.rate ?? 38);
-    for (let t = start + rnd() * rr; t < seconds + 0.5; t += rr * (0.99 + 0.02 * rnd())) beats.push({ qrs: t, kind: 'ventricular' });
+    const rr = 60 / (f.rate ?? (narrow ? 45 : 38));
+    for (let t = start + rnd() * rr; t < seconds + 0.5; t += rr * (0.99 + 0.02 * rnd())) beats.push({ qrs: t, kind: narrow ? conducted : 'ventricular' });
     return { atria, beats };
   }
   // синусовый узел и проведение через АВ-узел

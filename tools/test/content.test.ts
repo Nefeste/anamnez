@@ -555,6 +555,16 @@ describe('каталог больницы', () => {
     expect(has(second, 'exam.troponin_hs: повторный забор проверяет всё — первому нечего показать')).toBe(true);
   });
 
+  test('до перевода «одно из» (часть 42в): лечения группы — из базы и не в списках той же тактики', () => {
+    const C = 'conditions/therapy/av_block.yaml';
+    const has = (errors: string[], text: string) => errors.some(e => e.includes(text));
+    const errors = broken(d => {
+      edit(d, C, 'beforeTransfer: [[tx.atropine, tx.pacing_tc, tx.dopamine]]', 'beforeTransfer: [[tx.atropine, tx.pacing_tcc, tx.dopamine]]\n      acceptable: [tx.dopamine]');
+    });
+    expect(has(errors, 'cond.av_block: обязательное до перевода тактики по параметру №1 — лечение tx.pacing_tcc не найдено')).toBe(true);
+    expect(has(errors, 'cond.av_block: обязательное до перевода тактики по параметру №1 — tx.dopamine стоит и в списке тактики')).toBe(true);
+  });
+
   test('палата интенсивной терапии (часть 38а): койки есть, мест под мониторы не меньше коек, не палата; аппарат — в разных помещениях, в ПИТ без своего места', () => {
     const I = 'hospital/rooms/icu.yaml';
     const M = 'hospital/equipment/monitor_defib.yaml';

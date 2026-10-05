@@ -99,8 +99,13 @@ export function choosePlan(db: ContentDb, diagnosis: Id, observations: readonly 
     const pick = group.find(ok);
     if (pick && !group.some(tx => treatments.includes(tx))) treatments.push(pick);
   }
-  // обязательное и при переводе (часть 39а): тромболизис в окне, если здесь его можно сделать
-  treatments.push(...(t.beforeTransfer ?? []).filter(ok).filter(tx => !treatments.includes(tx)));
+  // обязательное и при переводе (часть 39а): тромболизис в окне, если здесь его можно сделать; из группы
+  // (часть 42в) — первое, что можно: атропин, не помогает при широких комплексах — стимуляция
+  for (const g of t.beforeTransfer ?? []) {
+    const group = typeof g === 'string' ? [g] : g;
+    const pick = group.find(ok);
+    if (pick && !group.some(tx => treatments.includes(tx))) treatments.push(pick);
+  }
   // спутники назначенного (часть 39а): тромболизис — с клопидогрелом и антикоагулянтом; из группы — первое,
   // что можно; с частью 42б — при болезни, где они нужны: кардиоверсия при тахикардии — без антикоагулянта
   for (const tx of [...treatments]) {

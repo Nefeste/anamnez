@@ -228,6 +228,7 @@ describe('смена: закрытие дня и повторные обраще
     expect(back.patient.truth.conditions[0].id).toBe(prev.patient.truth.conditions[0].id);
   });
 
+  // девять дней смены: с базой растёт и время — на полном прогоне под нагрузкой дольше 5 секунд (часть 42в)
   test('старое не копится: ушедших прошлых дней нет, принятых хранят неделю', () => {
     const s = newShift(db, { seed: 12, ...winter });
     for (let d = 1; d <= 9; d++) {
@@ -241,7 +242,7 @@ describe('смена: закрытие дня и повторные обраще
       expect(p.status === 'done' || waiting.has(p.id)).toBe(true);
       expect(Number(p.id.split('-')[0]) >= s.day - 7 || waiting.has(p.id)).toBe(true);
     }
-  });
+  }, 30_000);
 });
 
 describe('смена: детерминизм и сохранение', () => {

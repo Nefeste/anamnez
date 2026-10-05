@@ -437,11 +437,11 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       // кислород при сатурации от 90 % у ОКС — «не нужно»)
       // обязательное и при переводе (часть 39а) — так же: тромболизис при инфаркте в окне
       // группа «одно из» (часть 39в) — каждое из группы так же
-      const requires = [['обязательное', membersOf(t.require), roled] as const, ['обязательное до перевода', t.beforeTransfer ?? [], roled] as const, ...(t.byParam ?? []).flatMap((x, i) => {
+      const requires = [['обязательное', membersOf(t.require), roled] as const, ['обязательное до перевода', membersOf(t.beforeTransfer), roled] as const, ...(t.byParam ?? []).flatMap((x, i) => {
         const own = new Set([x.firstLine, x.acceptable, x.supportive, x.notIndicated, x.harmful].flat());
         return [
           [`обязательное тактики по параметру №${i + 1}`, membersOf(x.require), own] as const,
-          [`обязательное до перевода тактики по параметру №${i + 1}`, x.beforeTransfer ?? [], own] as const,
+          [`обязательное до перевода тактики по параметру №${i + 1}`, membersOf(x.beforeTransfer), own] as const,
         ];
       })];
       for (const [what, ids, other] of requires) {

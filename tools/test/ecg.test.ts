@@ -248,6 +248,25 @@ describe('ЭКГ: ритм и проведение', () => {
     expect(perMinute(tr.beats.map(b => b.qrs))).toBeLessThan(45);
     expect(tr.beats.every(b => b.p === undefined && b.j - b.qrs >= 0.14)).toBe(true);
   });
+
+  test('полная АВ-блокада с узким выскальзывающим ритмом (часть 42в): комплексы узкие, около 45 в минуту, не связаны с P', () => {
+    const tr = trace({ rhythm: 'avb3', escape: 'narrow' }, 9);
+    expect(perMinute(tr.atria)).toBeGreaterThan(70);
+    const rate = perMinute(tr.beats.map(b => b.qrs));
+    expect(rate).toBeGreaterThan(38);
+    expect(rate).toBeLessThan(52);
+    expect(tr.beats.every(b => b.p === undefined && b.j - b.qrs < 0.12)).toBe(true);
+  });
+
+  test('фибрилляция предсердий с полной блокадой (часть 42в): зубцов P нет, ритм желудочков ровный и редкий', () => {
+    const tr = trace({ rhythm: 'af', escape: 'wide', rate: 40 }, 4);
+    expect(tr.atria).toEqual([]);
+    expect(cv(rr(tr.beats.map(b => b.qrs)))).toBeLessThan(0.03);
+    expect(Math.round(perMinute(tr.beats.map(b => b.qrs)))).toBe(40);
+    expect(tr.beats.every(b => b.p === undefined && b.j - b.qrs >= 0.14)).toBe(true);
+    // без блокады при той же частоте — неровно
+    expect(cv(rr(trace({ rhythm: 'af', rate: 40 }, 4).beats.map(b => b.qrs)))).toBeGreaterThan(0.15);
+  });
 });
 
 describe('ЭКГ в карте пациента: лента и строки находок согласны', () => {
