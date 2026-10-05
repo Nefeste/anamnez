@@ -1,6 +1,6 @@
 {
   "version": "0.3.13",
-  "base": 54,
+  "base": 55,
   "ids": {
     "achievements": [
       "ach.allergy_10",
@@ -134,11 +134,13 @@
       "cond.strep_pharyngitis",
       "cond.stroke_ischemic",
       "cond.superficial_thrombophlebitis",
+      "cond.svt",
       "cond.tension_headache",
       "cond.tia",
       "cond.traumatic_hemothorax",
       "cond.traumatic_pneumothorax",
       "cond.ulcer_bleeding",
+      "cond.vt",
       "cond.wrist_contusion"
     ],
     "conditions.stages": [
@@ -236,11 +238,13 @@
       "cond.strep_pharyngitis/resolution",
       "cond.stroke_ischemic/acute",
       "cond.superficial_thrombophlebitis/acute",
+      "cond.svt/acute",
       "cond.tension_headache/episode",
       "cond.tia/acute",
       "cond.traumatic_hemothorax/acute",
       "cond.traumatic_pneumothorax/acute",
       "cond.ulcer_bleeding/early",
+      "cond.vt/acute",
       "cond.wrist_contusion/acute"
     ],
     "equipment": [
@@ -353,6 +357,8 @@
       "ecg.lvh",
       "ecg.st_depression",
       "ecg.st_elevation",
+      "ecg.svt",
+      "ecg.vt",
       "hx.abdominal_surgery",
       "hx.alcohol",
       "hx.allergy_nsaid",
@@ -672,6 +678,7 @@
       "sym.speech_trouble",
       "sym.suprapubic_pain",
       "sym.sweating",
+      "sym.syncope",
       "sym.thirst",
       "sym.thunderclap",
       "sym.transient_speech",
@@ -688,6 +695,7 @@
       "vital.pef_low",
       "vital.spo2_low",
       "vital.tachycardia",
+      "vital.tachycardia_150",
       "vital.tachypnea"
     ],
     "presets": [
@@ -890,6 +898,7 @@
       "tx.pleural_drainage",
       "tx.pleural_puncture",
       "tx.ppi",
+      "tx.procainamide",
       "tx.rabies_ig",
       "tx.rabies_vaccine",
       "tx.radius_plate",
@@ -911,9 +920,12 @@
       "tx.thrombolysis_stroke",
       "tx.topical_heparin",
       "tx.tranexamic",
+      "tx.trifosadenine",
       "tx.triptan",
       "tx.ulcer_suture",
+      "tx.vagal",
       "tx.verapamil",
+      "tx.verapamil_iv",
       "tx.vitamin_k",
       "tx.wound_dressing",
       "tx.wound_open",

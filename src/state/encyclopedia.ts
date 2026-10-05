@@ -220,6 +220,11 @@ function whereLines(db: ContentDb, c: Condition, t: Tactics): string[] {
   for (const [value, set] of Object.entries(s.param?.map ?? {})) if (set !== s.default) lines.push(e.whereIf(whenText({ [s.param!.name]: [value] }) ?? value, e.setting[set]));
   if (s.redFlag && s.redFlag !== s.default) lines.push(e.whereRedFlag(e.setting[s.redFlag]));
   for (const r of s.risks ?? []) if (r.setting !== s.default) lines.push(e.whereRisk(nameOf(db, r.id), e.setting[r.setting]));
+  // без аппарата у постели (часть 42б): приступ наджелудочковой тахикардии снимают под монитором
+  if (s.without && s.without.setting !== s.default) lines.push(e.whereWithout(s.without.equipment.map(id => db.equipment[id]?.gen.ru ?? id), e.setting[s.without.setting]));
+  // ПИТ не обычное место, но бывает нужна — без своей та же скорая
+  const icu = [...Object.values(s.param?.map ?? {}), s.redFlag, ...(s.risks ?? []).map(r => r.setting), s.without?.setting];
+  if (s.default !== 'icu' && icu.includes('icu')) lines.push(e.whereNoIcu(e.setting.ambulance));
   // операция и срок стационара (spec 2026-09-chapter-2, части 26 и 28), после осложнённой стадии — свой (28б)
   if (c.surgery) lines.push(e.whereSurgery(nameOf(db, c.surgery.tx), c.surgery.window, c.surgery.from === 'onset'));
   // операция по скрытому параметру (часть 32б): «Без смещения — остеосинтез шейки бедра винтами.»
@@ -426,12 +431,14 @@ function treatmentArticle(db: ContentDb, x: Treatment): Article {
     const rooms = [...new Set(x.bedside.equipment.flatMap(id => db.equipment[id]?.rooms ?? []))];
     blocks.push({ key: 'where', title: e.whereDone, text: [e.bedsideOnly], refs: [...x.bedside.equipment, ...rooms].map(id => ref(db, id)) });
   }
-  // спутники (часть 39а): каждое — обязательно, из группы — одно
+  // спутники (часть 39а): каждое — обязательно, из группы — одно; с частью 42б — только при названных
+  // болезнях: антикоагулянт рядом с кардиоверсией — при фибрилляции предсердий
   if (x.companions?.length) {
     const each = x.companions.filter((g): g is Id => typeof g === 'string');
     const rows = [
       ...(each.length > 0 ? [{ label: e.companionsEach, refs: each.map(id => ref(db, id)) }] : []),
       ...x.companions.filter((g): g is Id[] => typeof g !== 'string').map(g => ({ label: e.companionsOneOf, refs: g.map(id => ref(db, id)) })),
+      ...(x.companionsFor ? [{ label: e.companionsFor, refs: x.companionsFor.map(id => ref(db, id)) }] : []),
     ];
     blocks.push({ key: 'companions', title: e.companions, text: [e.companionsNote], rows });
   }

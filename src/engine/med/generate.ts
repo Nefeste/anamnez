@@ -424,11 +424,21 @@ function followers(db: ContentDb, findings: TrueFinding[]): TrueFinding[] {
 
 /**
  * Одно измерение — одно число (часть 33б): есть порог на чужом измерении — низкое давление, — и
- * того, чьё это измерение, нет: давление не бывает сразу высоким и низким.
+ * того, чьё это измерение, нет: давление не бывает сразу высоким и низким. Порог, который того не
+ * снимает (часть 42б, `implies`: пульс 150 и чаще), — то измерение есть, с той же причиной: пульс 180 —
+ * и чаще 100. Без бросков.
  */
 function oneMeasure(db: ContentDb, findings: TrueFinding[]): TrueFinding[] {
-  const taken = new Set(findings.flatMap(x => { const of = db.findings[x.f]?.value?.of; return of ? [of] : []; }));
-  return taken.size > 0 ? findings.filter(x => !taken.has(x.f)) : findings;
+  const taken = new Set<Id>();
+  const added: TrueFinding[] = [];
+  for (const x of findings) {
+    const spec = db.findings[x.f]?.value;
+    if (!spec?.of) continue;
+    if (!spec.implies) taken.add(spec.of);
+    else if (!findings.some(y => y.f === spec.of) && !added.some(y => y.f === spec.of)) added.push({ f: spec.of, cause: x.cause });
+  }
+  const kept = taken.size > 0 ? findings.filter(x => !taken.has(x.f)) : findings;
+  return added.length > 0 ? [...kept, ...added].sort((a, b) => (a.f < b.f ? -1 : 1)) : kept;
 }
 
 /**

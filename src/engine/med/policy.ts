@@ -5,7 +5,7 @@ import type { ContentDb, Exam, Id } from '../../content/types';
 import { Rng } from '../core/rng';
 import { complaintObservations, examFits, runExam } from './exams';
 import { type Belief, contextOf, expectedGain, knownFacts, likelyParams, paramBeliefs, paramGain, posterior } from './infer';
-import { choiceFor, type Plan, possibleFor, settingOf, tacticsFor, txAvailable, type Venue, whenHolds } from './plan';
+import { choiceFor, companionsOf, type Plan, possibleFor, settingOf, tacticsFor, txAvailable, type Venue, whenHolds } from './plan';
 import { openRuleExams, ruleExams, type Who } from './rules';
 import type { Observation, Patient } from './types';
 
@@ -102,9 +102,9 @@ export function choosePlan(db: ContentDb, diagnosis: Id, observations: readonly 
   // обязательное и при переводе (часть 39а): тромболизис в окне, если здесь его можно сделать
   treatments.push(...(t.beforeTransfer ?? []).filter(ok).filter(tx => !treatments.includes(tx)));
   // спутники назначенного (часть 39а): тромболизис — с клопидогрелом и антикоагулянтом; из группы — первое,
-  // что можно
+  // что можно; с частью 42б — при болезни, где они нужны: кардиоверсия при тахикардии — без антикоагулянта
   for (const tx of [...treatments]) {
-    for (const g of db.treatments[tx].companions ?? []) {
+    for (const g of companionsOf(db, tx, diagnosis)) {
       const group = typeof g === 'string' ? [g] : g;
       const pick = group.find(ok);
       if (pick && !group.some(c => treatments.includes(c))) treatments.push(pick);
@@ -113,7 +113,8 @@ export function choosePlan(db: ContentDb, diagnosis: Id, observations: readonly 
   // место — по тому, что видно, и по пришедшим результатам (часть 40): после КТ без крови — дома
   const seen = new Set(observations.filter(o => o.shown).map(o => o.f));
   const did = new Set(observations.map(o => o.exam));
-  const setting = settingOf(t.setting, db.conditions[diagnosis].redFlags ?? [], { params, has: f => seen.has(f), risk: id => known.risks.includes(id), done: e => did.has(e) });
+  // и по аппаратам у постели (часть 42б): без монитора приступ наджелудочковой тахикардии не снять
+  const setting = settingOf(t.setting, db.conditions[diagnosis].redFlags ?? [], { params, has: f => seen.has(f), risk: id => known.risks.includes(id), done: e => did.has(e), bedside: venue.bedside ?? [] });
   return { treatments: [...new Set(treatments)].sort(), setting: choiceFor(setting, venue) };
 }
 
@@ -182,6 +183,8 @@ export function indicated(db: ContentDb, patient: Patient, obs: readonly Observa
   // бедра — при боли в бедре) — показано
   const e = db.exams[examId];
   if (e?.routine || e?.routineFor?.some(f => patient.complaints.includes(f))) return true;
+  // и каждому, у кого это увидели (часть 42б): неритмичный пульс или 150 и чаще — ЭКГ
+  if (e?.routineSeen?.some(f => obs.some(o => o.f === f && o.shown))) return true;
   // срок по жалобе (часть 37): ЭКГ при давящей боли в груди — показана всегда
   if (targetExams(db, patient).includes(examId)) return true;
   // велит положительное правило решения — показано, какой бы малой ни была польза (часть 32д)
@@ -318,6 +321,10 @@ export function nextStep(db: ContentDb, patient: Patient, obs: readonly Observat
     // вопросы всем и то, что делают каждому с такой жалобой (часть 32г-2: неврологический осмотр при ране головы)
     const routine = opt.exams.find(id => (db.exams[id].routine || db.exams[id].routineFor?.some(f => patient.complaints.includes(f))) && !done.includes(id));
     if (routine) return { step: { kind: 'exam', exam: routine }, phase: now };
+    // и каждому, у кого это увидели (часть 42б): неритмичный пульс или 150 и чаще — ЭКГ, тахикардию по
+    // пульсу без неё не различить
+    const flagged = opt.exams.find(id => db.exams[id].routineSeen?.some(f => obs.some(o => o.f === f && o.shown)) && !done.includes(id));
+    if (flagged) return { step: { kind: 'exam', exam: flagged }, phase: now };
     // остальные сроки (часть 41а): КТ за 40 минут — уже зная, когда началось; КТ-ангиография вместо КТ —
     // если окклюзия решает тактику при самом вероятном диагнозе
     const later = urgentExam(db, patient, done, opt.exams, Infinity, e => {

@@ -245,6 +245,11 @@ export const conditionSchema = z.strictObject({
         setting,
         flags: z.strictObject({ any: z.array(z.string()).min(1), setting }).optional(),
       }).optional(),
+      /**
+       * где у постели нет этих аппаратов — это место (spec 2026-10-chapter-3, часть 42б): приступ
+       * наджелудочковой тахикардии снимают под монитором; в кабинете — вагусные пробы, и в ПИТ
+       */
+      without: z.strictObject({ equipment: z.array(z.string().regex(/^eq\.[a-z0-9_]+$/)).min(1), setting }).optional(),
     }),
   }).optional(),
   /**
@@ -357,6 +362,11 @@ export const findingSchema = z.strictObject({
      */
     of: z.string().optional(),
     /**
+     * порог дальше от нормы и не снимает то измерение (spec 2026-10-chapter-3, часть 42б): пульс 150 и чаще —
+     * это и «чаще 100»; только с `of`
+     */
+    implies: z.literal(true).optional(),
+    /**
      * крупная единица для шаблона {amount} (часть 42а): с `from` — число, делённое на `per`, с единицей
      * `unit`; часы от начала с двух суток — сутками
      */
@@ -389,6 +399,8 @@ export const examSchema = z.strictObject({
   routine: z.boolean().optional(),
   /** делают каждому с одной из этих жалоб, первым (часть 32г-2): при ране головы — неврологический осмотр */
   routineFor: z.array(z.string().regex(/^sym\.[a-z0-9_]+$/)).min(1).optional(),
+  /** делают каждому, у кого увидели один из признаков (часть 42б): неритмичный пульс или 150 и чаще — ЭКГ */
+  routineSeen: z.array(z.string()).min(1).optional(),
   /** кому делают: только этому полу (о месячных и беременности — женщин) */
   sex: z.enum(['m', 'f']).optional(),
   /** кому делают по возрасту, лет включительно: вне его не предлагается */
@@ -463,6 +475,8 @@ export const treatmentSchema = z.strictObject({
   bedside: z.strictObject({ equipment: z.array(eqId).min(1) }).optional(),
   /** назначают только вместе с этим (часть 39а); группа — хоть одно из неё, первое — выбора */
   companions: z.array(z.union([txId, z.array(txId).min(2)])).min(1).optional(),
+  /** спутники — только при этих болезнях (часть 42б): антикоагулянт рядом с кардиоверсией — при фибрилляции предсердий */
+  companionsFor: z.array(z.string().regex(/^cond\.[a-z0-9_]+$/)).min(1).optional(),
   /**
    * операция (часть 28): в каком помещении, какая бригада — по человеку на должность, какие
    * аппараты — все сразу, сколько минут идёт; осложнений после неё при среднем навыке хирурга

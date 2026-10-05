@@ -146,6 +146,21 @@ function firstDue(s: ShiftState): string {
   return best?.id ?? s.queue[0];
 }
 
+/**
+ * Срок от прихода, о котором узнают по находке (spec 2026-10-chapter-3, часть 42б): подъём ST —
+ * перевод в первые 30 минут от поступления, а увидят его на ЭКГ. План заготовлен по своему прогону;
+ * по пришедшему самый вероятный — болезнь с такой находкой (инфаркт с одышкой, без боли в груди), — и
+ * разумный снимает ЭКГ сразу, а не после остального расспроса и анализов. Нет такого — undefined.
+ */
+function suspectedExam(s: ShiftState, p: ShiftPatient, exams: readonly Id[]): Id | undefined {
+  const at = targetPlace(db, s, p);
+  const due = Object.values(db.targets).filter(t => t.from === 'arrival' && t.findings.length > 0 && (!t.room || (p.bay !== undefined && at.roomType(p.bay.room) === t.room)));
+  if (due.length === 0) return undefined;
+  const top = db.conditions[beliefsOf(s, p).beliefs[0].id];
+  const f = due.flatMap(t => t.findings).find(x => top.findings.some(l => l.f === x));
+  return f === undefined ? undefined : exams.find(id => !p.done.includes(id) && db.exams[id].checks.some(c => c.f === f));
+}
+
 function beliefsOf(s: ShiftState, p: ShiftPatient) {
   const obs = observationsOf(p);
   return { obs, beliefs: posterior(db, candidatesOf(db, p.departments ?? s.meta.department), obs, contextOf(db, p.patient, obs)) };
@@ -181,6 +196,8 @@ function playDay(s: ShiftState, player: Player) {
   const exams = Object.keys(db.exams).sort().filter(id => !('block' in examWhere(db, ctx.plan, ctx.working, ctx.staffed, id)));
   /** что врач ещё сделает у пациента: план — при первом вызове, дальше по одному обследованию */
   const todo = new Map<string, Id[]>();
+  /** сколько результатов было, когда разумный в последний раз смотрел, что вероятнее (часть 42б) */
+  const looked = new Map<string, number>();
   for (let guard = 0; guard < 20000; guard++) {
     // привезённых — сортировать: разумный — по шкале, ленивый — всех «зелёными»
     for (const p of Object.values(s.patients)) {
@@ -228,6 +245,10 @@ function playDay(s: ShiftState, player: Player) {
       const fits = exams.filter(e => examMinutes(db.exams[e]) <= left);
       const ns = fits.length > 0 ? nextStep(db, p.patient, observationsOf(p), p.done, {}, { candidates, exams: fits, threshold: 0.9, minGain: MIN_GAIN }).step : undefined;
       todo.set(p.id, ns?.kind === 'exam' && !p.done.includes(ns.exam) ? [ns.exam] : []);
+    } else if (player === 'rational' && looked.get(p.id) !== p.results.length) {
+      looked.set(p.id, p.results.length);
+      const first = suspectedExam(s, p, exams);
+      if (first) todo.set(p.id, [first, ...todo.get(p.id)!.filter(e => e !== first)]);
     }
     const next = todo.get(p.id)!.shift();
     if (next) {
@@ -332,7 +353,7 @@ function run(seed: number, player: Player): Run {
         const end = p.closed.stay.end;
         const chosen = p.stay.plan.setting === 'surgery' ? 'surgery' : 'admit';
         const done = p.results.map(r => r.exam);
-        const over = settingFit(recommendedSetting(db, p.patient, done), chosen, alsoSettings(db, p.patient, done)) === 'over';
+        const over = settingFit(recommendedSetting(db, p.patient, done, p.closed.bedside), chosen, alsoSettings(db, p.patient, done)) === 'over';
         const close: WardClose = over ? 'unindicated' : p.afterEarly ? 'repeat' : end === 'discharged' || end === 'died' ? 'full' : 'interrupted';
         out.money.closedBedDays += p.closed.stay.days * db.economy.ward.bedDay;
         if (op?.done) {
