@@ -3,6 +3,9 @@ name: { ru: "Тест-полоска мочи" }
 kind: rapid
 time: { procedure: 2, turnaround: 3 }
 cost: 100
+# при давлении 180/110 и выше — каждому (spec 2026-10-chapter-3, часть 43г): анализ мочи — в рутинном обследовании всех
+# с гипертоническим кризом (62_3, раздел 3.7)
+routineSeen: [vital.bp_very_high]
 discomfort: 0
 checks:
   - { f: lab.urine_leuk, sens: 85, spec: 88 }

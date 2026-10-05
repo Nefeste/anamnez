@@ -18,7 +18,9 @@ routineFor: [sym.palpitations, sym.syncope, sym.orthopnea]
 # С частью 42в — и редкий пульс: диагноз брадиаритмии — по ЭКГ, с уровнем блока (160_2, раздел 2; ЭКГ 12 отведений —
 # всем, раздел 2.4.1, ЕОК I C)
 # С частью 43в — и влажные хрипы в обоих лёгких: ЭКГ — всем с ОДСН (156_2, раздел 7.3.2)
-routineSeen: [sign.pulse_irregular, vital.tachycardia_150, vital.bradycardia, sign.crackles_bilateral, sign.crackles_diffuse]
+# С частью 43г — и давление 180/110 и выше: ЭКГ — всем с гипертоническим кризом не позднее 15 минут, ищут поражение
+# органов (62_3, раздел 3.7)
+routineSeen: [sign.pulse_irregular, vital.tachycardia_150, vital.bradycardia, sign.crackles_bilateral, sign.crackles_diffuse, vital.bp_very_high]
 checks:
   - { f: ecg.st_elevation, sens: 92, spec: 99 }
   - { f: ecg.st_depression, sens: 85, spec: 95 }

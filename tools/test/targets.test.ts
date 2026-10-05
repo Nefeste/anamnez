@@ -1,7 +1,8 @@
 // Сроки и ЭКГ у постели (spec 2026-10-chapter-3, часть 37): ЭКГ при давящей боли в груди — в первые
 // 10 минут от прихода; в смотровой приёмного с монитором — у постели за 5 минут, без очереди и
 // описания; оценка срока — в разборе и десятой долей в итоге, в итогах дня — «в срок: N из M»;
-// «Попросить подождать» — когда ждёт кто-то срочнее; разумный врач делает ЭКГ первым делом.
+// «Попросить подождать» — когда ждёт кто-то срочнее, с частью 43г — и ради идущего срока; разумный врач
+// делает ЭКГ первым делом; срок без помещения — только там, где одно из его обследований можно сделать.
 import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
 import { complaintObservations } from '../../src/engine/med/exams';
@@ -9,7 +10,7 @@ import type { PlanEval } from '../../src/engine/med/plan';
 import { indicated, nextStep, targetExams } from '../../src/engine/med/policy';
 import { type CaseInput, scoreCase } from '../../src/engine/med/score';
 import { apply, bedsideOf, candidatesOf, current, moreUrgent, newCampaign, targetPlace } from '../../src/engine/shift/engine';
-import { minutesTo, targetGrade, targetResults, targetsFor } from '../../src/engine/shift/targets';
+import { dueIn, minutesTo, targetGrade, targetResults, targetsFor } from '../../src/engine/shift/targets';
 import type { ShiftPatient, ShiftState } from '../../src/engine/shift/types';
 import { T } from '../../src/i18n';
 
@@ -153,7 +154,7 @@ describe('попросить подождать', () => {
       }
       if (!w || Object.values(s.patients).some(q => q.kind === 'ambulance' && q.status === 'waiting')) continue;
       apply(db, s, { kind: 'call', id: w.id });
-      expect(moreUrgent(s, w)).toBe(false);
+      expect(moreUrgent(db, s, w)).toBe(false);
       apply(db, s, { kind: 'sendAway' });
       expect(current(s)?.id).toBe(w.id);
       // опрос, пока не привезут скорую
@@ -166,9 +167,9 @@ describe('попросить подождать', () => {
       }
       if (!car || w.pending.length > 0) continue;
       // ещё не сортировали — уже «срочнее»: по листу передачи может оказаться красным
-      expect(moreUrgent(s, w)).toBe(true);
+      expect(moreUrgent(db, s, w)).toBe(true);
       apply(db, s, { kind: 'sort', id: car.id, triage: 'red' });
-      expect(moreUrgent(s, w)).toBe(true);
+      expect(moreUrgent(db, s, w)).toBe(true);
       const t = s.t;
       apply(db, s, { kind: 'sendAway' });
       expect(s.current).toBeUndefined();
@@ -181,6 +182,42 @@ describe('попросить подождать', () => {
       return;
     }
     throw new Error('не нашлось зерна: пришедший сам у врача, и во время опроса привезли скорую');
+  });
+
+  test('ради идущего срока — можно и при той же срочности (часть 43г); у того, кто в кабинете, свой срок кончается раньше — нельзя', () => {
+    const { s, p } = chestPainBay();
+    apply(db, s, { kind: 'sort', id: p.id, triage: 'red' });
+    expect(s.queue).toContain(p.id);
+    // в кабинете — такой же красный, но без срока: не в смотровой
+    const w: ShiftPatient = { ...p, id: 'w', bay: undefined, kind: 'walkIn', sorted: undefined, triage: 'red', results: [] };
+    s.patients.w = w;
+    expect(targetsFor(db, w, targetPlace(db, s, w))).toEqual([]);
+    expect(moreUrgent(db, s, w)).toBe(true);
+    // у того, кто в кабинете, такой же срок начался на 5 минут раньше — он и срочнее
+    const v: ShiftPatient = { ...p, id: 'v', arriveT: p.arriveT - 5 * 60, triage: 'yellow' };
+    s.patients.v = v;
+    expect(dueIn(db, v, targetPlace(db, s, v), s.t)).toBeLessThan(dueIn(db, p, targetPlace(db, s, p), s.t)!);
+    // и красного без срока ради него не отпускают: срок идёт у того, кто в кабинете
+    expect(moreUrgent(db, s, v)).toBe(false);
+    // ЭКГ сделана — срока у него больше нет, и красный в очереди снова срочнее
+    v.results = [{ exam: 'exam.ecg', obs: [], at: s.t, step: 1 }];
+    expect(dueIn(db, v, targetPlace(db, s, v), s.t)).toBeUndefined();
+    expect(moreUrgent(db, s, v)).toBe(true);
+  });
+});
+
+describe('срок там, где его можно выполнить', () => {
+  test('КТ при подозрении на инсульт — только где есть КТ: в районной больнице его нет, и срока нет (часть 43г)', () => {
+    const s = district(51);
+    const p = Object.values(s.patients)[0] ?? (() => {
+      throw new Error('нет пациента');
+    })();
+    const sudden: ShiftPatient = { ...p, bay: undefined, patient: { ...p.patient, complaints: ['sym.thunderclap'] }, results: [] };
+    const at = targetPlace(db, s, sudden);
+    expect([at.can('exam.ct_head'), at.can('exam.cta_head'), at.can('exam.neuro_exam')]).toEqual([false, false, true]);
+    expect(targetsFor(db, sudden, at)).toEqual([]);
+    // где КТ есть — срок есть
+    expect(targetsFor(db, sudden, { ...at, can: () => true }).map(t => t.id)).toEqual(['target.stroke_ct']);
   });
 });
 

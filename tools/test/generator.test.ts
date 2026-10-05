@@ -90,8 +90,10 @@ describe('случай согласован', () => {
           expect(v).toBe(p.truth.values[spec.of]);
           continue;
         }
+        // есть порог на этом числе — число из его диапазона «есть»: и когда он снимает своё измерение (низкое
+        // давление), и когда нет (часть 42б, `implies`: давление 180/110 и выше — это и «140/90 и выше», часть 43г)
         const low = shared.find(f => f.value!.of === id && present.has(f.id));
-        const [lo, hi] = present.has(id) ? spec.present : low ? low.value!.present : spec.absent;
+        const [lo, hi] = low ? low.value!.present : present.has(id) ? spec.present : spec.absent;
         expect(v).toBeGreaterThanOrEqual(lo);
         expect(v).toBeLessThanOrEqual(hi);
       }
@@ -187,8 +189,9 @@ describe('обследования ошибаются с заданной час
           expect(o.shown).toBe(o.value! >= spec.present[0] && o.value! <= spec.present[1]);
           continue;
         }
+        // порог, который своё измерение не снимает (`implies`), — показанное «есть» в его диапазоне (часть 43г)
         const low = shared.find(f => f.value!.of === o.f && present.has(f.id));
-        const [lo, hi] = o.shown ? spec.present : low && !present.has(o.f) ? low.value!.present : spec.absent;
+        const [lo, hi] = o.shown ? (low && present.has(o.f) ? low.value!.present : spec.present) : low && !present.has(o.f) ? low.value!.present : spec.absent;
         expect(o.value!).toBeGreaterThanOrEqual(lo);
         expect(o.value!).toBeLessThanOrEqual(hi);
       }

@@ -6,6 +6,9 @@ equipment: [eq.biochem_analyzer]
 collect: room.procedure
 time: { procedure: 5, turnaround: 60 }
 cost: 250
+# при давлении 180/110 и выше — каждому (spec 2026-10-chapter-3, часть 43г): креатинин — в рутинном обследовании всех
+# с гипертоническим кризом (62_3, раздел 3.7)
+routineSeen: [vital.bp_very_high]
 discomfort: 1
 checks:
   - { f: lab.creatinine_high, sens: 97, spec: 97 }

@@ -213,7 +213,8 @@ describe('положительное правило велит обследов�
     const p = people(ANKLE, 1, 50, { stability: 'unstable' })[0];
     const obs = [...complaintObservations(p), ob(A, 'sign.malleolus_tenderness', false), ob(A, 'sign.no_weight_bearing', false), ob(A, 'sign.ankle_deformity', true)];
     expect(checkRule(db.rules['rule.ottawa_ankle'], p.age, knownOf(obs)).verdict).toBe('no');
-    const step = nextStep(db, p, obs, ['exam.ask_chronic', 'exam.ask_injury', A], {}, { candidates, exams, threshold: 0.9, minGain: MIN_GAIN }).step;
+    // давление уже измерила медсестра на сортировке: с 0.3.19 его меряют и при головной боли (62_3, раздел 2.1)
+    const step = nextStep(db, p, obs, ['exam.vitals', 'exam.ask_chronic', 'exam.ask_injury', A], {}, { candidates, exams, threshold: 0.9, minGain: MIN_GAIN }).step;
     expect(step).toEqual({ kind: 'exam', exam: 'exam.xray_ankle' });
   });
 

@@ -470,8 +470,10 @@ function realizeValues(db: ContentDb, rng: Rng, findings: TrueFinding[]): Record
   for (const id of shared) {
     const spec = db.findings[id].value!;
     if (present.has(id)) values[spec.of!] = sampleRange(rng.fork(id), spec.present, spec.decimals);
-    values[id] = values[spec.of!];
   }
+  // число одно на всех порогах этого измерения — и когда их два (низкое давление и 180/110 и выше, часть 43г): берут
+  // его после всех, иначе у раннего по алфавиту осталось бы прежнее
+  for (const id of shared) values[id] = values[db.findings[id].value!.of!];
   return values;
 }
 

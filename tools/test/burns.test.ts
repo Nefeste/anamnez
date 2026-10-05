@@ -180,7 +180,8 @@ describe('обследования ожога', () => {
   test('осмотр ожога — первым после вопроса о хронических болезнях; струп виден — пробы на глубину', () => {
     const p = find({ form: 'deep' });
     const said = complaintObservations(p);
-    const first = nextStep(db, p, said, ['exam.ask_chronic'], {}, { candidates, exams, threshold: 0.9, minGain: 0.02 }).step;
+    // давление уже измерила медсестра на сортировке: с 0.3.19 его меряют и при головной боли (62_3, раздел 2.1)
+    const first = nextStep(db, p, said, ['exam.vitals', 'exam.ask_chronic'], {}, { candidates, exams, threshold: 0.9, minGain: 0.02 }).step;
     expect(first).toEqual({ kind: 'exam', exam: 'exam.burn_exam' });
     const seen: Observation[] = [
       ...said,
@@ -188,7 +189,7 @@ describe('обследования ожога', () => {
       { f: 'sign.burn_eschar', shown: true, exam: 'exam.burn_exam' },
       { f: 'sign.burn_large', shown: false, exam: 'exam.burn_exam' },
     ];
-    const done = ['exam.ask_chronic', 'exam.burn_exam', 'exam.ask_injury', 'exam.ask_tetanus'];
+    const done = ['exam.vitals', 'exam.ask_chronic', 'exam.burn_exam', 'exam.ask_injury', 'exam.ask_tetanus'];
     const next = nextStep(db, p, seen, done, {}, { candidates, exams, threshold: 0.9, minGain: 0.02 }).step;
     expect(next).toEqual({ kind: 'exam', exam: 'exam.burn_depth_tests' });
   });

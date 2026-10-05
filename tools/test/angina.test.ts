@@ -120,7 +120,7 @@ describe('нестабильная по нагрузке', () => {
 
   test('ЭКГ в первые 10 минут — и при боли при нагрузке у лежащих в смотровой; по шкале — красный', () => {
     const p = patient(ACS, 7001, { type: 'nste', mi: 'no', pain: 'exertion' });
-    const at = { roomType: () => 'room.emergency', bedside: (e: Id) => e === 'exam.ecg' };
+    const at = { roomType: () => 'room.emergency', bedside: (e: Id) => e === 'exam.ecg', can: () => true };
     expect(targetsFor(db, { patient: p, bay: { room: 'r1', slot: 0 } as never, results: [] }, at).map(t => t.id)).toEqual(['target.ecg_chest_pain']);
     // как давящая боль: при сортировке стабильную от нестабильной не отличить, а срок ЭКГ — 10 минут
     expect(scaleTriage(db, [EXERTION], [])).toEqual({ triage: 'red', news2: 0, flag: EXERTION });

@@ -28,7 +28,7 @@ import { choosePlan, decisionLimit, examMinutes, MIN_GAIN, nextStep, runDoctor, 
 import {
   apply, candidatesOf, current, freeBeds, hospitalCtx, inpatientsOf, moreUrgent, newCampaign, observationsOf, operationOf, targetPlace,
 } from '../../src/engine/shift/engine';
-import { minutesTo, targetStart, targetsFor } from '../../src/engine/shift/targets';
+import { dueIn, targetStart, targetsFor } from '../../src/engine/shift/targets';
 import { type Command, DAY, SHIFT_END, type ShiftPatient, type ShiftState } from '../../src/engine/shift/types';
 import { daysIn, wardState } from '../../src/engine/shift/ward';
 import { buildDb } from '../content/load';
@@ -124,24 +124,18 @@ function minutesLeft(s: ShiftState, p: ShiftPatient): number | undefined {
 }
 
 /**
- * Кого звать (spec 2026-10-chapter-3, часть 42а): разумный из тех, кто в очереди первым по срочности, —
- * того, у кого раньше кончается идущий срок (ЭКГ при боли в груди — 10 минут от прихода): вернувшийся
- * с результатами той же срочности стоит в очереди раньше привезённого, а ему срок не нужен. Сроков нет —
- * первого в очереди.
+ * Кого звать (spec 2026-10-chapter-3, часть 42а): разумный — того, у кого раньше кончается идущий срок
+ * (ЭКГ при боли в груди — 10 минут от прихода): вернувшийся с результатами той же срочности стоит в
+ * очереди раньше привезённого, а ему срок не нужен. С частью 43г — и ниже по срочности: «попросить
+ * подождать» ради срока можно и того, кто выше (`moreUrgent`), и звать надо того, ради кого просили.
+ * Сроков нет — первого в очереди.
  */
 function firstDue(s: ShiftState): string {
-  const rank = (p: ShiftPatient) => (p.triaged === false ? 'green' : p.triage);
-  const top = rank(s.patients[s.queue[0]]);
   let best: { id: string; left: number } | undefined;
   for (const id of s.queue) {
     const p = s.patients[id];
-    if (rank(p) !== top) continue;
-    for (const t of targetsFor(db, p, targetPlace(db, s, p))) {
-      const start = targetStart(p, t);
-      if (start === undefined || minutesTo(p, t) !== undefined) continue;
-      const left = t.minutes - (s.t - start) / 60;
-      if (!best || left < best.left) best = { id, left };
-    }
+    const left = dueIn(db, p, targetPlace(db, s, p), s.t);
+    if (left !== undefined && (!best || left < best.left)) best = { id, left };
   }
   return best?.id ?? s.queue[0];
 }
@@ -230,7 +224,7 @@ function playDay(s: ShiftState, player: Player) {
     // привезли срочнее — разумный просит подождать того, кто в кабинете, и идёт к привезённому
     // (часть 37: ЭКГ при боли в груди — в первые 10 минут, а опрос может идти и полчаса); ждёт тот
     // результатов — ждёт их вне кабинета, а не пока ему назначат остальное (часть 39г)
-    if (player === 'rational' && moreUrgent(s, p)) {
+    if (player === 'rational' && moreUrgent(db, s, p)) {
       step({ kind: 'sendAway' });
       continue;
     }

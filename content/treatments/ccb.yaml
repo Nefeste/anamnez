@@ -6,6 +6,9 @@ route: oral
 cost: 150
 effects:
   - { on: cond.hypertension_new, kind: cure, band: usually, days: [7, 30] }
+  # подъём давления без поражения органов (часть 43г; 62_3, раздел 3.7): снижать препаратами для приёма внутрь; как
+  # часто и за сколько дней — игровая оценка
+  - { on: cond.bp_uncontrolled, kind: cure, band: usually, days: [2, 10] }
   # стенокардия напряжения (часть 39г; 155_2, раздел 3.1.2.1): при III–IV ФК — вместе с
   # бета-адреноблокатором; один дигидропиридиновый — не первая линия, «иногда» — игровая оценка
   - { on: cond.angina_stable, kind: cure, band: sometimes, days: [3, 28] }

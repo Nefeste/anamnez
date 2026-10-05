@@ -14,10 +14,12 @@ export interface TargetResult {
   grade: Grade;
 }
 
-/** Где лежит пациент: вид помещения по его номеру и что ему можно сделать у постели. */
+/** Где лежит пациент: вид помещения по его номеру, что ему можно сделать у постели и что — в этой больнице. */
 export interface TargetPlace {
   roomType(room: string): Id | undefined;
   bedside(exam: Id): boolean;
+  /** у постели или в работающем кабинете этой больницы (часть 43г) */
+  can(exam: Id): boolean;
 }
 
 /** Решение врача (часть 39б): когда закрыл приём и что назначил, куда направил. */
@@ -39,11 +41,30 @@ function foundAt(p: Pick<ShiftPatient, 'results'>, t: Target): number | undefine
  * показали обследования (часть 39б); и, если срок для лежащих в помещении (смотровая приёмного), он
  * лежит там, а у срока на обследование одно из них ему можно сделать у постели — монитор стоит и
  * смотровая работает: без него в срок не успеть не по вине игрока (смотровая из сохранений до 0.3.2
- * — без монитора, пока его не купят).
+ * — без монитора, пока его не купят). У срока без помещения одно из его обследований можно сделать в
+ * этой больнице (часть 43г): КТ при подозрении на инсульт — там, где есть КТ; в районной больнице его
+ * нет, и срок не выполнить тоже не по вине игрока.
  */
 export function targetsFor(db: ContentDb, p: Seen, at: TargetPlace): Target[] {
   return Object.values(db.targets).filter(t => (t.complaints.some(f => p.patient.complaints.includes(f)) || foundAt(p, t) !== undefined)
-    && (!t.room || (p.bay !== undefined && at.roomType(p.bay.room) === t.room && (t.exams.length === 0 || t.exams.some(e => at.bedside(e))))));
+    && (t.room
+      ? p.bay !== undefined && at.roomType(p.bay.room) === t.room && (t.exams.length === 0 || t.exams.some(e => at.bedside(e)))
+      : t.exams.length === 0 || t.exams.some(e => at.can(e))));
+}
+
+/**
+ * Сколько минут до конца ближайшего идущего срока (часть 43г): отсчёт начался, а сделано ещё нет; срок
+ * вышел — меньше нуля. Идущих сроков нет — undefined.
+ */
+export function dueIn(db: ContentDb, p: Seen & Pick<ShiftPatient, 'arriveT'>, at: TargetPlace, now: number): number | undefined {
+  let left: number | undefined;
+  for (const t of targetsFor(db, p, at)) {
+    const start = targetStart(p, t);
+    if (start === undefined || minutesTo(p, t) !== undefined) continue;
+    const m = t.minutes - (now - start) / 60;
+    if (left === undefined || m < left) left = m;
+  }
+  return left;
 }
 
 /** В срок — A; до полутора сроков — B, до двух — C; позже или не сделано — D. */

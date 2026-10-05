@@ -6,6 +6,9 @@ route: oral
 cost: 250
 effects:
   - { on: cond.hypertension_new, kind: cure, band: usually, days: [14, 60] }
+  # подъём давления без поражения органов (часть 43г; 62_3, раздел 3.7): снижать препаратами для приёма внутрь; как
+  # часто и за сколько дней — игровая оценка
+  - { on: cond.bp_uncontrolled, kind: cure, band: usually, days: [3, 14] }
 contraindications:
   - { id: risk.pregnancy, level: absolute, reaction: never }
 texts:

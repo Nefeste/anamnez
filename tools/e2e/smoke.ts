@@ -591,6 +591,21 @@ function adhfSave(): { save: string; id: string } {
   return neuroSave('cond.adhf', fits, ['exam.ask_chronic', 'exam.ask_complaints', 'exam.vitals', 'exam.lung_auscultation', 'exam.nt_probnp', 'exam.xray_chest']);
 }
 
+/**
+ * Песочница с приёмным, КТ и ПИТ (часть 43г): первая машина скорой везёт гипертонический криз с энцефалопатией —
+ * жалоба на резкий подъём давления, оглушение и тошнота; ЭКГ у постели — первой (срок 15 минут), затем расспрос,
+ * давление, неврологический осмотр и глазное дно. Без тошноты, рвоты и пелены одно оглушение «идеальный врач» мог
+ * бы счесть ошибкой осмотра: подъём без поражения органов вдесятеро чаще.
+ */
+function crisisSave(): { save: string; id: string } {
+  const fits = (x: ReturnType<typeof generatePatient>) => {
+    const k = x.truth.conditions[0].params;
+    return x.age >= 45 && k.organ === 'encephalopathy' && x.truth.risks.length <= 3 && x.complaints.includes('sym.bp_surge')
+      && ['sign.gcs_low', 'sym.nausea'].every(f => x.truth.findings.some(y => y.f === f));
+  };
+  return neuroSave('cond.hypertensive_crisis', fits, ['exam.ecg', 'exam.ask_chronic', 'exam.ask_complaints', 'exam.ask_abdomen', 'exam.vitals', 'exam.neuro_exam', 'exam.fundoscopy']);
+}
+
 /** Больница с приёмным, КТ и ПИТ; первую машину скорой подменяет больной `primary`, для которого верно `fits`; сделаны `exams`. */
 function neuroSave(primary: string, fits: (x: ReturnType<typeof generatePatient>) => boolean, exams: string[]): { save: string; id: string } {
   const { db } = buildDb();
@@ -2281,6 +2296,51 @@ try {
     && hfArticle.includes('При отёке лёгких, гипоперфузии, частоте дыхания выше 25 или сатурации ниже 90 % — палата интенсивной терапии.')
     && hfArticle.includes('при гипоперфузии — холодной влажной коже'),
     `энциклопедия, ОДСН: ${await visibleText(page, 'enc-article-title')} — ПИТ по признакам, лечение по формам`);
+
+  // гипертонический криз (часть 43г): у вас — энцефалопатия; в карте — «Давление очень высокое: 180/110 и выше»,
+  // оглушение по шкале Глазго и глазное дно; препарат в вену и «В ПИТ» — разбор без замечаний; в энциклопедии — ПИТ у
+  // криза, у подъёма без поражения органов — дома, а препарат в вену опасен
+  const htn = crisisSave();
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', htn.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId('shift-continue').waitFor({ timeout: 15_000 });
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId('shift-continue').click();
+  await visible(page, 'visit-decide').waitFor({ timeout: 10_000 });
+  const htnCard = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  check(htnCard.includes('Давление очень высокое: 180/110 и выше') && htnCard.includes('умеренное оглушение') && /[Гг]лазно[ем] дн/.test(htnCard),
+    `Криз: в карте — давление 180/110 и выше, оглушение и глазное дно («${htnCard.replace(/\n/g, ' · ').slice(0, 300)}»)`);
+  await page.screenshot({ path: join(OUT, '27-crisis-card.png'), fullPage: true });
+  await visible(page, 'visit-decide').click();
+  await visible(page, 'dx-cond.hypertensive_crisis').click();
+  await visible(page, 'decision-to-plan').click();
+  await page.getByTestId('tx-tx.bp_iv').waitFor({ timeout: 5000 });
+  await page.getByTestId('tx-tx.bp_iv').click();
+  await page.getByTestId('setting-icu').click();
+  await page.screenshot({ path: join(OUT, '27-crisis-decision.png'), fullPage: true });
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
+  const htnReview = await page.locator('body').innerText();
+  check(htnReview.includes('Гипертонический криз') && !/[Нн]е назначено|не показано|вредно|Недооценили тяжесть|Обоснованность [CD]/.test(htnReview),
+    `Криз с энцефалопатией: препарат в вену и ПИТ, разбор — «${htnReview.replace(/\n/g, ' · ').slice(0, 300)}»`);
+  await page.screenshot({ path: join(OUT, '27-crisis-review.png'), fullPage: true });
+  await page.goto(`${base}/encyclopedia/article/cond.hypertensive_crisis`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const htnArticle = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  check((await visibleText(page, 'enc-article-title')) === 'Гипертонический криз' && htnArticle.includes('Обычно — палата интенсивной терапии.')
+    && htnArticle.includes('При гипертонической энцефалопатии без действенного лечения'),
+    `энциклопедия, криз: ${await visibleText(page, 'enc-article-title')} — ПИТ, течение по формам`);
+  await page.goto(`${base}/encyclopedia/article/cond.bp_uncontrolled`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const urgencyArticle = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  check((await visibleText(page, 'enc-article-title')) === 'Подъём давления без поражения органов' && urgencyArticle.includes('Обычно — дома.')
+    && urgencyArticle.includes('Снижение давления препаратом в вену'),
+    `энциклопедия, подъём без поражения органов: ${await visibleText(page, 'enc-article-title')} — дома, препарат в вену в «Опасно»`);
 
   // хирургия живота (spec 2026-09-chapter-2, часть 30): со смотровой приёмного больница принимает
   // и хирургию — у вас больной острым холециститом; УЗИ — желчный пузырь с камнями и толстой

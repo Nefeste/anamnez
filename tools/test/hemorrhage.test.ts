@@ -455,7 +455,7 @@ describe('смена: приёмное, КТ и ПИТ', () => {
 
   test('без консультации нейрохирурга — «Не назначено», и срока нет: срок у назначения — только тем, кому его сделали', () => {
     const p = find(ICH, x => paramsOf(x).volume === 'small');
-    const at = { roomType: () => undefined, bedside: () => false };
+    const at = { roomType: () => undefined, bedside: () => false, can: () => true };
     const ct = { exam: CT, obs: [seen(BLOOD, CT)], at: 30 * 60, step: 1 };
     const visit = { patient: p, arriveT: 0, results: [ct] };
     const results = (treatments: Id[]) => targetResults(db, visit, at, { t: 75 * 60, plan: { treatments, setting: 'icu' } }).map(r => [r.id, r.minutes, r.grade]);

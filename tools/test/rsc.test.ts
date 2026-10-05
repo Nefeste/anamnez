@@ -250,7 +250,7 @@ describe('смена', () => {
 });
 
 describe('сроки тромболизиса и перевода', () => {
-  const place: TargetPlace = { roomType: () => 'room.emergency', bedside: () => true };
+  const place: TargetPlace = { roomType: () => 'room.emergency', bedside: () => true, can: () => true };
   const st = { exam: 'exam.ecg', obs: [{ f: 'ecg.st_elevation', shown: true, exam: 'exam.ecg' }], at: 600 + 5 * 60, step: 1 };
   const p = { patient: acs(3, { type: 'stemi' }), bay: { room: 'r1', bed: 0 }, arriveT: 600, results: [st] };
   const ids = (xs: ReturnType<typeof targetResults>) => xs.map(x => [x.id, x.minutes, x.grade]);
