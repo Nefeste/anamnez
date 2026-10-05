@@ -28,6 +28,8 @@ export interface Outcome {
   cured: boolean;
   /** что вызвало реакцию: назначение и противопоказание к нему */
   reaction?: { tx: Id; by: Id };
+  /** вред другой болезнью (часть 42а): после какого назначения вернётся с `returns.as` */
+  harmBy?: Id;
   /** переведён в тяжёлом состоянии — «мягкий режим» вместо смерти (spec 2026-09-chapter-2, часть 28б) */
   severe?: true;
   /** переведён в сосудистый центр с подъёмом ST: как и когда открыли артерию (spec 2026-10-chapter-3, часть 39б) */
@@ -78,9 +80,13 @@ export function observe(db: ContentDb, patient: Patient, plan: Plan, ev: PlanEva
       return { kind: 'reaction', day: 1, returns: { day: 1, reason: 'reaction' }, cured: false, reaction: { tx: v.tx, by: v.by } };
     }
   }
-  // вред при самой болезни (часть 41в): тромболизис при кровоизлиянии в мозг — кровотечение
+  // вред при самой болезни (часть 41в): тромболизис при кровоизлиянии в мозг — кровотечение; с частью
+  // 42а — и другой болезнью: кардиоверсия поздно, без трёх недель антикоагулянта, — инсульт, его привезут
   for (const h of harmsOf(db, primary, plan.treatments)) {
-    if (rng.fork(`harm:${h.tx}`).chance(h.p)) return { kind: 'reaction', day: 1, returns: { day: 1, reason: 'reaction' }, cured: false, reaction: { tx: h.tx, by: primary.id } };
+    if (!rng.fork(`harm:${h.tx}`).chance(h.p)) continue;
+    if (!h.as) return { kind: 'reaction', day: 1, returns: { day: 1, reason: 'reaction' }, cured: false, reaction: { tx: h.tx, by: primary.id } };
+    const day = Math.min(OBSERVE_DAYS, rng.fork(`harm-day:${h.tx}`).range(h.days[0], h.days[1]));
+    return { kind: 'worse', day, returns: { day, reason: 'worse', as: h.as }, cured: false, harmBy: h.tx };
   }
 
   // 2. Лечение причины. Дома то, что надо лечить в стационаре, помогает вдвое реже.

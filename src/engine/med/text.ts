@@ -2,8 +2,9 @@
 //
 // Шаблон: `{м|ж}` — форма по полу пациента, `{атрибут}` — подпись значения атрибута
 // признака, `{value}` и `{unit}` — числовой показатель, `{dia}` и подобные — производное
-// от него число (`value.derived`). Вариант текста выбирается из зерна пациента, поэтому
-// один и тот же пациент говорит одинаково.
+// от него число (`value.derived`), `{amount}` — число с единицей, с порога `value.long` — в
+// крупной единице: часы от начала с двух суток — сутками (часть 42а). Вариант текста выбирается
+// из зерна пациента, поэтому один и тот же пациент говорит одинаково.
 import type { ContentDb, Text } from '../../content/types';
 import { fnv1a } from '../core/hash';
 import type { Observation, Sex } from './types';
@@ -31,6 +32,11 @@ export function renderTemplate(db: ContentDb, template: string, o: Observation, 
     }
     if (token === 'value' && o.value !== undefined && f.value) return formatNumber(o.value, f.value.decimals, lang);
     if (token === 'unit' && f.value) return f.value.unit;
+    // число с единицей (часть 42а): фибрилляция предсердий бывает и неделю — «около 5 суток», а не «120 ч»
+    if (token === 'amount' && o.value !== undefined && f.value) {
+      const big = f.value.long;
+      return big && o.value >= big.from ? `${formatNumber(Math.round(o.value / big.per), 0, lang)} ${big.unit}` : `${formatNumber(o.value, f.value.decimals, lang)} ${f.value.unit}`;
+    }
     // производное число: нижнее давление из верхнего — только для показа, в вывод не идёт
     const k = f.value?.derived?.[token];
     if (k !== undefined && o.value !== undefined) return formatNumber(Math.round(o.value * k), 0, lang);

@@ -8,7 +8,7 @@ import { byRule, byValue, type Condition, type ContentDb, type DerivedByParams, 
 import { log2 } from '../core/math';
 import { P_ONE } from '../core/rng';
 import { chronicChance, presentingWeight } from './generate';
-import { checkRule, knownOf, type RuleVerdict } from './rules';
+import { checkRule, knownOf, type RuleVerdict, type Who } from './rules';
 import type { Observation, Sex } from './types';
 
 export interface InferContext {
@@ -396,7 +396,7 @@ const tellingOf = (c: Condition, name: string): Id[] => [...new Set(c.findings.f
  * различают. Порядок — как объявлены. Производный параметр (часть 32г) — по правилу решения на
  * известных признаках и возрасте пациента `age` (`derivedBeliefs`).
  */
-export function paramBeliefs(db: ContentDb, condId: Id, name: string, observations: readonly Observation[], age: number, minutes = 0): { value: string; p: number }[] {
+export function paramBeliefs(db: ContentDb, condId: Id, name: string, observations: readonly Observation[], age: Who, minutes = 0): { value: string; p: number }[] {
   const c = db.conditions[condId];
   const dist = c?.params?.[name];
   if (!dist) return [];
@@ -433,7 +433,7 @@ function valueVerdict(d: DerivedByValue, observations: readonly Observation[], m
 }
 
 /** Вероятность, что у каждого параметра из `all` — одно из названных значений (часть 41а): произведение. */
-function allHolds(db: ContentDb, condId: Id, d: DerivedByParams, observations: readonly Observation[], age: number, minutes: number, skip?: string): number {
+function allHolds(db: ContentDb, condId: Id, d: DerivedByParams, observations: readonly Observation[], age: Who, minutes: number, skip?: string): number {
   let p = 1;
   for (const [k, values] of Object.entries(d.all)) {
     if (k === skip) continue;
@@ -456,7 +456,7 @@ function derivedBeliefs(dist: Record<string, number>, verdict: RuleVerdict): { v
  * самое частое, при равенстве — объявленное раньше. `age` — возраст пациента: от него зависят
  * правила производных параметров (часть 32г).
  */
-export function likelyParams(db: ContentDb, condId: Id, observations: readonly Observation[], age: number, minutes = 0): Record<string, string> {
+export function likelyParams(db: ContentDb, condId: Id, observations: readonly Observation[], age: Who, minutes = 0): Record<string, string> {
   const out: Record<string, string> = {};
   for (const name of Object.keys(db.conditions[condId]?.params ?? {})) {
     let best: { value: string; p: number } | undefined;
@@ -473,7 +473,7 @@ export function likelyParams(db: ContentDb, condId: Id, observations: readonly O
  * осталось (`left`), поэтому польза — неопределённость, умноженная на долю оставшегося, которую
  * обследование проверит.
  */
-export function paramGain(db: ContentDb, condId: Id, name: string, examId: Id, observations: readonly Observation[], age: number, minutes = 0): number {
+export function paramGain(db: ContentDb, condId: Id, name: string, examId: Id, observations: readonly Observation[], age: Who, minutes = 0): number {
   const c = db.conditions[condId];
   const exam = db.exams[examId];
   if (!c || !exam) return 0;

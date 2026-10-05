@@ -168,10 +168,11 @@ export function curesOf(db: ContentDb, condition: Pick<ActiveCondition, 'id' | '
 /**
  * Что из назначенного вредит при этой болезни (spec 2026-10-chapter-3, часть 41в): эффект `harm` с
  * условием по её скрытым параметрам — тромболизис при кровоизлиянии в мозг. Течение — как реакция на
- * противопоказание, с вероятностью `p`.
+ * противопоказание, с вероятностью `p`; с частью 42а вред бывает другой болезнью (`as`): кардиоверсия
+ * при фибрилляции предсердий 48 часов и дольше — инсульт на `days`-й день.
  */
-export function harmsOf(db: ContentDb, condition: Pick<ActiveCondition, 'id' | 'params'>, treatments: readonly Id[]): { tx: Id; p: number }[] {
-  return treatments.flatMap(tx => (db.treatments[tx]?.effects ?? []).filter(e => e.on === condition.id && e.kind === 'harm' && whenHolds(e.when, condition.params)).map(e => ({ tx, p: e.p })));
+export function harmsOf(db: ContentDb, condition: Pick<ActiveCondition, 'id' | 'params'>, treatments: readonly Id[]): { tx: Id; p: number; days: [number, number]; as?: Id }[] {
+  return treatments.flatMap(tx => (db.treatments[tx]?.effects ?? []).filter(e => e.on === condition.id && e.kind === 'harm' && whenHolds(e.when, condition.params)).map(e => ({ tx, p: e.p, days: e.days, ...(e.as ? { as: e.as } : {}) })));
 }
 
 /**
@@ -399,7 +400,7 @@ export function asSeen(db: ContentDb, patient: Patient, observations: readonly O
     }
     const r = byRule(d);
     if (!r || !db.rules[r.rule]?.points) continue;
-    const v = checkRule(db.rules[r.rule], patient.age, known, r.from).verdict;
+    const v = checkRule(db.rules[r.rule], patient, known, r.from).verdict;
     if (v !== 'unknown' && v !== out[name]) {
       out[name] = v;
       changed = true;

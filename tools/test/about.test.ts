@@ -22,6 +22,9 @@ describe('об игре: источники базы', () => {
 
   test('строка: организация, название, год — если его нет в названии', () => {
     expect(sourceLine({ kind: 'guideline', org: 'Минздрав РФ', title: 'Острый бронхит', year: 2021 })).toBe('Минздрав РФ. Острый бронхит, 2021');
+    // название с точкой в конце, как в рубрикаторе, — перед годом без неё
+    expect(sourceLine({ kind: 'guideline', org: 'Минздрав РФ', title: 'Ожоги термические и химические. Ожоги солнечные. Ожоги дыхательных путей.', year: 2025 }))
+      .toBe('Минздрав РФ. Ожоги термические и химические. Ожоги солнечные. Ожоги дыхательных путей, 2025');
     expect(sourceLine({ kind: 'paper', title: 'Call SA et al. Does this patient have influenza? JAMA 2005;293(8):987–997', year: 2005 }))
       .toBe('Call SA et al. Does this patient have influenza? JAMA 2005;293(8):987–997');
   });

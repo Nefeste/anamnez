@@ -100,7 +100,9 @@ export const spikes = {
     // часть 32г: возраст как признак правила и дополнительные признаки
     ruleAgeOver: (years: number) => `возраст старше ${years}\u00a0лет`,
     ruleAgeFrom: (years: number) => `возраст ${years}\u00a0лет и старше`,
-    ruleAgeRange: (from: number, to: number) => `возраст ${from}–${to}\u00a0лет`,
+    ruleAgeRange: (from: number, to: number) => `возраст ${from}–${to}\u00a0${pluralRu(to, 'год', 'года', 'лет')}`,
+    // часть 42а: балл за пол (CHA₂DS₂-VASc — женский)
+    ruleSex: (sex: 'm' | 'f') => (sex === 'f' ? 'женский пол' : 'мужской пол'),
     ruleMinor: (list: string) => `${list} — дополнительные признаки`,
     // часть 41б: шкала с баллами — сколько набрано и за что
     rulePoints: (n: number, list: string) => `${n}\u00a0${pluralRu(n, 'балл', 'балла', 'баллов')}${list ? ` — ${list}` : ''}`,
@@ -160,6 +162,8 @@ export const spikes = {
       worse: (day: number) => `${day === 0 ? 'В тот же день' : day === 1 ? 'На следующий день' : `На ${day}-й день`} стало хуже — вернётся на приём`,
       // хуже — другая болезнь (часть 41б): после ТИА без профилактики — инсульт, человека привезёт скорая
       worseAs: (day: number, name: string) => `${day === 0 ? 'В тот же день' : day === 1 ? 'На следующий день' : `На ${day}-й день`} — ${name}: человека привезёт скорая`,
+      // вред другой болезнью (часть 42а): кардиоверсия поздно без антикоагулянта — инсульт
+      worseAfter: (day: number, name: string, tx: string) => `${day === 0 ? 'В тот же день' : day === 1 ? 'На следующий день' : `На ${day}-й день`} — ${name} после лечения «${tx}»: человека привезёт скорая`,
       reaction: (tx: string, by: string) => `На следующий день — реакция на ${lowerFirst(tx)} (${lowerFirst(by)}): вернётся на приём`,
       ward: (female: boolean) => (female ? 'Направлена в стационар' : 'Направлен в стационар'),
       ambulance: 'Увезла скорая',

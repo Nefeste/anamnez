@@ -83,14 +83,16 @@ function untreatedList<T>(u: T | T[] | undefined): T[] {
  * Сколько баллов можно набрать по шкале правила (часть 41б): пункт с «не считается при» — не вместе
  * с теми пунктами. Перебор наборов: пунктов у шкал — до десятка.
  */
-function pointsMax(p: RulePoints): number {
+function pointsMax(p: RulePoints, sex?: 'm' | 'f'): number {
   let best = 0;
   for (let mask = 0; mask < 1 << p.items.length; mask++) {
     const on = p.items.filter((_, i) => mask & (1 << i));
     if (on.some(i => (i.unless ?? []).some(u => on.some(o => o.f === u)))) continue;
     best = Math.max(best, on.reduce((a, i) => a + i.w, 0));
   }
-  return best + (p.age?.w ?? 0);
+  // возраст — наибольшая полоса, пол (часть 42а) — свой, а без пола — больший из двух
+  const sexW = sex ? (p.sex?.[sex] ?? 0) : Math.max(0, ...Object.values(p.sex ?? {}));
+  return best + Math.max(0, ...(p.age ?? []).map(a => a.w)) + sexW;
 }
 
 export function buildDb(dir = CONTENT_DIR): BuildResult {
@@ -501,6 +503,10 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       if (e.kind === 'harm' && x && !x.harmful.includes(t.id) && !(x.byParam ?? []).some(b => b.harmful.includes(t.id))) {
         errors.push(`${t.id}: вредит при ${e.on}, а в её тактике оно не «вредно»`);
       }
+      // вред — другая болезнь (часть 42а): с ней возвращаются, как без лечения с `untreated.as`
+      if (e.as !== undefined && (e.kind !== 'harm' || e.as === e.on || !conditions[e.as]?.presenting)) {
+        errors.push(`${t.id}: при ${e.on} вредит болезнью ${e.as}, а это не вред, такой болезни нет, с ней не приходят или это она сама`);
+      }
     }
     // операция: помещение, бригада из его штата и аппараты из этого помещения
     if ((t.kind === 'surgery') !== (t.surgery !== undefined)) errors.push(`${t.id}: у операции (kind: surgery) должен быть блок surgery, и только у неё`);
@@ -614,6 +620,12 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       for (const i of x.points.items) for (const u of i.unless ?? []) if (u === i.f || !items.includes(u)) errors.push(`${x.id}: пункт ${i.f} не считается при ${u}, а это не другой пункт шкалы`);
       for (const f of items) if (x.any.includes(f) || (x.requires ?? []).includes(f) || (x.excludes ?? []).includes(f)) errors.push(`${x.id}: ${f} — и пункт шкалы, и признак правила`);
       if (x.points.from > pointsMax(x.points)) errors.push(`${x.id}: порог ${x.points.from} больше, чем можно набрать (${pointsMax(x.points)})`);
+      // часть 42а: полосы возраста — по возрастанию; порог у пола можно набрать этим полом
+      const bands = x.points.age ?? [];
+      if (bands.some((a, i) => i > 0 && a.from <= bands[i - 1].from)) errors.push(`${x.id}: полосы возраста шкалы — не по возрастанию`);
+      for (const [sex, n] of Object.entries(x.points.fromSex ?? {}) as ['m' | 'f', number][]) {
+        if (n > pointsMax(x.points, sex)) errors.push(`${x.id}: порог ${n} для пола ${sex} больше, чем можно набрать (${pointsMax(x.points, sex)})`);
+      }
       if (x.minor) errors.push(`${x.id}: у шкалы с баллами дополнительные признаки — её пункты`);
       if (x.age) errors.push(`${x.id}: у шкалы с баллами возраст — её пункт (points.age)`);
     }
@@ -796,7 +808,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   for (const t of Object.values(treatments).sort((a, b) => (a.id < b.id ? -1 : 1))) {
     const out: Treatment = {
       id: t.id, name: t.name, kind: t.kind, cost: t.cost,
-      effects: t.effects.map(e => ({ on: e.on, kind: e.kind, p: prob(e.band), days: e.days, ...(e.when ? { when: e.when } : {}) })),
+      effects: t.effects.map(e => ({ on: e.on, kind: e.kind, p: prob(e.band), days: e.days, ...(e.when ? { when: e.when } : {}), ...(e.as ? { as: e.as } : {}) })),
       contraindications: t.contraindications.map(k => ({ id: k.id, level: k.level, reaction: prob(k.reaction) })),
       texts: t.texts, sources: t.sources, review: t.review,
     };

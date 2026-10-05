@@ -22,8 +22,11 @@ export interface WardCourse {
   readyAfter?: number;
   /** через сколько суток станет хуже, если лечение не действует */
   worseAfter?: number;
-  /** реакция на назначенное при противопоказании, которое у пациента есть: что и на что */
-  reaction?: { tx: Id; by: Id; after: number };
+  /**
+   * реакция на назначенное при противопоказании, которое у пациента есть: что и на что; вред другой
+   * болезнью (часть 42а) — `as`: инсульт после кардиоверсии
+   */
+  reaction?: { tx: Id; by: Id; after: number; as?: Id };
   /**
    * у болезни, острый период которой проходит в стационаре (spec 2026-10-chapter-3, часть 41а):
    * `clear` — лечение подействовало, последствий нет; `residual` — без него, последствия остались
@@ -107,7 +110,7 @@ export function wardCourse(db: ContentDb, patient: Patient, plan: Plan, ev: Plan
   // вред при самой болезни (часть 41в): тромболизис при кровоизлиянии в мозг — кровотечение
   if (!out.reaction) {
     const harm = harmsOf(db, primary, plan.treatments).find(h => rng.fork(`harm:${h.tx}`).chance(h.p));
-    if (harm) out.reaction = { tx: harm.tx, by: primary.id, after: from + 1 };
+    if (harm) out.reaction = { tx: harm.tx, by: primary.id, after: from + 1, ...(harm.as ? { as: harm.as } : {}) };
   }
   const cures = curesOf(db, primary, plan.treatments);
   if (cures.length > 0 && rng.fork('cure').chance(anyOf(cures.map(e => e.p)))) {

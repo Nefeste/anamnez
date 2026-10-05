@@ -517,6 +517,20 @@ function ichSave(): { save: string; id: string } {
   return neuroSave('cond.ich', fits, ['exam.neuro_exam', 'exam.ask_stroke', 'exam.vitals', 'exam.ct_head', 'exam.ask_lysis', 'exam.swallow_test']);
 }
 
+/**
+ * Песочница с приёмным, КТ и ПИТ (часть 42а): первая машина скорой везёт трепетание предсердий — стабильное,
+ * меньше 48 часов, с порога CHA₂DS₂-VASc; без астмы — бета-адреноблокатор можно; ЭКГ у постели, давление,
+ * хронические болезни и начало готовы.
+ */
+function afSave(): { save: string; id: string } {
+  const fits = (x: ReturnType<typeof generatePatient>) => {
+    const c = x.truth.conditions[0].params;
+    return x.age >= 40 && c.type === 'flutter' && c.unstable === 'no' && c.recent === 'yes' && c.oac === 'yes'
+      && !x.truth.conditions.some(k => k.id === 'cond.asthma') && x.truth.risks.length <= 2;
+  };
+  return neuroSave('cond.af', fits, ['exam.ecg', 'exam.vitals', 'exam.ask_chronic', 'exam.ask_onset']);
+}
+
 /** Больница с приёмным, КТ и ПИТ; первую машину скорой подменяет больной `primary`, для которого верно `fits`; сделаны `exams`. */
 function neuroSave(primary: string, fits: (x: ReturnType<typeof generatePatient>) => boolean, exams: string[]): { save: string; id: string } {
   const { db } = buildDb();
@@ -557,7 +571,8 @@ function neuroSave(primary: string, fits: (x: ReturnType<typeof generatePatient>
   apply(db, s, { kind: 'call', id: p.id });
   for (const exam of exams) apply(db, s, { kind: 'exam', exam });
   for (let i = 0; i < 20 && p.pending.length > 0; i++) apply(db, s, { kind: 'waitResults' });
-  if (!p.results.some(r => r.exam === 'exam.ct_head')) throw new Error('neuroSave: КТ не пришла');
+  const missing = exams.filter(e => !p.results.some(r => r.exam === e));
+  if (missing.length > 0) throw new Error(`neuroSave: не пришло ${missing.join(', ')}`);
   return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s }), id: p.id };
 }
 
@@ -1931,6 +1946,51 @@ try {
   await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
   const ichWhere = await page.locator('text=При гематоме больше 30').first().isVisible().catch(() => false);
   check((await visibleText(page, 'enc-article-title')) === 'Внутримозговое кровоизлияние' && ichWhere, `энциклопедия, ВМК: ${await visibleText(page, 'enc-article-title')} — перевод при гематоме больше 30 см³`);
+
+  // фибрилляция и трепетание предсердий (часть 42а): у вас — привезённое скорой трепетание меньше 48 часов; в
+  // карте — ЭКГ с пилообразными волнами и лента, строка CHA₂DS₂-VASc с баллами; электрическая кардиоверсия у
+  // постели, антикоагулянт и «Домой» — разбор без замечаний; в энциклопедии — шкала с возрастом полосами и
+  // порогом по полу
+  const af = afSave();
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', af.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId('shift-continue').waitFor({ timeout: 15_000 });
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId('shift-continue').click();
+  await visible(page, 'visit-decide').waitFor({ timeout: 10_000 });
+  const afCard = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  check(afCard.includes('Пилообразные волны F вместо зубцов P — трепетание предсердий') && afCard.includes('Шкала CHA₂DS₂-VASc при фибрилляции предсердий')
+    && /Риск инсульта высокий — нужен антикоагулянт постоянно: \d балл/.test(afCard),
+    `ФП: в карте — ЭКГ с трепетанием и строка CHA₂DS₂-VASc с баллами («${afCard.replace(/\n/g, ' · ').slice(0, 300)}»)`);
+  await visible(page, 'result-ecg').scrollIntoViewIfNeeded();
+  check((await visible(page, 'result-ecg').boundingBox() ?? { height: 0 }).height > 100, 'ФП: ЭКГ — лентой');
+  await page.screenshot({ path: join(OUT, '21-af-card.png'), fullPage: true });
+  await visible(page, 'visit-decide').click();
+  await visible(page, 'dx-cond.af').click();
+  await visible(page, 'decision-to-plan').click();
+  await page.getByTestId('tx-tx.cardioversion').waitFor({ timeout: 5000 });
+  check(!(await page.getByTestId('tx-tx.cardioversion').isDisabled()), `ФП, решение: кардиоверсия у постели под монитором — ${await text(page, 'tx-tx.cardioversion')}`);
+  await page.getByTestId('tx-tx.cardioversion').click();
+  await page.getByTestId('tx-tx.doac').click();
+  await page.getByTestId('setting-home').click();
+  await page.screenshot({ path: join(OUT, '21-af-decision.png'), fullPage: true });
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
+  const afReview = await page.locator('body').innerText();
+  check(afReview.includes('Фибрилляция и трепетание предсердий') && !/[Нн]е назначено|не показано|вредно|Недооценили тяжесть/.test(afReview),
+    `ФП: кардиоверсия, антикоагулянт и дом, разбор — «${afReview.replace(/\n/g, ' · ').slice(0, 300)}»`);
+  await page.screenshot({ path: join(OUT, '21-af-review.png'), fullPage: true });
+  await page.goto(`${base}/encyclopedia/article/rule.cha2ds2vasc`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const cha = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  check((await visibleText(page, 'enc-article-title')) === 'Шкала CHA₂DS₂-VASc при фибрилляции предсердий' && cha.includes('Возраст 65–74 года — 1 балл') && cha.includes('Женский пол — 1 балл')
+    && /если баллов у мужчин 2 и больше, у женщин — 3 и больше/i.test(cha),
+    `энциклопедия, CHA₂DS₂-VASc: ${await visibleText(page, 'enc-article-title')} — возраст полосами и порог по полу`);
 
   // хирургия живота (spec 2026-09-chapter-2, часть 30): со смотровой приёмного больница принимает
   // и хирургию — у вас больной острым холециститом; УЗИ — желчный пузырь с камнями и толстой

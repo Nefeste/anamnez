@@ -323,7 +323,7 @@ export function loadShift(which?: Mode, careerNo?: number): Promise<void> {
         // до 0.3.7 — без коронарографии в первые сутки при ОКС: по правилу на их признаках (часть 39в)
         for (const p of Object.values(r.envelope.data.patients)) {
           deriveByValue(db, p.patient.truth.conditions, p.patient.truth.values);
-          deriveParams(db, p.patient.truth.conditions, p.patient.age, p.patient.truth.findings);
+          deriveParams(db, p.patient.truth.conditions, p.patient, p.patient.truth.findings);
           // параметры по другим параметрам (часть 41а) — после всех остальных
           deriveByParams(db, p.patient.truth.conditions);
         }
@@ -1682,7 +1682,10 @@ export function roundsView(): RoundCard[] {
       diagnosis: dx ? db.conditions[dx]?.name.ru ?? dx : '',
       day: days === 0 ? t.today(female(p)) : t.days(days, stayNorm(db, dx ?? '')),
       state,
-      stateText: state === 'reaction' && stay.reaction
+      // вред другой болезнью (часть 42а) — она и после чего: «Ишемический инсульт после лечения «…»»
+      stateText: state === 'reaction' && stay.reaction?.as
+        ? t.state.harmAs(db.conditions[stay.reaction.as]?.name.ru ?? stay.reaction.as, db.treatments[stay.reaction.tx]?.name.ru ?? stay.reaction.tx)
+        : state === 'reaction' && stay.reaction
         ? t.state.reaction(db.treatments[stay.reaction.tx]?.name.ru ?? stay.reaction.tx, db.risks[stay.reaction.by]?.name.ru ?? db.conditions[stay.reaction.by]?.name.ru ?? stay.reaction.by)
         : t.state[state === 'reaction' ? 'same' : state],
       ...(student && state === 'ready' ? { readyHint: t.readyHint } : {}),

@@ -356,6 +356,11 @@ export const findingSchema = z.strictObject({
      * тем же тонометром, что высокое; «есть» — значение в диапазоне `present`
      */
     of: z.string().optional(),
+    /**
+     * крупная единица для шаблона {amount} (часть 42а): с `from` — число, делённое на `per`, с единицей
+     * `unit`; часы от начала с двух суток — сутками
+     */
+    long: z.strictObject({ from: z.number().positive(), per: z.number().positive(), unit: z.string().min(1) }).optional(),
   }).optional(),
   texts: z.strictObject({ complaint: texts.optional(), present: texts, absent: texts.optional(), hint }),
   sources: z.array(source).optional(),
@@ -442,6 +447,11 @@ export const treatmentSchema = z.strictObject({
     days: z.tuple([z.number().int().min(0), z.number().int().min(0)]),
     /** действует, только если у болезни такое значение скрытого параметра (часть 30в: без ишемии кишки) */
     when: z.record(z.string(), z.array(z.string())).optional(),
+    /**
+     * вред — другая болезнь (часть 42а), только у `harm`: кардиоверсия при фибрилляции предсердий 48
+     * часов и дольше без антикоагулянта — инсульт; дома — возврат с ней за `days`, в палате — на обходе
+     */
+    as: z.string().regex(/^cond\.[a-z0-9_]+$/).optional(),
   })).default([]),
   /** противопоказание — фактор риска (аллергия) или состояние; reaction — вероятность вреда, если назначить */
   contraindications: z.array(z.strictObject({
@@ -849,6 +859,9 @@ export const scoreSchema = z.strictObject({
   review,
 });
 
+/** баллы шкалы за возраст: столько баллов с этого возраста (часть 41б) */
+const pointsAge = z.strictObject({ from: z.number().int().min(1).max(120), w: z.number().int().min(1) });
+
 /**
  * Правило решения (spec 2026-09-chapter-2, часть 32): оттавские правила — при жалобе `complaints`
  * обследования `exams` нужны, если есть хоть один признак из `any`; проверили все — и ни одного,
@@ -866,12 +879,16 @@ export const ruleSchema = z.strictObject({
   /**
    * баллы шкалы (spec 2026-10-chapter-3, часть 41б): у пункта вес; пункт с `unless` не считается,
    * если есть хоть один из тех признаков (ABCD2: речь — балл, только если слабости нет); `age` —
-   * столько баллов с этого возраста. Правило выполнено от `from` баллов
+   * столько баллов с этого возраста, с части 42а — и полосами по возрастанию (CHA₂DS₂-VASc: 65–74 —
+   * 1, 75 и старше — 2); `sex` — баллы за пол (женский — 1). Правило выполнено от `from` баллов, с
+   * части 42а — и своим порогом у пола (`fromSex`: антикоагулянт женщинам — с 3 баллов)
    */
   points: z.strictObject({
     items: z.array(z.strictObject({ f: z.string(), w: z.number().int().min(1), unless: z.array(z.string()).min(1).optional() })).min(1),
-    age: z.strictObject({ from: z.number().int().min(1).max(120), w: z.number().int().min(1) }).optional(),
+    age: z.union([pointsAge, z.array(pointsAge).min(2)]).transform(a => (Array.isArray(a) ? a : [a])).optional(),
+    sex: z.strictObject({ m: z.number().int().min(1).optional(), f: z.number().int().min(1).optional() }).optional(),
     from: z.number().int().min(1),
+    fromSex: z.strictObject({ m: z.number().int().min(1).optional(), f: z.number().int().min(1).optional() }).optional(),
   }).optional(),
   /** возраст: старше `main` — основной признак, в пределах `minor` — дополнительный (часть 32г) */
   age: z.strictObject({ main: z.number().int().min(1).max(120).optional(), from: z.number().int().min(1).max(120).optional(), minor: z.tuple([z.number().int().min(0), z.number().int().max(120)]).optional() }).optional(),
