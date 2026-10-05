@@ -282,6 +282,9 @@ const TX_GROUPS: [string, string[]][] = [
   ['antibiotics', ['antibiotic']],
   ['antivirals', ['antiviral']],
   ['pain', ['analgesic', 'antimigraine']],
+  // противосудорожные (spec 2026-10-chapter-3, часть 44в): бензодиазепин и вальпроевая кислота в вену при
+  // эпилептическом статусе, свой противоэпилептический препарат при эпилепсии
+  ['seizures', ['anticonvulsant']],
   ['breathing', ['bronchodilator', 'asthma', 'steroid.systemic']],
   // кислород через маску (spec 2026-10-chapter-3, часть 38б): при низкой сатурации; с частью 43в — маска CPAP
   ['oxygen', ['oxygen']],

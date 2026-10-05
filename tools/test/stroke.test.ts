@@ -673,7 +673,7 @@ describe('энциклопедия', () => {
     // с частью 41в — опасно при кровоизлияниях в мозг: кровь на КТ — абсолютное противопоказание; с частью 43а — и при
     // расслоении аорты; с частью 43г — и при гипертоническом кризе: давление выше 185/110 — противопоказание; с частью
     // 44а — и при гипогликемии: «маска» инсульта; с частью 44б — и при невропатии лицевого нерва
-    expect(used).toEqual([['Опасно при', ['cond.ich', 'cond.hypertensive_crisis', 'cond.hypoglycemia', 'cond.bell_palsy', 'cond.aortic_dissection', 'cond.sah']], ['Обязательно при', [STROKE]], ['Обязательно до перевода при', [STROKE]]]);
+    expect(used).toEqual([['Опасно при', ['cond.ich', 'cond.hypertensive_crisis', 'cond.hypoglycemia', 'cond.bell_palsy', 'cond.aortic_dissection', 'cond.sah', 'cond.seizure', 'cond.status_epilepticus']], ['Обязательно при', [STROKE]], ['Обязательно до перевода при', [STROKE]]]);
     expect(article(db, 'rule.lysis_stroke')!.blocks.find(b => b.key === 'decides')!.refs!.map(r => r.id)).toEqual([LYSIS]);
     expect(article(db, CTA)!.blocks.find(b => b.key === 'where')!.refs!.map(r => r.id)).toEqual(['room.ct', 'eq.ct_16', 'eq.ct_64']);
     expect(article(db, 'room.ct')!.blocks.flatMap(b => b.refs ?? []).map(r => r.id)).toContain(CTA);

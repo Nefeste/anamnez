@@ -168,11 +168,18 @@ function tacticGain(db: ContentDb, condId: Id, examId: Id, obs: readonly Observa
  * Срок решения по тому, что показали обследования (spec 2026-10-chapter-3, часть 39в): у сроков на
  * назначение и место — меньший; подъём ST — тромболизис в первые 10 минут, перевод в первые 30. Нет
  * такой находки — undefined. Обследований, которые дольше срока, разумный врач не ждёт: решение о
- * тромболизисе и переводе не откладывают до тропонина (`157_5`, раздел 2.3).
+ * тромболизисе и переводе не откладывают до тропонина (`157_5`, раздел 2.3). С частью 44в — и по жалобе
+ * при поступлении: судороги не прекращаются — противосудорожное за 5 минут от прихода, и из них уже
+ * прошло `elapsed`; КТ подождёт.
  */
-export function decisionLimit(db: ContentDb, obs: readonly Observation[]): number | undefined {
+export function decisionLimit(db: ContentDb, obs: readonly Observation[], complaints: readonly Id[] = [], elapsed = 0): number | undefined {
   const shown = new Set(obs.filter(o => o.shown).map(o => o.f));
-  const limits = Object.values(db.targets).filter(t => (t.treatments.length > 0 || t.settings.length > 0) && t.findings.some(f => shown.has(f))).map(t => t.minutes);
+  const limits = Object.values(db.targets)
+    .filter(t => (t.treatments.length > 0 || t.settings.length > 0) && !lifted(t, obs))
+    .flatMap(t => [
+      ...(t.findings.some(f => shown.has(f)) ? [t.minutes] : []),
+      ...(t.complaints.some(f => complaints.includes(f)) ? [t.minutes - elapsed] : []),
+    ]);
   return limits.length > 0 ? Math.min(...limits) : undefined;
 }
 
@@ -320,7 +327,7 @@ function confirmBeforeInvasive(db: ContentDb, diagnosis: Id, obs: readonly Obser
 export function nextStep(db: ContentDb, patient: Patient, obs: readonly Observation[], done: readonly Id[], phase: DoctorPhase, options: StepOptions): { step: DoctorStep; phase: DoctorPhase } {
   // о месячных и беременности мужчину не спрашивают: только то, что пациенту подходит; есть срок
   // решения (часть 39в) — то, что успеет до него
-  const limit = decisionLimit(db, obs);
+  const limit = decisionLimit(db, obs, patient.complaints, options.venue?.minutes ?? 0);
   const opt = { ...options, exams: options.exams.filter(id => examFits(db.exams[id], patient) && (limit === undefined || examMinutes(db.exams[id]) <= limit)) };
   let now = phase;
   if (now.diagnosis === undefined) {

@@ -313,6 +313,7 @@ export const spikes = {
       antibiotics: 'Антибиотики',
       antivirals: 'Противовирусные',
       pain: 'Жаропонижающие и обезболивающие',
+      seizures: 'Противосудорожные',
       breathing: 'Бронхи и воспаление',
       oxygen: 'Кислород',
       nose: 'Нос и аллергия',

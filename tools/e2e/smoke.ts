@@ -648,6 +648,18 @@ function bellSave(): { save: string; id: string } {
 }
 
 /**
+ * Песочница с приёмным, КТ и ПИТ (часть 44в): первая машина скорой везёт эпилептический статус у больного эпилепсией —
+ * судороги не прекращаются, сатурация 90 и выше. Готов только глюкометр: противосудорожное — в первые 5 минут.
+ */
+function statusSave(): { save: string; id: string } {
+  const fits = (x: ReturnType<typeof generatePatient>) => {
+    const k = x.truth.conditions[0].params;
+    return k.history === 'epilepsy' && k.spo2_below90 === 'no' && x.truth.risks.length <= 2 && x.complaints.includes('sym.seizure_ongoing');
+  };
+  return neuroSave('cond.status_epilepticus', fits, ['exam.glucometer']);
+}
+
+/**
  * Больница с приёмным, КТ и ПИТ; первую машину скорой подменяет больной `primary`, для которого верно `fits`; сделаны
  * `exams`. С `ultrasound` (часть 43д) — ещё кабинет УЗИ под старым зданием, коридор к нему продлён влево.
  */
@@ -2520,6 +2532,57 @@ try {
   check((await visibleText(page, 'enc-article-title')) === 'Невропатия лицевого нерва' && bellArticle.includes('Обычно — дома.')
     && bellArticle.includes('При тяжёлом течении в первые 72 часа — в стационаре.') && bellArticle.includes('Искусственная слеза днём, гель на ночь'),
     `энциклопедия, невропатия: ${await visibleText(page, 'enc-article-title')} — дома, тяжёлая в первые 72 часа — в стационаре, слеза и гель`);
+
+  // эпилептический статус (часть 44в): у вас — больной эпилепсией, судороги не прекращаются; в сроках —
+  // противосудорожное за 5 минут от прихода; диазепам или мидазолам и «В ПИТ» — разбор без замечаний, срок — в
+  // срок; в энциклопедии — ПИТ у статуса, дома или в стационаре у приступа
+  const status = statusSave();
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', status.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId('shift-continue').waitFor({ timeout: 15_000 });
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId('shift-continue').click();
+  await visible(page, 'visit-decide').waitFor({ timeout: 10_000 });
+  const statusCard = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  check(/Судороги не прекращаются|Приступы идут один за другим/.test(statusCard),
+    `Эпилептический статус: в карте — судороги не прекращаются («${statusCard.replace(/\n/g, ' · ').slice(0, 300)}»)`);
+  const statusTarget = await text(page, 'visit-target-0');
+  check(/^Противосудорожное при эпилептическом статусе — в первые 5\u00a0минут; с прихода — \d+\u00a0мин$/.test(statusTarget),
+    `статус: в сроках — противосудорожное за 5 минут — «${statusTarget}»`);
+  await page.screenshot({ path: join(OUT, '31-status-card.png'), fullPage: true });
+  await visible(page, 'visit-decide').click();
+  await visible(page, 'dx-cond.status_epilepticus').click();
+  await visible(page, 'decision-to-plan').click();
+  await page.getByTestId('tx-tx.benzodiazepine').waitFor({ timeout: 5000 });
+  await page.getByTestId('tx-tx.benzodiazepine').click();
+  await page.getByTestId('setting-icu').click();
+  await page.screenshot({ path: join(OUT, '31-status-decision.png'), fullPage: true });
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
+  const statusReview = await page.locator('body').innerText();
+  check(statusReview.includes('Эпилептический статус') && !/[Нн]е назначено|не показано|вредно|Недооценили тяжесть|Обоснованность [CD]/.test(statusReview),
+    `Эпилептический статус: бензодиазепин и ПИТ — разбор «${statusReview.replace(/\n/g, ' · ').slice(0, 300)}»`);
+  const statusLine = await text(page, 'visit-target-line-0');
+  check((await text(page, 'visit-targets-grade')) === 'A' && /^• Противосудорожное при эпилептическом статусе: через \d+\u00a0мин после прихода — в срок$/.test(statusLine),
+    `статус, сроки в разборе: ${statusLine}`);
+  await page.screenshot({ path: join(OUT, '31-status-review.png'), fullPage: true });
+  await page.goto(`${base}/encyclopedia/article/cond.status_epilepticus`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const statusArticle = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  check((await visibleText(page, 'enc-article-title')) === 'Эпилептический статус' && statusArticle.includes('Обычно — палата интенсивной терапии.')
+    && statusArticle.includes('Диазепам в вену медленно или мидазолам в мышцу') && statusArticle.includes('Вальпроевая кислота в вену'),
+    `энциклопедия, статус: ${await visibleText(page, 'enc-article-title')} — ПИТ, бензодиазепин, вальпроевая кислота`);
+  await page.goto(`${base}/encyclopedia/article/cond.seizure`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const seizureArticle = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  check((await visibleText(page, 'enc-article-title')) === 'Судорожный приступ' && seizureArticle.includes('При первом в жизни приступе — в стационаре.')
+    && seizureArticle.includes('Нужна ли КТ при судорожном приступе') && seizureArticle.includes('Свой противоэпилептический препарат — без пропусков'),
+    `энциклопедия, приступ: ${await visibleText(page, 'enc-article-title')} — стационар при первом, правило КТ, свой препарат`);
 
   // хирургия живота (spec 2026-09-chapter-2, часть 30): со смотровой приёмного больница принимает
   // и хирургию — у вас больной острым холециститом; УЗИ — желчный пузырь с камнями и толстой

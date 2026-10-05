@@ -265,12 +265,19 @@ describe('разумный врач', () => {
   test('у постели в приёмном: ЭКГ и давление; стабильному — перевод без лечения, нестабильному — атропин при узких, стимуляция при широких и Мобитц II', () => {
     const xs = people(80, {}, 8_000_001);
     let right = 0;
+    let unseen = 0;
     for (const p of xs) {
       const r = run(p, BAY, ED);
       // ЭКГ пропускает блокаду у 5 из 100 — тогда и диагноз другой
       if (r.diagnosis !== AVB) continue;
       right++;
       expect(r.done).toEqual(expect.arrayContaining(['exam.ecg', 'exam.vitals']));
+      // тонометр пропускает давление ниже 90 у 5 из 100 — нестабильности врач тогда не видит (с частью 44в при
+      // слабости первым идёт неврологический осмотр, и давление у одного из 80 меряют другим жребием)
+      if (paramsOf(p).unstable === 'yes' && !r.obs.some(o => o.f === 'vital.bp_low' && o.shown)) {
+        unseen++;
+        continue;
+      }
       const e = evaluatePlan(db, p, r.plan, r.obs, BAY);
       expect({ seed: p.seed, harmful: e.roles.filter(x => x.role === 'harmful').map(x => x.tx), missing: [...e.requireMissing, ...e.beforeTransferMissing] })
         .toEqual({ seed: p.seed, harmful: [], missing: [] });
@@ -279,6 +286,7 @@ describe('разумный врач', () => {
       expect({ seed: p.seed, plan: r.plan }).toEqual({ seed: p.seed, plan: { treatments: want, setting: 'ambulance' } });
     }
     expect(right / xs.length).toBeGreaterThan(0.9);
+    expect(unseen).toBeLessThanOrEqual(2);
   });
 
   test('в поликлинике без монитора: ЭКГ — и на скорой без лечения', () => {

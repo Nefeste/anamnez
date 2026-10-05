@@ -9,7 +9,10 @@ discomfort: 1
 # спутанности — так начинается гипогликемия (290_2, раздел 3.7). И каждому с оглушением — по шкале комы Глазго; и
 # каждому, кто на инсулине или сульфонилмочевине: гипогликемия — это уровень глюкозы (там же), без глюкометра её не
 # поставить и не исключить
-routineFor: [sym.tremor, sym.hunger, sym.confusion, sym.weakness_one_side, sym.speech_trouble, sym.face_droop]
+# С частью 44в — и каждому с судорожным приступом: при эпилептическом статусе на месте оценивают уровень глюкозы,
+# в стационаре — анализ крови с глюкозой (741_1, блок «Оказание медицинской помощи пациенту с эпилептическим
+# статусом»; гипогликемия — среди причин статуса, раздел 1.6.7)
+routineFor: [sym.tremor, sym.hunger, sym.confusion, sym.weakness_one_side, sym.speech_trouble, sym.face_droop, sym.seizure, sym.seizure_ongoing]
 routineSeen: [sign.gcs_low, hx.insulin, hx.sulfonylurea]
 checks:
   - { f: lab.glucose_high, sens: 90, spec: 93 }

@@ -232,7 +232,7 @@ function playDay(s: ShiftState, player: Player) {
     // заготовленный при первом вызове по своему прогону, мог её не увидеть и ждать тропонина. Дальше
     // разумный идёт по пришедшему, шаг за шагом: нужное и успевающее до срока с закрытием приёма — или
     // решение, не дожидаясь назначенного раньше (spec 2026-10-chapter-3, часть 39г)
-    const limit = player === 'rational' ? decisionLimit(db, observationsOf(p)) : undefined;
+    const limit = player === 'rational' ? decisionLimit(db, observationsOf(p), p.patient.complaints) : undefined;
     const deadline = limit !== undefined;
     if (deadline) {
       const left = Math.min(limit, minutesLeft(s, p) ?? Infinity) - CLOSE_MIN;

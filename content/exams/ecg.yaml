@@ -13,7 +13,7 @@ discomfort: 0
 # и исключить ОКС (156_2, раздел 7.3.2); критерий качества 1
 # С частью 43д — и при боли, которая легче сидя с наклоном вперёд: ЭКГ — всем с подозрением на перикардит (746_2,
 # раздел 2.4, ЕОК IC)
-routineFor: [sym.palpitations, sym.syncope, sym.orthopnea, sym.pericardial_pain]
+routineFor: [sym.palpitations, sym.syncope, sym.orthopnea, sym.pericardial_pain, sym.seizure]
 # и каждому, у кого на осмотре пульс неритмичный или 150 и чаще (часть 42б): ЭКГ — всем с подозрением на
 # наджелудочковую тахикардию (619_3, раздел 2, РКО IC), пульс в покое — чтобы найти фибрилляцию (382_2,
 # раздел 2.2), при любой тахикардии с широкими комплексами — ЭКГ 12 отведений (569_2, раздел 3.1.3)
@@ -23,6 +23,8 @@ routineFor: [sym.palpitations, sym.syncope, sym.orthopnea, sym.pericardial_pain]
 # С частью 43г — и давление 180/110 и выше: ЭКГ — всем с гипертоническим кризом не позднее 15 минут, ищут поражение
 # органов (62_3, раздел 3.7)
 # С частью 43д — и шум трения перикарда (746_2, раздел 2.4)
+# С частью 44в — и судорожный приступ: обморок с судорогами клинически может не отличаться от эпилептического
+# приступа (741_1, раздел 1.6.6), в стационарном отделении скорой помощи — ЭКГ (там же, блок об эпилептическом статусе)
 routineSeen: [sign.pulse_irregular, vital.tachycardia_150, vital.bradycardia, sign.crackles_bilateral, sign.crackles_diffuse, vital.bp_very_high, sign.pericardial_rub]
 checks:
   - { f: ecg.st_elevation, sens: 92, spec: 99 }

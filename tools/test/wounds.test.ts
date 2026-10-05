@@ -184,7 +184,8 @@ describe('обследования ран', () => {
     expect(['exam.wound_exam', 'exam.ask_tetanus', 'exam.hand_function'].map(id => fits(id, hand))).toEqual([true, true, true]);
     expect(['exam.wound_exam', 'exam.ask_tetanus', 'exam.hand_function', 'exam.ask_head_injury'].map(id => fits(id, head))).toEqual([true, true, false, true]);
     expect(['exam.wound_exam', 'exam.ask_tetanus', 'exam.hand_function', 'exam.ask_head_injury'].map(id => fits(id, flu))).toEqual([false, false, false, false]);
-    expect(db.exams['exam.neuro_exam'].routineFor).toEqual(['sym.head_injury', 'sym.head_wound']);
+    // с частью 44в — и при судорожном приступе (741_1, раздел 2.2)
+    expect(db.exams['exam.neuro_exam'].routineFor).toEqual(['sym.head_injury', 'sym.head_wound', 'sym.seizure']);
   });
 
   test('обязательные при жалобе: рана головы — расспрос о травме головы, неврологический осмотр и осмотр раны первыми; у больного гриппом их нет', () => {

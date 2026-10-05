@@ -79,9 +79,10 @@ describe('каталог', () => {
     ]);
   });
 
-  test('глюкометр — каждому с дрожью, голодом, спутанностью и признаками инсульта, при оглушении и на инсулине или сульфонилмочевине; расспрос о лекарствах — при гипогликемии', () => {
+  test('глюкометр — каждому с дрожью, голодом, спутанностью, признаками инсульта и судорогами, при оглушении и на инсулине или сульфонилмочевине; расспрос о лекарствах — при гипогликемии', () => {
     const g = db.exams[GLU];
-    expect(g.routineFor).toEqual(['sym.tremor', 'sym.hunger', CONFUSED, 'sym.weakness_one_side', SPEECH, 'sym.face_droop']);
+    // с частью 44в — и при судорожном приступе и статусе (741_1)
+    expect(g.routineFor).toEqual(['sym.tremor', 'sym.hunger', CONFUSED, 'sym.weakness_one_side', SPEECH, 'sym.face_droop', 'sym.seizure', 'sym.seizure_ongoing']);
     expect(g.routineSeen).toEqual([GCS, INSULIN, SU]);
     expect(g.checks.filter(k => k.f === LOW).map(k => [k.sens, k.spec])).toEqual([[9300, 10000]]);
     const m = db.exams[MEDS];
@@ -230,7 +231,7 @@ describe('тексты', () => {
 });
 
 describe('энциклопедия', () => {
-  test('где лечить, лечение по тяжести и сульфонилмочевине, с чем спутать — инсульт и ТИА, а у них — гипогликемия', () => {
+  test('где лечить, лечение по тяжести и сульфонилмочевине, с чем спутать — инсульт, ТИА и судорожный приступ, а у инсульта и ТИА — гипогликемия', () => {
     const x = article(db, HYPO)!;
     expect(x.blocks.find(b => b.key === 'where')!.text).toEqual(['Обычно — дома.', 'При тяжёлом течении — скорая, больница.', 'В стационаре обычно 1–3 дня.']);
     const rows = Object.fromEntries(x.blocks.find(b => b.key === 'treatment')!.rows!.map(r => [r.label, r.refs.map(y => y.id)]));
@@ -238,7 +239,8 @@ describe('энциклопедия', () => {
     expect(rows['Опасно, при тяжёлом течении']).toEqual([CARBS]);
     expect(rows['До приезда скорой, при тяжёлом течении']).toEqual([DEX, GLUCAGON]);
     expect(rows['Обязательно, при тяжёлом течении и если пьёт таблетки сульфонилмочевины']).toEqual([DRIP]);
-    expect(x.blocks.find(b => b.key === 'similar')!.refs!.map(r => r.id)).toEqual(['cond.stroke_ischemic', 'cond.tia']);
+    // с частью 44в — и судорожный приступ: спутанность и оглушение
+    expect(x.blocks.find(b => b.key === 'similar')!.refs!.map(r => r.id)).toEqual(['cond.stroke_ischemic', 'cond.tia', 'cond.seizure']);
     for (const id of ['cond.stroke_ischemic', 'cond.tia']) expect(article(db, id)!.blocks.find(b => b.key === 'similar')!.refs!.map(r => r.id)).toContain(HYPO);
   });
 });
