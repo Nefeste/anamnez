@@ -65,7 +65,7 @@ treatment:
   # первой линии нет: аневризму выключают в нейрохирургии — перевод. Тромболизис — вред (кровь на КТ —
   # абсолютное противопоказание, 814_1, раздел 2.4); антитромботики отменяют (523_3, раздел 3.2.1) — назначить
   # их — вред; антифибринолитики рутинно не рекомендуются (там же)
-  harmful: [tx.thrombolysis_stroke, tx.thrombolysis, tx.aspirin_acs, tx.clopidogrel, tx.doac, tx.heparin_iv, tx.lmwh, tx.enoxaparin_acs, tx.fondaparinux]
+  harmful: [tx.thrombolysis_stroke, tx.thrombolysis, tx.thrombolysis_pe, tx.aspirin_acs, tx.clopidogrel, tx.doac, tx.heparin_iv, tx.lmwh, tx.enoxaparin_acs, tx.fondaparinux]
   notIndicated: [tx.tranexamic]
   # до операции — постельный режим, обезболивание, нимодипин внутрь 21 день (раздел 3.2.1)
   supportive: [tx.bed_rest, tx.paracetamol, tx.ibuprofen, tx.nimodipine]

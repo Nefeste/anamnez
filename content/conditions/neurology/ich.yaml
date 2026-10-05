@@ -122,7 +122,7 @@ treatment:
   # Тромболизис — вред: кровь на КТ — абсолютное противопоказание (814_1, раздел 2.4); антиагреганты и
   # антикоагулянты при кровоизлиянии — вред; дексаметазон не рекомендуется: повышает риск смерти (523_3,
   # раздел 3.1.1, УУР B); транексамовая кислота рутинно не рекомендуется (там же)
-  harmful: [tx.thrombolysis_stroke, tx.thrombolysis, tx.aspirin_acs, tx.clopidogrel, tx.doac, tx.heparin_iv, tx.lmwh, tx.enoxaparin_acs, tx.fondaparinux, tx.steroid_iv]
+  harmful: [tx.thrombolysis_stroke, tx.thrombolysis, tx.thrombolysis_pe, tx.aspirin_acs, tx.clopidogrel, tx.doac, tx.heparin_iv, tx.lmwh, tx.enoxaparin_acs, tx.fondaparinux, tx.steroid_iv]
   notIndicated: [tx.tranexamic]
   # консультация нейрохирурга в первые 60 минут после КТ — всем с кровью, и тем, кого оставляют, и тем, кого
   # переводят: она решает о переводе (523_3, раздел 6, критерий качества 2)

@@ -4,11 +4,11 @@
 // По пользе обследования решают страховая песочницы и нанятые врачи — а это меняет состояние
 // партии, поэтому логарифм здесь свой, из `core/math.ts` (ADR 0004): одинаковый в Hermes, V8 и
 // JavaScriptCore.
-import { byRule, byValue, type Condition, type ContentDb, type DerivedByParams, type DerivedByValue, type ExamCheck, type Id, type Link, type Season } from '../../content/types';
+import { byRule, byValue, type Condition, type ContentDb, type DerivedByParams, type DerivedByValue, type ExamCheck, type Id, type Link, type Rule, type Season } from '../../content/types';
 import { log2 } from '../core/math';
 import { P_ONE } from '../core/rng';
 import { chronicChance, presentingWeight } from './generate';
-import { checkRule, knownOf, type RuleVerdict, type Who } from './rules';
+import { checkRule, type Known, knownOf, type RuleVerdict, type Who } from './rules';
 import type { Observation, Sex } from './types';
 
 export interface InferContext {
@@ -403,7 +403,7 @@ export function paramBeliefs(db: ContentDb, condId: Id, name: string, observatio
   const derived = c.derived?.[name];
   // по правилу или баллам его шкалы (часть 41б) — по выводу на известном
   const rule = byRule(derived);
-  if (rule) return derivedBeliefs(dist, checkRule(db.rules[rule.rule], age, knownOf(observations), rule.from).verdict);
+  if (rule) return derivedBeliefs(dist, checkRule(db.rules[rule.rule], age, knownForRule(c, db.rules[rule.rule], observations), rule.from).verdict);
   // по другим параметрам (часть 41а): «yes» — вероятность, что у каждого из них нужное значение
   if (derived && typeof derived !== 'string' && 'all' in derived) {
     const yes = allHolds(db, condId, derived, observations, age, minutes);
@@ -464,6 +464,20 @@ function allHolds(db: ContentDb, condId: Id, d: DerivedByParams, observations: r
 }
 
 /**
+ * Известное для правила, по которому выводят параметр болезни (spec 2026-10-chapter-3, часть 43б): врач,
+ * поставивший диагноз, считает шкалу этой болезни. Условие применения, которое у болезни есть всегда,
+ * по определению, — тромбы на КТ-ангиографии при ТЭЛА, фибрилляция на ЭКГ, кровь на КТ, — считается
+ * найденным, даже если обследование его пропустило: при ТЭЛА, которую КТ-ангиография не показала, sPESI
+ * всё равно решает, где лечить.
+ */
+export function knownForRule(c: Condition | undefined, rule: Rule, observations: readonly Observation[]): Known {
+  const known = knownOf(observations);
+  const always = new Set((c?.findings ?? []).filter(l => !l.when && l.p >= P_ONE).map(l => l.f));
+  const assumed = new Set((rule.requires ?? []).filter(f => always.has(f)));
+  return assumed.size === 0 ? known : f => (assumed.has(f) ? true : known(f));
+}
+
+/**
  * Производный параметр (часть 32г): правило выполнено — «yes» наверняка, выполниться уже не может —
  * «no»; пока неизвестно — доли из записи (игровая оценка: сколько таких больных с показанием).
  */
@@ -509,7 +523,7 @@ export function paramGain(db: ContentDb, condId: Id, name: string, examId: Id, o
   }
   const rule = byRule(derived);
   if (rule) {
-    const { left } = checkRule(db.rules[rule.rule], age, knownOf(observations), rule.from);
+    const { left } = checkRule(db.rules[rule.rule], age, knownForRule(c, db.rules[rule.rule], observations), rule.from);
     const covered = left.filter(f => exam.checks.some(k => k.f === f)).length;
     return left.length > 0 ? (entropy(beliefs.map(b => ({ id: b.value, p: b.p }))) * covered) / left.length : 0;
   }

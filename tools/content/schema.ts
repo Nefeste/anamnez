@@ -922,6 +922,8 @@ export const ruleSchema = z.strictObject({
   exams: z.array(z.string().regex(/^exam\.[a-z0-9_]+$/)).default([]),
   /** о каком лечении правило решает, а не об обследовании (часть 39а): «Можно ли тромболизис» */
   decides: z.string().regex(/^tx\.[a-z0-9_]+$/).optional(),
+  /** решает, где лечить (spec 2026-10-chapter-3, часть 43б): sPESI — дома или в стационаре */
+  place: z.literal(true).optional(),
   ageMin: z.number().int().min(0).max(120).optional(),
   /** о каких болезнях — для энциклопедии */
   about: z.array(z.string().regex(/^cond\.[a-z0-9_]+$/)).min(1),

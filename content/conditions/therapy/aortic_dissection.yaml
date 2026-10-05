@@ -99,7 +99,7 @@ treatment:
   firstLine: []
   acceptable: [tx.nitroglycerin_iv]
   # тромболизис при подозрении на расслоение аорты — абсолютное противопоказание (157_5, раздел 3.1.3)
-  harmful: [tx.thrombolysis, tx.thrombolysis_stroke]
+  harmful: [tx.thrombolysis, tx.thrombolysis_stroke, tx.thrombolysis_pe]
   require: [tx.morphine_iv, [tx.beta_blocker_iv, tx.verapamil_iv]]
   beforeTransfer: [tx.morphine_iv, [tx.beta_blocker_iv, tx.verapamil_iv]]
   # тип A — решение об операции в первые 24 часа (946_1, раздел 3.2.1; критерий качества 13): перевод в

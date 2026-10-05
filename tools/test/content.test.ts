@@ -498,7 +498,7 @@ describe('каталог больницы', () => {
     expect(has(first, 'rule.lysis_mi: лечение tx.thrombolysys не найдено')).toBe(true);
     expect(has(first, 'ecg.st_elevation: для старых записей wall=posterior, а в атрибутах признака такого нет')).toBe(true);
     expect(has(first, 'hx.onset_hours: следует за признаком sym.chest_pain_pressed, а его нет')).toBe(true);
-    expect(has(first, 'hx.onset_hours: следует за hx.onset_hours — сам за собой или за последователем')).toBe(true);
+    expect(has(first, 'hx.onset_hours: следует сам за собой')).toBe(true);
     const second = broken(d => {
       edit(d, C, '    f: hx.onset_hours\n    hours', '    f: hx.anticoagulants\n    hours');
       edit(d, C, '      beforeTransfer: [tx.thrombolysis]', '      beforeTransfer: [tx.thrombolysis]\n      supportive: [tx.thrombolysis]');
@@ -563,6 +563,17 @@ describe('каталог больницы', () => {
     });
     expect(has(errors, 'cond.av_block: обязательное до перевода тактики по параметру №1 — лечение tx.pacing_tcc не найдено')).toBe(true);
     expect(has(errors, 'cond.av_block: обязательное до перевода тактики по параметру №1 — tx.dopamine стоит и в списке тактики')).toBe(true);
+  });
+
+  test('ТЭЛА (часть 43б): последователи цепочкой, но не по кругу; правило о месте — без обследования и лечения, с параметром по нему', () => {
+    const has = (errors: string[], text: string) => errors.some(e => e.includes(text));
+    // одышка — за внезапной одышкой, время начала — за одышкой: цепочка — не ошибка
+    expect(buildDb().errors.filter(e => e.includes('следует'))).toEqual([]);
+    const loop = broken(d => edit(d, 'findings/sym/dyspnea_sudden.yaml', 'salience: 3\n', 'salience: 3\nfollows: [hx.onset_hours]\n'));
+    expect(has(loop, 'sym.dyspnea_sudden: следует сам за собой — через hx.onset_hours')).toBe(true);
+    const S = 'rules/spesi.yaml';
+    expect(has(broken(d => edit(d, S, 'place: true', 'place: true\nexams: [exam.cta_chest]')), 'rule.spesi: правило о месте лечения — без обследования и лечения')).toBe(true);
+    expect(has(broken(d => edit(d, 'conditions/therapy/pe.yaml', '  spesi: rule.spesi\n', '')), 'rule.spesi: правило о месте лечения, а производного параметра по нему нет ни у одной болезни')).toBe(true);
   });
 
   test('палата интенсивной терапии (часть 38а): койки есть, мест под мониторы не меньше коек, не палата; аппарат — в разных помещениях, в ПИТ без своего места', () => {

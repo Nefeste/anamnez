@@ -46,6 +46,8 @@ export const CHEST_CT_CASES: ChestCtCase[] = [
   { key: 'cta-chest-normal', findings: {}, seed: 1, label: cc.normal },
   { key: 'cta-chest-a', findings: { dissection: 'a' }, seed: 2, label: cc.typeA },
   { key: 'cta-chest-b', findings: { dissection: 'b' }, seed: 3, label: cc.typeB },
+  { key: 'cta-chest-pe', findings: { pe: 'both' }, seed: 4, label: cc.pe },
+  { key: 'cta-chest-pe-right', findings: { pe: 'right' }, seed: 5, label: cc.peRight },
 ];
 
 export interface UsCase {
