@@ -410,10 +410,17 @@ function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observat
     };
   }
   // КТ-ангиография груди (часть 43а): расслоение — интима в восходящей и нисходящей аорте (тип A) или
-  // только в нисходящей (тип B), по виду в строке находки; без него — обычный срез
+  // только в нисходящей (тип B), по виду в строке находки; тромбоэмболия (часть 43б) — тромбы в ветвях
+  // лёгочного ствола по стороне в строке; без них — обычный срез
   if (exam === 'exam.cta_chest') {
     const dissection = shown('img.cta_aortic_dissection');
-    return { kind: 'chestCt', seed, findings: dissection ? { dissection: dissection.attrs?.extent === 'b' ? 'b' : 'a' } : {} };
+    const pe = shown('img.cta_pe')?.attrs?.side;
+    return {
+      kind: 'chestCt', seed, findings: {
+        ...(dissection ? { dissection: dissection.attrs?.extent === 'b' ? 'b' : 'a' } : {}),
+        ...(pe !== undefined ? { pe: pe === 'right' || pe === 'left' ? pe : 'both' } : {}),
+      },
+    };
   }
   if (exam === 'exam.ecg') {
     const pulse = known.find(o => o.f === 'vital.tachycardia' && o.value !== undefined)?.value;

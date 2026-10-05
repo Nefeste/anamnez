@@ -6,7 +6,8 @@
 // жир тёмно-серый, мышцы серые, контраст в артериях и кость — светлые.
 //
 // Рисовальщик болезней не знает: расслоение задано типом — где отслоённая интима делит просвет
-// аорты надвое. Что какой признак значит на снимке, записывают признаки базы по источникам.
+// аорты надвое; тромбоэмболия (часть 43б) — стороной: в какой ветви лёгочного ствола серый тромб,
+// который обтекает контраст. Что какой признак значит на снимке, записывают признаки базы по источникам.
 import { Rng } from '@/engine/core/rng';
 
 export type Pt = [number, number];
@@ -17,6 +18,8 @@ export interface ChestCtFindings {
    * только в нисходящей; расслоённая аорта шире
    */
   dissection?: 'a' | 'b';
+  /** тромбоэмболия (часть 43б): тромбы в правой ветви лёгочного ствола, в левой или в обеих */
+  pe?: 'both' | 'right' | 'left';
 }
 
 /** Сосуд или бронх в поперечном срезе — круг. */
@@ -32,6 +35,17 @@ export interface Flap {
   path: Pt[];
   /** ложный просвет — контур: кривая интимы и дуга стенки */
   falseLumen: Pt[];
+}
+
+/**
+ * Тромб в ветви лёгочного ствола (часть 43б): серая полоса вдоль её средней линии — посередине
+ * просвета, и контраст виден с обеих сторон, или у стенки.
+ */
+export interface Clot {
+  /** в какой ветви: правой (слева на снимке) или левой */
+  side: 'right' | 'left';
+  path: Pt[];
+  width: number;
 }
 
 export interface ChestGeometry {
@@ -61,6 +75,7 @@ export interface ChestGeometry {
   bronchi: [Round, Round];
   esophagus: Round;
   flaps: Flap[];
+  clots: Clot[];
 }
 
 const CX = 0.5;
@@ -162,6 +177,35 @@ function flap(vessel: Flap['vessel'], o: Round, turn: number): Flap {
   return { vessel, path, falseLumen: [...path, ...arc] };
 }
 
+/** Точки ломаной по доле её длины от `from` до `to` и единичные нормали к ней в этих точках. */
+function along(path: readonly Pt[], from: number, to: number, n: number): [Pt, Pt][] {
+  const seg = path.slice(1).map((p, i) => Math.hypot(p[0] - path[i][0], p[1] - path[i][1]));
+  const total = seg.reduce((a, b) => a + b, 0);
+  const out: [Pt, Pt][] = [];
+  for (let k = 0; k <= n; k++) {
+    let d = (from + ((to - from) * k) / n) * total;
+    let i = 0;
+    while (i < seg.length - 1 && d > seg[i]) d -= seg[i++];
+    const a = path[i], b = path[i + 1];
+    const t = Math.min(1, d / seg[i]);
+    const dx = (b[0] - a[0]) / seg[i], dy = (b[1] - a[1]) / seg[i];
+    out.push([[a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t], [-dy, dx]]);
+  }
+  return out;
+}
+
+/**
+ * Тромб в ветви: участок её средней линии от трети длины почти до конца, шириной в половину просвета;
+ * сдвиг к стенке — не дальше, чем оставляет просвет, чтобы тромб не выходил за ветвь.
+ */
+function clot(side: Clot['side'], branch: { path: Pt[]; width: number }, u: () => number): Clot {
+  const from = 0.3 + 0.15 * u();
+  const to = Math.min(0.92, from + 0.35 + 0.15 * u());
+  const width = branch.width * (0.42 + 0.12 * u());
+  const shift = ((branch.width - width) / 2) * 0.8 * (2 * u() - 1);
+  return { side, path: along(branch.path, from, to, 12).map(([p, nrm]) => [p[0] + nrm[0] * shift, p[1] + nrm[1] * shift]), width };
+}
+
 /** Срез груди: вся геометрия в долях кадра. Анатомия одна и та же, от зерна — мелочи и поворот интимы. */
 export function chestGeometry(findings: ChestCtFindings, seed: number): ChestGeometry {
   const rng = Rng.seeded(seed).fork('chest-ct');
@@ -216,12 +260,20 @@ export function chestGeometry(findings: ChestCtFindings, seed: number): ChestGeo
   if (type === 'a') flaps.push(flap('ascending', ascending, 2 * Math.PI * u()));
   if (type) flaps.push(flap('descending', descending, 2 * Math.PI * u()));
 
+  // тромбы (часть 43б) — со своей ветвью зерна: прежние срезы от них не меняются
+  const clots: Clot[] = [];
+  if (findings.pe) {
+    const pr = Rng.seeded(seed).fork('chest-ct-pe');
+    const v = () => pr.u32() / 4294967296;
+    for (const [i, side] of (['right', 'left'] as const).entries()) if (findings.pe === 'both' || findings.pe === side) clots.push(clot(side, branches[i], v));
+  }
+
   return {
     body, muscle, wall, lungs, lungVessels,
     sternum: { c: [CX, CY - wallRy * 1.02], rx: 0.04, ry: 0.016 },
     vertebra: { c: [CX, 0.655], r: 0.056 },
     canal: { c: [CX, 0.732], r: 0.021 },
     spinous: [[CX - 0.011, 0.755], [CX + 0.011, 0.755], [CX + 0.007, 0.79], [CX - 0.007, 0.79]],
-    ribs, ascending, descending, trunk, branches, svc, bronchi, esophagus, flaps,
+    ribs, ascending, descending, trunk, branches, svc, bronchi, esophagus, flaps, clots,
   };
 }

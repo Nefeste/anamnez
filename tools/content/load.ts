@@ -619,10 +619,18 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   for (const f of Object.values(findings)) for (const [attr, v] of Object.entries(f.fallback ?? {})) {
     if (!f.attrs?.[attr]?.[v]) errors.push(`${f.id}: для старых записей ${attr}=${v}, а в атрибутах признака такого нет`);
   }
-  // признак-последователь (часть 39а): ведущие есть, это не он сам и не другие последователи
+  // признак-последователь (часть 39а): ведущие есть; с частью 43б — и цепочкой (одышка — за внезапной одышкой,
+  // время начала — за одышкой), но не по кругу: сам за собой признак не следует ни прямо, ни через других
+  for (const f of Object.values(findings)) for (const id of f.follows ?? []) if (!findings[id]) errors.push(`${f.id}: следует за признаком ${id}, а его нет`);
+  const leadsTo = (from: string, to: string, seen = new Set<string>()): boolean => {
+    if (from === to) return true;
+    if (seen.has(from)) return false;
+    seen.add(from);
+    return (findings[from]?.follows ?? []).some(id => leadsTo(id, to, seen));
+  };
   for (const f of Object.values(findings)) for (const id of f.follows ?? []) {
-    if (!findings[id]) errors.push(`${f.id}: следует за признаком ${id}, а его нет`);
-    else if (id === f.id || findings[id].follows) errors.push(`${f.id}: следует за ${id} — сам за собой или за последователем`);
+    if (id === f.id) errors.push(`${f.id}: следует сам за собой`);
+    else if (leadsTo(id, f.id)) errors.push(`${f.id}: следует сам за собой — через ${id}`);
   }
   // обследование только при жалобе (часть 32г): жалоба — признак с текстом жалобы
   for (const x of Object.values(exams)) for (const f of x.complaints ?? []) if (!findings[f]?.texts.complaint) errors.push(`${x.id}: жалоба ${f} не найдена или без текста жалобы`);
@@ -678,7 +686,10 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (x.age?.from !== undefined && x.age.minor && x.age.from <= x.age.minor[1]) errors.push(`${x.id}: основной возраст (${x.age.from} и старше) пересекается с дополнительным`);
     if ((x.requires || x.excludes) && !x.texts.na) errors.push(`${x.id}: у правила с кругом применимости нужен текст «не применяется» (texts.na)`);
     if (!x.requires && !x.excludes && x.texts.na) errors.push(`${x.id}: текст «не применяется» без круга применимости (requires или excludes)`);
-    if (x.exams.length === 0 && !x.texts.exam && !x.decides) errors.push(`${x.id}: обследования правила в игре нет — нужен текст о нём (texts.exam)`);
+    if (x.exams.length === 0 && !x.texts.exam && !x.decides && !x.place) errors.push(`${x.id}: обследования правила в игре нет — нужен текст о нём (texts.exam)`);
+    // правило о месте (часть 43б) — без обследования и лечения; место решает производный параметр болезни
+    if (x.place && (x.exams.length > 0 || x.texts.exam || x.decides)) errors.push(`${x.id}: правило о месте лечения — без обследования и лечения`);
+    if (x.place && !Object.values(conditions).some(c => Object.values(c.derived ?? {}).some(d => (typeof d === 'string' ? d : 'rule' in d ? d.rule : undefined) === x.id))) errors.push(`${x.id}: правило о месте лечения, а производного параметра по нему нет ни у одной болезни`);
     // правило о лечении (часть 39а): лечение есть, обследования и текста о нём нет
     if (x.decides && !(x.decides in treatments)) errors.push(`${x.id}: лечение ${x.decides} не найдено`);
     if (x.decides && (x.exams.length > 0 || x.texts.exam)) errors.push(`${x.id}: правило о лечении ${x.decides} — без обследования`);

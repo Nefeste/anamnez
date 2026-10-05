@@ -408,16 +408,24 @@ function unmasked(db: ContentDb, conditions: ActiveCondition[], findings: TrueFi
 /**
  * Признаки-последователи (spec 2026-10-chapter-3, часть 39а): есть у каждого, у кого есть хоть один
  * ведущий, — «плохо стало около N ч назад» говорит всякий, кому плохо остро, а не только больной
- * инфарктом; причина — та же, что у первого ведущего. Без бросков.
+ * инфарктом; причина — та же, что у первого ведущего. Без бросков. С частью 43б — и цепочкой: одышка
+ * есть у каждого, у кого она началась внезапно, а за одышкой — и время начала.
  */
 function followers(db: ContentDb, findings: TrueFinding[]): TrueFinding[] {
   const present = new Map(findings.map(x => [x.f, x]));
   const added: TrueFinding[] = [];
-  for (const id of Object.keys(db.findings).sort()) {
-    const leaders = db.findings[id].follows;
-    if (!leaders || present.has(id)) continue;
-    const lead = leaders.map(f => present.get(f)).find(x => x !== undefined);
-    if (lead) added.push({ f: id, cause: lead.cause });
+  for (let grew = true; grew; ) {
+    grew = false;
+    for (const id of Object.keys(db.findings).sort()) {
+      const leaders = db.findings[id].follows;
+      if (!leaders || present.has(id)) continue;
+      const lead = leaders.map(f => present.get(f)).find(x => x !== undefined);
+      if (!lead) continue;
+      const x = { f: id, cause: lead.cause };
+      added.push(x);
+      present.set(id, x);
+      grew = true;
+    }
   }
   return added.length > 0 ? [...findings, ...added].sort((a, b) => (a.f < b.f ? -1 : 1)) : findings;
 }

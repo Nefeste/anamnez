@@ -74,7 +74,8 @@ describe('каталог', () => {
   test('КТ-ангиография груди — в кабинете КТ, на любом томографе; при рвущей боли — каждому, как и давление на обеих руках', () => {
     const cta = db.exams['exam.cta_chest'];
     expect(cta).toMatchObject({ kind: 'imaging', room: 'room.ct', equipment: ['eq.ct_16', 'eq.ct_64'], radiation: 'high', routineFor: [PAIN] });
-    expect(cta.checks).toEqual([{ f: CTA, sens: 9900, spec: 9800 }]);
+    // и тромбы в лёгочных артериях с правым желудочком (часть 43б) — в pe.test.ts
+    expect(cta.checks.find(k => k.f === CTA)).toEqual({ f: CTA, sens: 9900, spec: 9800 });
     expect(db.exams['exam.bp_both_arms']).toMatchObject({ kind: 'bedside', routineFor: [PAIN] });
     expect(db.exams['exam.ask_chest_pain'].checks.some(k => k.f === PAIN)).toBe(true);
     expect(db.exams['exam.xray_chest'].checks.find(k => k.f === WIDE)).toMatchObject({ sens: 9500, spec: 9800 });
@@ -203,7 +204,7 @@ describe('тактика и разбор', () => {
   });
 
   test('тромболизис — вред: дома реакция, в ПИТ — реакция на обходе; антикоагулянты 946_1 не обсуждает — «не нужно»', () => {
-    for (const tx of [LYSIS, 'tx.thrombolysis_stroke']) expect(txRole(db, AD, tx, paramsOf(a))).toBe('harmful');
+    for (const tx of [LYSIS, 'tx.thrombolysis_stroke', 'tx.thrombolysis_pe']) expect(txRole(db, AD, tx, paramsOf(a))).toBe('harmful');
     for (const tx of ['tx.heparin_iv', 'tx.aspirin_acs', 'tx.clopidogrel']) expect(txRole(db, AD, tx, paramsOf(a))).toBe('notIndicated');
     expect(harmsOf(db, b.truth.conditions[0], [LYSIS, MORPHINE])).toEqual([{ tx: LYSIS, p: 7500, days: [0, 1] }]);
     const icu = plan([LYSIS, MORPHINE, BB], 'icu');
@@ -247,7 +248,7 @@ describe('энциклопедия', () => {
     const rows = Object.fromEntries(x.blocks.find(b => b.key === 'treatment')!.rows!.map(r => [r.label, r.refs.map(y => y.id)]));
     expect(rows['Обязательно']).toEqual([MORPHINE]);
     expect(rows['Обязательно — одно из']).toEqual([BB, VERAPAMIL]);
-    expect(rows['Опасно']).toEqual([LYSIS, 'tx.thrombolysis_stroke']);
+    expect(rows['Опасно']).toEqual([LYSIS, 'tx.thrombolysis_stroke', 'tx.thrombolysis_pe']);
   });
 
   test('признаки: рвущая боль — без условия, у обоих типов одинаково часто; разница давления — при типе A, у него чаще', () => {

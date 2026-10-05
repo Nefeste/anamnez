@@ -119,6 +119,7 @@ describe('энциклопедия', () => {
     expect(rows.find(r => r.label === 'Не нужно, при сатурации 90 % и выше')!.refs!.map(r => r.id)).toEqual([O2]);
     const o2 = article(db, O2)!;
     const must = o2.blocks.flatMap(b => b.rows ?? []).find(r => r.label === 'Обязательно при')!;
-    expect(must.refs!.map(r => r.id).sort()).toEqual([ACS, ANA, ASTHMA, COPD, COVID, CAP].sort());
+    // и при ТЭЛА (часть 43б; ESC 2019, раздел 6.1.1: кислород при SaO2 < 90 %)
+    expect(must.refs!.map(r => r.id).sort()).toEqual([ACS, ANA, ASTHMA, COPD, COVID, CAP, 'cond.pe'].sort());
   });
 });

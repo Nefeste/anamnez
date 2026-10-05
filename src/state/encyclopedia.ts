@@ -560,10 +560,13 @@ function ruleArticle(db: ContentDb, x: Rule): Article {
     ...(x.points ? [{ key: 'pointsYes', title: bySex(x.points) ? e.rulePointsYesSex(pointsFrom(x.points, 'm'), pointsFrom(x.points, 'f')) : e.rulePointsYes(x.points.from), text: [x.texts.yes.ru] }] : []),
     ...(x.minor ? [{ key: 'minor', title: e.ruleMinor(x.minor.count), refs: x.minor.any.map(id => ref(db, id)), text: x.age?.minor ? [e.ruleAgeMinor(x.age.minor[0], x.age.minor[1])] : [] }] : []),
     { key: 'none', title: x.points ? (bySex(x.points) ? e.rulePointsNoSex(pointsFrom(x.points, 'm'), pointsFrom(x.points, 'f')) : e.rulePointsNo(x.points.from)) : x.minor ? e.ruleNoneMinor : e.ruleNone, text: [x.texts.no.ru] },
-    // обследования, которого в игре нет (КТ, часть 32г), — словами; правило о лечении (часть 39а) — лечение
+    // обследования, которого в игре нет (КТ, часть 32г), — словами; правило о лечении (часть 39а) — лечение;
+    // о месте (часть 43б) — где лечить
     x.decides
       ? { key: 'decides', title: e.ruleDecides, refs: [ref(db, x.decides)] }
-      : { key: 'exams', title: e.ruleExams, refs: x.exams.map(id => ref(db, id)), ...(x.texts.exam ? { text: [x.texts.exam.ru] } : {}) },
+      : x.place
+        ? { key: 'place', title: e.rulePlace, text: [e.rulePlaceText] }
+        : { key: 'exams', title: e.ruleExams, refs: x.exams.map(id => ref(db, id)), ...(x.texts.exam ? { text: [x.texts.exam.ru] } : {}) },
     { key: 'about', title: e.ruleAbout, refs: x.about.map(id => ref(db, id)).sort(byTitle) },
     sources(db, x),
   ];

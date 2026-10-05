@@ -565,6 +565,19 @@ function adSave(): { save: string; id: string } {
   return neuroSave('cond.aortic_dissection', fits, ['exam.ecg', 'exam.bp_both_arms', 'exam.ask_chronic', 'exam.cta_chest']);
 }
 
+/**
+ * Песочница с приёмным, КТ и ПИТ (часть 43б): первая машина скорой везёт ТЭЛА низкого риска — без шока и
+ * расширенного правого желудочка, sPESI 0, сатурация 90 и выше; жалоба — внезапная одышка: расспрос о ноге,
+ * хронические болезни, пульс и давление и КТ-ангиография груди готовы.
+ */
+function peSave(): { save: string; id: string } {
+  const fits = (x: ReturnType<typeof generatePatient>) => {
+    const k = x.truth.conditions[0].params;
+    return x.age >= 40 && x.complaints.includes('sym.dyspnea_sudden') && k.shock === 'no' && k.rv === 'no' && k.spesi === 'no' && k.spo2_below90 === 'no' && x.truth.risks.length <= 2;
+  };
+  return neuroSave('cond.pe', fits, ['exam.ask_chronic', 'exam.ask_leg', 'exam.vitals', 'exam.cta_chest']);
+}
+
 /** Больница с приёмным, КТ и ПИТ; первую машину скорой подменяет больной `primary`, для которого верно `fits`; сделаны `exams`. */
 function neuroSave(primary: string, fits: (x: ReturnType<typeof generatePatient>) => boolean, exams: string[]): { save: string; id: string } {
   const { db } = buildDb();
@@ -947,12 +960,12 @@ try {
   const abd = await drawn('[data-testid^="abd-"] canvas');
   // снимок груди при травме (часть 32в): воздух, кровь, переломы рёбер; с частью 43а — и расширенное средостение
   const chest = await drawn('[data-testid^="chest-"] canvas');
-  // срез груди на КТ-ангиографии (часть 43а): без расслоения, тип A и тип B
+  // срез груди на КТ-ангиографии (часть 43а): без расслоения, тип A и тип B; с частью 43б — тромбоэмболия
   const ctChest = await drawn('[data-testid^="cta-chest-"] canvas');
   const allImages = await drawn('canvas');
   check(heads.length === 9 && heads.every(Boolean) && us.length === 16 && us.every(Boolean) && abd.length === 3 && abd.every(Boolean) && chest.length === 8 && chest.every(Boolean)
-    && ctChest.length === 3 && ctChest.every(Boolean) && allImages.every(Boolean),
-    `П5: срезы головы нарисованы — ${heads.filter(Boolean).length} из 9, УЗИ — ${us.filter(Boolean).length} из 16 (с венами и артерией ног), снимки живота — ${abd.filter(Boolean).length} из 3, груди — ${chest.filter(Boolean).length} из 8, срезы груди на КТ — ${ctChest.filter(Boolean).length} из 3; все рисунки экрана — ${allImages.filter(Boolean).length} из ${allImages.length} (смотреть 06-head-*.png, 06-us.png, 06-abdomen.png, 06-chest.png, 06-cta-chest.png)`);
+    && ctChest.length === 5 && ctChest.every(Boolean) && allImages.every(Boolean),
+    `П5: срезы головы нарисованы — ${heads.filter(Boolean).length} из 9, УЗИ — ${us.filter(Boolean).length} из 16 (с венами и артерией ног), снимки живота — ${abd.filter(Boolean).length} из 3, груди — ${chest.filter(Boolean).length} из 8, срезы груди на КТ — ${ctChest.filter(Boolean).length} из 5; все рисунки экрана — ${allImages.filter(Boolean).length} из ${allImages.length} (смотреть 06-head-*.png, 06-us.png, 06-abdomen.png, 06-chest.png, 06-cta-chest.png)`);
   // ЭКГ в двенадцати отведениях (spec 2026-10-chapter-3, часть 36): ритмы, проведение, стенки инфаркта
   const ecg = await drawn('[data-testid^="ecg-"] canvas');
   check(ecg.length === 20 && ecg.every(Boolean), `П5: листы ЭКГ в двенадцати отведениях нарисованы — ${ecg.filter(Boolean).length} из 20 (смотреть 06-ecg-*.png)`);
@@ -2168,6 +2181,48 @@ try {
   check((await visibleText(page, 'enc-article-title')) === 'Расслоение аорты' && adArticle.includes('При расслоении восходящей аорты (тип A) — скорая, перевод в центр.')
     && adArticle.includes('Тромболизис при инфаркте'),
     `энциклопедия, расслоение аорты: ${await visibleText(page, 'enc-article-title')} — тип A на перевод, тромболизис опасен`);
+
+  // ТЭЛА (часть 43б): у вас — низкий риск; в карте — жалоба на внезапную одышку, КТ-ангиография с дефектами наполнения
+  // и срез груди с тромбами, sPESI 0 — «лечить дома»; ПОАК и «Домой» — разбор без замечаний; в энциклопедии — место по
+  // sPESI, из кабинета без монитора — в стационар
+  const pe = peSave();
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', pe.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId('shift-continue').waitFor({ timeout: 15_000 });
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId('shift-continue').click();
+  await visible(page, 'visit-decide').waitFor({ timeout: 10_000 });
+  const peCard = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  check(/Вдруг стало нечем дышать|Резко начала? задыхаться/.test(peCard) && peCard.includes('Дефекты наполнения')
+    && peCard.includes('0 баллов: риск низкий — можно лечить дома пероральным антикоагулянтом'),
+    `ТЭЛА: в карте — внезапная одышка, тромбы на КТ-ангиографии и sPESI 0 («${peCard.replace(/\n/g, ' · ').slice(0, 300)}»)`);
+  await visible(page, 'result-ct-chest').scrollIntoViewIfNeeded();
+  check((await visible(page, 'result-ct-chest').boundingBox() ?? { height: 0 }).height > 150, 'ТЭЛА: КТ-ангиография — срезом груди');
+  await page.screenshot({ path: join(OUT, '25-pe-card.png'), fullPage: true });
+  await visible(page, 'visit-decide').click();
+  await visible(page, 'dx-cond.pe').click();
+  await visible(page, 'decision-to-plan').click();
+  await page.getByTestId('tx-tx.doac').waitFor({ timeout: 5000 });
+  await page.getByTestId('tx-tx.doac').click();
+  await page.getByTestId('setting-home').click();
+  await page.screenshot({ path: join(OUT, '25-pe-decision.png'), fullPage: true });
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
+  const peReview = await page.locator('body').innerText();
+  check(peReview.includes('Тромбоэмболия лёгочной артерии') && !/[Нн]е назначено|не показано|вредно|Недооценили тяжесть/.test(peReview),
+    `ТЭЛА низкого риска: ПОАК и «Домой», разбор — «${peReview.replace(/\n/g, ' · ').slice(0, 300)}»`);
+  await page.screenshot({ path: join(OUT, '25-pe-review.png'), fullPage: true });
+  await page.goto(`${base}/encyclopedia/article/cond.pe`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const peArticle = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  check((await visibleText(page, 'enc-article-title')) === 'Тромбоэмболия лёгочной артерии' && peArticle.includes('При sPESI 1 балл и больше — в стационаре.')
+    && peArticle.includes('Без монитора с дефибриллятором у постели — в стационаре.'),
+    `энциклопедия, ТЭЛА: ${await visibleText(page, 'enc-article-title')} — место по sPESI, без монитора — в стационар`);
 
   // хирургия живота (spec 2026-09-chapter-2, часть 30): со смотровой приёмного больница принимает
   // и хирургию — у вас больной острым холециститом; УЗИ — желчный пузырь с камнями и толстой

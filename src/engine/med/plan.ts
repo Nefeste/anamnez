@@ -2,8 +2,8 @@
 // роль каждого назначения при настоящем основном заболевании, где на самом деле надо
 // лечить и какие противопоказания нарушены — и знал ли о них врач.
 import { byRule, byValue, type ContentDb, type Effect, type Id, membersOf, type Setting, type Tactics, type Untreated } from '../../content/types';
-import { knownFacts } from './infer';
-import { checkRule, knownOf } from './rules';
+import { knownFacts, knownForRule } from './infer';
+import { checkRule } from './rules';
 import type { ActiveCondition, Observation, Patient } from './types';
 
 export interface Plan {
@@ -406,7 +406,6 @@ export function asSeen(db: ContentDb, patient: Patient, observations: readonly O
   const primary = primaryOf(patient);
   const derived = db.conditions[primary.id]?.derived ?? {};
   const out = { ...primary.params };
-  const known = knownOf(observations);
   let changed = false;
   for (const [name, d] of Object.entries(derived)) {
     if (byValue(d) && d.seen) {
@@ -420,7 +419,8 @@ export function asSeen(db: ContentDb, patient: Patient, observations: readonly O
     }
     const r = byRule(d);
     if (!r || !db.rules[r.rule]?.points) continue;
-    const v = checkRule(db.rules[r.rule], patient, known, r.from).verdict;
+    // врач, поставивший диагноз, считает его шкалу (часть 43б): условие, которое у болезни есть всегда, — найдено
+    const v = checkRule(db.rules[r.rule], patient, knownForRule(db.conditions[primary.id], db.rules[r.rule], observations), r.from).verdict;
     if (v !== 'unknown' && v !== out[name]) {
       out[name] = v;
       changed = true;

@@ -175,7 +175,7 @@ describe('срез груди на КТ: геометрия', () => {
   const rim = (o: chestCt.Round, k = 1): chestCt.Pt[] => Array.from({ length: 24 }, (_, i) => [o.c[0] + k * o.r * Math.cos((i / 24) * 2 * Math.PI), o.c[1] + k * o.r * Math.sin((i / 24) * 2 * Math.PI)]);
 
   test('средостение — между лёгкими: сосуды, бронхи, пищевод и позвонок не заходят в лёгкие и друг в друга', () => {
-    for (const findings of [{}, { dissection: 'a' as const }, { dissection: 'b' as const }]) {
+    for (const findings of [{}, { dissection: 'a' as const }, { dissection: 'b' as const }, { pe: 'both' as const }]) {
       for (const seed of [1, 2, 3, 7]) {
         const g = chestCt.chestGeometry(findings, seed);
         const rs = rounds(g);
@@ -219,6 +219,35 @@ describe('срез груди на КТ: геометрия', () => {
         const v = f.vessel === 'ascending' ? g.ascending : g.descending;
         for (const p of [...f.path, ...f.falseLumen]) expect(Math.hypot(p[0] - v.c[0], p[1] - v.c[1])).toBeLessThanOrEqual(v.r);
       }
+    }
+  });
+});
+
+describe('срез груди на КТ: тромбоэмболия', () => {
+  /** Расстояние от точки до ломаной — до ближайшего её отрезка. */
+  const toSegment = (p: chestCt.Pt, a: chestCt.Pt, b: chestCt.Pt) => {
+    const dx = b[0] - a[0], dy = b[1] - a[1];
+    const t = Math.max(0, Math.min(1, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / (dx * dx + dy * dy)));
+    return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy);
+  };
+  const toPath = (p: chestCt.Pt, path: chestCt.Pt[]) => Math.min(...path.slice(1).map((b, i) => toSegment(p, path[i], b)));
+
+  test('тромбы — в своих ветвях лёгочного ствола и не выходят за них; без тромбоэмболии — нет; анатомия та же', () => {
+    expect(chestCt.chestGeometry({}, 1).clots).toHaveLength(0);
+    expect(chestCt.chestGeometry({ dissection: 'a' }, 2).clots).toHaveLength(0);
+    expect(chestCt.chestGeometry({ pe: 'both' }, 4).clots.map(c => c.side)).toEqual(['right', 'left']);
+    expect(chestCt.chestGeometry({ pe: 'right' }, 5).clots.map(c => c.side)).toEqual(['right']);
+    expect(chestCt.chestGeometry({ pe: 'left' }, 6).clots.map(c => c.side)).toEqual(['left']);
+    for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+      const g = chestCt.chestGeometry({ pe: 'both' }, seed);
+      for (const c of g.clots) {
+        // уже ветви, и край тромба — внутри неё: контраст виден хотя бы с одной стороны
+        const br = g.branches[c.side === 'right' ? 0 : 1];
+        expect(c.width).toBeLessThan(br.width * 0.6);
+        for (const p of c.path) expect(toPath(p, br.path) + c.width / 2).toBeLessThanOrEqual(br.width / 2);
+      }
+      // тромбы — со своей ветвью зерна: остальной срез тот же, что без них
+      expect({ ...g, clots: [] as chestCt.Clot[] }).toEqual(chestCt.chestGeometry({}, seed));
     }
   });
 });
@@ -272,13 +301,28 @@ describe('срез груди на КТ: рисунок без экрана', ()
     }
   });
 
+  test('тромбоэмболия: тромб в ветви — серый, темнее контраста; ветвь без тромба — светлая', async () => {
+    for (const [pe, seed] of [['both', 4], ['right', 5], ['left', 6], ['both', 9]] as const) {
+      const g = chestCt.chestGeometry({ pe }, seed);
+      const { rgba } = await draw({ pe }, seed);
+      for (const c of g.clots) {
+        const mid = c.path[c.path.length >> 1];
+        expect({ pe, seed, dark: at(rgba, mid) < 170, tissue: at(rgba, mid) > 60 }).toEqual({ pe, seed, dark: true, tissue: true });
+      }
+      if (pe !== 'both') {
+        const free = g.branches[pe === 'right' ? 1 : 0];
+        expect(at(rgba, free.path[1])).toBeGreaterThan(200);
+      }
+    }
+  });
+
   test('то же зерно — те же байты; другое — другой срез; все варианты «Проверок» рисуются', async () => {
     const a = await draw({ dissection: 'a' }, 4);
     const b = await draw({ dissection: 'a' }, 4);
     const c = await draw({ dissection: 'a' }, 5);
     expect(Buffer.from(a.png).equals(Buffer.from(b.png))).toBe(true);
     expect(Buffer.from(a.png).equals(Buffer.from(c.png))).toBe(false);
-    expect(CHEST_CT_CASES.map(k => k.key)).toEqual(['cta-chest-normal', 'cta-chest-a', 'cta-chest-b']);
+    expect(CHEST_CT_CASES.map(k => k.key)).toEqual(['cta-chest-normal', 'cta-chest-a', 'cta-chest-b', 'cta-chest-pe', 'cta-chest-pe-right']);
     for (const k of CHEST_CT_CASES) {
       expect((await draw(k.findings, k.seed)).png.length).toBeGreaterThan(1000);
       expect(k.label.length).toBeGreaterThan(0);

@@ -27,7 +27,7 @@ for (const k of HEAD_CASES) {
   await Bun.write(join(OUT, `head-${k.key}.png`), png);
   console.log(`head-${k.key}.png — ${k.label}, запись ${ms.toFixed(1)} мс`);
 }
-// КТ-ангиография груди (часть 43а): без расслоения, тип A и тип B
+// КТ-ангиография груди (часть 43а): без расслоения, тип A и тип B; с частью 43б — тромбоэмболия
 for (const k of CHEST_CT_CASES) {
   const t0 = performance.now();
   const picture = recordChestSlice(SIZE, k.findings, k.seed);

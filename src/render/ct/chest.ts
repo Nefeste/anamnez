@@ -2,7 +2,8 @@
 // chestGeometry.ts, здесь — рисунок, одна запись в SkPicture. Окно — средостенное: воздух и лёгкие
 // чёрные, жир тёмно-серый, мышцы и кровь без контраста серые, контраст в артериях и кость — светлые.
 // Отслоённая интима — тонкая тёмная линия поперёк светлого просвета; ложный просвет заполнен
-// контрастом чуть хуже — темнее истинного.
+// контрастом чуть хуже — темнее истинного. Тромб в ветви лёгочного ствола (часть 43б) — серая, как
+// мышца, полоса внутри светлого контраста: дефект наполнения.
 import { BlendMode, BlurStyle, ClipOp, PaintStyle, Skia, type SkPaint, type SkPath, type SkPicture, StrokeCap, StrokeJoin, TileMode } from '@shopify/react-native-skia';
 import { chestGeometry, type ChestCtFindings, type Pt, type Round } from './chestGeometry';
 
@@ -22,6 +23,7 @@ const C = {
   air: '#000000',
   esophagus: '#6c6c6c',
   intima: '#4a4a4a',
+  clot: '#707070',
 };
 
 export function recordChestSlice(width: number, findings: ChestCtFindings, seed: number): SkPicture {
@@ -107,6 +109,8 @@ export function recordChestSlice(width: number, findings: ChestCtFindings, seed:
   round({ c: g.esophagus.c, r: g.esophagus.r * 0.3 }, C.air, 0.0008);
   round(g.svc, C.vein);
   for (const br of g.branches) c.drawPath(pathOf(br.path, false), paint(C.contrast, { stroke: br.width, blur: 0.0015 }));
+  // тромбы — поверх контраста в ветвях, под стволом и аортой: что ветвь закрыла аорта, закроет и их
+  for (const t of g.clots) c.drawPath(pathOf(t.path, false), paint(C.clot, { stroke: t.width, blur: 0.0015 }));
   round(g.trunk, C.contrast);
   for (const v of [g.ascending, g.descending]) {
     // стенка аорты — тонкое серое кольцо вокруг просвета
