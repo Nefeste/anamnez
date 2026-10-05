@@ -163,7 +163,9 @@ function preventOnly(c: Condition): Set<string> {
  * Жаккар по частотам признаков: сумма меньших частот к сумме больших. Признаки, которые зависят
  * только от прививок (`preventOnly`), не считаются: иначе рана «похожа» на ожог по записям о
  * прививках от столбняка (часть 32д-2). Названное рекомендацией (`differential`, часть 33б) — первым
- * и в обе стороны: острую ишемию ноги путают с тромбозом вен, хотя признаки у них разные.
+ * и в обе стороны: острую ишемию ноги путают с тромбозом вен, хотя признаки у них разные. Сначала своё,
+ * затем назвавшие эту болезнь, пока есть место (часть 43д): ОКС называют и ТЭЛА, и расслоение аорты, и
+ * перикардит, и анафилаксия — больше трёх.
  */
 export function similar(db: ContentDb, id: Id): Id[] {
   let cache = similarCache.get(db);
@@ -191,8 +193,10 @@ export function similar(db: ContentDb, id: Id): Id[] {
         })
         .filter(x => x.s >= SIMILAR_MIN)
         .sort((x, y) => y.s - x.s || (x.id < y.id ? -1 : 1));
-      const named = all.filter(o => c.differential?.includes(o.id) || o.differential?.includes(c.id)).map(o => o.id).sort();
-      cache.set(c.id, [...named, ...scored.map(x => x.id).filter(x => !named.includes(x))].slice(0, Math.max(SIMILAR_MAX, named.length)));
+      const mine = all.filter(o => c.differential?.includes(o.id)).map(o => o.id).sort();
+      const theirs = all.filter(o => !mine.includes(o.id) && o.differential?.includes(c.id)).map(o => o.id).sort();
+      const named = [...mine, ...theirs];
+      cache.set(c.id, [...named, ...scored.map(x => x.id).filter(x => !named.includes(x))].slice(0, Math.max(SIMILAR_MAX, mine.length)));
     }
     similarCache.set(db, cache);
   }

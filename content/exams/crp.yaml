@@ -7,6 +7,9 @@ collect: room.procedure
 time: { procedure: 5, turnaround: 60 }
 cost: 400
 discomfort: 1
+# при боли, которая легче сидя с наклоном вперёд (spec 2026-10-chapter-3, часть 43д): маркеры воспаления — всем с
+# подозрением на острый перикардит (746_2, раздел 2.3, ЕОК IC)
+routineFor: [sym.pericardial_pain]
 checks:
   - { f: lab.crp_high, sens: 98, spec: 98 }
 texts:

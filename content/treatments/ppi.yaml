@@ -9,7 +9,8 @@ effects:
   - { on: cond.dyspepsia_functional, kind: cure, band: often, days: [7, 21] }
 texts:
   hint:
-    ru: "Снижают выработку кислоты в желудке. Основное лечение рефлюксной болезни и диспепсии: изжога проходит за несколько дней. Долго без показаний их не принимают."
+    ru: "Снижают выработку кислоты в желудке. Основное лечение рефлюксной болезни и диспепсии: изжога проходит за несколько дней. Долго без показаний их не принимают. С курсом НПВП при перикардите — для защиты желудка, с первых часов."
 sources:
   - { kind: guideline, title: "Katz PO et al. ACG Clinical Guideline for the Diagnosis and Management of Gastroesophageal Reflux Disease. Am J Gastroenterol 2022;117(1):27–56", url: "https://pubmed.ncbi.nlm.nih.gov/34807007/" }
+  - { kind: guideline, title: "Перикардиты", org: "Минздрав РФ", year: 2025, url: "https://cr.minzdrav.gov.ru/view-cr/746_2", note: "ID 746_2, опубликованы 01.09.2025, применяются; сверено с рубрикатором 05.10.2026; раздел 3.1.1: проведение гастропротекции с первых часов лечения острого перикардита обязательно" }
 review: draft

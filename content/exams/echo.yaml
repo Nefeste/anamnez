@@ -1,0 +1,27 @@
+id: exam.echo
+name: { ru: "УЗИ сердца" }
+# трансторакальная ЭхоКГ (spec 2026-10-chapter-3, часть 43д): в кабинете УЗИ, врачом УЗД, результат словами — картинки
+# кодом нет. Всем при подозрении на перикардит (746_2, раздел 2.4, ЕОК IC; приложение Б — первый этап). Точность —
+# игровая оценка: ESC 2015 называет ЭхоКГ самым доступным и экономичным способом найти выпот
+kind: imaging
+room: room.ultrasound
+equipment: [eq.us_basic, eq.us_expert]
+radiation: none
+time: { procedure: 20, report: 5 }
+cost: 1500
+discomfort: 0
+routineFor: [sym.pericardial_pain]
+routineSeen: [sign.pericardial_rub, sign.heart_sounds_muffled, ecg.pericarditis, ecg.low_voltage]
+checks:
+  - { f: img.echo_effusion, sens: 95, spec: 98 }
+  - { f: img.echo_effusion_large, sens: 95, spec: 99 }
+  - { f: img.echo_tamponade, sens: 90, spec: 99 }
+texts:
+  hint:
+    ru: "Датчиком через грудную клетку смотрят сердце и перикард — без облучения. Видно жидкость вокруг сердца, сколько её и не сдавила ли она правые отделы: это тампонада. При подозрении на перикардит УЗИ сердца делают всем."
+  summary:
+    ru: "Врач УЗД смотрит сердце из нескольких доступов: выпот в перикарде и его толщину в диастолу, правое предсердие и правый желудочек, нижнюю полую вену на вдохе — и сразу описывает."
+sources:
+  - { kind: guideline, title: "Перикардиты", org: "Минздрав РФ", year: 2025, url: "https://cr.minzdrav.gov.ru/view-cr/746_2", note: "ID 746_2, опубликованы 01.09.2025, применяются; сверено с рубрикатором 05.10.2026; раздел 2.4: ЭхоКГ с допплерографией — всем с перикардитом (ЕОК IC); объём выпота по расхождению листков; признаки тампонады — нижняя полая вена не спадается, сдавление правого желудочка, коллабирование правого предсердия; приложение Б: первый этап — ЭКГ, рентген, ЭхоКГ, анализы; точность — игровая оценка" }
+  - { kind: guideline, title: "Adler Y, Charron P, Imazio M et al. 2015 ESC Guidelines for the diagnosis and management of pericardial diseases. Eur Heart J 2015;36(42):2921–2964", url: "https://pubmed.ncbi.nlm.nih.gov/26320112/", note: "PMID 26320112, PMC7539677, сверено 05.10.2026; раздел 4: двухмерная ЭхоКГ с допплером — самый экономичный способ найти выпот и оценить его значение для кровообращения" }
+review: draft

@@ -606,8 +606,26 @@ function crisisSave(): { save: string; id: string } {
   return neuroSave('cond.hypertensive_crisis', fits, ['exam.ecg', 'exam.ask_chronic', 'exam.ask_complaints', 'exam.ask_abdomen', 'exam.vitals', 'exam.neuro_exam', 'exam.fundoscopy']);
 }
 
-/** Больница с приёмным, КТ и ПИТ; первую машину скорой подменяет больной `primary`, для которого верно `fits`; сделаны `exams`. */
-function neuroSave(primary: string, fits: (x: ReturnType<typeof generatePatient>) => boolean, exams: string[]): { save: string; id: string } {
+/**
+ * Песочница с приёмным, КТ, ПИТ и кабинетом УЗИ (часть 43д): первая машина скорой везёт острый перикардит низкого
+ * риска — боль, легче сидя с наклоном вперёд, подъём ST почти везде с депрессией PQ на ЭКГ у постели и выпот на УЗИ
+ * сердца; без аллергии на НПВС. Готовы ЭКГ, хронические болезни, расспрос о боли, аускультация сердца, СРБ, тропонин и
+ * УЗИ сердца.
+ */
+function periSave(): { save: string; id: string } {
+  const fits = (x: ReturnType<typeof generatePatient>) => {
+    const k = x.truth.conditions[0].params;
+    return x.age >= 25 && k.form === 'typical' && x.complaints.includes('sym.pericardial_pain') && x.truth.risks.length <= 2 && !x.truth.risks.includes('risk.allergy_nsaid')
+      && ['ecg.pericarditis', 'img.echo_effusion'].every(f => x.truth.findings.some(y => y.f === f));
+  };
+  return neuroSave('cond.pericarditis', fits, ['exam.ecg', 'exam.ask_chronic', 'exam.ask_chest_pain', 'exam.heart_auscultation', 'exam.crp', 'exam.troponin_hs', 'exam.echo'], { ultrasound: true });
+}
+
+/**
+ * Больница с приёмным, КТ и ПИТ; первую машину скорой подменяет больной `primary`, для которого верно `fits`; сделаны
+ * `exams`. С `ultrasound` (часть 43д) — ещё кабинет УЗИ под старым зданием, коридор к нему продлён влево.
+ */
+function neuroSave(primary: string, fits: (x: ReturnType<typeof generatePatient>) => boolean, exams: string[], extra: { ultrasound?: boolean } = {}): { save: string; id: string } {
   const { db } = buildDb();
   const s = newSandbox(db, { seed: 25, season: 'winter', difficulty: 'student', start: 'clinic', budget: db.economy.sandbox.budgets.generous });
   // томограф дороже «щедрого» бюджета
@@ -626,9 +644,16 @@ function neuroSave(primary: string, fits: (x: ReturnType<typeof generatePatient>
   const er = room('room.emergency', 'M', 29, 1, 0, ['eq.monitor_defib']);
   const ct = room('room.ct', 'M', 29, 10, 2, ['eq.ct_16']);
   const icu = room('room.icu', 'S', 29, 20, 2, ['eq.monitor_defib', 'eq.monitor_defib']);
+  const hires: [string, string][] = [['role.radiographer', ct], ['role.radiologist', ct], ['role.nurse', icu], ['role.anesthetist', icu]];
+  if (extra.ultrasound) {
+    const way: [number, number][] = [];
+    for (let x = 20; x <= 28; x++) for (let y = 17; y <= 19; y++) way.push([x, y]);
+    apply(db, s, { kind: 'build', cmd: { kind: 'corridor', cells: way } });
+    hires.push(['role.sonographer', room('room.ultrasound', 'S', 21, 20, 2, ['eq.us_basic'])]);
+  }
   apply(db, s, { kind: 'buildEnd' });
   apply(db, s, { kind: 'assign', id: s.staff!.find(m => m.role === 'role.nurse' && m.room === 'r7')!.id, room: er });
-  for (const [role, to] of [['role.radiographer', ct], ['role.radiologist', ct], ['role.nurse', icu], ['role.anesthetist', icu]] as const) {
+  for (const [role, to] of hires) {
     const c = s.candidates!.find(x => x.role === role && !s.staff!.some(m => m.id === x.id));
     if (!c) throw new Error(`neuroSave: среди кандидатов нет ${role}`);
     apply(db, s, { kind: 'hire', id: c.id });
@@ -2341,6 +2366,49 @@ try {
   check((await visibleText(page, 'enc-article-title')) === 'Подъём давления без поражения органов' && urgencyArticle.includes('Обычно — дома.')
     && urgencyArticle.includes('Снижение давления препаратом в вену'),
     `энциклопедия, подъём без поражения органов: ${await visibleText(page, 'enc-article-title')} — дома, препарат в вену в «Опасно»`);
+
+  // острый перикардит (часть 43д): у вас — низкого риска; в карте — боль, легче сидя с наклоном вперёд, подъём ST почти
+  // во всех отведениях и лента, выпот на УЗИ сердца; ибупрофен, колхицин, ИПП и «Домой» — разбор без замечаний; в
+  // энциклопедии — тампонада в ПИТ и пункция перикарда
+  const peri = periSave();
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', peri.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId('shift-continue').waitFor({ timeout: 15_000 });
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId('shift-continue').click();
+  await visible(page, 'visit-decide').waitFor({ timeout: 10_000 });
+  const periCard = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  // боль — словами больного: жалоба известна с прихода, расспрос её не повторяет
+  check(/Сяду, наклонюсь вперёд — легче|Лёжа не могу, легче сидя/.test(periCard) && periCard.includes('Подъём ST почти во всех отведениях, вогнутый, депрессия PQ')
+    && periCard.includes('Выпот в перикарде: листки расходятся'),
+    `Перикардит: в карте — боль, легче сидя с наклоном вперёд, ЭКГ и выпот на УЗИ сердца («${periCard.replace(/\n/g, ' · ').slice(0, 300)}»)`);
+  await visible(page, 'result-ecg').scrollIntoViewIfNeeded();
+  check((await visible(page, 'result-ecg').boundingBox() ?? { height: 0 }).height > 100, 'Перикардит: ЭКГ — лентой');
+  await page.screenshot({ path: join(OUT, '28-peri-card.png'), fullPage: true });
+  await visible(page, 'visit-decide').click();
+  await visible(page, 'dx-cond.pericarditis').click();
+  await visible(page, 'decision-to-plan').click();
+  await page.getByTestId('tx-tx.colchicine').waitFor({ timeout: 5000 });
+  for (const tx of ['tx.ibuprofen', 'tx.colchicine', 'tx.ppi']) await page.getByTestId(`tx-${tx}`).click();
+  await page.getByTestId('setting-home').click();
+  await page.screenshot({ path: join(OUT, '28-peri-decision.png'), fullPage: true });
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
+  const periReview = await page.locator('body').innerText();
+  check(periReview.includes('Острый перикардит') && !/[Нн]е назначено|не показано|вредно|Недооценили тяжесть|Обоснованность [CD]/.test(periReview),
+    `Перикардит низкого риска: ибупрофен, колхицин, ИПП и домой, разбор — «${periReview.replace(/\n/g, ' · ').slice(0, 300)}»`);
+  await page.screenshot({ path: join(OUT, '28-peri-review.png'), fullPage: true });
+  await page.goto(`${base}/encyclopedia/article/cond.pericarditis`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const periArticle = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  check((await visibleText(page, 'enc-article-title')) === 'Острый перикардит' && periArticle.includes('Обычно — дома.')
+    && periArticle.includes('При тампонаде — палата интенсивной терапии.') && periArticle.includes('Пункция перикарда под контролем УЗИ'),
+    `энциклопедия, перикардит: ${await visibleText(page, 'enc-article-title')} — дома, тампонада в ПИТ, пункция`);
 
   // хирургия живота (spec 2026-09-chapter-2, часть 30): со смотровой приёмного больница принимает
   // и хирургию — у вас больной острым холециститом; УЗИ — желчный пузырь с камнями и толстой

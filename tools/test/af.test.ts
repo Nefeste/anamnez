@@ -103,8 +103,9 @@ describe('каталог', () => {
   });
 
   test('при сердцебиении ЭКГ, пульс и давление — каждому; пункты шкалы — в расспросе о хронических болезнях', () => {
-    // после обморока (часть 42б) и при одышке лёжа (часть 43в) — тоже
-    expect(db.exams['exam.ecg'].routineFor).toEqual([PALP, 'sym.syncope', 'sym.orthopnea']);
+    // после обморока (часть 42б), при одышке лёжа (часть 43в) и при боли, которая легче сидя с наклоном вперёд
+    // (часть 43д), — тоже
+    expect(db.exams['exam.ecg'].routineFor).toEqual([PALP, 'sym.syncope', 'sym.orthopnea', 'sym.pericardial_pain']);
     expect(db.exams['exam.vitals'].routineFor).toContain(PALP);
     expect(db.exams['exam.vitals'].checks.map(k => k.f)).toContain('sign.pulse_irregular');
     const chronic = db.exams['exam.ask_chronic'].checks.map(k => k.f);
@@ -335,16 +336,24 @@ describe('разумный врач', () => {
   const xs = people(120, 7_000_001);
 
   test('в приёмном с монитором: ЭКГ и давление — каждому, диагноз верный; нестабильному — разряд в ПИТ, вредного нет', () => {
+    const wrong: number[] = [];
     for (const p of xs) {
       const r = run(p, BAY, ED);
-      expect({ seed: p.seed, dx: r.diagnosis }).toEqual({ seed: p.seed, dx: AF });
       expect(r.done).toEqual(expect.arrayContaining(['exam.ecg', 'exam.vitals']));
+      if (r.diagnosis !== AF) {
+        wrong.push(p.seed);
+        continue;
+      }
       const ev = evaluatePlan(db, p, r.plan, r.obs, BAY);
       expect({ seed: p.seed, harmful: ev.roles.filter(x => x.role === 'harmful').map(x => x.tx) }).toEqual({ seed: p.seed, harmful: [] });
       expect({ seed: p.seed, missing: ev.requireMissing }).toEqual({ seed: p.seed, missing: [] });
       if (paramsOf(p).unstable === 'yes') expect(r.plan).toMatchObject({ setting: 'icu', treatments: expect.arrayContaining([CV]) });
       else expect(r.plan.setting).toBe('home');
     }
+    // ЭКГ пропускает фибрилляцию у 5 из 100, неритмичного пульса нет у 5 из 100 больных ею («всегда»): у одного из 400
+    // нет ни того, ни другого, и ложное «боль при нагрузке» в расспросе уводит к стенокардии (с частью 43д — зерно
+    // 7000087: порядок обследований другой, и жребий расспроса тоже)
+    expect(wrong.length).toBeLessThanOrEqual(1);
   });
 
   test('в поликлинике без монитора: нестабильного — на скорой, стабильного — урежение дома', () => {

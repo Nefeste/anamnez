@@ -85,8 +85,9 @@ describe('каталог', () => {
     const vitals = db.exams['exam.vitals'].checks;
     expect(vitals.find(k => k.f === FAST)).toMatchObject({ sens: vitals.find(k => k.f === TACHY)!.spec, spec: P_ONE });
     expect(db.exams['exam.ecg'].checks.map(k => k.f)).toEqual(expect.arrayContaining([ECG_SVT, ECG_VT]));
-    // после обморока — ЭКГ, пульс и давление каждому, как при сердцебиении; с частью 43в ЭКГ — и при одышке лёжа
-    expect(db.exams['exam.ecg'].routineFor).toEqual([PALP, SYNC, 'sym.orthopnea']);
+    // после обморока — ЭКГ, пульс и давление каждому, как при сердцебиении; с частью 43в ЭКГ — и при одышке лёжа, с
+    // частью 43д — при боли, которая легче сидя с наклоном вперёд
+    expect(db.exams['exam.ecg'].routineFor).toEqual([PALP, SYNC, 'sym.orthopnea', 'sym.pericardial_pain']);
     expect(db.exams['exam.vitals'].routineFor).toEqual(expect.arrayContaining([PALP, SYNC]));
     expect(db.exams['exam.ask_general'].checks.map(k => k.f)).toEqual(expect.arrayContaining([PALP, SYNC]));
   });

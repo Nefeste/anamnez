@@ -197,7 +197,7 @@ describe('готовая амбулатория', () => {
     // кабинета УЗИ в амбулатории нет (spec 2026-09-chapter-2): практика — прежняя амбулатория; кровь на
     // тропонин берут в смотровой приёмного (spec 2026-10-chapter-3, часть 39в) — её в амбулатории тоже нет
     const us = Object.keys(db.exams).filter(id => db.exams[id].room === 'room.ultrasound');
-    expect(us).toEqual(['exam.us_abdomen', 'exam.us_kidney', 'exam.us_leg_arteries', 'exam.us_leg_veins']);
+    expect(us).toEqual(['exam.echo', 'exam.us_abdomen', 'exam.us_kidney', 'exam.us_leg_arteries', 'exam.us_leg_veins']);
     const ed = Object.keys(db.exams).filter(id => db.exams[id].collect === 'room.emergency');
     expect(ed).toEqual(['exam.troponin_hs']);
     // кабинета КТ тоже нет (часть 40): при показаниях к КТ — перевод, как было; КТ-ангиография — с частью 41а,

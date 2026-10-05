@@ -1,0 +1,166 @@
+id: cond.pericarditis
+name: { ru: "Острый перикардит" }
+# идиопатический и вирусный (предполагаемый) — I30.0 и I30.1 (746_2, раздел 1.4); одна запись — I30.0
+icd10: I30.0
+department: dept.therapy
+system: heart
+kind: disease
+# обычный — лечат дома, тампонада — угроза жизни; ОМС по тяжести — средняя между ними, игровая оценка
+severity: serious
+epidemiology:
+  # 27,7 на 100 000 в год (746_2, раздел 1.3); 5 % обращений в приёмное с болью в груди и 0,1 % госпитализаций (ESC
+  # 2015, раздел 3.1). Полоса подобрана прогоном генератора по ОКС — игровая оценка
+  prevalence: very_rare
+  # 52 ± 18 лет, от 17 до 90 (Imazio 2007); 49 ± 18 (Imazio 2003); пик — игровая оценка
+  age: { min: 18, peak: [25, 65] }
+  # мужчин — 245 из 453 (Imazio 2007), 61 из 118 (Imazio 2003)
+  sex: { m: 1.2, f: 1 }
+params:
+  # форма (spec 2026-10-chapter-3, часть 43д): низкий риск — 254 из 300 (84,7 %, Imazio 2004); высокий — миоперикардит,
+  # большой выпот или лихорадка выше 38, тампонада (746_2, приложение Б). Тампонада за 31 месяц — у 3,1 % (Imazio
+  # 2007). Доли высокого риска — игровая оценка
+  form: { typical: 85, myo: 7, effusion: 5, tamponade: 3 }
+course:
+  stages:
+    - { id: acute, days: [0, 21] }
+  # приходят в первые дни боли; подострое начало — свой признак высокого риска, в игре его нет
+  presentation: [0, 3]
+  # без лечения (игровая оценка по 746_2, разделы 1.6 и 3.2): тампонада — сердце не наполняется, хуже сразу;
+  # большой выпот — часто нарастает до тампонады; миоперикардит — аритмии и сердечная недостаточность; обычный —
+  # иногда затягивается и возвращается
+  untreated:
+    - { band: always, days: [0, 0], when: { form: [tamponade] } }
+    - { band: often, days: [2, 7], when: { form: [effusion] } }
+    - { band: often, days: [1, 5], when: { form: [myo] } }
+    - { band: sometimes, days: [3, 7], when: { form: [typical] } }
+  # длительности госпитализации в 746_2 нет — игровая оценка по критериям выписки (раздел 6.3)
+  stay: [5, 10]
+findings:
+  - f: sym.pericardial_pain
+    band: { pct: 88 }
+    note: "боль в груди — больше чем у 85–90 %, острая, плевритическая, легче сидя с наклоном вперёд (ESC 2015, раздел 3.1; 746_2, раздел 2.1)"
+  - { f: hx.recent_cold, band: often }
+  # одышка — «практически во всех случаях» (746_2, раздел 2.1) и «не типична в раннем дебюте» (раздел 1.6.1); при
+  # тампонаде — всегда (раздел 1.6.2). Доля — игровая оценка
+  - { f: sym.dyspnea, band: sometimes, when: { form: [typical, myo] } }
+  - { f: sym.dyspnea, band: usually, when: { form: [effusion] } }
+  - { f: sym.dyspnea, band: always, when: { form: [tamponade] } }
+  # шум трения — у трети в первый день; при накоплении выпота исчезает (157_5, раздел 3.4.4)
+  - f: sign.pericardial_rub
+    band: { pct: 33 }
+    when: { form: [typical, myo] }
+    note: "шум трения перикарда — у трети больных в первый день (746_2, раздел 2.2; ESC 2015 — не больше 33 %)"
+  - { f: sign.pericardial_rub, band: rarely, when: { form: [effusion, tamponade] } }
+  - f: ecg.pericarditis
+    band: { pct: 60 }
+    note: "характерные изменения ЭКГ — у 60 % (746_2, раздел 2.4)"
+  - f: img.echo_effusion
+    band: { pct: 60 }
+    when: { form: [typical, myo] }
+    note: "выпот — до 60 %, обычно небольшой (ESC 2015, раздел 3.1)"
+  - f: img.echo_effusion
+    band: { pct: 100 }
+    when: { form: [effusion, tamponade] }
+    note: "большой выпот и тампонада — по определению формы (746_2, раздел 2.4)"
+  - f: lab.crp_high
+    band: { pct: 78 }
+    note: "СРБ повышен при поступлении у 156 из 200 (Imazio 2011)"
+  # лейкоцитоз — «у большинства» (746_2, раздел 2.3) — игровая оценка
+  - { f: lab.wbc_high, band: often }
+  # для острого перикардита характерна невыраженная субфебрильная температура; лихорадка выше 38 — признак высокого
+  # риска (746_2, раздел 2.1; приложение Б) — доли игровые
+  - { f: vital.fever, band: rarely, when: { form: [typical] } }
+  - { f: vital.fever, band: sometimes, when: { form: [myo] } }
+  - { f: vital.fever, band: often, when: { form: [effusion, tamponade] } }
+  - { f: vital.tachycardia, band: sometimes, when: { form: [typical, myo, effusion] } }
+  # миоперикардит — перикардит с повреждением миокарда: тропонин повышен (746_2, раздел 2.3); у 7,6 % — подъём как при
+  # инфаркте (Imazio 2003)
+  - f: lab.troponin_high
+    band: { pct: 100 }
+    when: { form: [myo] }
+    note: "миоперикардит — критерии перикардита и повышение тропонина (746_2, раздел 2.3)"
+  - { f: lab.troponin_rise, band: sometimes, when: { form: [myo] } }
+  - f: img.echo_effusion_large
+    band: { pct: 100 }
+    when: { form: [effusion] }
+    note: "большой выпот — больше 20 мм в диастолу, большой предиктор высокого риска (746_2, раздел 2.4; приложение Б)"
+  - { f: img.echo_effusion_large, band: usually, when: { form: [tamponade] } }
+  - { f: sign.heart_sounds_muffled, band: often, when: { form: [effusion] } }
+  # рентген при выпоте — чувствительность 70 % (746_2, раздел 2.4): тень сердца расширена, «фляжка»
+  - { f: img.cxr_cardiomegaly, band: often, when: { form: [effusion, tamponade] } }
+  # тампонада (746_2, разделы 1.6.2 и 2.2): гипотония, тахикардия, набухшие шейные вены, глухие тоны — триада Бека;
+  # парадоксальный пульс; на ЭхоКГ — сдавление правых отделов; на ЭКГ — низкий вольтаж и альтернация (раздел 2.4).
+  # Доли — игровая оценка
+  - f: img.echo_tamponade
+    band: { pct: 100 }
+    when: { form: [tamponade] }
+    note: "тампонада на ЭхоКГ — нижняя полая вена не спадается, правые отделы сдавлены (746_2, раздел 2.4)"
+  - { f: vital.bp_low, band: usually, when: { form: [tamponade] } }
+  - { f: vital.tachycardia, band: usually, when: { form: [tamponade] } }
+  - { f: sign.neck_veins_distended, band: usually, when: { form: [tamponade] } }
+  - { f: sign.heart_sounds_muffled, band: usually, when: { form: [tamponade] } }
+  - { f: sign.pulsus_paradoxus, band: usually, when: { form: [tamponade] } }
+  - { f: ecg.low_voltage, band: often, when: { form: [tamponade] } }
+  - { f: sym.dizziness, band: often, when: { form: [tamponade] } }
+  - { f: sign.cold_clammy, band: often, when: { form: [tamponade] } }
+confirm: [exam.ecg, exam.echo]
+redFlags: [img.echo_tamponade, sign.pulsus_paradoxus, img.echo_effusion_large, lab.troponin_high]
+# с чем спутать (746_2, табл. А3-1 и А3-2): инфаркт — боль давящая, подъём ST в отведениях стенки; ТЭЛА и расслоение
+# аорты — другие причины острой боли в груди
+differential: [cond.acs, cond.pe, cond.aortic_dissection]
+treatment:
+  # первая линия (746_2, раздел 3.1.1, ЕОК IA): АСК или ибупрофен с колхицином; гастропротекция с первых часов —
+  # обязательна; глюкокортикоиды — только вторая линия при противопоказаниях к НПВП (риск хронизации), антибиотики при
+  # идиопатическом и вирусном — не нужны. Тромболизис и антиагреганты при ОКС подъём ST перикардита не лечат
+  firstLine: [tx.ibuprofen, tx.aspirin_course]
+  acceptable: []
+  supportive: []
+  # из равных первой линии — ибупрофен; колхицин и ИПП добавит обязательное и профилактика
+  plan: [tx.ibuprofen]
+  require: [tx.colchicine]
+  prevent: [tx.ppi]
+  notIndicated: [tx.steroid_systemic_short, tx.steroid_iv, tx.amoxicillin, tx.amoxicillin_clavulanate, tx.macrolide, tx.thrombolysis, tx.aspirin_acs, tx.clopidogrel]
+  harmful: []
+  byParam:
+    # тампонада (746_2, раздел 3.1.4 и 3.2; приложение Б): пункция перикарда — абсолютное показание, и здесь, и до
+    # перевода, если у постели монитор; вазодилататоры и диуретики — не рекомендуются (ЕОК IIIC), ИВЛ с положительным
+    # давлением — тоже (ЕОК IIIC); антикоагулянт и тромболизис — продолжающаяся антикоагуляция противопоказывает
+    # пункцию (приложение Б), игровое правило
+    - when: { form: [tamponade] }
+      firstLine: []
+      acceptable: []
+      supportive: []
+      notIndicated: []
+      harmful: [tx.nitroglycerin_iv, tx.nitroglycerin, tx.furosemide_iv, tx.cpap, tx.heparin_iv, tx.enoxaparin_acs, tx.lmwh, tx.fondaparinux, tx.thrombolysis, tx.thrombolysis_pe]
+      require: [tx.pericardiocentesis]
+      beforeTransfer: [tx.pericardiocentesis]
+  # где лечить (746_2, раздел 6): низкий риск — амбулаторно (ЕОК IB); миоперикардит и высокий риск — в стационар;
+  # тампонада — пункция в ПИТ (раздел 3.2); без своей — «Вызвать скорую»
+  setting:
+    default: home
+    param: { name: form, map: { typical: home, myo: ward, effusion: ward, tamponade: icu } }
+    # низкий риск устанавливают тропонином — без него миоперикардит не исключить, а боль в груди с подъёмом ST — и
+    # инфаркт (раздел 2.3; 157_5, раздел 2.4). Тропонин берут в смотровой приёмного под монитором; в кабинете
+    # поликлиники ни того ни другого — в стационар: «неясность диагноза и необходимость в специальных методах
+    # исследования» (раздел 6.1)
+    without: { equipment: [eq.monitor_defib], setting: ward }
+texts:
+  summary:
+    ru: >-
+      Воспаление перикарда — оболочки сердца, чаще после простуды. Острая боль за грудиной, сильнее на вдохе и лёжа,
+      легче сидя с наклоном вперёд; бывает шум трения; на ЭКГ подъём ST почти во всех отведениях; на УЗИ — выпот.
+      Лечат дома ацетилсалициловой кислотой или ибупрофеном с колхицином и защитой желудка. Миоперикардит и большой
+      выпот — в палату; тампонада — пункция перикарда и ПИТ.
+pearls:
+  - ru: "Подъём ST во многих отведениях сразу, вогнутый, без зеркальной депрессии и с опущенным PQ — перикардит, а не инфаркт: тромболизис ему не нужен."
+  - ru: "Боль легче сидя с наклоном вперёд и сильнее лёжа — подсказка перикардита; давящая боль, не зависящая от позы, — инфаркта."
+  - ru: "Низкое давление, набухшие шейные вены и глухие тоны — триада Бека, тампонада. Нитроглицерин и фуросемид ей опасны: спасает пункция перикарда."
+simplified: "Причину перикардита в игре не ищут: он идиопатический или вирусный; туберкулёзный, гнойный, опухолевый, аутоиммунный и после инфаркта и операций — не моделируются, как и рецидивирующий, хронический и констриктивный. Высокий риск в игре — миоперикардит, большой выпот с лихорадкой и тампонада; иммуносупрессия, травма, антикоагулянты и подострое начало — нет. Оценки ответа через неделю, глюкокортикоидов второй линией, КТ и МРТ сердца, анализа выпота и перикардиального окна нет. УЗИ сердца — в кабинете УЗИ, результат словами; пункцию делают у постели под монитором."
+sources:
+  - { kind: guideline, title: "Перикардиты", org: "Минздрав РФ", year: 2025, url: "https://cr.minzdrav.gov.ru/view-cr/746_2", note: "ID 746_2, опубликованы 01.09.2025, применяются; сверено с рубрикатором 05.10.2026; раздел 1.3: 27,7 на 100 000 в год, с миокардитом — 15 %; разделы 1.6 и 2.1–2.4: картина, тампонада, ЭКГ у 60 %, ЭхоКГ всем; раздел 3.1.1: АСК или ибупрофен с колхицином (ЕОК IA), гастропротекция обязательна, глюкокортикоиды — вторая линия; раздел 3.1.4: при тампонаде нельзя вазодилататоры, диуретики и ИВЛ с положительным давлением (ЕОК IIIC); раздел 3.2: перикардиоцентез при тампонаде — жизнеспасающий, в ПИТ, под ЭхоКГ; раздел 6: госпитализация при тампонаде, высоком риске и миоперикардите, низкий риск — амбулаторно (ЕОК IB); приложение Б: предикторы высокого риска; доли форм, признаков и сроки без ссылок — игровая оценка" }
+  - { kind: guideline, title: "Adler Y, Charron P, Imazio M et al. 2015 ESC Guidelines for the diagnosis and management of pericardial diseases. Eur Heart J 2015;36(42):2921–2964", url: "https://pubmed.ncbi.nlm.nih.gov/26320112/", note: "PMID 26320112, PMC7539677, сверено 05.10.2026; раздел 3.1: два из четырёх критериев — боль (больше 85–90 %), шум трения (не больше 33 %), ЭКГ (до 60 %), выпот (до 60 %, обычно небольшой); 5 % обращений в приёмное с болью в груди" }
+  - { kind: paper, title: "Imazio M, Demichelis B, Parrini I et al. Day-hospital treatment of acute pericarditis: a management program for outpatient therapy. J Am Coll Cardiol 2004;43(6):1042–1046", url: "https://pubmed.ncbi.nlm.nih.gov/15028364/", note: "PMID 15028364, сверено 05.10.2026: 254 из 300 (84,7 %) — низкий риск, лечение дома действенно у 87 %, тампонады у лечившихся дома не было" }
+  - { kind: paper, title: "Imazio M, Cecchi E, Demichelis B et al. Indicators of poor prognosis of acute pericarditis. Circulation 2007;115(21):2739–2744", url: "https://pubmed.ncbi.nlm.nih.gov/17502574/", note: "PMID 17502574, сверено 05.10.2026: 453 больных 17–90 лет (52 ± 18), мужчин 245; за 31 месяц — тампонада у 3,1 %, рецидивы у 18,3 %" }
+  - { kind: paper, title: "Imazio M, Demichelis B, Cecchi E et al. Cardiac troponin I in acute pericarditis. J Am Coll Cardiol 2003;42(12):2144–2148", url: "https://pubmed.ncbi.nlm.nih.gov/14680742/", note: "PMID 14680742, сверено 05.10.2026: тропонин I повышен у 38 из 118 (32,2 %), выше порога инфаркта — у 7,6 %; возраст 49 ± 18, мужчин 61" }
+  - { kind: paper, title: "Imazio M, Brucato A, Maestroni S et al. Prevalence of C-reactive protein elevation and time course of normalization in acute pericarditis. Circulation 2011;123(10):1092–1097", url: "https://pubmed.ncbi.nlm.nih.gov/21357824/", note: "PMID 21357824, сверено 05.10.2026: СРБ повышен при поступлении у 156 из 200 (78 %)" }
+review: draft

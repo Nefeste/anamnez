@@ -85,8 +85,10 @@ describe('кабинет УЗИ: где можно сделать', () => {
       callPatient(shiftView().queue[0].id);
       const v = shiftCaseView()!;
       // УЗИ почек (часть 30г) — в том же кабинете; тропонин (часть 39в) — кровь в смотровой приёмного, её нет;
-      // кабинета КТ тоже нет (часть 40), КТ-ангиография — там же (часть 41а), груди — тоже (часть 43а)
+      // кабинета КТ тоже нет (часть 40), КТ-ангиография — там же (часть 41а), груди — тоже (часть 43а); УЗИ сердца —
+      // в кабинете УЗИ (часть 43д)
       expect(v.unavailable).toEqual({
+        'exam.echo': T.sandbox.examBlock.none('кабинета УЗИ'),
         [US]: T.sandbox.examBlock.none('кабинета УЗИ'), 'exam.us_kidney': T.sandbox.examBlock.none('кабинета УЗИ'), 'exam.us_leg_arteries': T.sandbox.examBlock.none('кабинета УЗИ'),
         'exam.us_leg_veins': T.sandbox.examBlock.none('кабинета УЗИ'), 'exam.troponin_hs': T.sandbox.examBlock.none('смотровой приёмного'),
         'exam.ct_head': T.sandbox.examBlock.none('кабинета КТ'), 'exam.cta_head': T.sandbox.examBlock.none('кабинета КТ'), 'exam.cta_chest': T.sandbox.examBlock.none('кабинета КТ'),
@@ -142,7 +144,8 @@ describe('кабинет УЗИ: очередь, время и точность'
     expect(seen / N).toBeLessThan(0.79);
     expect(wrong / N).toBeGreaterThan(0.035);
     expect(wrong / N).toBeLessThan(0.065);
-  });
+    // шесть тысяч больных — около 4 секунд, под нагрузкой — 5,9 с: срок как у других тяжёлых тестов (часть 43д)
+  }, 30_000);
 });
 
 describe('кабинет УЗИ: карта и картинка', () => {

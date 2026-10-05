@@ -290,8 +290,9 @@ const TX_GROUPS: [string, string[]][] = [
   // с частью 33б — эпинефрин при анафилактическом шоке (АТХ C01CA24 — сердечно-сосудистая система);
   // с частью 39а — тромболизис при инфаркте; с частью 39г — статин (АТХ C10 — сердечно-сосудистая система);
   // с частью 42а — кардиоверсия, амиодарон и верапамил при фибрилляции предсердий; с частью 42в — атропин,
-  // допамин и наружная стимуляция при АВ-блокаде; с частью 43в — фуросемид в вену при сердечной недостаточности
-  ['heart', ['antihypertensive', 'antiplatelet', 'antianginal', 'anticoagulant', 'vascular', 'adrenergic', 'thrombolytic', 'lipid', 'antiarrhythmic', 'anticholinergic', 'diuretic']],
+  // допамин и наружная стимуляция при АВ-блокаде; с частью 43в — фуросемид в вену при сердечной недостаточности;
+  // с частью 43д — колхицин при перикардите
+  ['heart', ['antihypertensive', 'antiplatelet', 'antianginal', 'anticoagulant', 'vascular', 'adrenergic', 'thrombolytic', 'lipid', 'antiarrhythmic', 'anticholinergic', 'diuretic', 'cardiac']],
   ['digestive', ['acid']],
   // растворы для питья и капельница (часть 32д-2): и при кишечной инфекции, и при обширном ожоге
   ['fluids', ['rehydration']],
@@ -450,6 +451,9 @@ function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observat
         ...(stemi ? { stemi: wallOf(stemi.attrs?.wall) } : {}),
         ...(shown('ecg.st_depression') ? { stDepression: true, tInversion: 'lateral' as const } : {}),
         ...(shown('ecg.lvh') ? { lvh: true } : {}),
+        // перикардит (часть 43д): подъём ST почти везде с депрессией PQ; большой выпот — низкий вольтаж и альтернация
+        ...(shown('ecg.pericarditis') ? { pericarditis: true } : {}),
+        ...(shown('ecg.low_voltage') ? { lowVoltage: true } : {}),
       },
     };
   }
