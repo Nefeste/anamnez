@@ -635,6 +635,19 @@ function hypoSave(): { save: string; id: string } {
 }
 
 /**
+ * Песочница с приёмным, КТ и ПИТ (часть 44б): первая машина скорой везёт невропатию лицевого нерва — умеренную,
+ * в первые 72 часа, глаз не закрывается; перекосило лицо, и только. Готовы неврологический осмотр, расспрос при
+ * инсульте и глюкометр.
+ */
+function bellSave(): { save: string; id: string } {
+  const fits = (x: ReturnType<typeof generatePatient>) => {
+    const k = x.truth.conditions[0].params;
+    return k.severity === 'moderate' && k.h72 === 'yes' && k.eye === 'yes' && x.truth.risks.length <= 2 && x.complaints.includes('sym.face_droop');
+  };
+  return neuroSave('cond.bell_palsy', fits, ['exam.neuro_exam', 'exam.ask_stroke', 'exam.glucometer']);
+}
+
+/**
  * Больница с приёмным, КТ и ПИТ; первую машину скорой подменяет больной `primary`, для которого верно `fits`; сделаны
  * `exams`. С `ultrasound` (часть 43д) — ещё кабинет УЗИ под старым зданием, коридор к нему продлён влево.
  */
@@ -2461,6 +2474,52 @@ try {
   check((await visibleText(page, 'enc-article-title')) === 'Гипогликемия' && hypoArticle.includes('При тяжёлом течении — скорая, больница.')
     && hypoArticle.includes('Быстрые углеводы внутрь') && hypoArticle.includes('Декстроза капельно'),
     `энциклопедия, гипогликемия: ${await visibleText(page, 'enc-article-title')} — тяжёлая на скорой, углеводы и капельница`);
+
+  // невропатия лицевого нерва (часть 44б): у вас — умеренная, в первые 72 часа, глаз не закрывается; невролог
+  // нашёл парез всей половины лица, и лоб, — в сроках только осмотр, без КТ и теста глотания; преднизолон внутрь,
+  // искусственная слеза, домой — разбор без замечаний; в энциклопедии — дома, при тяжёлой в первые 72 часа — палата
+  const bell = bellSave();
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', bell.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId('shift-continue').waitFor({ timeout: 15_000 });
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId('shift-continue').click();
+  await visible(page, 'visit-decide').waitFor({ timeout: 10_000 });
+  const bellCard = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  check(/Перекосило лицо|Лицо вдруг стало кривым/.test(bellCard) && /Слаба вся половина лица (справа|слева), и лоб/.test(bellCard)
+    && /Глаз (справа|слева) не закрывается до конца/.test(bellCard),
+    `Невропатия лицевого нерва: в карте — перекошенное лицо, парез всей половины с лбом, глаз не закрывается («${bellCard.replace(/\n/g, ' · ').slice(0, 300)}»)`);
+  const bellTarget = await text(page, 'visit-target-0');
+  check(/^Осмотр при подозрении на инсульт — через \d+\u00a0мин после прихода, в срок$/.test(bellTarget) && (await page.getByTestId('visit-target-1').count()) === 0,
+    `невропатия: в сроках только осмотр — «${bellTarget}», без КТ и теста глотания`);
+  await page.screenshot({ path: join(OUT, '30-bell-card.png'), fullPage: true });
+  await visible(page, 'visit-decide').click();
+  await visible(page, 'dx-cond.bell_palsy').click();
+  await visible(page, 'decision-to-plan').click();
+  await page.getByTestId('tx-tx.steroid_systemic_short').waitFor({ timeout: 5000 });
+  for (const tx of ['tx.steroid_systemic_short', 'tx.eye_lubricant']) await page.getByTestId(`tx-${tx}`).click();
+  await page.getByTestId('setting-home').click();
+  await page.screenshot({ path: join(OUT, '30-bell-decision.png'), fullPage: true });
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
+  const bellReview = await page.locator('body').innerText();
+  check(bellReview.includes('Невропатия лицевого нерва') && !/[Нн]е назначено|не показано|вредно|Недооценили тяжесть|Обоснованность [CD]|КТ при подозрении на инсульт/.test(bellReview),
+    `Невропатия лицевого нерва: преднизолон внутрь, искусственная слеза, домой — разбор «${bellReview.replace(/\n/g, ' · ').slice(0, 300)}»`);
+  const bellLine = await text(page, 'visit-target-line-0');
+  check((await text(page, 'visit-targets-grade')) === 'A' && /^• Осмотр при подозрении на инсульт: через \d+\u00a0мин после прихода — в срок$/.test(bellLine)
+    && (await page.getByTestId('visit-target-line-1').count()) === 0, `невропатия, сроки в разборе: ${bellLine}`);
+  await page.screenshot({ path: join(OUT, '30-bell-review.png'), fullPage: true });
+  await page.goto(`${base}/encyclopedia/article/cond.bell_palsy`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const bellArticle = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  check((await visibleText(page, 'enc-article-title')) === 'Невропатия лицевого нерва' && bellArticle.includes('Обычно — дома.')
+    && bellArticle.includes('При тяжёлом течении в первые 72 часа — в стационаре.') && bellArticle.includes('Искусственная слеза днём, гель на ночь'),
+    `энциклопедия, невропатия: ${await visibleText(page, 'enc-article-title')} — дома, тяжёлая в первые 72 часа — в стационаре, слеза и гель`);
 
   // хирургия живота (spec 2026-09-chapter-2, часть 30): со смотровой приёмного больница принимает
   // и хирургию — у вас больной острым холециститом; УЗИ — желчный пузырь с камнями и толстой

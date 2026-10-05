@@ -36,10 +36,15 @@ function foundAt(p: Pick<ShiftPatient, 'results'>, t: Target): number | undefine
   return at === Infinity ? undefined : at;
 }
 
+/** Срок снят (часть 44б): обследование показало находку из «кроме» — периферический парез лица, это не инсульт. */
+const excepted = (p: Pick<ShiftPatient, 'results'>, t: Target) =>
+  t.except !== undefined && p.results.some(r => r.obs.some(o => o.shown && t.except!.includes(o.f)));
+
 /**
  * Какие сроки к пациенту относятся: жалоба при поступлении — из записи — или находка, которую уже
- * показали обследования (часть 39б); и, если срок для лежащих в помещении (смотровая приёмного), он
- * лежит там, а у срока на обследование одно из них ему можно сделать у постели — монитор стоит и
+ * показали обследования (часть 39б), кроме снятых находкой из «кроме» (часть 44б); и, если срок для
+ * лежащих в помещении (смотровая приёмного), он лежит там, а у срока на обследование одно из них ему
+ * можно сделать у постели — монитор стоит и
  * смотровая работает: без него в срок не успеть не по вине игрока (смотровая из сохранений до 0.3.2
  * — без монитора, пока его не купят). У срока без помещения одно из его обследований можно сделать в
  * этой больнице (часть 43г): КТ при подозрении на инсульт — там, где есть КТ; в районной больнице его
@@ -47,6 +52,7 @@ function foundAt(p: Pick<ShiftPatient, 'results'>, t: Target): number | undefine
  */
 export function targetsFor(db: ContentDb, p: Seen, at: TargetPlace): Target[] {
   return Object.values(db.targets).filter(t => (t.complaints.some(f => p.patient.complaints.includes(f)) || foundAt(p, t) !== undefined)
+    && !excepted(p, t)
     && (t.room
       ? p.bay !== undefined && at.roomType(p.bay.room) === t.room && (t.exams.length === 0 || t.exams.some(e => at.bedside(e)))
       : t.exams.length === 0 || t.exams.some(e => at.can(e))));

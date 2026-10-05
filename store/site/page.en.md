@@ -36,7 +36,7 @@ shots:
 card:
   text: Patients come to you with real illnesses and injuries, and almost every sign stays hidden until you ask, examine or order a test. Make a diagnosis, choose a treatment and see the outcome — and between shifts, build your own hospital.
   points:
-    - 56 conditions and 23 injuries; each patient’s own X-rays, ultrasound and ECGs
+    - 57 conditions and 23 injuries; each patient’s own X-rays, ultrasound and ECGs
     - Your own hospital with an emergency department, wards and an operating room
     - A review of every visit, a campaign with a mentor and a case of the day
     - Free, offline and ad-free
@@ -81,7 +81,7 @@ in Russian.
 
 ## What’s inside
 
-- 56 conditions and 23 injuries. At the clinic — 38 conditions a general practitioner sees: from
+- 57 conditions and 23 injuries. At the clinic — 38 conditions a general practitioner sees: from
   colds and flu to pneumonia, angina, heart attack, hypertensive crisis, pericarditis, acute heart failure, atrial fibrillation, tachycardias, heart block, pulmonary embolism, hypoglycaemia, nosebleeds and anaphylactic shock. In a hospital with an
   emergency department — 13 more surgical ones, from biliary colic to a perforated ulcer, bowel
   obstruction, deep vein thrombosis and acute ischaemia of the leg, and injuries: fractures, knee ligament tears, a torn calf muscle,
@@ -92,7 +92,8 @@ in Russian.
   neurosurgeon within 60 minutes; with an aortic dissection — CT angiography with a chest slice,
   intravenous morphine and a beta blocker, and type A goes to a surgical centre; with a pulmonary
   embolism — the Geneva score and D-dimer, clots on the same chest slice, and the sPESI score decides
-  where to treat.
+  where to treat. A drooping face is not always a stroke: in Bell’s palsy the forehead is weak too, no
+  CT is needed, and a corticosteroid works best within 72 hours.
 - Wounds and burns as in a real emergency department: stitch now or delay the stitches, check the
   finger tendons, measure a burn with the patient’s palms and its depth with a pinprick, tetanus
   shots by vaccination records, and after a dog bite, a rabies vaccine with immunoglobulin.
@@ -140,6 +141,6 @@ see a doctor; in an emergency, call your local emergency number (112 in Russia a
 
 ## What’s next
 
-Coming up: new campaign chapters and departments: cardiology, neurology and MRI. The game is
+Coming up: new campaign chapters and MRI. The game is
 being prepared for release in RuStore for Android, in Russian first. Questions:
 support@gornitsa.games.

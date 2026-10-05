@@ -1,7 +1,7 @@
 // «Виртуальный врач» (`docs/05-content.md` §6, `docs/09-testing.md` §3): три стратегии,
 // которыми проверяется база. Шаг разумного врача (`nextStep`) — и нанятый врач своей больницы
 // (spec 2026-09-hired-doctors): тот делает шаги по одному, с порогами своего навыка.
-import type { ContentDb, Exam, Id } from '../../content/types';
+import type { ContentDb, Exam, Id, Target } from '../../content/types';
 import { Rng } from '../core/rng';
 import { complaintObservations, examFits, runExam } from './exams';
 import { type Belief, contextOf, expectedGain, knownFacts, likelyParams, paramBeliefs, paramGain, posterior } from './infer';
@@ -123,13 +123,17 @@ export function choosePlan(db: ContentDb, diagnosis: Id, observations: readonly 
   return { treatments: [...new Set(treatments)].sort(), setting: choiceFor(setting, venue) };
 }
 
+/** Срок снят тем, что уже показали обследования (часть 44б): периферический парез лица — КТ не нужна. */
+const lifted = (t: Target, obs: readonly Observation[]) => t.except !== undefined && obs.some(o => o.shown && t.except!.includes(o.f));
+
 /**
  * Обследования сроков по жалобам пациента (spec 2026-10-chapter-3, часть 37): ЭКГ при давящей боли
  * в груди — в первые 10 минут от первого контакта с медиком, где бы он ни был (`157_5`, раздел 2.4).
  * Срок оценивается только у лежащих в смотровой приёмного (`shift/targets.ts`), а делают первым везде.
+ * Срок, снятый находкой (часть 44б), — не в счёт.
  */
-export function targetExams(db: ContentDb, patient: Patient): Id[] {
-  return [...new Set(Object.values(db.targets).filter(t => t.complaints.some(f => patient.complaints.includes(f))).flatMap(t => t.exams))].sort();
+export function targetExams(db: ContentDb, patient: Patient, obs: readonly Observation[] = []): Id[] {
+  return [...new Set(Object.values(db.targets).filter(t => t.complaints.some(f => patient.complaints.includes(f)) && !lifted(t, obs)).flatMap(t => t.exams))].sort();
 }
 
 /** Срок первого контакта (часть 41а): что делают ещё до расспроса — ЭКГ при боли в груди, осмотр при инсульте. */
@@ -139,11 +143,12 @@ const FIRST_CONTACT = 10;
  * Что сделать по срокам сейчас (spec 2026-10-chapter-3, часть 41а): срок по жалобе не дольше `within`
  * минут, который ещё не выполнило ни одно из его обследований, — по порядку минут; из его
  * обследований — то, что больше уточнит тактику (`prefer`: КТ-ангиография при NIHSS 6 и больше в
- * первые 6 часов вместо КТ), иначе дешевле.
+ * первые 6 часов вместо КТ), иначе дешевле. Снятый находкой срок (часть 44б: периферический парез лица) не
+ * торопит.
  */
-export function urgentExam(db: ContentDb, patient: Patient, done: readonly Id[], exams: readonly Id[], within = Infinity, prefer: (exam: Id) => number = () => 0): Id | undefined {
+export function urgentExam(db: ContentDb, patient: Patient, done: readonly Id[], exams: readonly Id[], within = Infinity, prefer: (exam: Id) => number = () => 0, obs: readonly Observation[] = []): Id | undefined {
   const due = Object.values(db.targets)
-    .filter(t => t.minutes <= within && t.exams.length > 0 && t.complaints.some(f => patient.complaints.includes(f)) && !t.exams.some(e => done.includes(e)))
+    .filter(t => t.minutes <= within && t.exams.length > 0 && t.complaints.some(f => patient.complaints.includes(f)) && !t.exams.some(e => done.includes(e)) && !lifted(t, obs))
     .sort((a, b) => a.minutes - b.minutes || (a.id < b.id ? -1 : 1));
   for (const t of due) {
     const own = t.exams.filter(e => exams.includes(e));
@@ -191,7 +196,7 @@ export function indicated(db: ContentDb, patient: Patient, obs: readonly Observa
   // и каждому, у кого это увидели (часть 42б): неритмичный пульс или 150 и чаще — ЭКГ
   if (e?.routineSeen?.some(f => obs.some(o => o.f === f && o.shown))) return true;
   // срок по жалобе (часть 37): ЭКГ при давящей боли в груди — показана всегда
-  if (targetExams(db, patient).includes(examId)) return true;
+  if (targetExams(db, patient, obs).includes(examId)) return true;
   // велит положительное правило решения — показано, какой бы малой ни была польза (часть 32д)
   if (ruleExams(db, patient, obs).includes(examId)) return true;
   // правило ещё не решено — узнать, что осталось (часть 33а)
@@ -321,7 +326,7 @@ export function nextStep(db: ContentDb, patient: Patient, obs: readonly Observat
   if (now.diagnosis === undefined) {
     // срок по жалобе (часть 37) — первым делом: при давящей боли в груди ЭКГ, ещё до расспроса; при
     // признаках инсульта — осмотр с NIHSS (часть 41а)
-    const urgent = urgentExam(db, patient, done, opt.exams, FIRST_CONTACT);
+    const urgent = urgentExam(db, patient, done, opt.exams, FIRST_CONTACT, undefined, obs);
     if (urgent) return { step: { kind: 'exam', exam: urgent }, phase: now };
     // вопросы всем и то, что делают каждому с такой жалобой (часть 32г-2: неврологический осмотр при ране головы)
     const routine = opt.exams.find(id => (db.exams[id].routine || db.exams[id].routineFor?.some(f => patient.complaints.includes(f))) && !done.includes(id));
@@ -335,7 +340,7 @@ export function nextStep(db: ContentDb, patient: Patient, obs: readonly Observat
     const later = urgentExam(db, patient, done, opt.exams, Infinity, e => {
       const top = posterior(db, opt.candidates, obs, contextOf(db, patient, obs))[0];
       return top ? tacticGain(db, top.id, e, obs, patient, opt.venue?.minutes ?? 0) : 0;
-    });
+    }, obs);
     if (later) return { step: { kind: 'exam', exam: later }, phase: now };
     // положительное правило решения велит обследование — его делают (часть 32д): оттавские правила
     // сказали «снимок нужен», и снимок делают, даже почти уверившись в ушибе

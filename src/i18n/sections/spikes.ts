@@ -316,6 +316,7 @@ export const spikes = {
       breathing: 'Бронхи и воспаление',
       oxygen: 'Кислород',
       nose: 'Нос и аллергия',
+      eyes: 'Глаза',
       heart: 'Сердце и сосуды',
       digestive: 'Желудок и кишечник',
       fluids: 'Растворы и капельницы',

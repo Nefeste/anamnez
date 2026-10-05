@@ -1055,6 +1055,8 @@ export interface Target {
   name: Text;
   complaints: Id[];
   findings: Id[];
+  /** кроме тех, у кого обследование показало одну из этих находок (часть 44б): периферический парез лица — не инсульт */
+  except?: Id[];
   room?: Id;
   exams: Id[];
   treatments: Id[];

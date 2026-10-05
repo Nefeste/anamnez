@@ -719,6 +719,12 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     for (const f of x.complaints) if (!findings[f]?.texts.complaint) errors.push(`${x.id}: жалоба ${f} не найдена или без текста жалобы`);
     // часть 39б: находка, назначение — из базы
     for (const f of x.findings) if (!findings[f]) errors.push(`${x.id}: находка ${f} не найдена`);
+    // часть 44б: «кроме» — находка из базы, её показывает обследование, и она не та, по которой срок назначают
+    for (const f of x.except ?? []) {
+      if (!findings[f]) errors.push(`${x.id}: кроме — находка ${f} не найдена`);
+      else if (!Object.values(exams).some(e => e.checks.some(k => k.f === f))) errors.push(`${x.id}: кроме — находку ${f} не проверяет ни одно обследование`);
+      if (x.findings.includes(f)) errors.push(`${x.id}: ${f} — и кому срок, и кроме`);
+    }
     for (const id of x.treatments) if (!treatments[id]) errors.push(`${x.id}: лечение ${id} не найдено`);
     for (const id of x.exams) if (!exams[id]) errors.push(`${x.id}: обследование ${id} не найдено`);
     if (x.room && !rooms[x.room]) errors.push(`${x.id}: помещение ${x.room} не найдено`);

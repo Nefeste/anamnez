@@ -592,6 +592,16 @@ describe('каталог больницы', () => {
     expect(has(broken(d => edit(d, 'conditions/therapy/pe.yaml', '  spesi: rule.spesi\n', '')), 'rule.spesi: правило о месте лечения, а производного параметра по нему нет ни у одной болезни')).toBe(true);
   });
 
+  test('невропатия лицевого нерва (часть 44б): «кроме» у срока — находка есть в базе, её проверяет обследование, и она не та, по которой срок назначают', () => {
+    const CT = 'targets/stroke_ct.yaml';
+    const has = (errors: string[], text: string) => errors.some(e => e.includes(text));
+    const line = 'except: [sign.facial_palsy_peripheral]';
+    expect(has(broken(d => edit(d, CT, line, 'except: [sign.facial_palsy_x]')), 'target.stroke_ct: кроме — находка sign.facial_palsy_x не найдена')).toBe(true);
+    expect(has(broken(d => edit(d, CT, line, 'except: [img.ct_blood]')), 'target.stroke_ct: img.ct_blood — и кому срок, и кроме')).toBe(true);
+    const unseen = broken(d => edit(d, 'exams/neuro_exam.yaml', '  - { f: sign.facial_palsy_peripheral, sens: 95, spec: 100 }\n', ''));
+    expect(has(unseen, 'target.stroke_ct: кроме — находку sign.facial_palsy_peripheral не проверяет ни одно обследование')).toBe(true);
+  });
+
   test('гипогликемия (часть 44а): параметр по признаку — признак есть в базе, и его проверяет обследование', () => {
     const H = 'conditions/therapy/hypoglycemia.yaml';
     const has = (errors: string[], text: string) => errors.some(e => e.includes(text));
