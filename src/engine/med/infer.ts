@@ -410,6 +410,10 @@ export function paramBeliefs(db: ContentDb, condId: Id, name: string, observatio
     return Object.keys(dist).map(value => ({ value, p: value === 'yes' ? yes : 1 - yes }));
   }
   if (byValue(derived)) return derivedBeliefs(dist, valueVerdict(derived, observations, minutes));
+  // атрибут показанного признака взят из этого параметра (часть 42в): ЭКГ показала, какие комплексы у
+  // выскальзывающего ритма, — это и есть вид блокады
+  const seen = attrParam(c, name, observations);
+  if (seen !== undefined && seen in dist) return Object.keys(dist).map(value => ({ value, p: value === seen ? 1 : 0 }));
   const grouped = byFinding(observations);
   const telling = tellingOf(c, name).filter(f => grouped.has(f));
   const weighted = Object.entries(dist).map(([value, share]) => {
@@ -419,6 +423,23 @@ export function paramBeliefs(db: ContentDb, condId: Id, name: string, observatio
   });
   const total = weighted.reduce((a, b) => a + b.p, 0);
   return weighted.map(x => ({ value: x.value, p: total > 0 ? x.p / total : 0 }));
+}
+
+/**
+ * Значение параметра по атрибуту показанного признака, взятому из этого параметра (spec 2026-10-chapter-3,
+ * часть 42в): у последнего такого наблюдения; сторона напротив (часть 41в) — наоборот. Нет — undefined.
+ */
+function attrParam(c: Condition, name: string, observations: readonly Observation[]): string | undefined {
+  for (const l of c.findings) {
+    for (const [k, spec] of Object.entries(l.attrs ?? {})) {
+      if (!('param' in spec) || spec.param !== name) continue;
+      const o = [...observations].reverse().find(x => x.f === l.f && x.shown && x.attrs?.[k] !== undefined);
+      if (!o) continue;
+      const v = o.attrs![k];
+      return spec.opposite ? ({ right: 'left', left: 'right' } as Record<string, string>)[v] ?? v : v;
+    }
+  }
+  return undefined;
 }
 
 /**

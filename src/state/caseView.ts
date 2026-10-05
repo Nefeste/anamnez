@@ -284,8 +284,9 @@ const TX_GROUPS: [string, string[]][] = [
   // сердце и сосуды: с частью 33а — антикоагулянты, компрессионный трикотаж и гель при тромбофлебите;
   // с частью 33б — эпинефрин при анафилактическом шоке (АТХ C01CA24 — сердечно-сосудистая система);
   // с частью 39а — тромболизис при инфаркте; с частью 39г — статин (АТХ C10 — сердечно-сосудистая система);
-  // с частью 42а — кардиоверсия, амиодарон и верапамил при фибрилляции предсердий
-  ['heart', ['antihypertensive', 'antiplatelet', 'antianginal', 'anticoagulant', 'vascular', 'adrenergic', 'thrombolytic', 'lipid', 'antiarrhythmic']],
+  // с частью 42а — кардиоверсия, амиодарон и верапамил при фибрилляции предсердий; с частью 42в — атропин,
+  // допамин и наружная стимуляция при АВ-блокаде
+  ['heart', ['antihypertensive', 'antiplatelet', 'antianginal', 'anticoagulant', 'vascular', 'adrenergic', 'thrombolytic', 'lipid', 'antiarrhythmic', 'anticholinergic']],
   ['digestive', ['acid']],
   // растворы для питья и капельница (часть 32д-2): и при кишечной инфекции, и при обширном ожоге
   ['fluids', ['rehydration']],
@@ -409,15 +410,21 @@ function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observat
     // фибрилляция или трепетание (часть 42а) — по виду в строке находки: пилообразные волны F; с частью
     // 42б — наджелудочковая тахикардия с узкими комплексами и желудочковая с широкими
     const af = shown('ecg.af');
-    const rhythm: EcgFindings['rhythm'] = af ? (af.attrs?.kind === 'flutter' ? 'flutter' : 'af') : shown('ecg.vt') ? 'vt' : shown('ecg.svt') ? 'svt' : undefined;
+    // АВ-блокада (часть 42в): Мобитц II или полная — с узким или широким выскальзывающим ритмом
+    const avb = shown('ecg.av_block');
+    const rhythm: EcgFindings['rhythm'] = af ? (af.attrs?.kind === 'flutter' ? 'flutter' : 'af') : shown('ecg.vt') ? 'vt' : shown('ecg.svt') ? 'svt'
+      : avb ? (avb.attrs?.kind === 'mobitz2' ? 'avb2m' : 'avb3') : undefined;
     return {
       kind: 'ecg',
       seed,
       // на ленте — то же, что в строках находок: депрессия ST с инверсией T — в V4–V6
       ecg: {
-        // пульс не мерили — у тахикардии лента со своей частотой, у остальных — 72 в минуту
-        ...(pulse !== undefined ? { rate: Math.round(pulse) } : rhythm === 'svt' || rhythm === 'vt' ? {} : { rate: 72 }),
+        // пульс не мерили — у тахикардии и блокады лента со своей частотой, у остальных — 72 в минуту; у Мобитц II
+        // 3 : 2 пульс — две трети частоты предсердий
+        ...(pulse !== undefined ? { rate: Math.round(rhythm === 'avb2m' ? (pulse * 3) / 2 : pulse) } : rhythm && ['svt', 'vt', 'avb2m', 'avb3'].includes(rhythm) ? {} : { rate: 72 }),
         ...(rhythm ? { rhythm } : {}),
+        // полная блокада — узкий или широкий выскальзывающий ритм; при фибрилляции предсердий он ровный
+        ...(avb && avb.attrs?.kind !== 'mobitz2' ? { escape: avb.attrs?.kind === 'narrow' ? 'narrow' as const : 'wide' as const } : {}),
         ...(stemi ? { stemi: wallOf(stemi.attrs?.wall) } : {}),
         ...(shown('ecg.st_depression') ? { stDepression: true, tInversion: 'lateral' as const } : {}),
         ...(shown('ecg.lvh') ? { lvh: true } : {}),

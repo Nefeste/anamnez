@@ -154,6 +154,8 @@ export const ECG_CASES: EcgCase[] = [
   { key: 'ecg-avb2w', findings: { rhythm: 'avb2w' }, seed: 11, label: e.avb2w },
   { key: 'ecg-avb2m', findings: { rhythm: 'avb2m' }, seed: 12, label: e.avb2m },
   { key: 'ecg-avb3', findings: { rhythm: 'avb3', rate: 38 }, seed: 13, label: e.avb3 },
+  // выскальзывающий ритм из АВ-соединения (часть 42в): комплексы узкие
+  { key: 'ecg-avb3n', findings: { rhythm: 'avb3', escape: 'narrow', rate: 45 }, seed: 20, label: e.avb3n },
   { key: 'ecg-lbbb', findings: { bundle: 'lbbb' }, seed: 14, label: e.lbbb },
   { key: 'ecg-rbbb', findings: { bundle: 'rbbb' }, seed: 15, label: e.rbbb },
   { key: 'ecg-pericarditis', findings: { pericarditis: true, rate: 95 }, seed: 16, label: e.pericarditis },
