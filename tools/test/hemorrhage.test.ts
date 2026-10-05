@@ -101,8 +101,8 @@ describe('каталог', () => {
     expect(db.treatments[PCC]).toMatchObject({ kind: 'drug', route: 'iv', class: 'hemostatic.pcc' });
     expect(db.treatments[NSG]).toMatchObject({ kind: 'procedure', class: 'consult.neurosurgeon' });
     expect([txAvailable(db, PCC), txAvailable(db, NSG)]).toEqual([true, true]);
-    // тромболизис при кровоизлиянии — вред: кровотечение
-    for (const tx of [LYSIS, 'tx.thrombolysis']) expect(db.treatments[tx].effects.filter(e => e.kind === 'harm').map(e => e.on)).toEqual([ICH, SAH]);
+    // тромболизис при кровоизлиянии — вред: кровотечение; с частью 43а — и при расслоении аорты
+    for (const tx of [LYSIS, 'tx.thrombolysis']) expect(db.treatments[tx].effects.filter(e => e.kind === 'harm').map(e => e.on)).toEqual([ICH, SAH, 'cond.aortic_dissection']);
   });
 
   test('сроки: КТ — и при внезапной сильнейшей головной боли, и после КТ с кровью; нейрохирург — 60 минут от КТ с кровью', () => {

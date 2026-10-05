@@ -36,7 +36,7 @@ shots:
 card:
   text: Patients come to you with real illnesses and injuries, and almost every sign stays hidden until you ask, examine or order a test. Make a diagnosis, choose a treatment and see the outcome — and between shifts, build your own hospital.
   points:
-    - 49 conditions and 23 injuries; each patient’s own X-rays, ultrasound and ECGs
+    - 50 conditions and 23 injuries; each patient’s own X-rays, ultrasound and ECGs
     - Your own hospital with an emergency department, wards and an operating room
     - A review of every visit, a campaign with a mentor and a case of the day
     - Free, offline and ad-free
@@ -81,7 +81,7 @@ in Russian.
 
 ## What’s inside
 
-- 49 conditions and 23 injuries. At the clinic — 32 conditions a general practitioner sees: from
+- 50 conditions and 23 injuries. At the clinic — 32 conditions a general practitioner sees: from
   colds and flu to pneumonia, angina, heart attack, atrial fibrillation, tachycardias, heart block, nosebleeds and anaphylactic shock. In a hospital with an
   emergency department — 13 more surgical ones, from biliary colic to a perforated ulcer, bowel
   obstruction, deep vein thrombosis and acute ischaemia of the leg, and injuries: fractures, knee ligament tears, a torn calf muscle,
@@ -89,7 +89,8 @@ in Russian.
   ischaemic strokes: thrombolysis within 4.5 hours, and the window closes while the work-up goes on;
   after a transient ischaemic attack, the ABCD2 score decides how many antiplatelet drugs are needed;
   with a brain haemorrhage, thrombolysis is out — blood pressure, anticoagulant reversal and a
-  neurosurgeon within 60 minutes.
+  neurosurgeon within 60 minutes; with an aortic dissection — CT angiography with a chest slice,
+  intravenous morphine and a beta blocker, and type A goes to a surgical centre.
 - Wounds and burns as in a real emergency department: stitch now or delay the stitches, check the
   finger tendons, measure a burn with the patient’s palms and its depth with a pinprick, tetanus
   shots by vaccination records, and after a dog bite, a rabies vaccine with immunoglobulin.

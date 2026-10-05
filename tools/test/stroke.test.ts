@@ -99,7 +99,8 @@ describe('каталог: инсульт, КТ-ангиография, тром�
     expect(db.exams[CTA]).toMatchObject({ kind: 'imaging', room: 'room.ct', equipment: ['eq.ct_16', 'eq.ct_64'], radiation: 'high', time: { procedure: 12, report: 18 }, cost: 6000 });
     // первая серия — КТ без контраста, с уточнениями крови (часть 41в)
     expect(db.exams[CTA].checks).toEqual([...db.exams[CT].checks, { f: OCCLUSION, sens: 9500, spec: 9700 }]);
-    expect(db.rooms['room.ct'].exams).toEqual([CT, CTA]);
+    // с частью 43а — и КТ-ангиография груди
+    expect(db.rooms['room.ct'].exams).toEqual([CT, 'exam.cta_chest', CTA]);
     expect(db.exams[SWALLOW]).toMatchObject({ kind: 'bedside', complaints: SYMS, checks: [{ f: 'sign.dysphagia', sens: 7200, spec: 7100 }] });
     expect(db.exams[ASK]).toMatchObject({ complaints: SYMS, routineFor: SYMS });
     expect(db.exams[ASK].checks.find(k => k.f === ONSET)).toEqual({ f: ONSET, sens: 10000, spec: 10000 });
@@ -119,8 +120,8 @@ describe('каталог: инсульт, КТ-ангиография, тром�
       [1100, { window: ['yes'], lysis90: ['no'], lysis180: ['yes'], minor: ['no'] }],
       [500, { window: ['yes'], lysis180: ['no'], minor: ['no'] }],
     ]);
-    // при кровоизлиянии в мозг — вред (часть 41в): кровотечение
-    expect(t.effects.filter(e => e.kind === 'harm').map(e => e.on)).toEqual(['cond.ich', 'cond.sah']);
+    // при кровоизлиянии в мозг — вред (часть 41в): кровотечение; с частью 43а — и при расслоении аорты
+    expect(t.effects.filter(e => e.kind === 'harm').map(e => e.on)).toEqual(['cond.ich', 'cond.sah', 'cond.aortic_dissection']);
     // у инфаркта — своё имя
     expect(db.treatments['tx.thrombolysis'].name.ru).toBe('Тромболизис при инфаркте');
   });
@@ -668,8 +669,9 @@ describe('энциклопедия', () => {
     const t = article(db, LYSIS)!;
     expect(t.blocks.find(b => b.key === 'where')!.refs!.map(r => r.id)).toEqual([MONITOR, 'room.emergency', 'room.icu']);
     const used = t.blocks.find(b => b.key === 'usedAs')!.rows!.map(r => [r.label, r.refs.map(x => x.id)]);
-    // с частью 41в — опасно при кровоизлияниях в мозг: кровь на КТ — абсолютное противопоказание
-    expect(used).toEqual([['Опасно при', ['cond.ich', 'cond.sah']], ['Обязательно при', [STROKE]], ['Обязательно до перевода при', [STROKE]]]);
+    // с частью 41в — опасно при кровоизлияниях в мозг: кровь на КТ — абсолютное противопоказание; с частью 43а — и при
+    // расслоении аорты
+    expect(used).toEqual([['Опасно при', ['cond.ich', 'cond.aortic_dissection', 'cond.sah']], ['Обязательно при', [STROKE]], ['Обязательно до перевода при', [STROKE]]]);
     expect(article(db, 'rule.lysis_stroke')!.blocks.find(b => b.key === 'decides')!.refs!.map(r => r.id)).toEqual([LYSIS]);
     expect(article(db, CTA)!.blocks.find(b => b.key === 'where')!.refs!.map(r => r.id)).toEqual(['room.ct', 'eq.ct_16', 'eq.ct_64']);
     expect(article(db, 'room.ct')!.blocks.flatMap(b => b.refs ?? []).map(r => r.id)).toContain(CTA);

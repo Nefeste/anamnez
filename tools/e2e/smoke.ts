@@ -554,6 +554,17 @@ function avbSave(): { save: string; id: string } {
   return neuroSave('cond.av_block', fits, ['exam.ecg', 'exam.vitals', 'exam.ask_chronic']);
 }
 
+/**
+ * Песочница с приёмным, КТ и ПИТ (часть 43а): первая машина скорой везёт расслоение аорты типа B — без астмы и
+ * ХОБЛ: бета-адреноблокатор можно; ЭКГ у постели, давление на обеих руках, хронические болезни и
+ * КТ-ангиография груди готовы.
+ */
+function adSave(): { save: string; id: string } {
+  const fits = (x: ReturnType<typeof generatePatient>) => x.age >= 40 && x.truth.conditions[0].params.type === 'b'
+    && !x.truth.conditions.some(k => k.id === 'cond.asthma' || k.id === 'cond.copd') && x.truth.risks.length <= 2;
+  return neuroSave('cond.aortic_dissection', fits, ['exam.ecg', 'exam.bp_both_arms', 'exam.ask_chronic', 'exam.cta_chest']);
+}
+
 /** Больница с приёмным, КТ и ПИТ; первую машину скорой подменяет больной `primary`, для которого верно `fits`; сделаны `exams`. */
 function neuroSave(primary: string, fits: (x: ReturnType<typeof generatePatient>) => boolean, exams: string[]): { save: string; id: string } {
   const { db } = buildDb();
@@ -934,15 +945,18 @@ try {
   const heads = await drawn('[data-testid^="head-ct-"] canvas, [data-testid^="head-mri-"] canvas');
   const us = await drawn('[data-testid^="us-"] canvas');
   const abd = await drawn('[data-testid^="abd-"] canvas');
-  // снимок груди при травме (часть 32в): воздух, кровь, переломы рёбер
+  // снимок груди при травме (часть 32в): воздух, кровь, переломы рёбер; с частью 43а — и расширенное средостение
   const chest = await drawn('[data-testid^="chest-"] canvas');
+  // срез груди на КТ-ангиографии (часть 43а): без расслоения, тип A и тип B
+  const ctChest = await drawn('[data-testid^="cta-chest-"] canvas');
   const allImages = await drawn('canvas');
-  check(heads.length === 9 && heads.every(Boolean) && us.length === 16 && us.every(Boolean) && abd.length === 3 && abd.every(Boolean) && chest.length === 7 && chest.every(Boolean) && allImages.every(Boolean),
-    `П5: срезы головы нарисованы — ${heads.filter(Boolean).length} из 9, УЗИ — ${us.filter(Boolean).length} из 16 (с венами и артерией ног), снимки живота — ${abd.filter(Boolean).length} из 3, груди при травме — ${chest.filter(Boolean).length} из 7; все рисунки экрана — ${allImages.filter(Boolean).length} из ${allImages.length} (смотреть 06-head-*.png, 06-us.png, 06-abdomen.png, 06-chest.png)`);
+  check(heads.length === 9 && heads.every(Boolean) && us.length === 16 && us.every(Boolean) && abd.length === 3 && abd.every(Boolean) && chest.length === 8 && chest.every(Boolean)
+    && ctChest.length === 3 && ctChest.every(Boolean) && allImages.every(Boolean),
+    `П5: срезы головы нарисованы — ${heads.filter(Boolean).length} из 9, УЗИ — ${us.filter(Boolean).length} из 16 (с венами и артерией ног), снимки живота — ${abd.filter(Boolean).length} из 3, груди — ${chest.filter(Boolean).length} из 8, срезы груди на КТ — ${ctChest.filter(Boolean).length} из 3; все рисунки экрана — ${allImages.filter(Boolean).length} из ${allImages.length} (смотреть 06-head-*.png, 06-us.png, 06-abdomen.png, 06-chest.png, 06-cta-chest.png)`);
   // ЭКГ в двенадцати отведениях (spec 2026-10-chapter-3, часть 36): ритмы, проведение, стенки инфаркта
   const ecg = await drawn('[data-testid^="ecg-"] canvas');
   check(ecg.length === 20 && ecg.every(Boolean), `П5: листы ЭКГ в двенадцати отведениях нарисованы — ${ecg.filter(Boolean).length} из 20 (смотреть 06-ecg-*.png)`);
-  for (const id of ['head-ct', 'head-mri', 'us', 'abdomen', 'chest']) {
+  for (const id of ['head-ct', 'head-mri', 'us', 'abdomen', 'chest', 'cta-chest']) {
     await page.getByTestId(id).scrollIntoViewIfNeeded();
     await page.waitForTimeout(300);
     await page.getByTestId(id).screenshot({ path: join(OUT, `06-${id}.png`) });
@@ -2109,6 +2123,51 @@ try {
   check((await visibleText(page, 'enc-article-title')) === 'АВ-блокада II–III степени' && avbArticle.includes('Обычно — скорая, перевод в центр.')
     && avbArticle.includes('при нестабильной гемодинамике и широких комплексах или Мобитц II — блокаде ниже узла'),
     `энциклопедия, АВ-блокада: ${await visibleText(page, 'enc-article-title')} — перевод в центр, до перевода по виду блокады`);
+
+  // расслоение аорты (часть 43а): у вас — тип B; в карте — КТ-ангиография «расслоение типа B» и срез груди с
+  // интимой в нисходящей аорте; морфин и бета-адреноблокатор в вену у постели под монитором, своя ПИТ — разбор
+  // без замечаний; в энциклопедии — тип A на перевод, тромболизис опасен
+  const ad = adSave();
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', ad.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId('shift-continue').waitFor({ timeout: 15_000 });
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId('shift-continue').click();
+  await visible(page, 'visit-decide').waitFor({ timeout: 10_000 });
+  const adCard = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  // давление на обеих руках у этого больного почти одинаковое — без находок оно в «Известно» одной строкой
+  check(adCard.includes('Отслоённая интима в нисходящей аорте, два просвета; восходящая не расслоена — расслоение типа B') && adCard.includes('Давление на обеих руках'),
+    `расслоение аорты: в карте — КТ-ангиография с типом B и давление на обеих руках («${adCard.replace(/\n/g, ' · ').slice(0, 300)}»)`);
+  await visible(page, 'result-ct-chest').scrollIntoViewIfNeeded();
+  check((await visible(page, 'result-ct-chest').boundingBox() ?? { height: 0 }).height > 150, 'расслоение аорты: КТ-ангиография — срезом груди');
+  await page.screenshot({ path: join(OUT, '24-ad-card.png'), fullPage: true });
+  await visible(page, 'visit-decide').click();
+  await visible(page, 'dx-cond.aortic_dissection').click();
+  await visible(page, 'decision-to-plan').click();
+  await page.getByTestId('tx-tx.morphine_iv').waitFor({ timeout: 5000 });
+  check(!(await page.getByTestId('tx-tx.morphine_iv').isDisabled()) && !(await page.getByTestId('tx-tx.beta_blocker_iv').isDisabled()),
+    `расслоение аорты, решение: морфин и бета-адреноблокатор в вену у постели под монитором — ${await text(page, 'tx-tx.beta_blocker_iv')}`);
+  await page.getByTestId('tx-tx.morphine_iv').click();
+  await page.getByTestId('tx-tx.beta_blocker_iv').click();
+  await page.getByTestId('setting-icu').click();
+  await page.screenshot({ path: join(OUT, '24-ad-decision.png'), fullPage: true });
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
+  const adReview = await page.locator('body').innerText();
+  check(adReview.includes('Расслоение аорты') && !/[Нн]е назначено|не показано|вредно|Недооценили тяжесть/.test(adReview),
+    `расслоение аорты: морфин, бета-адреноблокатор и ПИТ, разбор — «${adReview.replace(/\n/g, ' · ').slice(0, 300)}»`);
+  await page.screenshot({ path: join(OUT, '24-ad-review.png'), fullPage: true });
+  await page.goto(`${base}/encyclopedia/article/cond.aortic_dissection`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const adArticle = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  check((await visibleText(page, 'enc-article-title')) === 'Расслоение аорты' && adArticle.includes('При расслоении восходящей аорты (тип A) — скорая, перевод в центр.')
+    && adArticle.includes('Тромболизис при инфаркте'),
+    `энциклопедия, расслоение аорты: ${await visibleText(page, 'enc-article-title')} — тип A на перевод, тромболизис опасен`);
 
   // хирургия живота (spec 2026-09-chapter-2, часть 30): со смотровой приёмного больница принимает
   // и хирургию — у вас больной острым холециститом; УЗИ — желчный пузырь с камнями и толстой

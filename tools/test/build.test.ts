@@ -200,9 +200,10 @@ describe('готовая амбулатория', () => {
     expect(us).toEqual(['exam.us_abdomen', 'exam.us_kidney', 'exam.us_leg_arteries', 'exam.us_leg_veins']);
     const ed = Object.keys(db.exams).filter(id => db.exams[id].collect === 'room.emergency');
     expect(ed).toEqual(['exam.troponin_hs']);
-    // кабинета КТ тоже нет (часть 40): при показаниях к КТ — перевод, как было; КТ-ангиография — с частью 41а
+    // кабинета КТ тоже нет (часть 40): при показаниях к КТ — перевод, как было; КТ-ангиография — с частью 41а,
+    // груди — с частью 43а
     const ct = Object.keys(db.exams).filter(id => db.exams[id].room === 'room.ct');
-    expect(ct).toEqual(['exam.ct_head', 'exam.cta_head']);
+    expect(ct).toEqual(['exam.ct_head', 'exam.cta_chest', 'exam.cta_head']);
     for (const id of Object.keys(db.exams).filter(x => !us.includes(x) && !ed.includes(x) && !ct.includes(x))) expect({ id, ...examWhere(db, plan, working, presetStaff, id) }).toMatchObject({ id, rooms: expect.any(Array) });
     for (const id of us) expect(examWhere(db, plan, working, presetStaff, id)).toEqual({ block: { kind: 'noRoom', room: 'room.ultrasound' } });
     for (const id of ct) expect(examWhere(db, plan, working, presetStaff, id)).toEqual({ block: { kind: 'noRoom', room: 'room.ct' } });

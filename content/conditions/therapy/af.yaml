@@ -82,10 +82,11 @@ findings:
 confirm: [exam.ecg]
 redFlags: [vital.bp_low]
 treatment:
-  # стабильному — урежение пульса: бета-адреноблокатор или верапамил (раздел 3.1.2.1, ЕОК IA). Антикоагулянты —
-  # можно; антиагреганты для профилактики инсульта не рекомендованы (раздел 3.1.1.1, ЕОК IIIA)
+  # стабильному — урежение пульса: бета-адреноблокатор или верапамил (раздел 3.1.2.1, ЕОК IA); при тяжёлой
+  # симптоматике — и в вену (там же; бета-адреноблокатор в вену — с частью 43а). Антикоагулянты — можно;
+  # антиагреганты для профилактики инсульта не рекомендованы (раздел 3.1.1.1, ЕОК IIIA)
   firstLine: [tx.beta_blocker, tx.verapamil]
-  acceptable: [tx.doac, tx.heparin_iv, tx.lmwh]
+  acceptable: [tx.doac, tx.heparin_iv, tx.lmwh, tx.beta_blocker_iv]
   notIndicated: [tx.aspirin_acs, tx.clopidogrel]
   plan: [tx.beta_blocker]
   byParam:
@@ -94,7 +95,7 @@ treatment:
     # таблетками при низком давлении — не то
     - when: { unstable: [yes] }
       acceptable: [tx.amiodarone_iv]
-      notIndicated: [tx.beta_blocker, tx.verapamil]
+      notIndicated: [tx.beta_blocker, tx.verapamil, tx.beta_blocker_iv]
       require: [tx.cardioversion, [tx.heparin_iv, tx.lmwh]]
     # стабильный, меньше 48 часов: урежение может избавить от кардиоверсии (раздел 3.1.2.2), а можно сразу
     # восстановить ритм — разрядом или амиодароном, с антикоагулянтом

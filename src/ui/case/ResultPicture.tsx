@@ -1,6 +1,7 @@
-// Снимки, лента, сектор УЗИ и срез КТ в результатах приёма: рисунок по тому, что показало
+// Снимки, лента, сектор УЗИ и срезы КТ в результатах приёма: рисунок по тому, что показало
 // обследование, — как в спецификации карты пациента (рентген, ЭКГ, УЗИ и КТ кодом, ADR 0013).
 import { useWindowDimensions, View } from 'react-native';
+import { ChestSlice } from '@/render/ChestSlice';
 import { Ecg12 } from '@/render/Ecg12';
 import { HeadSlice } from '@/render/HeadSlice';
 import { type UsImage, UsSector } from '@/render/UsSector';
@@ -49,6 +50,14 @@ export function ResultPicture({ image }: { image: ResultImage }) {
       </View>
     );
   }
+  if (image.kind === 'chestCt') {
+    // срез груди на КТ-ангиографии (часть 43а) — тот же квадрат, что у среза головы
+    return (
+      <View testID="result-ct-chest" style={{ borderRadius: 6, overflow: 'hidden', alignSelf: 'center' }}>
+        <ChestSlice width={Math.min(w, 360)} seed={image.seed} findings={image.findings} />
+      </View>
+    );
+  }
   if (image.kind === 'bone') {
     // кости (часть 32): две проекции на одной плёнке — во всю ширину, чтобы линия перелома была видна
     return (
@@ -66,6 +75,7 @@ export function ResultPicture({ image }: { image: ResultImage }) {
           ...(image.pneumothorax ? { pneumothorax: image.pneumothorax } : {}),
           ...(image.effusion ? { effusion: image.effusion } : {}),
           ...(image.ribFractures ? { ribFractures: image.ribFractures } : {}),
+          wideMediastinum: image.wideMediastinum,
         }} />
       </View>
     );

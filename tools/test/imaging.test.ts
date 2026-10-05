@@ -1,13 +1,14 @@
 // Снимки кодом (spec 2026-09-ct-mri-ultrasound): срез головы на КТ и МРТ (часть 20) и сектор УЗИ
 // (часть 21; подвздошная область с отростком — часть 29), обзорный снимок живота стоя (spec
-// 2026-09-chapter-2, часть 30б), снимок груди при травме (часть 32в) — геометрия очагов, и сам
-// рисунок без экрана (Skia через CanvasKit, tools/imaging/headless.ts): где светло и где темно, то
-// же зерно — тот же рисунок.
+// 2026-09-chapter-2, часть 30б), снимок груди при травме (часть 32в), срез груди на КТ-ангиографии
+// (spec 2026-10-chapter-3, часть 43а) — геометрия очагов, и сам рисунок без экрана (Skia через
+// CanvasKit, tools/imaging/headless.ts): где светло и где темно, то же зерно — тот же рисунок.
 import { beforeAll, describe, expect, test } from 'bun:test';
 import { brainRadius, headGeometry, type HeadFindings, type HeadFocus, inside, skullInnerRadius } from '../../src/render/ct/geometry';
-import { ABDOMEN_CASES, CHEST_CASES, HEAD_CASES, US_CASES } from '../../src/state/imagingCases';
+import { ABDOMEN_CASES, CHEST_CASES, CHEST_CT_CASES, HEAD_CASES, US_CASES } from '../../src/state/imagingCases';
 import { ABDOMEN_ASPECT, abdomenGeometry, colonAt, CRESCENT_X, DIAPHRAGM, domeY, type Loop, loopFolds, loopGas, loopLevels } from '../../src/render/xray/abdomenGeometry';
 import * as chest from '../../src/render/xray/chestGeometry';
+import * as chestCt from '../../src/render/ct/chestGeometry';
 import { inSector, polar as usPolar, R1, usGeometry } from '../../src/render/us/geometry';
 import { PANEL_BOTTOM, PANEL_TOP, veinGeometry } from '../../src/render/us/veinGeometry';
 import { loadSkia, luma, rasterize } from '../imaging/headless';
@@ -160,6 +161,126 @@ describe('срез головы: рисунок без экрана', () => {
     for (const k of HEAD_CASES) {
       const { png } = await draw(k.findings, k.seed, k.mode);
       expect(png.length).toBeGreaterThan(1000);
+      expect(k.label.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('срез груди на КТ: геометрия', () => {
+  const g0 = chestCt.chestGeometry({}, 1);
+  const rounds = (g: chestCt.ChestGeometry): [string, chestCt.Round][] => [
+    ['восходящая аорта', g.ascending], ['нисходящая аорта', g.descending], ['лёгочный ствол', g.trunk], ['верхняя полая вена', g.svc],
+    ['правый бронх', g.bronchi[0]], ['левый бронх', g.bronchi[1]], ['пищевод', g.esophagus], ['позвонок', g.vertebra],
+  ];
+  const rim = (o: chestCt.Round, k = 1): chestCt.Pt[] => Array.from({ length: 24 }, (_, i) => [o.c[0] + k * o.r * Math.cos((i / 24) * 2 * Math.PI), o.c[1] + k * o.r * Math.sin((i / 24) * 2 * Math.PI)]);
+
+  test('средостение — между лёгкими: сосуды, бронхи, пищевод и позвонок не заходят в лёгкие и друг в друга', () => {
+    for (const findings of [{}, { dissection: 'a' as const }, { dissection: 'b' as const }]) {
+      for (const seed of [1, 2, 3, 7]) {
+        const g = chestCt.chestGeometry(findings, seed);
+        const rs = rounds(g);
+        for (const [, o] of rs) for (const p of rim(o)) for (const l of g.lungs) expect(chestCt.inside(p, l)).toBe(false);
+        for (let i = 0; i < rs.length; i++) {
+          for (let j = i + 1; j < rs.length; j++) {
+            const [a, b] = [rs[i][1], rs[j][1]];
+            expect(Math.hypot(a.c[0] - b.c[0], a.c[1] - b.c[1])).toBeGreaterThanOrEqual(a.r + b.r);
+          }
+        }
+      }
+    }
+  });
+
+  test('лёгкие — внутри грудной стенки, позвонок и канал — в теле; правое лёгкое — слева на снимке', () => {
+    for (const l of g0.lungs) for (const p of l) expect(chestCt.inside(p, g0.wall)).toBe(true);
+    for (const p of [...rim(g0.vertebra), ...rim(g0.canal), ...g0.spinous]) expect(chestCt.inside(p, g0.body)).toBe(true);
+    const cx = (l: chestCt.Pt[]) => l.reduce((a, p) => a + p[0], 0) / l.length;
+    expect(cx(g0.lungs[0])).toBeLessThan(0.4);
+    expect(cx(g0.lungs[1])).toBeGreaterThan(0.6);
+    // восходящая аорта и верхняя полая вена — справа у пациента (слева на снимке), лёгочный ствол и нисходящая аорта — слева
+    expect(g0.svc.c[0]).toBeLessThan(g0.ascending.c[0]);
+    expect(g0.ascending.c[0]).toBeLessThan(g0.trunk.c[0]);
+    expect(g0.descending.c[0]).toBeGreaterThan(0.5);
+    expect(g0.descending.c[1]).toBeGreaterThan(g0.trunk.c[1]);
+  });
+
+  test('расслоение: тип A — интима в восходящей и нисходящей аорте, тип B — только в нисходящей, без расслоения — нет; расслоённая аорта шире', () => {
+    expect(g0.flaps).toHaveLength(0);
+    const a = chestCt.chestGeometry({ dissection: 'a' }, 2);
+    const b = chestCt.chestGeometry({ dissection: 'b' }, 3);
+    expect(a.flaps.map(f => f.vessel)).toEqual(['ascending', 'descending']);
+    expect(b.flaps.map(f => f.vessel)).toEqual(['descending']);
+    expect(a.ascending.r).toBeGreaterThan(g0.ascending.r);
+    expect(b.ascending.r).toBe(g0.ascending.r);
+    expect(a.descending.r).toBeGreaterThan(g0.descending.r);
+    expect(b.descending.r).toBeGreaterThan(g0.descending.r);
+    // интима и ложный просвет — внутри своего сосуда
+    for (const g of [a, b]) {
+      for (const f of g.flaps) {
+        const v = f.vessel === 'ascending' ? g.ascending : g.descending;
+        for (const p of [...f.path, ...f.falseLumen]) expect(Math.hypot(p[0] - v.c[0], p[1] - v.c[1])).toBeLessThanOrEqual(v.r);
+      }
+    }
+  });
+});
+
+describe('срез груди на КТ: рисунок без экрана', () => {
+  const S = 320;
+  let draw: (f: chestCt.ChestCtFindings, seed: number) => Promise<{ rgba: Uint8Array; png: Uint8Array }>;
+  beforeAll(async () => {
+    await loadSkia();
+    const { recordChestSlice } = await import('../../src/render/ct/chest');
+    draw = (f, seed) => rasterize(recordChestSlice(S, f, seed), S, S);
+  });
+  const at = (px: Uint8Array, p: chestCt.Pt) => luma(px, S, S, p[0], p[1]);
+  /** Точка в истинном просвете — за интимой со стороны малой дуги — и в ложном, напротив. */
+  const lumens = (f: chestCt.Flap, v: chestCt.Round): [chestCt.Pt, chestCt.Pt] => {
+    const p0 = f.path[0], p1 = f.path[f.path.length - 1];
+    const m = Math.atan2((p0[1] + p1[1]) / 2 - v.c[1], (p0[0] + p1[0]) / 2 - v.c[0]);
+    const toward = (t: number): chestCt.Pt => [v.c[0] + 0.6 * v.r * Math.cos(t), v.c[1] + 0.6 * v.r * Math.sin(t)];
+    return [toward(m), toward(m + Math.PI)];
+  };
+
+  test('окно средостения: лёгкие и бронхи чёрные, контраст в аорте и лёгочном стволе светлый, позвонок светлый, вокруг тела — чёрный фон', async () => {
+    const g = chestCt.chestGeometry({}, 1);
+    const { rgba } = await draw({}, 1);
+    const lung: number[] = [];
+    for (let i = 0; i < 400; i++) {
+      const p: chestCt.Pt = [0.08 + (0.84 * (i % 20)) / 20, 0.2 + (0.6 * Math.floor(i / 20)) / 20];
+      if (g.lungs.some(l => chestCt.inside(p, l))) lung.push(at(rgba, p));
+    }
+    lung.sort((x, y) => x - y);
+    expect(lung.length).toBeGreaterThan(100);
+    expect(lung[lung.length >> 1]).toBeLessThan(20);
+    expect(at(rgba, g.bronchi[0].c)).toBeLessThan(20);
+    for (const o of [g.ascending, g.descending, g.trunk]) expect(at(rgba, o.c)).toBeGreaterThan(200);
+    expect(at(rgba, g.vertebra.c)).toBeGreaterThan(160);
+    expect(at(rgba, [0.02, 0.02])).toBeLessThan(5);
+  });
+
+  test('расслоение: ложный просвет темнее истинного, интима — темнее обоих; тип B — восходящая аорта ровная', async () => {
+    for (const [type, seed] of [['a', 2], ['b', 3], ['a', 5], ['b', 9]] as const) {
+      const g = chestCt.chestGeometry({ dissection: type }, seed);
+      const { rgba } = await draw({ dissection: type }, seed);
+      for (const f of g.flaps) {
+        const v = f.vessel === 'ascending' ? g.ascending : g.descending;
+        const [real, fake] = lumens(f, v);
+        expect(at(rgba, real)).toBeGreaterThan(200);
+        expect(at(rgba, real) - at(rgba, fake)).toBeGreaterThan(40);
+        expect(at(rgba, fake) - at(rgba, f.path[8])).toBeGreaterThan(10);
+      }
+      if (type === 'b') expect(at(rgba, g.ascending.c)).toBeGreaterThan(200);
+    }
+  });
+
+  test('то же зерно — те же байты; другое — другой срез; все варианты «Проверок» рисуются', async () => {
+    const a = await draw({ dissection: 'a' }, 4);
+    const b = await draw({ dissection: 'a' }, 4);
+    const c = await draw({ dissection: 'a' }, 5);
+    expect(Buffer.from(a.png).equals(Buffer.from(b.png))).toBe(true);
+    expect(Buffer.from(a.png).equals(Buffer.from(c.png))).toBe(false);
+    expect(CHEST_CT_CASES.map(k => k.key)).toEqual(['cta-chest-normal', 'cta-chest-a', 'cta-chest-b']);
+    for (const k of CHEST_CT_CASES) {
+      expect((await draw(k.findings, k.seed)).png.length).toBeGreaterThan(1000);
       expect(k.label.length).toBeGreaterThan(0);
     }
   });
@@ -710,13 +831,21 @@ describe('снимок груди при травме: рисунок без э�
     for (const p of [[0.76, 0.62], [0.77, 0.58]] as [number, number][]) expect(at(on, p) - at(off, p)).toBeGreaterThan(40);
   });
 
+  test('расширенное средостение (часть 43а): по обе стороны тени над сердцем светлее, чем на том же месте без него', async () => {
+    const off = (await draw({}, 3)).rgba;
+    const on = (await draw({ wideMediastinum: true }, 3)).rgba;
+    for (const p of [[0.41, 0.15], [0.62, 0.27]] as [number, number][]) expect(at(on, p) - at(off, p)).toBeGreaterThan(20);
+    // ниже — сердце то же
+    expect(Math.abs(at(on, [0.7, 0.62]) - at(off, [0.7, 0.62]))).toBeLessThan(3);
+  });
+
   test('то же зерно — те же байты; все варианты «Проверок» рисуются', async () => {
     const a = await draw({ ribFractures: { side: 'right', ribs: [5, 6, 7] } }, 9);
     const b = await draw({ ribFractures: { side: 'right', ribs: [5, 6, 7] } }, 9);
     expect(Buffer.from(a.png).equals(Buffer.from(b.png))).toBe(true);
     const plain = await draw({}, 9);
     expect(Buffer.from(a.png).equals(Buffer.from(plain.png))).toBe(false);
-    expect(CHEST_CASES.map(k => k.key)).toEqual(['chest-small', 'chest-large', 'chest-tension', 'chest-fluid', 'chest-massive', 'chest-level', 'chest-rib']);
+    expect(CHEST_CASES.map(k => k.key)).toEqual(['chest-small', 'chest-large', 'chest-tension', 'chest-fluid', 'chest-massive', 'chest-level', 'chest-rib', 'chest-mediastinum']);
     for (const k of CHEST_CASES) {
       expect((await draw(k.findings, k.seed)).png.length).toBeGreaterThan(1000);
       expect(k.label.length).toBeGreaterThan(0);

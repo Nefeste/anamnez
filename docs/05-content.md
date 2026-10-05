@@ -135,7 +135,7 @@ department: therapy
 kind: disease                 # disease | injury | syndrome | state
 severity: serious             # minor | moderate | serious | critical
 epidemiology:
-  prevalence: common          # very_common | common | uncommon | rare | very_rare | extremely_rare | ultra_rare
+  prevalence: common          # very_common | common | uncommon | rare | very_rare | extremely_rare | ultra_rare | exceptionally_rare
   age: { min: 18, peak: [65, 95] }
   season: { winter: 1.5, spring: 1.1, summer: 0.6, autumn: 1.0 }
   risks:
@@ -495,6 +495,9 @@ surgery:
   нет — это её пункты (`points.age`). Производный по баллам (`{ rule, from }`) — у правила с баллами,
   порог можно набрать. «Без лечения» списком — у каждой записи, кроме последней, есть условие `when`;
   другая болезнь `as` — есть в базе, с ней приходят, и это не сама болезнь;
+- расслоение аорты (с 0.3.16, spec 2026-10-chapter-3, часть 43а): спутники при болезни (`companionsFor`) —
+  лечение действует на неё чем угодно, кроме вреда: нитроглицерин в вену при расслоении снижает давление
+  (`relieve`), а причину не лечит; полоса частоты `exceptionally_rare` — 0,3;
 - АВ-блокада (с 0.3.15, spec 2026-10-chapter-3, часть 42в): «одно из» до перевода (`beforeTransfer`
   группами) — лечения группы есть в базе, не операции, не в списках той же тактики и не повторяются, как у
   `require`;
