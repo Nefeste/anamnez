@@ -3000,7 +3000,7 @@ try {
   check((await text(page, 'chapter')).startsWith('Глава 3. Сердце и мозг') && (await text(page, 'chapter-day')).startsWith('сосудистое отделение районной больницы в Нижнеборске · перед первой сменой')
     && (await page.locator('[data-testid^="mission-"]').count()) === 7 && (await page.getByTestId('chapter-next').count()) === 0,
     `глава 3: ${(await text(page, 'chapter-day'))}, заданий ${await page.locator('[data-testid^="mission-"]').count()}`);
-  check((await text(page, 'mission-ecg')).includes('0 из 10\u00a0больных подряд') && (await text(page, 'mission-ctRoom')).includes('пока нет'), 'глава 3: ход заданий — срок подряд, кабинет КТ');
+  check((await text(page, 'mission-ecg')).includes('0 из 5\u00a0больных подряд') && (await text(page, 'mission-ctRoom')).includes('пока нет'), 'глава 3: ход заданий — срок подряд, кабинет КТ');
   await page.getByTestId('letter-minutes').click();
   await page.getByTestId('letter-text').waitFor({ timeout: 5000 });
   check((await text(page, 'letter-text')).startsWith('Здравствуйте. В нашем деле решают минуты') && (await text(page, 'letter-sheet')).includes('Е. В. Соколова'),

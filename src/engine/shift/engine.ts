@@ -22,7 +22,7 @@ import { freezeClock, generatePatient, patientAt, typicalPatient } from '../med/
 import { contextOf, likelyParams, posterior } from '../med/infer';
 import { scaleTriage } from '../med/news2';
 import { alsoSettings, choiceFor, evaluatePlan, primaryOf, recommendedSetting, selfLimits, settingFit, surgeriesOf, treatable, txAvailable, type Venue, whenHolds } from '../med/plan';
-import { examCost, indicated, nextStep } from '../med/policy';
+import { examCost, indicated, nextStep, ORDER_MINUTES } from '../med/policy';
 import { buildReview, type ReviewData } from '../med/review';
 import { scoreCase } from '../med/score';
 import type { Observation } from '../med/types';
@@ -863,21 +863,9 @@ export function targetPlace(db: ContentDb, s: ShiftState, p: ShiftPatient): Targ
  * сделать нельзя, ничего не меняется.
  */
 function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pct = 100): number | null {
-  const e = db.exams[examId];
-  if (!e || p.done.includes(examId) || !examFits(e, p.patient)) return null;
-  const ctx = hospitalCtx(db, s);
-  // у постели (spec 2026-10-chapter-3, часть 37): лежащему в смотровой приёмного с монитором ЭКГ
-  // снимают на месте — врач, без очереди в кабинет и без описания
-  const bed = bedsideOf(db, s, p, examId);
-  const where = bed ? { rooms: [] } : examWhere(db, ctx.plan, ctx.working, ctx.staffed, examId);
-  if ('block' in where) return null;
-  const queued = !bed && (e.kind === 'imaging' || e.kind === 'functional');
-  const rooms = e.room && !bed ? where.rooms.map(id => ctx.plan.rooms.find(r => r.id === id)!) : [];
-  const room = queued ? rooms.reduce((a, b) => ((s.rooms[b.id] ?? 0) < (s.rooms[a.id] ?? 0) ? b : a)) : rooms[0];
-  const eqId = room?.equipment.find(x => x !== null && (e.equipment ?? []).includes(x)) ?? undefined;
-  const eq = eqId ? db.equipment[eqId] : undefined;
-  // время: аппарат и тот, кто делает (первая должность помещения), — в процентах записанного
-  const roomPct = room ? Math.round((eq?.speed ?? 1) * speedOf(db, memberAt(ctx.staff, room.id, db.rooms[room.type].staff[0]))) : 100;
+  const how = examSetup(db, s, p, examId);
+  if (!how) return null;
+  const { e, ctx, bed, queued, room, eqId, roomPct } = how;
   const skill = room && e.kind === 'imaging' ? imagingSkill(db, ctx.staff, room, eqId) : NORMAL_SKILL;
 
   // песочница: показано ли — по тому, что известно сейчас; показанные оплачивают ОМС и ДМС
@@ -895,7 +883,7 @@ function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pc
   }
   const after = (e.time.report ?? 0) + (e.time.turnaround ?? 0);
   if (queued && room) {
-    const order = 2 * MIN;
+    const order = ORDER_MINUTES * MIN;
     const start = Math.max(s.t + order, s.rooms[room.id] ?? 0);
     const end = start + Math.round((e.time.procedure * MIN * roomPct) / 100);
     s.rooms[room.id] = end;
@@ -917,6 +905,42 @@ function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pc
     addPending(s, p, examId, draw + cost + wait, second, room ? { room: room.id, start: draw, end: draw + cost } : undefined, true);
   }
   return cost;
+}
+
+/** Где и как сделать обследование этому пациенту сейчас: у постели или в кабинете, время — с поправкой аппарата и человека; нельзя — null. */
+function examSetup(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id) {
+  const e = db.exams[examId];
+  if (!e || p.done.includes(examId) || !examFits(e, p.patient)) return null;
+  const ctx = hospitalCtx(db, s);
+  // у постели (spec 2026-10-chapter-3, часть 37): лежащему в смотровой приёмного с монитором ЭКГ
+  // снимают на месте — врач, без очереди в кабинет и без описания
+  const bed = bedsideOf(db, s, p, examId);
+  const where = bed ? { rooms: [] } : examWhere(db, ctx.plan, ctx.working, ctx.staffed, examId);
+  if ('block' in where) return null;
+  const queued = !bed && (e.kind === 'imaging' || e.kind === 'functional');
+  const rooms = e.room && !bed ? where.rooms.map(id => ctx.plan.rooms.find(r => r.id === id)!) : [];
+  const room = queued ? rooms.reduce((a, b) => ((s.rooms[b.id] ?? 0) < (s.rooms[a.id] ?? 0) ? b : a)) : rooms[0];
+  const eqId = room?.equipment.find(x => x !== null && (e.equipment ?? []).includes(x)) ?? undefined;
+  const eq = eqId ? db.equipment[eqId] : undefined;
+  // время: аппарат и тот, кто делает (первая должность помещения), — в процентах записанного
+  const roomPct = room ? Math.round((eq?.speed ?? 1) * speedOf(db, memberAt(ctx.staff, room.id, db.rooms[room.type].staff[0]))) : 100;
+  return { e, ctx, bed, queued, room, eqId, roomPct };
+}
+
+/**
+ * Через сколько минут придёт результат, если назначить обследование сейчас (spec 2026-10-chapter-3, часть 46б): у
+ * постели — процедура; снимок — назначить, дождаться аппарата, процедура с поправкой аппарата и человека и описание;
+ * анализ — забор и лаборатория. Так разумный врач знает свою больницу: томограф на 16 срезов медленнее записанного.
+ * Сделать нельзя — undefined.
+ */
+export function readyIn(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id): number | undefined {
+  const how = examSetup(db, s, p, examId);
+  if (!how) return undefined;
+  const { e, bed, queued, room, roomPct } = how;
+  if (bed) return bed.time.procedure;
+  const after = (e.time.report ?? 0) + (e.time.turnaround ?? 0);
+  if (queued && room) return (Math.max(s.t + ORDER_MINUTES * MIN, s.rooms[room.id] ?? 0) - s.t) / MIN + (e.time.procedure * roomPct) / 100 + after;
+  return e.time.procedure + (room ? (after * roomPct) / 100 : after) + (e.repeat?.minutes ?? 0);
 }
 
 function addPending(s: ShiftState, p: ShiftPatient, examId: Id, readyAt: number, obs: Observation[], at?: { room: string; start: number; end: number }, repeat?: true) {
@@ -1932,7 +1956,7 @@ function colleagueStep(db: ContentDb, s: ShiftState, p: ShiftPatient) {
     // навык 1–2 иногда забывает спросить перед лечением — жребий своей ветви
     skipAsk: q => how.forget > 0 && branch(s, `forget:${p.id}:${q}`).chance(how.forget * 100),
     // и что у постели (часть 39а): под монитором — тромболизис; и сколько прошло с прихода (часть 41а)
-    venue: { ...venueOf(db, s), bedside: bedsideEquipment(db, s, p), minutes: Math.round((s.t - p.arriveT) / 60) },
+    venue: { ...venueOf(db, s), bedside: bedsideEquipment(db, s, p), minutes: Math.round((s.t - p.arriveT) / 60), ready: id => readyIn(db, s, p, id) },
   });
   p.phase = r.phase;
   if (r.step.kind === 'exam') {

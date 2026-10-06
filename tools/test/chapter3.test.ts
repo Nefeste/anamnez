@@ -227,12 +227,12 @@ describe('задания главы 3', () => {
   test('срок у больных подряд: серия идёт через дни и рвётся первым опозданием; ход — нынешняя серия, выполнено — по лучшей', () => {
     const m = mission('ecg');
     const seq = (x: string, target = ECG) => ({ targetSeq: { [target]: x } });
-    expect(missionProgress(db, view([day(1, seq('AAAAA')), day(2, seq('AAAAA'))]), m)).toEqual({ value: 10, target: 10, done: true });
-    expect(missionProgress(db, view([day(1, seq('AAAAAAAAA')), day(2, seq('B'))]), m)).toEqual({ value: 0, target: 10, done: false });
-    expect(missionProgress(db, view([day(1, seq('AAD')), day(2), day(3, seq('AAA'))]), m)).toEqual({ value: 3, target: 10, done: false });
-    // десять подряд были — выполнено, что бы ни было потом
-    expect(missionProgress(db, view([day(1, seq('AAAAAAAAAA')), day(2, seq('C'))]), m)).toEqual({ value: 10, target: 10, done: true });
-    expect(missionProgress(db, view([day(1, seq('D'))], { ecg: 1 }), m)).toEqual({ value: 10, target: 10, done: true });
+    expect(missionProgress(db, view([day(1, seq('AAA')), day(2, seq('AA'))]), m)).toEqual({ value: 5, target: 5, done: true });
+    expect(missionProgress(db, view([day(1, seq('AAAA')), day(2, seq('B'))]), m)).toEqual({ value: 0, target: 5, done: false });
+    expect(missionProgress(db, view([day(1, seq('AAD')), day(2), day(3, seq('AAA'))]), m)).toEqual({ value: 3, target: 5, done: false });
+    // пять подряд были — выполнено, что бы ни было потом
+    expect(missionProgress(db, view([day(1, seq('AAAAA')), day(2, seq('C'))]), m)).toEqual({ value: 5, target: 5, done: true });
+    expect(missionProgress(db, view([day(1, seq('D'))], { ecg: 1 }), m)).toEqual({ value: 5, target: 5, done: true });
     // чужой срок не в счёт; КТ при инсульте — пять подряд
     expect(missionProgress(db, view([day(1, seq('AAAAAAAAAA', CT))]), m).value).toBe(0);
     expect(missionProgress(db, view([day(1, seq('AAAAA', CT))]), mission('ct'))).toEqual({ value: 5, target: 5, done: true });
@@ -307,7 +307,7 @@ describe('глава 3 между сменами', () => {
     expect([v.title, v.place, v.day, v.complete, v.after, v.next]).toEqual([T.campaign.chapter(3, ch3.name.ru), ch3.place.ru, 0, false, undefined, undefined]);
     expect(v.letters.map(l => [l.id, l.from])).toEqual([...ch3.letters.filter(l => l.when === 'start')].reverse().map(l => [l.id, db.characters[l.from].short.ru]));
     expect(v.missions.map(m => [m.id, m.progress])).toEqual([
-      ['ecg', '0 из 10 больных подряд'],
+      ['ecg', '0 из 5 больных подряд'],
       ['ct', '0 из 5 больных подряд'],
       ['lysis', '0 из 1'],
       ['ctRoom', T.campaign.notYet],

@@ -145,6 +145,34 @@ const FIRST_CONTACT = 10;
  */
 const TIGHT_SLACK = 10;
 
+/** Назначить снимок или функциональное обследование — минуты врача, как в смене (spec 2026-10-chapter-3, часть 46б). */
+export const ORDER_MINUTES = 2;
+
+/**
+ * Сколько минут от назначения до результата: как в этой больнице (`venue.ready`: очередь к аппарату, его скорость), а
+ * без неё — у постели под монитором сама процедура, снимок и функциональное — ещё и назначить (`ORDER_MINUTES`).
+ */
+function leadMinutes(e: Exam, venue?: Venue): number {
+  const here = venue?.ready?.(e.id);
+  if (here !== undefined) return here;
+  if (e.bedside && e.bedside.equipment.every(q => venue?.bedside?.includes(q) === true)) return e.bedside.time.procedure;
+  return (e.kind === 'imaging' || e.kind === 'functional' ? ORDER_MINUTES : 0) + examMinutes(e);
+}
+
+/**
+ * Обследования срока `t` из `exams`, которые успеют к его концу, если назначить их через `elapsed` минут от прихода
+ * (часть 46б): КТ-ангиография с назначением и заключением — 32 минуты, и после осмотра и вопроса о начале её к
+ * 40-й минуте уже не успеть, а КТ — успеть.
+ */
+function inTime(db: ContentDb, t: Target, exams: readonly Id[], elapsed: number, venue?: Venue): Id[] {
+  return t.exams.filter(e => exams.includes(e) && db.exams[e] !== undefined && leadMinutes(db.exams[e], venue) <= t.minutes - elapsed);
+}
+
+/** Самое быстрое из обследований, поровну — дешевле. */
+function fastest(db: ContentDb, exams: readonly Id[], venue?: Venue): Id {
+  return [...exams].sort((a, b) => leadMinutes(db.exams[a], venue) - leadMinutes(db.exams[b], venue) || examCost(db, a) - examCost(db, b) || (a < b ? -1 : 1))[0];
+}
+
 /**
  * Вопрос о часах от начала болезни `condId` (spec 2026-10-chapter-3, часть 46а), если их ещё не знают: от
  * них зависят окна по часам (`clock`), а с окнами — что делать по сроку: при инсульте в первые 6 часов и
@@ -207,21 +235,38 @@ function safetyExams(db: ContentDb, obs: readonly Observation[], patient: Patien
  * обследований — то, что больше уточнит тактику (`prefer`: КТ-ангиография при NIHSS 6 и больше в
  * первые 6 часов вместо КТ), иначе дешевле. Снятый находкой срок (часть 44б: периферический парез лица) не
  * торопит. С частью 46а — и срок дольше `within`, который иначе не успеть (`tight`): с прихода прошло
- * `elapsed` минут, и до его конца остаётся не больше времени самого быстрого его обследования и `slack`.
+ * `elapsed` минут, и до его конца остаётся не больше времени самого быстрого его обследования и `slack`. С
+ * частью 46б из его обследований — только те, что успеют к его концу; не успеет ни одно — самое быстрое.
  */
 export function urgentExam(
   db: ContentDb, patient: Patient, done: readonly Id[], exams: readonly Id[], within = Infinity, prefer: (exam: Id) => number = () => 0, obs: readonly Observation[] = [],
-  tight?: { elapsed: number; slack: number },
+  tight?: Tight,
 ): Id | undefined {
+  return dueTarget(db, patient, done, exams, within, prefer, obs, tight)?.exam;
+}
+
+/**
+ * Срок поджимает (часть 46а): с прихода прошло `elapsed` минут, запас — `slack`; где больной — `venue` (часть 46б);
+ * `beyond` — только сроки дольше `within`: сроки первого контакта — отдельно.
+ */
+interface Tight { elapsed: number; slack: number; venue?: Venue; beyond?: boolean }
+
+/** Срок, по которому обследование сейчас, и само обследование (см. `urgentExam`). */
+function dueTarget(
+  db: ContentDb, patient: Patient, done: readonly Id[], exams: readonly Id[], within: number, prefer: (exam: Id) => number, obs: readonly Observation[],
+  tight?: Tight,
+): { target: Target; exam: Id } | undefined {
   const pressing = (t: Target) => tight !== undefined && t.minutes - tight.elapsed <= tight.slack + Math.min(...t.exams.map(e => (db.exams[e] ? examMinutes(db.exams[e]) : Infinity)));
   const due = Object.values(db.targets)
-    .filter(t => (t.minutes <= within || pressing(t)) && t.exams.length > 0 && t.complaints.some(f => patient.complaints.includes(f)) && !t.exams.some(e => done.includes(e)) && !lifted(t, obs))
+    .filter(t => (tight?.beyond ? t.minutes > within && pressing(t) : t.minutes <= within || pressing(t)) && t.exams.length > 0 && t.complaints.some(f => patient.complaints.includes(f)) && !t.exams.some(e => done.includes(e)) && !lifted(t, obs))
     .sort((a, b) => a.minutes - b.minutes || (a.id < b.id ? -1 : 1));
   for (const t of due) {
     const own = t.exams.filter(e => exams.includes(e));
     if (own.length === 0) continue;
-    const score = new Map(own.map(e => [e, quantize(prefer(e))]));
-    return own.sort((a, b) => score.get(b)! - score.get(a)! || examCost(db, a) - examCost(db, b) || (a < b ? -1 : 1))[0];
+    const fit = tight ? inTime(db, t, own, tight.elapsed, tight.venue) : own;
+    const pool = fit.length > 0 ? fit : [fastest(db, own, tight?.venue)];
+    const score = new Map(pool.map(e => [e, quantize(prefer(e))]));
+    return { target: t, exam: pool.sort((a, b) => score.get(b)! - score.get(a)! || examCost(db, a) - examCost(db, b) || (a < b ? -1 : 1))[0] };
   }
   return undefined;
 }
@@ -429,15 +474,22 @@ export function nextStep(db: ContentDb, patient: Patient, obs: readonly Observat
   if (now.diagnosis === undefined) {
     // срок по жалобе (часть 37) — первым делом: при давящей боли в груди ЭКГ, ещё до расспроса; при
     // признаках инсульта — осмотр с NIHSS (часть 41а)
-    const urgent = urgentExam(db, patient, done, opt.exams, FIRST_CONTACT, undefined, obs);
-    if (urgent) return { step: { kind: 'exam', exam: urgent }, phase: now };
+    const urgent = dueTarget(db, patient, done, opt.exams, FIRST_CONTACT, () => 0, obs);
     // срок, который иначе не успеть (часть 46а): КТ при подозрении на инсульт — 40 минут от прихода, а с
-    // заключением она идёт 25, — сразу после осмотра, до расспроса: его вопросы подождут результата. Только
-    // сначала — когда началось (пара минут): без часов от начала не выбрать между КТ и КТ-ангиографией
-    const pressing = urgentExam(db, patient, done, opt.exams, FIRST_CONTACT, e => preferTactic(e), obs, { elapsed, slack: TIGHT_SLACK });
+    // заключением она идёт 25, — сразу после осмотра, до расспроса: его вопросы подождут результата
+    const pressing = dueTarget(db, patient, done, opt.exams, FIRST_CONTACT, e => preferTactic(e), obs, { elapsed, slack: TIGHT_SLACK, venue: opt.venue, beyond: true });
+    // срок первого контакта уже не успеть, а поджимающий — ещё можно (часть 46б): врач освободился поздно, и осмотр
+    // при инсульте опоздал — сначала назначить КТ (пара минут, дальше она идёт сама), осмотр — сразу после
+    const late = urgent !== undefined && inTime(db, urgent.target, opt.exams, elapsed, opt.venue).length === 0;
+    if (urgent && !(late && pressing && inTime(db, pressing.target, opt.exams, elapsed, opt.venue).length > 0)) return { step: { kind: 'exam', exam: urgent.exam }, phase: now };
     if (pressing) {
+      // только сначала — когда началось (пара минут): без часов от начала не выбрать между КТ и КТ-ангиографией. С
+      // частью 46б — если и после вопроса будет из чего выбрать: КТ-ангиография после него к концу срока уже не
+      // успеет — сразу КТ, а когда началось, спросят, пока она идёт
       const clock = clockQuestion(db, leadOf()?.id, patient, obs, opt.exams, done);
-      return { step: { kind: 'exam', exam: clock ?? pressing }, phase: now };
+      const after = clock === undefined ? [] : inTime(db, pressing.target, opt.exams, elapsed + examMinutes(db.exams[clock]), opt.venue);
+      const exam = clock === undefined ? pressing.exam : after.length > 1 ? clock : (after[0] ?? fastest(db, pressing.target.exams.filter(e => opt.exams.includes(e)), opt.venue));
+      return { step: { kind: 'exam', exam }, phase: now };
     }
     // вопросы всем и то, что делают каждому с такой жалобой (часть 32г-2: неврологический осмотр при ране головы)
     const routine = opt.exams.find(id => (db.exams[id].routine || db.exams[id].routineFor?.some(f => patient.complaints.includes(f))) && !done.includes(id));

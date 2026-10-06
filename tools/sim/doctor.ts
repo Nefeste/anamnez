@@ -19,12 +19,13 @@ import { complaintObservations, runExam } from '../../src/engine/med/exams';
 import { generatePatient, patientAt, presentingWeight } from '../../src/engine/med/generate';
 import { contextOf, posterior } from '../../src/engine/med/infer';
 import { evaluatePlan, type Plan, primaryOf, selfLimits, type Venue } from '../../src/engine/med/plan';
-import { choosePlan, type DoctorPhase, type DoctorResult, examCost, examMinutes, MIN_GAIN, nextStep, runDoctor, type Strategy } from '../../src/engine/med/policy';
+import { choosePlan, type DoctorPhase, type DoctorResult, examCost, examMinutes, MIN_GAIN, nextStep, ORDER_MINUTES, runDoctor, type Strategy } from '../../src/engine/med/policy';
 import { type Grade, scoreCase } from '../../src/engine/med/score';
 import type { Observation, Patient } from '../../src/engine/med/types';
 import { targetResults, type TargetPlace } from '../../src/engine/shift/targets';
 import type { ResultBatch } from '../../src/engine/shift/types';
 import { buildDb } from '../content/load';
+import { type Profile, PROFILES } from './profiles';
 
 const arg = (name: string, def: string) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -83,14 +84,6 @@ const tally: Record<Strategy, Tally> = { rational: empty(), lazy: empty(), shotg
 interface Case { truth: string; correct: boolean; correctGroup: boolean; money: number; minutes: number; exams: number; needless: boolean; reaction: boolean }
 const rationalCases: Case[] = [];
 const timing: Record<Strategy, number> = { rational: 0, lazy: 0, shotgun: 0 };
-/**
- * Кардиология и неврология главы 3 (spec 2026-10-chapter-3, критерий приёмки 3) — болезни таблицы «Медицина
- * главы»: в базе это терапия и неврология, а пороги — свои у каждой.
- */
-const PROFILES: Record<'cardiology' | 'neurology', Id[]> = {
-  cardiology: ['cond.acs', 'cond.angina_stable', 'cond.af', 'cond.svt', 'cond.vt', 'cond.av_block', 'cond.adhf', 'cond.hypertensive_crisis', 'cond.bp_uncontrolled', 'cond.pericarditis', 'cond.aortic_dissection', 'cond.pe'],
-  neurology: ['cond.stroke_ischemic', 'cond.tia', 'cond.ich', 'cond.sah', 'cond.seizure', 'cond.status_epilepticus', 'cond.bell_palsy', 'cond.hypoglycemia'],
-};
 /** больница главы 3 — с неврологией */
 const chapter3 = departments.includes('dept.neurology');
 
@@ -266,7 +259,6 @@ if (departments.length > 1) {
 // 3000 пациентов сотня и полсотни, и пороги были бы для сведения. Поэтому из того же потока (зёрна с 8 000 000)
 // отбираются больные каждой группы, пока их не наберётся `PROFILE_N`: болезни — с частотами этой больницы.
 // Пороги — как у отделений: до группы ≥ 90 %, сбалансированная ≥ 85 %.
-type Profile = keyof typeof PROFILES;
 interface ProfileTally {
   patients: number; accuracy: number; groupAccuracy: number; balanced: number;
   perCondition: Record<string, { n: number; groupAccuracy: number }>; topConfusions: [string, number][];
@@ -328,7 +320,7 @@ const atBedside = (id: Id) => db.exams[id]?.bedside?.equipment.every(e => ED_BED
 function edMinutes(id: Id): number {
   const e = db.exams[id];
   if (atBedside(id)) return e.bedside!.time.procedure;
-  return e.kind === 'imaging' || e.kind === 'functional' ? 2 + examMinutes(e) : examMinutes(e);
+  return e.kind === 'imaging' || e.kind === 'functional' ? ORDER_MINUTES + examMinutes(e) : examMinutes(e);
 }
 const edPlace: TargetPlace = { roomType: () => 'room.emergency', bedside: atBedside, can: () => true };
 interface EdCase { correct: boolean; onTime: number; targets: number; ecg: boolean; lysis: boolean; contra: boolean; missed: boolean; minutes: number; byTarget: Record<string, [number, number]> }

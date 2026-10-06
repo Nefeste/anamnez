@@ -1,6 +1,8 @@
 // Сроки разумного врача (spec 2026-10-chapter-3, часть 46а): срок решения — от находки, за вычетом минут после
 // неё, и вопросы о противопоказаниях к лечению идущего срока — в нём; срок, который иначе не успеть, — сразу,
-// только сначала — когда началось; срок, который ничего не решает, не торопит.
+// только сначала — когда началось; срок, который ничего не решает, не торопит. С частью 46б — из обследований срока
+// то, что успеет к его концу (и по времени этой больницы), а срок первого контакта, который уже не успеть, не
+// держит другой.
 import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
 import type { Id } from '../../src/content/types';
@@ -8,7 +10,7 @@ import { Rng } from '../../src/engine/core/rng';
 import { complaintObservations, runExam } from '../../src/engine/med/exams';
 import { generatePatient } from '../../src/engine/med/generate';
 import type { Plan, Venue } from '../../src/engine/med/plan';
-import { decisionLimit, type DoctorPhase, examMinutes, nextStep } from '../../src/engine/med/policy';
+import { decisionLimit, type DoctorPhase, examMinutes, nextStep, ORDER_MINUTES } from '../../src/engine/med/policy';
 import type { Observation, Patient } from '../../src/engine/med/types';
 import { candidatesOf } from '../../src/engine/shift/engine';
 
@@ -23,14 +25,14 @@ const cands = candidatesOf(db, ED);
 const exams = Object.keys(db.exams).sort();
 
 const minutesOf = (done: readonly Id[]) => done.reduce((a, id) => a + examMinutes(db.exams[id]), 0);
-/** Шаги разумного врача до решения; минуты с прихода — по сделанным обследованиям. */
-function run(p: Patient, venue: Venue): { done: Id[]; plan: Plan; diagnosis: Id; obs: Observation[] } {
+/** Шаги разумного врача до решения; минуты с прихода — по сделанным обследованиям и `before` до первого (сортировка, вызов). */
+function run(p: Patient, venue: Venue, before = 0): { done: Id[]; plan: Plan; diagnosis: Id; obs: Observation[] } {
   const obs: Observation[] = complaintObservations(p);
   const done: Id[] = [];
   let phase: DoctorPhase = {};
   const rng = Rng.seeded(p.seed).fork('doctor');
   for (let k = 0; k < 40; k++) {
-    const r = nextStep(db, p, obs, done, phase, { candidates: cands, exams, threshold: 0.9, minGain: 0.02, venue: { ...venue, minutes: minutesOf(done) } });
+    const r = nextStep(db, p, obs, done, phase, { candidates: cands, exams, threshold: 0.9, minGain: 0.02, venue: { ...venue, minutes: before + minutesOf(done) } });
     phase = r.phase;
     if (r.step.kind === 'decide') return { done, plan: r.step.plan, diagnosis: r.step.diagnosis, obs };
     obs.push(...runExam(db, p, r.step.exam, rng.fork(`${k}`)));
@@ -78,6 +80,34 @@ describe('срок, который иначе не успеть', () => {
       expect(done.slice(0, 2)).toEqual([NEURO, 'exam.ask_stroke']);
       expect(CT).toContain(done[2]);
       expect(minutesOf(done.slice(0, 3))).toBeLessThanOrEqual(40);
+    }
+  }, 30_000);
+});
+
+describe('срок — тем, что успеет (часть 46б)', () => {
+  const strokes = () => people(30, 'cond.stroke_ischemic', p => p.complaints.some(f => STROKE_SIGNS.includes(f)) && !p.complaints.includes('sym.chest_pain_pressing'));
+
+  test('сортировка и вызов отняли две минуты: КТ-ангиография после вопроса о начале к 40-й минуте не успеет — КТ сразу после осмотра', () => {
+    for (const p of strokes()) {
+      const { done } = run(p, BAY, 2);
+      expect(done.slice(0, 2)).toEqual([NEURO, 'exam.ct_head']);
+      expect(2 + minutesOf(done.slice(0, 2)) + ORDER_MINUTES).toBeLessThanOrEqual(40);
+    }
+  }, 30_000);
+
+  test('врач освободился на седьмой минуте: осмотр в 10 минут уже не успеть — сначала назначить КТ, осмотр сразу после', () => {
+    for (const p of strokes()) {
+      const { done } = run(p, BAY, 7);
+      expect(done.slice(0, 2)).toEqual(['exam.ct_head', NEURO]);
+    }
+  }, 30_000);
+
+  test('томограф этой больницы медленнее записанного: КТ-ангиография не успеет — КТ без вопроса о начале', () => {
+    // КТ-ангиография здесь — 40 минут до заключения, КТ — 30
+    const ready = (id: Id) => (id === 'exam.cta_head' ? 40 : id === 'exam.ct_head' ? 30 : undefined);
+    for (const p of strokes()) {
+      const { done } = run(p, { ...BAY, ready });
+      expect(done.slice(0, 2)).toEqual([NEURO, 'exam.ct_head']);
     }
   }, 30_000);
 });
