@@ -102,8 +102,8 @@ export function minutesTo(p: Pick<ShiftPatient, 'arriveT' | 'results'>, t: Targe
   return at === Infinity ? undefined : Math.round((at - start) / 60);
 }
 
-/** Остаётся у нас (часть 41а): в палате, ПИТ или операционной; переведённому срок — там, куда везут. */
-const STAYS: readonly Setting[] = ['admit', 'icu', 'surgery'];
+/** Остаётся у нас (часть 41а): в палате, ПИТ, реанимации (часть 47) или операционной; переведённому срок — там, куда везут. */
+const STAYS: readonly Setting[] = ['admit', 'icu', 'ricu', 'surgery'];
 
 /**
  * Сроки закрытого приёма. Срок на назначение или место — только тем, кому его сделали (часть 39б):

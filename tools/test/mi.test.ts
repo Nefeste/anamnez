@@ -175,11 +175,11 @@ describe('правило «Можно ли тромболизис»', () => {
 });
 
 describe('тромболизис у постели', () => {
-  test('только под монитором с дефибриллятором — и при инсульте (часть 41а), снижение давления в вену (часть 41в), кардиоверсия и амиодарон (часть 42а), трифосаденин, верапамил и прокаинамид в вену (часть 42б), атропин, допамин и наружная стимуляция (часть 42в), морфин, бета-адреноблокатор и нитроглицерин в вену (часть 43а), тромболизис при ТЭЛА (часть 43б), CPAP (часть 43в), пункция перикарда (часть 43д); остальное лечение — где угодно', () => {
+  test('только под монитором с дефибриллятором — и при инсульте (часть 41а), снижение давления в вену (часть 41в), кардиоверсия и амиодарон (часть 42а), трифосаденин, верапамил и прокаинамид в вену (часть 42б), атропин, допамин и наружная стимуляция (часть 42в), морфин, бета-адреноблокатор и нитроглицерин в вену (часть 43а), тромболизис при ТЭЛА (часть 43б), CPAP (часть 43в), пункция перикарда (часть 43д), норэпинефрин, ИВЛ и наркоз в вену (часть 47); остальное лечение — где угодно', () => {
     expect(txAvailable(db, LYSIS)).toBe(false);
     expect(txAvailable(db, LYSIS, BAY)).toBe(true);
     expect(txAvailable(db, LYSIS, { bedside: ['eq.ecg'] })).toBe(false);
-    expect(Object.values(db.treatments).filter(t => !txAvailable(db, t.id)).map(t => t.id).sort()).toEqual(['tx.amiodarone_iv', 'tx.atropine', 'tx.beta_blocker_iv', 'tx.bp_iv', 'tx.cardioversion', 'tx.cpap', 'tx.dopamine', 'tx.morphine_iv', 'tx.nitroglycerin_iv', 'tx.pacing_tc', 'tx.pericardiocentesis', 'tx.procainamide', LYSIS, 'tx.thrombolysis_pe', 'tx.thrombolysis_stroke', 'tx.trifosadenine', 'tx.verapamil_iv'].sort());
+    expect(Object.values(db.treatments).filter(t => !txAvailable(db, t.id)).map(t => t.id).sort()).toEqual(['tx.amiodarone_iv', 'tx.anesthetic_iv', 'tx.atropine', 'tx.beta_blocker_iv', 'tx.bp_iv', 'tx.cardioversion', 'tx.cpap', 'tx.dopamine', 'tx.morphine_iv', 'tx.nitroglycerin_iv', 'tx.norepinephrine', 'tx.pacing_tc', 'tx.pericardiocentesis', 'tx.procainamide', LYSIS, 'tx.thrombolysis_pe', 'tx.thrombolysis_stroke', 'tx.trifosadenine', 'tx.ventilation', 'tx.verapamil_iv'].sort());
   });
 
   test('в карте: без монитора у постели кнопка серая и сказано почему; под монитором — обычная', () => {
@@ -334,7 +334,7 @@ describe('энциклопедия', () => {
   test('у тромболизиса — где делают и с чем назначают; у ОКС — «Обязательно до перевода»; у правила — о каком лечении', () => {
     const a = article(db, LYSIS)!;
     const where = a.blocks.find(b => b.key === 'where')!;
-    expect(where.refs!.map(r => r.id)).toEqual([MONITOR, 'room.emergency', 'room.icu']);
+    expect(where.refs!.map(r => r.id)).toEqual([MONITOR, 'room.emergency', 'room.icu', 'room.ricu']);
     const companions = a.blocks.find(b => b.key === 'companions')!;
     expect(companions.rows!.map(r => [r.label, r.refs.map(x => x.id)])).toEqual([
       ['Каждое', ['tx.aspirin_acs', 'tx.clopidogrel']],

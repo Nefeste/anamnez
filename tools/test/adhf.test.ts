@@ -259,7 +259,8 @@ describe('энциклопедия', () => {
     expect(where[0]).toBe('Обычно — в стационаре.');
     expect(where).toContain('При отёке лёгких, гипоперфузии, частоте дыхания выше 25 или сатурации ниже 90 % — палата интенсивной терапии.');
     const rows = Object.fromEntries(x.blocks.find(b => b.key === 'treatment')!.rows!.map(r => [r.label, r.refs.map(y => y.id)]));
-    expect(rows['Обязательно, при гипоперфузии — холодной влажной коже']).toEqual([DOPAMINE]);
+    // с частью 47 (spec 2026-10-chapter-4) — или норэпинефрин: вазопрессор при кардиогенном шоке (156_2)
+    expect(rows['Обязательно, при гипоперфузии — холодной влажной коже — одно из']).toEqual([DOPAMINE, 'tx.norepinephrine']);
     expect(rows['Опасно, при гипоперфузии — холодной влажной коже']).toEqual(expect.arrayContaining([FUROSEMIDE, NITRO, CPAP]));
     expect(rows['Обязательно, при отёке лёгких']).toEqual([CPAP]);
   });

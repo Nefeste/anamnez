@@ -30,13 +30,14 @@ export const NO_ECONOMY: ContentDb['economy'] = {
     traits: { careful: { weight: 0 }, fast: { weight: 0 }, novice: { weight: 0 }, experienced: { weight: 0 } },
     doctor: { threshold: [90, 90, 90, 90, 90], minGain: [20, 20, 20, 20, 20], forget: [0, 0, 0, 0, 0] },
   },
-  tariffs: { oms: { minor: 0, moderate: 0, serious: 0, critical: 0 }, omsWard: { minor: 0, moderate: 0, serious: 0, critical: 0 }, omsOperation: 0, omsIcu: 0, omsQuality: { A: 0, B: 0, C: 0, D: 0 }, omsUnconfirmed: 0, omsExam: 0, dms: { visit: 0, price: 0 }, self: { visit: 0, price: 0 } },
+  tariffs: { oms: { minor: 0, moderate: 0, serious: 0, critical: 0 }, omsWard: { minor: 0, moderate: 0, serious: 0, critical: 0 }, omsOperation: 0, omsIcu: 0, omsRicu: 0, omsQuality: { A: 0, B: 0, C: 0, D: 0 }, omsUnconfirmed: 0, omsExam: 0, dms: { visit: 0, price: 0 }, self: { visit: 0, price: 0 } },
   level: { base: 100, rooms: {} },
   payers: { dms: [0, 0, 0], self: [0, 0, 0] },
   consumables: { ask: 0, physical: 0, bedside: 0, lab: 0, rapid: 0, functional: 0, imaging: 0 },
   interest: 0,
   ward: { bedDay: 0, interrupted: 0 },
   icu: { bedDay: 0 },
+  ricu: { bedDay: 0 },
   transfer: { hours: 2, pci: 1 },
   ambulance: { perDay: [0, 0], weight: { minor: 0, moderate: 0, serious: 0, critical: 0 }, severe: 0 },
   reputation: { start: 50, pull: 1, waitShort: 0, waitShortMin: 0, waitLong: 0, waitLongMin: 0, noToilet: 0, died: 0 },
@@ -540,6 +541,13 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     for (const k of t.contraindications) if (!(k.id in risks) && !(k.id in conditions)) errors.push(`${t.id}: противопоказание ${k.id} не найдено`);
     // у постели (часть 39а): аппараты есть в каталоге больницы
     for (const id of t.bedside?.equipment ?? []) if (!equipment[id]) errors.push(`${t.id}: аппарат у постели ${id} не найден`);
+    // лечение своего места (часть 47): реанимация в каталоге есть, у постели — аппарат, который в неё ставят
+    if (t.place) {
+      const vent = Object.values(rooms).filter(r => r.vent);
+      if (vent.length === 0) errors.push(`${t.id}: лечение реанимации, а реанимации в каталоге нет`);
+      if (!t.bedside) errors.push(`${t.id}: лечение реанимации — у постели, а аппарата у постели не названо`);
+      for (const id of t.bedside?.equipment ?? []) if (equipment[id] && !vent.some(r => equipment[id].rooms.includes(r.id))) errors.push(`${t.id}: аппарат у постели ${id} в реанимацию не ставят`);
+    }
     // спутники (часть 39а): есть, не операции, не само лечение и без повторов
     const companions = (t.companions ?? []).flat();
     for (const id of companions) {
@@ -873,6 +881,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (t.class) out.class = t.class;
     if (t.route) out.route = t.route;
     if (t.bedside) out.bedside = t.bedside;
+    if (t.place) out.place = t.place;
     if (t.companions) out.companions = t.companions;
     if (t.companionsFor) out.companionsFor = t.companionsFor;
     if (t.surgery) {
@@ -890,11 +899,11 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   const examIds = Object.keys(exams).sort();
   for (const r of Object.values(rooms).sort((a, b) => (a.id < b.id ? -1 : 1))) {
     const out: RoomType = {
-      id: r.id, name: r.name, gen: r.gen, staff: r.staff, needsEquipment: r.needsEquipment, seats: r.seats, beds: r.beds, emergency: r.emergency, icu: r.icu,
+      id: r.id, name: r.name, gen: r.gen, staff: r.staff, needsEquipment: r.needsEquipment, seats: r.seats, beds: r.beds, emergency: r.emergency, icu: r.icu, vent: r.vent,
       ...(r.admits ? { admits: r.admits } : {}),
       sizes: r.sizes.map(z => ({
         id: z.id, w: z.w, h: z.h, cost: z.cost, upkeep: z.upkeep, door: { x: z.door.x, width: z.door.width },
-        objects: z.objects.map(([kind, x, y]) => ({ kind, x, y })), slots: z.slots, staff: z.staff,
+        objects: z.objects.map(([kind, x, y]) => ({ kind, x, y })), slots: z.slots, ...(z.slotsOf ? { slotsOf: z.slotsOf } : {}), staff: z.staff,
         ...(z.patient ? { patient: z.patient } : {}),
         seats: r.seats ? z.objects.filter(([kind]) => kind === 'chair').length : 0,
         beds: r.beds || r.emergency || r.icu ? z.objects.filter(([kind]) => kind === 'bed').length : 0,
@@ -1243,6 +1252,21 @@ function checkHospital(c: {
       const beds = z.objects.filter(([kind]) => kind === 'bed').length;
       if (r.icu && beds === 0) errors.push(`${at}: палата интенсивной терапии без коек`);
       if (r.icu && z.slots.length < beds) errors.push(`${at}: коек ${beds}, а мест под мониторы — ${z.slots.length}`);
+      // реанимация (часть 47): у каждой койки — места под монитор и аппарат ИВЛ, по порядку коек
+      if (r.vent && !r.icu) errors.push(`${at}: реанимация — палата интенсивной терапии, нужен и icu`);
+      if (r.vent && !z.slotsOf) errors.push(`${at}: в реанимации не сказано, где у коек мониторы и аппараты ИВЛ (slotsOf)`);
+      const seen = new Set<number>();
+      for (const [eq, list] of Object.entries(z.slotsOf ?? {})) {
+        if (!equipment[eq]) errors.push(`${at}: места для ${eq} — такого аппарата нет`);
+        else if (!equipment[eq].rooms.includes(r.id)) errors.push(`${at}: места для ${eq}, а сюда его не ставят`);
+        if (r.icu && list.length !== beds) errors.push(`${at}: коек ${beds}, а мест для ${eq} — ${list.length}`);
+        for (const i of list) {
+          if (i >= z.slots.length) errors.push(`${at}: места ${i} для ${eq} нет — мест под аппараты ${z.slots.length}`);
+          if (seen.has(i)) errors.push(`${at}: место ${i} — у двух аппаратов`);
+          seen.add(i);
+        }
+      }
+      if (r.vent && z.slotsOf && !Object.keys(z.slotsOf).some(eq => equipment[eq]?.sprite === 'monitor')) errors.push(`${at}: в реанимации у коек нет мест под монитор`);
     }
   }
   for (const e of Object.values(equipment)) {
@@ -1256,8 +1280,10 @@ function checkHospital(c: {
     // палата интенсивной терапии (часть 38а) работает от монитора: у её аппаратов место — по койке
     if (e.slot !== undefined && e.rooms.some(room => rooms[room]?.icu)) errors.push(`${e.id}: в палате интенсивной терапии аппарат встаёт к своей койке — своего места у него нет`);
     // аппаратом делают обследование или операцию (операционный стол, наркозный аппарат — часть 28)
-    const used = exList.some(x => x.equipment?.includes(e.id) || x.bedside?.equipment.includes(e.id)) || Object.values(c.treatments).some(t => t.surgery?.equipment.includes(e.id));
-    if (!used) errors.push(`${e.id}: ни одно обследование и ни одна операция им не делают`);
+    // и лечение у постели (часть 47): ИВЛ — аппаратом ИВЛ
+    const used = exList.some(x => x.equipment?.includes(e.id) || x.bedside?.equipment.includes(e.id))
+      || Object.values(c.treatments).some(t => t.surgery?.equipment.includes(e.id) || t.bedside?.equipment.includes(e.id));
+    if (!used) errors.push(`${e.id}: ни одно обследование, лечение у постели и ни одна операция им не делают`);
   }
   for (const r of Object.values(roles)) {
     if (r.salary[0] > r.salary[1]) errors.push(`${r.id}: зарплата при навыке 1 больше, чем при навыке 5`);

@@ -1319,6 +1319,9 @@ try {
   // кабинет КТ (часть 40) — в списке помещений песочницы, с ценой
   const ctType = await text(page, 'room-type-room.ct');
   check(ctType.startsWith('Кабинет КТ') && ctType.includes('70 000 ₽'), `песочница: в списке помещений — «${ctType.replace(/\n/g, ' · ').slice(0, 120)}»`);
+  // реанимация (spec 2026-10-chapter-4, часть 47) — тоже в списке, с ценой
+  const ricuType = await text(page, 'room-type-room.ricu');
+  check(ricuType.startsWith('Реанимация (ОРИТ)') && ricuType.includes('110 000 ₽'), `песочница: в списке помещений — «${ricuType.replace(/\n/g, ' · ').slice(0, 120)}»`);
   await page.getByTestId('room-type-room.reception').click();
   await page.getByTestId('build-place').waitFor({ timeout: 5000 });
   // призрак — посреди участка (17, 10); тянем на пять клеток влево

@@ -161,7 +161,8 @@ describe('валидатор базы', () => {
 describe('каталог больницы', () => {
   test('собран: у помещений — что открывают, у аппаратов — какие обследования, у должностей — где работают', () => {
     const { db } = buildDb();
-    expect(Object.keys(db.rooms)).toHaveLength(16);
+    // с частью 47 (spec 2026-10-chapter-4) — и реанимация
+    expect(Object.keys(db.rooms)).toHaveLength(17);
     // нанятый врач (spec 2026-09-hired-doctors): встаёт на место врача, нужна ординаторская с местами
     expect(db.roles['role.therapist']).toMatchObject({ hire: true, stands: 'role.doctor', needs: 'room.staff', rooms: ['room.office'] });
     expect(db.rooms['room.staff'].sizes.map(z => z.places)).toEqual([2, 4]);
@@ -172,7 +173,7 @@ describe('каталог больницы', () => {
     // NT-proBNP (часть 43в) — тоже на иммунохимическом
     expect(db.equipment['eq.immuno_analyzer'].exams).toEqual(['exam.d_dimer', 'exam.nt_probnp', 'exam.troponin_hs', 'exam.tsh']);
     expect(db.equipment['eq.xray_digital'].upgradeOf).toBe('eq.xray_analog');
-    expect(db.roles['role.nurse'].rooms).toEqual(['room.ecg', 'room.emergency', 'room.icu', 'room.procedure', 'room.triage', 'room.ward']);
+    expect(db.roles['role.nurse'].rooms).toEqual(['room.ecg', 'room.emergency', 'room.icu', 'room.procedure', 'room.ricu', 'room.triage', 'room.ward']);
     // палата (spec 2026-09-chapter-2, часть 26): койки — места лежащих
     expect(db.rooms['room.ward'].sizes.map(z => z.beds)).toEqual([2, 4]);
     expect(db.rooms['room.office'].sizes.every(z => z.beds === 0)).toBe(true);
@@ -444,7 +445,7 @@ describe('каталог больницы', () => {
     });
     expect(foreign.some(e => e.includes('exam.tsh: аппарат eq.ecg стоит в room.ecg'))).toBe(true);
     // и тогда иммунохимическим анализатором ничего не делают
-    expect(foreign.some(e => e.includes('eq.immuno_analyzer: ни одно обследование и ни одна операция им не делают'))).toBe(true);
+    expect(foreign.some(e => e.includes('eq.immuno_analyzer: ни одно обследование, лечение у постели и ни одна операция им не делают'))).toBe(true);
   });
 
   test('у постели и сроки (часть 37): не в смотровой, аппарат не из смотровой, срок, которого у постели не успеть, — ошибки', () => {
@@ -452,8 +453,8 @@ describe('каталог больницы', () => {
     expect(ward.some(e => e.includes('exam.ecg: у постели — только в смотровой приёмного, а room.ward не она'))).toBe(true);
     const foreign = broken(d => edit(d, 'exams/ecg.yaml', 'equipment: [eq.monitor_defib]', 'equipment: [eq.ecg]'));
     expect(foreign.some(e => e.includes('exam.ecg: аппарат у постели eq.ecg стоит в room.ecg, а не в room.emergency'))).toBe(true);
-    // монитором тогда ничего не делают
-    expect(foreign.some(e => e.includes('eq.monitor_defib: ни одно обследование и ни одна операция им не делают'))).toBe(true);
+    // монитор без ЭКГ у постели не лишний (часть 47): под ним идут допамин, тромболизис, норэпинефрин
+    expect(foreign.some(e => e.includes('eq.monitor_defib: ни одно обследование, лечение у постели и ни одна операция им не делают'))).toBe(false);
     const quick = broken(d => edit(d, 'targets/ecg_chest_pain.yaml', 'minutes: 10', 'minutes: 4'));
     expect(quick.some(e => e.includes('target.ecg_chest_pain: в room.emergency ни одно из обследований срока не делают у постели за 4 минут'))).toBe(true);
     const unknown = broken(d => edit(d, 'targets/ecg_chest_pain.yaml', 'exams: [exam.ecg]', 'exams: [exam.ecg, exam.ekg]'));
@@ -617,9 +618,23 @@ describe('каталог больницы', () => {
     expect(has(broken(d => edit(d, I, 'slots: [[2, 2], [4, 2]]', 'slots: [[2, 2]]')), 'room.icu S: коек 2, а мест под мониторы — 1')).toBe(true);
     expect(has(broken(d => edit(d, I, '      - [bed, 1, 2]\n      - [bed, 5, 2]\n', '')), 'room.icu S: палата интенсивной терапии без коек')).toBe(true);
     expect(has(broken(d => edit(d, I, 'icu: true', 'icu: true\nbeds: true')), 'room.icu S: палата интенсивной терапии — не палата и не смотровая приёмного')).toBe(true);
-    const rooms = 'rooms: [room.emergency, room.icu]';
-    expect(has(broken(d => edit(d, M, rooms, 'rooms: [room.emergency, room.icu, room.icu]')), 'eq.monitor_defib: помещение повторяется')).toBe(true);
+    const rooms = 'rooms: [room.emergency, room.icu, room.ricu]';
+    expect(has(broken(d => edit(d, M, rooms, 'rooms: [room.emergency, room.icu, room.ricu, room.icu]')), 'eq.monitor_defib: помещение повторяется')).toBe(true);
     expect(has(broken(d => edit(d, M, rooms, `${rooms}\nslot: 0`)), 'eq.monitor_defib: в палате интенсивной терапии аппарат встаёт к своей койке — своего места у него нет')).toBe(true);
+  });
+
+  test('реанимация (часть 47): у каждой койки — места под монитор и аппарат ИВЛ; лечение реанимации — с её аппаратом', () => {
+    const R = 'hospital/rooms/ricu.yaml';
+    const has = (errors: string[], text: string) => errors.some(e => e.includes(text));
+    const slots = 'slotsOf: { eq.monitor_defib: [0, 1, 2, 3], eq.ventilator: [4, 5, 6, 7] }';
+    expect(has(broken(d => edit(d, R, slots, 'slotsOf: { eq.monitor_defib: [0, 1, 2, 3], eq.ventilator: [4, 5, 6] }')), 'room.ricu M: коек 4, а мест для eq.ventilator — 3')).toBe(true);
+    expect(has(broken(d => edit(d, R, slots, 'slotsOf: { eq.monitor_defib: [0, 1, 2, 3], eq.ventilator: [3, 5, 6, 7] }')), 'room.ricu M: место 3 — у двух аппаратов')).toBe(true);
+    expect(has(broken(d => edit(d, R, slots, 'slotsOf: { eq.monitor_defib: [0, 1, 2, 3], eq.ventilator: [4, 5, 6, 9] }')), 'room.ricu M: места 9 для eq.ventilator нет')).toBe(true);
+    expect(has(broken(d => edit(d, R, slots, 'slotsOf: { eq.monitor_defib: [0, 1, 2, 3], eq.ecg: [4, 5, 6, 7] }')), 'room.ricu M: места для eq.ecg, а сюда его не ставят')).toBe(true);
+    expect(has(broken(d => edit(d, R, `    ${slots}\n`, '')), 'room.ricu M: в реанимации не сказано, где у коек мониторы и аппараты ИВЛ')).toBe(true);
+    expect(has(broken(d => edit(d, R, 'icu: true\n', '')), 'room.ricu M: реанимация — палата интенсивной терапии, нужен и icu')).toBe(true);
+    expect(has(broken(d => edit(d, 'treatments/ventilation.yaml', 'bedside: { equipment: [eq.ventilator] }\n', '')), 'tx.ventilation: лечение реанимации — у постели, а аппарата у постели не названо')).toBe(true);
+    expect(has(broken(d => edit(d, 'treatments/ventilation.yaml', 'bedside: { equipment: [eq.ventilator] }', 'bedside: { equipment: [eq.ecg] }')), 'tx.ventilation: аппарат у постели eq.ecg в реанимацию не ставят')).toBe(true);
   });
 
   test('в лаборатории без аппарата не работают — у анализа должен быть анализатор', () => {

@@ -5,6 +5,8 @@ import { lowerFirst } from '../case';
 const UNDER: Record<string, string> = {
   home: 'лечить дома', ward: 'направить в стационар', ambulance: 'вызвать скорую', admit: 'положить в палату',
   surgery: 'взять в операционную', transfer: 'перевести в областную', icu: 'положить в палату интенсивной терапии',
+  // реанимация с ИВЛ (spec 2026-10-chapter-4, часть 47)
+  ricu: 'положить в реанимацию на ИВЛ',
 };
 /** Цвет сортировки словами — в разборе скорой (часть 27). */
 const TRIAGE: Record<string, string> = { red: 'красный', yellow: 'жёлтый', green: 'зелёный' };
@@ -16,7 +18,7 @@ const hoursMinutes = (minutes: number) => {
 };
 const OVER: Record<string, string> = {
   home: 'лечения дома', ward: 'направления в стационар', ambulance: 'скорой', admit: 'палаты',
-  surgery: 'операционной', transfer: 'перевода', icu: 'палаты интенсивной терапии',
+  surgery: 'операционной', transfer: 'перевода', icu: 'палаты интенсивной терапии', ricu: 'реанимации',
 };
 
 export const spikes = {
@@ -135,7 +137,10 @@ export const spikes = {
     contraindicated: (by: string) => `Противопоказано: ${lowerFirst(by)}`,
     // часть 39а: тромболизис — только лежащему под монитором с дефибриллятором
     noBedside: (gen: string) => `У постели нет ${gen}`,
-    setting: { home: 'Дома', ward: 'В стационар', ambulance: 'Вызвать скорую', admit: 'В палату', surgery: 'В операционную', transfer: 'Перевести', icu: 'В ПИТ' } as Record<string, string>,
+    // лечение реанимации (spec 2026-10-chapter-4, часть 47): ИВЛ — только «В ОРИТ»
+    onlyRicu: 'Только в реанимации — своей нет, переводят',
+    ricuFull: 'Только в реанимации — свободных коек с ИВЛ нет',
+    setting: { home: 'Дома', ward: 'В стационар', ambulance: 'Вызвать скорую', admit: 'В палату', surgery: 'В операционную', transfer: 'Перевести', icu: 'В ПИТ', ricu: 'В ОРИТ' } as Record<string, string>,
     role: {
       firstLine: 'препарат выбора',
       acceptable: 'допустимая замена',
@@ -171,6 +176,8 @@ export const spikes = {
       admitted: 'Лежит в палате — чем кончится, покажет обход',
       // своя палата интенсивной терапии (spec 2026-10-chapter-3, часть 38а)
       icu: 'Лежит в палате интенсивной терапии, под монитором, — чем кончится, покажет обход',
+      // своя реанимация (spec 2026-10-chapter-4, часть 47)
+      ricu: 'Лежит в реанимации — чем кончится, покажет обход',
       // операционная (spec 2026-09-chapter-2, часть 28)
       operated: 'В операционную, после операции — в палату: чем кончится, покажет обход',
       transferred: (female: boolean) => (female ? 'Переведена в другую больницу' : 'Переведён в другую больницу'),

@@ -217,6 +217,9 @@ export const encyclopedia = {
     // судорожный приступ и эпилептический статус (spec 2026-10-chapter-3, часть 44в): первый приступ или эпилепсия
     'history:first': 'при первом в жизни приступе',
     'history:epilepsy': 'при известной эпилепсии',
+    // рефрактерный эпилептический статус (spec 2026-10-chapter-4, часть 47)
+    'refractory:yes': 'если противосудорожные скорой не помогли и приступы идут больше часа',
+    'refractory:no': 'если приступы идут меньше часа',
     // переломы (часть 32): смещение отломков и стабильность
     'displacement:none': 'без смещения',
     'displacement:displaced': 'при смещении',
@@ -308,13 +311,15 @@ export const encyclopedia = {
   // обязательное и при переводе (часть 39а): тромболизис в окне
   beforeTransfer: 'Обязательно до перевода',
   preHospital: 'До приезда скорой',
-  setting: { home: 'дома', ward: 'в стационаре', ambulance: 'скорая, больница', admit: 'в стационаре', surgery: 'операция', transfer: 'скорая, перевод в центр', icu: 'палата интенсивной терапии' },
+  setting: { home: 'дома', ward: 'в стационаре', ambulance: 'скорая, больница', admit: 'в стационаре', surgery: 'операция', transfer: 'скорая, перевод в центр', icu: 'палата интенсивной терапии', ricu: 'реанимация с ИВЛ' },
   whereTitle: 'Где лечить',
   whereDefault: (s: string) => `Обычно — ${s}.`,
   whereIf: (when: string, s: string) => `${when[0].toUpperCase()}${when.slice(1)} — ${s}.`,
   whereRedFlag: (s: string) => `При красных флагах — ${s}.`,
   // своей ПИТ нет — скорая (часть 38а)
   whereNoIcu: (s: string) => `Своей палаты интенсивной терапии нет — ${s}.`,
+  // реанимация (spec 2026-10-chapter-4, часть 47): своей нет — перевод; в амбулатории — скорая
+  whereNoRicu: (s: string) => `Своей реанимации с ИВЛ нет — ${s}.`,
   // ещё место, которое не ошибка (часть 32б): «При смещении без красных флагов — можно и дома.»
   whereAlso: (when: string, s: string, flags = false, risks = false) =>
     `${when[0].toUpperCase()}${when.slice(1)}${flags || risks ? ` без ${[flags ? 'красных флагов' : '', risks ? 'факторов риска' : ''].filter(Boolean).join(' и ')}` : ''} — можно и ${s}.`,
@@ -409,6 +414,8 @@ export const encyclopedia = {
   level: { absolute: 'нельзя', relative: 'с осторожностью' },
   // лечение у постели и его спутники (часть 39а): тромболизис
   bedsideOnly: 'Только лежащему под этим аппаратом — в кабинете врача не назначить',
+  // лечение реанимации (spec 2026-10-chapter-4, часть 47)
+  ricuOnly: 'Только в реанимации: назначили — место становится «В ОРИТ»; своей реанимации нет — больного переводят',
   companions: 'С чем назначают',
   companionsNote: 'Без них лечение неполное — разбор скажет, чего не хватило',
   companionsEach: 'Каждое',
@@ -488,6 +495,8 @@ export const encyclopedia = {
   needPeople: 'Люди',
   needMachine: 'Аппарат — хотя бы один',
   needMachines: 'Аппараты — все сразу',
+  // реанимация (spec 2026-10-chapter-4, часть 47): койка работает, если у неё есть все аппараты
+  needMachinesPerBed: 'У каждой койки — все эти аппараты',
   machines: 'Аппараты',
   sizes: 'Размеры и цена',
   sizeLine: (id: string, w: number, h: number, cost: string, upkeep: string, seats: number, beds = 0, bays = 0) =>

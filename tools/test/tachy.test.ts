@@ -292,7 +292,8 @@ describe('энциклопедия', () => {
   test('у разряда спутники — только при фибрилляции предсердий; у трифосаденина — где делают', () => {
     const rows = article(db, CV)!.blocks.find(b => b.key === 'companions')!.rows!.map(r => [r.label, r.refs.map(x => x.id)]);
     expect(rows).toEqual([['Одно из', [UFH, 'tx.lmwh', 'tx.doac']], ['Только при', [AF]]]);
-    expect(article(db, ATP)!.blocks.find(b => b.key === 'where')!.refs!.map(r => r.id)).toEqual([MONITOR, 'room.emergency', 'room.icu']);
+    // монитор — и в реанимации (часть 47)
+    expect(article(db, ATP)!.blocks.find(b => b.key === 'where')!.refs!.map(r => r.id)).toEqual([MONITOR, 'room.emergency', 'room.icu', 'room.ricu']);
   });
 });
 

@@ -71,9 +71,10 @@ const required = z.array(z.union([txId, z.array(txId).min(2)])).min(1);
 /**
  * Где лечить — что нужно пациенту; `admit` («в палату») — только выбор врача, в базе его нет;
  * `icu` — палата интенсивной терапии (spec 2026-10-chapter-3, часть 38а): своя — «В ПИТ», нет её —
- * перевод, из амбулатории — скорая.
+ * перевод, из амбулатории — скорая; `ricu` — реанимация с ИВЛ (spec 2026-10-chapter-4, часть 47): своя —
+ * «В ОРИТ», нет её — перевод.
  */
-export const SETTINGS = ['home', 'ward', 'ambulance', 'surgery', 'transfer', 'icu'] as const;
+export const SETTINGS = ['home', 'ward', 'ambulance', 'surgery', 'transfer', 'icu', 'ricu'] as const;
 const setting = z.enum(SETTINGS);
 const season = z.strictObject({ winter: z.number(), spring: z.number(), summer: z.number(), autumn: z.number() });
 
@@ -489,6 +490,11 @@ export const treatmentSchema = z.strictObject({
   })).default([]),
   /** только у постели с этими аппаратами (часть 39а): тромболизис — под монитором с дефибриллятором */
   bedside: z.strictObject({ equipment: z.array(eqId).min(1) }).optional(),
+  /**
+   * лечение своего места (spec 2026-10-chapter-4, часть 47): ИВЛ и наркоз в вену — только в реанимации;
+   * назначил — место становится «В ОРИТ», выбрал другое — лечение снимается
+   */
+  place: z.literal('ricu').optional(),
   /** назначают только вместе с этим (часть 39а); группа — хоть одно из неё, первое — выбора */
   companions: z.array(z.union([txId, z.array(txId).min(2)])).min(1).optional(),
   /** спутники — только при этих болезнях (часть 42б): антикоагулянт рядом с кардиоверсией — при фибрилляции предсердий */
@@ -552,6 +558,11 @@ const roomSize = z.strictObject({
   objects: z.array(z.tuple([z.enum(OBJECT_KINDS), z.number().int(), z.number().int()])),
   /** места под аппараты */
   slots: z.array(cellSrc).default([]),
+  /**
+   * места под аппарат — номера из `slots` по порядку коек (spec 2026-10-chapter-4, часть 47): в реанимации у
+   * каждой койки монитор и аппарат ИВЛ; нет — аппарат встаёт на первое свободное место
+   */
+  slotsOf: z.record(eqId, z.array(z.number().int().min(0)).min(1)).optional(),
   /** где стоит человек каждой должности */
   staff: z.record(roleId, cellSrc).default({}),
   /** куда встаёт или садится пациент */
@@ -579,6 +590,11 @@ export const roomSchema = z.strictObject({
    * монитором; койка работает, если на её месте (`slots` по порядку коек) стоит монитор
    */
   icu: z.boolean().default(false),
+  /**
+   * реанимация (spec 2026-10-chapter-4, часть 47) — палата интенсивной терапии, где у койки ещё и аппарат ИВЛ:
+   * койка работает, если на её местах (`slotsOf`) стоят и монитор, и аппарат ИВЛ
+   */
+  vent: z.boolean().default(false),
   /** работает — в больницу приходят и больные этих отделений: приёмное — хирургию (часть 30) */
   admits: z.array(z.string().regex(/^dept\.[a-z0-9_]+$/)).min(1).optional(),
   sizes: z.array(roomSize).min(1),
@@ -703,6 +719,8 @@ export const economySchema = z.strictObject({
     omsOperation: int,
     /** случай с палатой интенсивной терапии по показаниям — прибавка к тарифу (spec 2026-10-chapter-3, часть 38а) */
     omsIcu: int,
+    /** случай в реанимации с ИВЛ по показаниям — прибавка к тарифу, больше, чем за ПИТ (spec 2026-10-chapter-4, часть 47) */
+    omsRicu: int,
     omsQuality: z.strictObject({ A: pct, B: pct, C: pct, D: pct }),
     omsUnconfirmed: pct,
     omsExam: int,
@@ -721,6 +739,8 @@ export const economySchema = z.strictObject({
   ward: z.strictObject({ bedDay: int, interrupted: pct }),
   /** палата интенсивной терапии (часть 38а): койко-день — дороже палатного, ₽ */
   icu: z.strictObject({ bedDay: int }),
+  /** реанимация (spec 2026-10-chapter-4, часть 47): койко-день с ИВЛ — дороже ПИТ, ₽ */
+  ricu: z.strictObject({ bedDay: int }),
   /** перевод в сосудистый центр (часть 39б): часов пути и часов от приезда до вмешательства */
   transfer: z.strictObject({ hours: z.number().int().min(1).max(12), pci: z.number().int().min(0).max(6) }),
   /**

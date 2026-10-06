@@ -12,7 +12,7 @@ export type Cell = [number, number];
 
 export type StaffRole =
   | 'registrar' | 'nurse' | 'doctor' | 'therapist' | 'procedureNurse' | 'labTech' | 'ecgNurse' | 'radiographer' | 'radiologist'
-  | 'surgeon' | 'anesthetist' | 'orNurse' | 'sonographer' | 'icuDoctor' | 'icuNurse' | 'ctTech' | 'ctDoctor';
+  | 'surgeon' | 'anesthetist' | 'orNurse' | 'sonographer' | 'icuDoctor' | 'icuNurse' | 'ctTech' | 'ctDoctor' | 'ricuDoctor' | 'ricuNurse';
 
 export interface ClinicLayout extends HospitalLayout {
   /** вход и выход — дверь на улицу */
@@ -58,6 +58,9 @@ const FIGURE: Record<string, StaffRole> = {
   // кабинет КТ (часть 40)
   'room.ct|role.radiographer': 'ctTech',
   'room.ct|role.radiologist': 'ctDoctor',
+  // реанимация (spec 2026-10-chapter-4, часть 47)
+  'room.ricu|role.anesthetist': 'ricuDoctor',
+  'room.ricu|role.nurse': 'ricuNurse',
 };
 
 const SPOT: Record<keyof ClinicLayout['spots'], Id> = {

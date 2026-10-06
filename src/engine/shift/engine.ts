@@ -11,7 +11,7 @@ import {
   type WardClose, wardIncome,
 } from '../economy/economy';
 import { type CampaignProgress, campaignEvening, chapterOf, nextChapterOf, startChapter, tutorialDayOf } from '../campaign/campaign';
-import { build, emptyPlot, type HospitalState, type Plan, planOf, presetHospital, UNDO_DEPTH, widenPlot } from '../hospital/build';
+import { build, emptyPlot, type HospitalState, type Plan, planOf, presetHospital, sizeOf, UNDO_DEPTH, widenPlot } from '../hospital/build';
 import { bedsideIn, DOCTOR, doctorRoom, examWhere, openBlocks, type Problem, problemsOf, type Staffing, workingRooms } from '../hospital/requirements';
 import { applicantsOf, doctorOf, grow, memberAt, presetStaff, readingOf, type StaffMember, speedOf, staffingOf } from '../hospital/staff';
 import { log2 } from '../core/math';
@@ -398,20 +398,31 @@ export function apply(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
       // операцию выбирают «В операционную», а не в списке лечения (часть 28)
       if (!p || !db.treatments[cmd.id] || db.treatments[cmd.id].kind === 'surgery') return [];
       const has = p.draft.treatments.includes(cmd.id);
-      // лечение у постели (часть 39а): тромболизис — только лежащему под монитором
-      if (!has && !txAvailable(db, cmd.id, { bedside: bedsideEquipment(db, s, p) })) return [];
+      // лечение у постели (часть 39а): тромболизис — только лежащему под монитором; лечение реанимации (spec
+      // 2026-10-chapter-4, часть 47) — ИВЛ — если в ней есть свободная койка
+      const ricu = freeRicuBeds(db, s).length > 0;
+      if (!has && !txAvailable(db, cmd.id, { bedside: bedsideEquipment(db, s, p), ...(ricu ? { ricu } : {}) })) return [];
       p.draft.treatments = has ? p.draft.treatments.filter(x => x !== cmd.id) : [...p.draft.treatments, cmd.id].sort();
+      // назначил лечение реанимации — и место «В ОРИТ»: ИВЛ делают там
+      const place = db.treatments[cmd.id].place;
+      if (!has && place) p.draft.setting = place;
       return [];
     }
     case 'setting': {
       const p = current(s);
       // в свою палату — только если есть свободная койка (часть 26); в операционную — если у
       // диагноза есть операция, операционная её делает и после неё есть койка (часть 28); в ПИТ —
-      // если свободна койка под монитором (часть 38а)
+      // если свободна койка под монитором (часть 38а); в реанимацию — если свободна койка с монитором и
+      // аппаратом ИВЛ (spec 2026-10-chapter-4, часть 47)
       const ok = cmd.setting === 'admit' ? freeBeds(db, s).length > 0
         : cmd.setting === 'surgery' ? canOperate(db, s, p?.draft.diagnosis, p)
-        : cmd.setting === 'icu' ? freeIcuBeds(db, s).length > 0 : true;
-      if (p && ok) p.draft.setting = cmd.setting;
+        : cmd.setting === 'icu' ? freeIcuBeds(db, s).length > 0
+        : cmd.setting === 'ricu' ? freeRicuBeds(db, s).length > 0 : true;
+      if (p && ok) {
+        p.draft.setting = cmd.setting;
+        // лечение реанимации — только «В ОРИТ»: выбрал другое место — оно снимается (часть 47)
+        p.draft.treatments = placeBound(db, p.draft.treatments, cmd.setting);
+      }
       return [];
     }
     case 'finish':
@@ -711,9 +722,11 @@ function closeDay(db: ContentDb, s: ShiftState) {
   if (lying.length > 0 || s.summary.ward) {
     const day = wardDay(s);
     day.lying = lying.length;
-    // в ПИТ — отдельно (часть 38а)
-    const icu = lying.filter(p => inIcu(db, s, p)).length;
+    // в ПИТ — отдельно (часть 38а), в реанимации — тоже (spec 2026-10-chapter-4, часть 47)
+    const ricu = lying.filter(p => inRicu(db, s, p)).length;
+    const icu = lying.filter(p => inIcu(db, s, p)).length - ricu;
     if (icu > 0) day.icuLying = icu;
+    if (ricu > 0) day.ricuLying = ricu;
   }
   if (s.economy && s.hospital) settle(db, s);
   s.history.push({ ...s.summary, grades: { ...s.summary.grades } });
@@ -750,10 +763,12 @@ function settle(db: ContentDb, s: ShiftState) {
   ledger.expenses.salaries = salariesOf(s.staff ?? []);
   ledger.expenses.equipment = upkeep.equipment;
   ledger.expenses.rooms = upkeep.rooms;
-  // лежащие ночуют в палате: койко-день у каждого (часть 26); в ПИТ — дороже (часть 38а)
+  // лежащие ночуют в палате: койко-день у каждого (часть 26); в ПИТ — дороже (часть 38а), в реанимации — ещё
+  // дороже (spec 2026-10-chapter-4, часть 47)
   const lying = inpatientsOf(s);
-  const icu = lying.filter(p => inIcu(db, s, p)).length;
-  ledger.expenses.ward = (lying.length - icu) * db.economy.ward.bedDay + icu * db.economy.icu.bedDay;
+  const ricu = lying.filter(p => inRicu(db, s, p)).length;
+  const icu = lying.filter(p => inIcu(db, s, p)).length - ricu;
+  ledger.expenses.ward = (lying.length - icu - ricu) * db.economy.ward.bedDay + icu * db.economy.icu.bedDay + ricu * db.economy.ricu.bedDay;
   const before = e.cash + incomeOf(ledger) - expensesOf(ledger);
   ledger.expenses.interest = interestOf(db, before);
   e.cash = before - ledger.expenses.interest;
@@ -992,8 +1007,13 @@ function closePatient(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase
   // последнюю койку успели занять — направить в стационар другой больницы (часть 26); оперировать
   // этот диагноз здесь нечем или некому — вызвать скорую, как из амбулатории (часть 28)
   if (p.draft.setting === 'admit' && freeBeds(db, s).length === 0) p.draft.setting = 'ward';
-  // последнюю койку ПИТ успели занять — перевести, как из больницы без ПИТ (часть 38а)
+  // последнюю койку ПИТ успели занять — перевести, как из больницы без ПИТ (часть 38а); реанимации — так же, и
+  // её лечение снимается (spec 2026-10-chapter-4, часть 47)
   if (p.draft.setting === 'icu' && freeIcuBeds(db, s).length === 0) p.draft.setting = 'ambulance';
+  if (p.draft.setting === 'ricu' && freeRicuBeds(db, s).length === 0) {
+    p.draft.setting = 'ambulance';
+    p.draft.treatments = placeBound(db, p.draft.treatments, 'ambulance');
+  }
   if (p.draft.setting === 'surgery' && !canOperate(db, s, p.draft.diagnosis, p)) p.draft.setting = 'ambulance';
   const closed = closeCase(db, s, p);
   if (p.by) closed.by = p.by;
@@ -1057,8 +1077,13 @@ function closePatient(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase
     s.returns.push({ day: s.day + Math.max(1, back.day), of: p.id, reason: back.reason, ...(back.as ? { as: back.as } : {}) });
     sum.returnsPlanned++;
   }
-  if (closed.plan.setting === 'admit' || closed.plan.setting === 'surgery' || closed.plan.setting === 'icu') admit(db, s, p);
+  if (closed.plan.setting === 'admit' || closed.plan.setting === 'surgery' || closed.plan.setting === 'icu' || closed.plan.setting === 'ricu') admit(db, s, p);
   return closed;
+}
+
+/** Лечение реанимации (spec 2026-10-chapter-4, часть 47) остаётся, только если место — его: ИВЛ — «В ОРИТ». */
+function placeBound(db: ContentDb, treatments: Id[], setting: Setting): Id[] {
+  return treatments.filter(tx => db.treatments[tx]?.place === undefined || db.treatments[tx].place === setting);
 }
 
 /** Кандидаты вывода — всё, с чем приходят в это отделение. */
@@ -1120,7 +1145,7 @@ function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
     plan: ev, outcome, selfLimiting: selfLimits(db, primaryOf(patient)), ...(cond.settles ? { settles: true } : {}),
     redFlags: (cond.redFlags ?? []).filter(f => present.has(f)).map(f => ({ f, seen: obs.some(o => o.f === f && o.shown) })),
     // что было правильно выбрать здесь: со своей палатой — положить в неё, со своей операционной — оперировать
-    should: choiceFor(recommendedSetting(db, patient, p.results.map(r => r.exam), bedside), venueOf(db, s, plan.setting === 'admit' || plan.setting === 'surgery', operationFor(db, truth, primaryOf(patient).params) ?? null, plan.setting === 'icu')),
+    should: choiceFor(recommendedSetting(db, patient, p.results.map(r => r.exam), bedside), venueOf(db, s, plan.setting === 'admit' || plan.setting === 'surgery', operationFor(db, truth, primaryOf(patient).params) ?? null, plan.setting === 'icu', plan.setting === 'ricu')),
     ...(targets.length > 0 ? { targets: targets.map(t => t.grade) } : {}),
   });
   const { notes, targets: _worst, ...grades } = score;
@@ -1208,16 +1233,31 @@ export function freeBeds(db: ContentDb, s: ShiftState): Bed[] {
 }
 
 /**
- * Койки палаты интенсивной терапии (spec 2026-10-chapter-3, часть 38а): в работающих ПИТ — те, у
- * которых на своём месте (место под аппарат с номером койки) стоит монитор; по порядку помещений и
- * коек. Монитор продали — койка не работает, а лежащий на ней долежит.
+ * Работает ли койка палаты интенсивной терапии: на её месте под аппарат (место с номером койки) что-то стоит —
+ * монитор (часть 38а); у реанимации (spec 2026-10-chapter-4, часть 47) места койки названы в `slotsOf` — на
+ * каждом свой аппарат: монитор и аппарат ИВЛ.
  */
-export function icuBeds(db: ContentDb, s: ShiftState): Bed[] {
+function bedWorks(db: ContentDb, r: Plan['rooms'][number], bed: number): boolean {
+  const of = sizeOf(db, r.type, r.size)?.slotsOf;
+  return of ? Object.entries(of).every(([eq, slots]) => r.equipment[slots[bed]] === eq) : !!r.equipment[bed];
+}
+
+/** Койки интенсивной терапии в работающих помещениях: ПИТ или реанимация (часть 47), по порядку помещений и коек. */
+function careBeds(db: ContentDb, s: ShiftState, vent: boolean): Bed[] {
   if (!s.hospital) return [];
   const ctx = hospitalCtx(db, s);
   return ctx.plan.rooms
-    .filter(r => db.rooms[r.type]?.icu && ctx.working.has(r.id))
-    .flatMap(r => r.beds.flatMap((_, bed) => (r.equipment[bed] ? [{ room: r.id, bed }] : [])));
+    .filter(r => db.rooms[r.type]?.icu && (db.rooms[r.type].vent ?? false) === vent && ctx.working.has(r.id))
+    .flatMap(r => r.beds.flatMap((_, bed) => (bedWorks(db, r, bed) ? [{ room: r.id, bed }] : [])));
+}
+
+/**
+ * Койки палаты интенсивной терапии (spec 2026-10-chapter-3, часть 38а): в работающих ПИТ — те, у
+ * которых на своём месте (место под аппарат с номером койки) стоит монитор; по порядку помещений и
+ * коек. Монитор продали — койка не работает, а лежащий на ней долежит. Реанимация — не ПИТ (часть 47).
+ */
+export function icuBeds(db: ContentDb, s: ShiftState): Bed[] {
+  return careBeds(db, s, false);
 }
 
 /** Свободные койки ПИТ: под монитором и никто не лежит. */
@@ -1226,23 +1266,45 @@ export function freeIcuBeds(db: ContentDb, s: ShiftState): Bed[] {
   return icuBeds(db, s).filter(b => !taken.has(`${b.room}:${b.bed}`));
 }
 
-/** Лежит в палате интенсивной терапии (часть 38а). */
+/**
+ * Койки реанимации (spec 2026-10-chapter-4, часть 47): в работающих — те, у которых стоят и монитор, и аппарат
+ * ИВЛ; продали один — койка не работает, а лежащий на ней долежит.
+ */
+export function ricuBeds(db: ContentDb, s: ShiftState): Bed[] {
+  return careBeds(db, s, true);
+}
+
+/** Свободные койки реанимации: с монитором и аппаратом ИВЛ, никто не лежит. */
+export function freeRicuBeds(db: ContentDb, s: ShiftState): Bed[] {
+  const taken = takenBeds(s);
+  return ricuBeds(db, s).filter(b => !taken.has(`${b.room}:${b.bed}`));
+}
+
+/** Лежит в интенсивной терапии (часть 38а): в ПИТ или в реанимации (часть 47). */
 export function inIcu(db: ContentDb, s: ShiftState, p: ShiftPatient): boolean {
   const room = p.stay && s.hospital?.rooms.find(r => r.id === p.stay!.room);
   return !!room && !!db.rooms[room.type]?.icu;
+}
+
+/** Лежит в реанимации (spec 2026-10-chapter-4, часть 47). */
+export function inRicu(db: ContentDb, s: ShiftState, p: ShiftPatient): boolean {
+  const room = p.stay && s.hospital?.rooms.find(r => r.id === p.stay!.room);
+  return !!room && !!db.rooms[room.type]?.vent;
 }
 
 /**
  * Что есть в больнице для решения «где лечить»: своя палата со свободной койкой (или уже занятой
  * этим пациентом); операционная, где сделают операцию `op` (не указана — хоть какую; `null` —
  * операции у болезни нет), и койка после неё; ПИТ со свободной койкой под монитором (или уже
- * занятой этим пациентом — `icuAdmitting`, часть 38а).
+ * занятой этим пациентом — `icuAdmitting`, часть 38а); реанимация со свободной койкой с аппаратом ИВЛ
+ * (`ricuAdmitting`, spec 2026-10-chapter-4, часть 47).
  */
-function venueOf(db: ContentDb, s: ShiftState, admitting = false, op?: Id | null, icuAdmitting = false): Venue {
+function venueOf(db: ContentDb, s: ShiftState, admitting = false, op?: Id | null, icuAdmitting = false, ricuAdmitting = false): Venue {
   const bed = admitting || freeBeds(db, s).length > 0;
   const or = bed && op !== null && orBlock(db, s, op) === null;
   const icu = icuAdmitting || freeIcuBeds(db, s).length > 0;
-  return { ...(bed ? { ward: true } : {}), ...(or ? { or: true } : {}), ...(icu ? { icu: true } : {}) };
+  const ricu = ricuAdmitting || freeRicuBeds(db, s).length > 0;
+  return { ...(bed ? { ward: true } : {}), ...(or ? { or: true } : {}), ...(icu ? { icu: true } : {}), ...(ricu ? { ricu: true } : {}) };
 }
 
 /** Лежащие сейчас. */
@@ -1318,9 +1380,11 @@ function wardDay(s: ShiftState): WardDay {
  */
 function admit(db: ContentDb, s: ShiftState, p: ShiftPatient) {
   const closed = p.closed!;
-  // в ПИТ — на свободную койку под монитором (часть 38а), иначе — в палату
-  const icu = closed.plan.setting === 'icu';
-  const bed = (icu ? freeIcuBeds(db, s) : freeBeds(db, s))[0];
+  // в ПИТ — на свободную койку под монитором (часть 38а), в реанимацию — с монитором и аппаратом ИВЛ (часть 47),
+  // иначе — в палату
+  const ricu = closed.plan.setting === 'ricu';
+  const icu = closed.plan.setting === 'icu' || ricu;
+  const bed = (ricu ? freeRicuBeds(db, s) : icu ? freeIcuBeds(db, s) : freeBeds(db, s))[0];
   if (!bed) return;
   const plan = { treatments: [...closed.plan.treatments], setting: closed.plan.setting };
   const ev = evaluatePlan(db, p.patient, plan, observationsOf(p));
@@ -1341,7 +1405,8 @@ function admit(db: ContentDb, s: ShiftState, p: ShiftPatient) {
   p.status = 'admitted';
   const day = wardDay(s);
   day.admitted++;
-  if (icu) day.icu = (day.icu ?? 0) + 1;
+  if (icu && !ricu) day.icu = (day.icu ?? 0) + 1;
+  if (ricu) day.ricu = (day.ricu ?? 0) + 1;
   if (op) startOperations(db, s);
 }
 
@@ -1598,7 +1663,7 @@ function closeStay(db: ContentDb, s: ShiftState, p: ShiftPatient, end: StayEnd, 
   closed.stay = { days, norm, end };
   p.status = 'done';
   if (s.economy) {
-    const chosen = stay.plan.setting === 'surgery' ? 'surgery' : stay.plan.setting === 'icu' ? 'icu' : 'admit';
+    const chosen = stay.plan.setting === 'surgery' ? 'surgery' : stay.plan.setting === 'icu' || stay.plan.setting === 'ricu' ? stay.plan.setting : 'admit';
     // место — по пришедшим результатам (часть 40): после КТ без крови палата при сотрясении — не ошибка
     const done = p.results.map(r => r.exam);
     // и по аппаратам у постели в момент решения (часть 42б)
@@ -1608,13 +1673,21 @@ function closeStay(db: ContentDb, s: ShiftState, p: ShiftPatient, end: StayEnd, 
     const ledger = ledgerOf(s);
     ledger.ward ??= { cases: 0, income: 0, interrupted: 0, unindicated: 0 };
     ledger.ward.cases++;
-    // прибавка за ПИТ — только если ПИТ была нужна (часть 38а): без показаний — тариф палаты
-    const icu = chosen === 'icu' && recommended === 'icu';
-    ledger.ward.income += wardIncome(db, closed.diagnosis, closed.grades.defensibility, close, stay.op?.done ? stay.op.tx : undefined, icu);
+    // прибавка за ПИТ — только если ПИТ была нужна (часть 38а): без показаний — тариф палаты; за реанимацию с ИВЛ
+    // — если она была нужна, нужна была ПИТ — прибавка за ПИТ (spec 2026-10-chapter-4, часть 47)
+    const unit = careUnit(chosen, recommended);
+    ledger.ward.income += wardIncome(db, closed.diagnosis, closed.grades.defensibility, close, stay.op?.done ? stay.op.tx : undefined, unit);
     if (close === 'interrupted') ledger.ward.interrupted++;
     if (close === 'unindicated') ledger.ward.unindicated++;
     if (close === 'repeat') ledger.ward.repeat = (ledger.ward.repeat ?? 0) + 1;
   }
+}
+
+/** За какую интенсивную терапию прибавка ОМС (части 38а и 47): выбранная, если нужна она или меньшая. */
+export function careUnit(chosen: Setting, recommended: Setting): 'icu' | 'ricu' | undefined {
+  if (chosen === 'ricu' && recommended === 'ricu') return 'ricu';
+  if ((chosen === 'icu' || chosen === 'ricu') && recommended === 'icu') return 'icu';
+  return undefined;
 }
 
 /**

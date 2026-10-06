@@ -668,7 +668,7 @@ describe('энциклопедия', () => {
 
   test('у тромболизиса — где делают и при чём обязателен; у правила — о каком лечении; у КТ-ангиографии — кабинет КТ', () => {
     const t = article(db, LYSIS)!;
-    expect(t.blocks.find(b => b.key === 'where')!.refs!.map(r => r.id)).toEqual([MONITOR, 'room.emergency', 'room.icu']);
+    expect(t.blocks.find(b => b.key === 'where')!.refs!.map(r => r.id)).toEqual([MONITOR, 'room.emergency', 'room.icu', 'room.ricu']);
     const used = t.blocks.find(b => b.key === 'usedAs')!.rows!.map(r => [r.label, r.refs.map(x => x.id)]);
     // с частью 41в — опасно при кровоизлияниях в мозг: кровь на КТ — абсолютное противопоказание; с частью 43а — и при
     // расслоении аорты; с частью 43г — и при гипертоническом кризе: давление выше 185/110 — противопоказание; с частью

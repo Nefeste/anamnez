@@ -16,8 +16,8 @@ export const ROOM_TINT: Record<RoomType, string> = {
   // смотровая приёмного — прежний пол по умолчанию (часть 27), операционная — как хирургия (часть 28)
   emergency: '#F3F0EA', or: '#E4F3EA',
   // палата интенсивной терапии — холоднее палаты (spec 2026-10-chapter-3, часть 38а); кабинет КТ —
-  // как рентген (часть 40)
-  icu: '#E6EEF6', ct: '#E9ECED',
+  // как рентген (часть 40); реанимация — как ПИТ (spec 2026-10-chapter-4, часть 47)
+  icu: '#E6EEF6', ct: '#E9ECED', ricu: '#E6EEF6',
 };
 export const OUTSIDE = '#DDE4E3';
 export const CORRIDOR = '#F6F3ED';

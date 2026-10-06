@@ -86,7 +86,8 @@ describe('каталог', () => {
     expect(c.sex).toEqual({ m: 1.4, f: 1 });
     expect(c.redFlags).toEqual([ONGOING]);
     expect(c.differential).toEqual([SEIZURE, 'cond.hypoglycemia']);
-    expect(c.params).toEqual({ history: { first: 50, epilepsy: 50 }, spo2_below90: { no: 85, yes: 15 } });
+    // рефрактерный (часть 47, spec 2026-10-chapter-4): 22,6 % эпизодов (Novy 2010)
+    expect(c.params).toEqual({ history: { first: 50, epilepsy: 50 }, spo2_below90: { no: 85, yes: 15 }, refractory: { no: 77, yes: 23 } });
     expect(c.derived).toEqual({ spo2_below90: { f: SPO2, below: 90 } });
   });
 
@@ -249,7 +250,10 @@ describe('тактика и разбор', () => {
   test('действие: свой препарат при эпилепсии — обычно; бензодиазепин при статусе — часто за 2–5 дней; без лечения эпилепсия иногда даёт статус, статус почти всегда хуже', () => {
     expect(curesOf(db, { id: SEIZURE, params: { history: 'epilepsy' } }, [OWN]).map(e => [e.p, ...e.days])).toEqual([[7500, 0, 0]]);
     expect(curesOf(db, { id: SEIZURE, params: { history: 'first' } }, [OWN])).toEqual([]);
-    expect(curesOf(db, { id: STATUS, params: { history: 'first', spo2_below90: 'no' } }, [BENZO]).map(e => [e.p, ...e.days])).toEqual([[5000, 2, 5]]);
+    expect(curesOf(db, { id: STATUS, params: { history: 'first', spo2_below90: 'no', refractory: 'no' } }, [BENZO]).map(e => [e.p, ...e.days])).toEqual([[5000, 2, 5]]);
+    // рефрактерный (часть 47) бензодиазепином по определению не купируется — наркоз в вену
+    expect(curesOf(db, { id: STATUS, params: { history: 'first', spo2_below90: 'no', refractory: 'yes' } }, [BENZO])).toEqual([]);
+    expect(curesOf(db, { id: STATUS, params: { history: 'first', spo2_below90: 'no', refractory: 'yes' } }, ['tx.anesthetic_iv']).map(e => [e.p, ...e.days])).toEqual([[5000, 5, 12]]);
     expect(untreatedOf(db, { id: SEIZURE, params: { history: 'epilepsy' } })).toMatchObject({ p: 2500, days: [0, 3], as: STATUS });
     expect(untreatedOf(db, { id: SEIZURE, params: { history: 'first' } })).toBeUndefined();
     expect(untreatedOf(db, { id: STATUS, params: { history: 'first', spo2_below90: 'no' } })).toMatchObject({ p: 9500, days: [0, 0] });
@@ -268,7 +272,10 @@ describe('энциклопедия', () => {
 
   test('статус: ПИТ, без своей — скорая; кислород — при сатурации ниже 90 %, свой препарат — при эпилепсии', () => {
     const x = article(db, STATUS)!;
-    expect(x.blocks.find(b => b.key === 'where')!.text).toEqual(['Обычно — палата интенсивной терапии.', 'Своей палаты интенсивной терапии нет — скорая, больница.', 'В стационаре обычно 3–7 дней.']);
+    expect(x.blocks.find(b => b.key === 'where')!.text).toEqual(['Обычно — палата интенсивной терапии.', 'Своей палаты интенсивной терапии нет — скорая, больница.',
+      // рефрактерный (часть 47) — реанимация с ИВЛ, своей нет — перевод
+      'Если противосудорожные скорой не помогли и приступы идут больше часа — реанимация с ИВЛ.', 'Своей реанимации с ИВЛ нет — скорая, больница.',
+      'В стационаре обычно 3–7 дней.']);
     const rows = Object.fromEntries(x.blocks.find(b => b.key === 'treatment')!.rows!.map(r => [r.label, r.refs.map(y => y.id)]));
     expect(rows['Первая линия']).toEqual([BENZO]);
     expect(rows['Можно также']).toEqual([VALPROATE]);

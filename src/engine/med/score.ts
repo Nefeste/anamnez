@@ -108,9 +108,9 @@ export function scoreCase(x: CaseInput): CaseScore {
   }
   if (x.plan.violations.length > 0) treatment = 'D';
   // направленного лечат дальше в другом стационаре: лечения причины здесь не ждут, а то, что
-  // делают до приезда скорой (ОКС — ацетилсалициловая кислота), — ждут; в своей палате и своей ПИТ
-  // (часть 38а) лечат сами
-  const referred = !['home', 'admit', 'surgery', 'icu'].includes(x.plan.setting.chosen);
+  // делают до приезда скорой (ОКС — ацетилсалициловая кислота), — ждут; в своей палате, своей ПИТ
+  // (часть 38а) и своей реанимации (spec 2026-10-chapter-4, часть 47) лечат сами
+  const referred = !['home', 'admit', 'surgery', 'icu', 'ricu'].includes(x.plan.setting.chosen);
   // острый период проходит в стационаре (часть 41а): у лежащего у нас инсульта без тромболизиса — не
   // ошибка; дома он не пройдёт
   const settled = x.settles === true && x.plan.setting.chosen !== 'home';

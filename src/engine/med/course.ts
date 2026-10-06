@@ -67,8 +67,8 @@ function anyOf(ps: readonly number[]): number {
 }
 
 export function observe(db: ContentDb, patient: Patient, plan: Plan, ev: PlanEval, rng: Rng): Outcome {
-  // своя палата, операционная и ПИТ (часть 38а) — лежит у нас; иначе — увезли или направили
-  if (plan.setting === 'admit' || plan.setting === 'surgery' || plan.setting === 'icu') return { kind: 'admitted', day: 0, cured: ev.effective };
+  // своя палата, операционная, ПИТ (часть 38а) и реанимация (часть 47) — лежит у нас; иначе — увезли или направили
+  if (plan.setting === 'admit' || plan.setting === 'surgery' || plan.setting === 'icu' || plan.setting === 'ricu') return { kind: 'admitted', day: 0, cured: ev.effective };
   if (plan.setting !== 'home') return { kind: 'transferred', day: 0, cured: false };
   const primary = primaryOf(patient);
   const cond = db.conditions[primary.id];

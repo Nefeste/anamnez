@@ -81,9 +81,10 @@ describe('ПИТ: помещение и койки', () => {
   });
 
   test('монитор с дефибриллятором ставят и в смотровую приёмного, и в ПИТ; анестезиолог-реаниматолог — и в операционной, и в ПИТ', () => {
-    expect(db.equipment['eq.monitor_defib'].rooms).toEqual(['room.emergency', 'room.icu']);
+    // и в реанимацию (spec 2026-10-chapter-4, часть 47)
+    expect(db.equipment['eq.monitor_defib'].rooms).toEqual(['room.emergency', 'room.icu', 'room.ricu']);
     expect(db.rooms['room.icu'].equipment).toEqual(['eq.monitor_defib']);
-    expect(db.roles['role.anesthetist'].rooms).toEqual(['room.icu', 'room.or']);
+    expect(db.roles['role.anesthetist'].rooms).toEqual(['room.icu', 'room.or', 'room.ricu']);
     // койки и места под мониторы: по одному месту на койку
     expect(db.rooms['room.icu'].sizes.map(z => [z.id, z.beds, z.slots.length])).toEqual([['S', 2, 2], ['M', 4, 4]]);
   });
@@ -146,7 +147,7 @@ describe('ПИТ: поступление, обход, касса', () => {
   test('прибавка за ПИТ — только по показаниям: ПИТ нужна — тариф с прибавкой, без показаний — тариф палаты', () => {
     const t = db.economy.tariffs;
     const full = wardIncome(db, ANAPHYLAXIS, 'A', 'full');
-    expect(wardIncome(db, ANAPHYLAXIS, 'A', 'full', undefined, true)).toBe(full + t.omsIcu);
+    expect(wardIncome(db, ANAPHYLAXIS, 'A', 'full', undefined, 'icu')).toBe(full + t.omsIcu);
     expect(t.omsIcu).toBeGreaterThan(0);
     expect(db.economy.icu.bedDay).toBeGreaterThan(db.economy.ward.bedDay);
   });

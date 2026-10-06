@@ -313,6 +313,9 @@ export interface WardDay {
   icu?: number;
   /** из лежащих вечером — в ПИТ (часть 38а) */
   icuLying?: number;
+  /** из поступивших — в реанимацию, и из лежащих вечером — в ней (spec 2026-10-chapter-4, часть 47) */
+  ricu?: number;
+  ricuLying?: number;
 }
 
 /** Приёмы нанятого врача за день (spec 2026-09-hired-doctors). */

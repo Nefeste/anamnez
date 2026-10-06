@@ -284,9 +284,11 @@ export function build(db: ContentDb, s: Built, cmd: BuildCommand): BuildResult {
     // места — по нынешнему размеру: у смотровой приёмного из сохранений до 0.3.2 места под
     // монитор ещё нет (часть 37)
     const slots = z.slots.map((_, i) => room.equipment[i] ?? null);
-    // у аппарата может быть своё место: стол операционной — под пациентом (часть 28)
+    // у аппарата может быть своё место: стол операционной — под пациентом (часть 28); в реанимации (spec
+    // 2026-10-chapter-4, часть 47) у монитора и аппарата ИВЛ — свои места у коек, по порядку коек
+    const mine = z.slotsOf?.[eq.id];
     const own = eq.slot !== undefined && slots[eq.slot] === null ? eq.slot : -1;
-    const slot = own >= 0 ? own : slots.indexOf(null);
+    const slot = mine ? (mine.find(i => slots[i] === null) ?? -1) : own >= 0 ? own : slots.indexOf(null);
     if (slot < 0) return fail({ kind: 'noSlot' });
     if (s.cash < eq.price) return fail({ kind: 'money', need: eq.price - s.cash });
     const equipment = slots.map((x, i) => (i === slot ? eq.id : x));
