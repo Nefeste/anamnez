@@ -143,8 +143,8 @@ function priceOf(payer: Payer): number {
  */
 function margins(s: ShiftState, p: ShiftPatient, walk: number): number[] {
   return targetsFor(db, p, targetPlace(db, s, p)).flatMap(t => {
-    const start = targetStart(p, t);
-    if (start === undefined || minutesTo(p, t) !== undefined) return [];
+    const start = targetStart(db, p, t);
+    if (start === undefined || minutesTo(db, p, t) !== undefined) return [];
     const need = t.exams.length > 0 ? Math.min(...t.exams.map(e => readyIn(db, s, p, e) ?? Infinity)) : 2;
     return [t.minutes - (s.t - start) / 60 - walk - need];
   });
@@ -307,7 +307,7 @@ function playDay(s: ShiftState, player: Player) {
       if (!p.done.includes(r.step.exam)) (skipped.get(p.id) ?? skipped.set(p.id, new Set()).get(p.id)!).add(r.step.exam);
       continue;
     }
-    if (p.pending.length > 0 && decisionLimit(db, observationsOf(p), p.patient.complaints, venue.minutes) === undefined) {
+    if (p.pending.length > 0 && decisionLimit(db, observationsOf(p), p.patient.complaints, venue.minutes, undefined, p.patient) === undefined) {
       // решать по пришедшему: пока результаты идут — к другим или ждать, потом решить заново
       phases.delete(p.id);
       if (s.queue.length > 0) {

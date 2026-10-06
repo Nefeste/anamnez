@@ -5,8 +5,8 @@ import { byValue, type ContentDb, type Exam, type Id, type Target } from '../../
 import { Rng } from '../core/rng';
 import { complaintObservations, examFits, runExam } from './exams';
 import { type Belief, contextOf, expectedGain, knownFacts, likelyParams, paramBeliefs, paramGain, posterior } from './infer';
-import { choiceFor, companionsOf, type Plan, possibleFor, settingOf, tacticsFor, txAvailable, type Venue, whenHolds } from './plan';
-import { openRuleExams, ruleExams, type Who } from './rules';
+import { choiceFor, companionsOf, type Plan, possibleFor, settingOf, tacticsFor, txAvailable, type Venue, verdictOf, whenHolds } from './plan';
+import { checkRule, knownOf, openRuleExams, ruleExams, ruleFindings, type Who } from './rules';
 import type { Observation, Patient } from './types';
 
 export type Strategy = 'rational' | 'lazy' | 'shotgun';
@@ -186,11 +186,21 @@ function clockQuestion(db: ContentDb, condId: Id | undefined, patient: Patient, 
   return asking.sort((a, b) => examCost(db, a) - examCost(db, b) || (a < b ? -1 : 1))[0];
 }
 
-/** Сроки на лечение и место, что уже идут (часть 46а): от показанной находки или жалобы при поступлении. */
+/**
+ * Правило срока сказало «да» по тому, что известно (spec 2026-10-chapter-4, часть 48а): qSOFA 2 и больше у больного с
+ * признаками инфекции — сепсис можно предположить. С находками срока — и одна из них показана.
+ */
+function ruleRuns(db: ContentDb, t: Target, obs: readonly Observation[], who: { complaints: readonly Id[] } & Exclude<Who, number>): boolean {
+  const rule = t.rule === undefined ? undefined : db.rules[t.rule];
+  if (!rule || !rule.complaints.some(f => who.complaints.includes(f)) || who.age < (rule.ageMin ?? 0)) return false;
+  return checkRule(rule, who, knownOf(obs)).verdict === 'yes' && (t.findings.length === 0 || obs.some(o => o.shown && t.findings.includes(o.f)));
+}
+
+/** Сроки на лечение и место, что уже идут (часть 46а): от показанной находки, жалобы при поступлении или правила (часть 48а). */
 function runningTargets(db: ContentDb, obs: readonly Observation[], patient: Patient): Target[] {
   const shown = new Set(obs.filter(o => o.shown).map(o => o.f));
   return Object.values(db.targets).filter(t => (t.treatments.length > 0 || t.settings.length > 0) && !lifted(t, obs)
-    && (t.findings.some(f => shown.has(f)) || t.complaints.some(f => patient.complaints.includes(f))));
+    && (t.from === 'rule' ? ruleRuns(db, t, obs, patient) : t.findings.some(f => shown.has(f)) || t.complaints.some(f => patient.complaints.includes(f))));
 }
 
 /** Вероятность, с которой болезнь срока не пропускают (часть 46а): подъём ST — инфаркт, пока не доказано иное. */
@@ -283,18 +293,23 @@ function tacticGain(db: ContentDb, condId: Id, examId: Id, obs: readonly Observa
  * тромболизисе и переводе не откладывают до тропонина (`157_5`, раздел 2.3). С частью 44в — и по жалобе
  * при поступлении: судороги не прекращаются — противосудорожное за 5 минут от прихода, и из них уже
  * прошло `elapsed`; КТ подождёт. С частью 46а — и от находки за вычетом прошедшего после неё (`since`):
- * ЭКГ показала подъём ST — у тромболизиса 10 минут, а расспрос после неё их тратит.
+ * ЭКГ показала подъём ST — у тромболизиса 10 минут, а расспрос после неё их тратит. С частью 48а (spec
+ * 2026-10-chapter-4) — и от правила, которое сказало «да» (`who` — жалобы и возраст больного): антибиотик при
+ * сепсисе — в первый час от qSOFA 2 и больше; прошедшее — от первого показанного признака правила, с запасом.
  */
 export function decisionLimit(
   db: ContentDb, obs: readonly Observation[], complaints: readonly Id[] = [], elapsed = 0, since: (findings: readonly Id[]) => number = () => 0,
+  who?: Exclude<Who, number>,
 ): number | undefined {
   const shown = new Set(obs.filter(o => o.shown).map(o => o.f));
   const limits = Object.values(db.targets)
     .filter(t => (t.treatments.length > 0 || t.settings.length > 0) && !lifted(t, obs))
-    .flatMap(t => [
-      ...(t.findings.some(f => shown.has(f)) ? [t.minutes - since(t.findings)] : []),
-      ...(t.complaints.some(f => complaints.includes(f)) ? [t.minutes - elapsed] : []),
-    ]);
+    .flatMap(t => t.from === 'rule'
+      ? (who && ruleRuns(db, t, obs, { ...who, complaints }) ? [t.minutes - since([...ruleFindings(db.rules[t.rule!]), ...t.findings])] : [])
+      : [
+        ...(t.findings.some(f => shown.has(f)) ? [t.minutes - since(t.findings)] : []),
+        ...(t.complaints.some(f => complaints.includes(f)) ? [t.minutes - elapsed] : []),
+      ]);
   return limits.length > 0 ? Math.min(...limits) : undefined;
 }
 
@@ -449,7 +464,7 @@ export function nextStep(db: ContentDb, patient: Patient, obs: readonly Observat
     const k = done.findIndex(id => obs.some(o => o.exam === id && o.shown && fs.includes(o.f)));
     return k < 0 ? 0 : done.slice(k + 1).reduce((a, id) => a + (db.exams[id] ? examMinutes(db.exams[id]) : 0), 0);
   };
-  let limit = decisionLimit(db, obs, patient.complaints, elapsed, since);
+  let limit = decisionLimit(db, obs, patient.complaints, elapsed, since, patient);
   // срок, который ничего не решает (часть 46а): подъём ST на ЭКГ у больного с ТИА, которого инфарктом
   // не объяснить, — болезни, которую этим лечат, вероятнее `RULE_IN` нет, и обследование он не торопит
   if (limit !== undefined && !ruleIn(db, posterior(db, options.candidates, obs, contextOf(db, patient, obs)), obs, patient, options.venue)) limit = undefined;
@@ -579,7 +594,7 @@ export function runDoctor(db: ContentDb, patient: Patient, strategy: Strategy, r
   const primary = patient.truth.conditions.find(c => c.role === 'primary')!.id;
   const money = done.reduce((a, id) => a + db.exams[id].cost, 0);
   const minutes = done.reduce((a, id) => a + db.exams[id].time.procedure + (db.exams[id].time.report ?? 0) + (db.exams[id].time.turnaround ?? 0), 0);
-  const group = (id: Id) => db.conditions[id]?.group ?? id;
   const { diagnosis, confidence, plan } = decision;
-  return { diagnosis, correct: diagnosis === primary, correctGroup: group(diagnosis) === group(primary), confidence, exams: done, money, minutes, plan, observations: obs };
+  // «до группы» — и источник сепсиса (часть 48а): частично верный диагноз
+  return { diagnosis, correct: diagnosis === primary, correctGroup: verdictOf(db, diagnosis, patient) !== 'wrong', confidence, exams: done, money, minutes, plan, observations: obs };
 }

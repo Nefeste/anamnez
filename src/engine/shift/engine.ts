@@ -21,7 +21,7 @@ import { complaintObservations, type ExamSkill, examFits, NORMAL_SKILL, runExam 
 import { freezeClock, generatePatient, patientAt, typicalPatient } from '../med/generate';
 import { contextOf, likelyParams, posterior } from '../med/infer';
 import { scaleTriage } from '../med/news2';
-import { alsoSettings, choiceFor, evaluatePlan, primaryOf, recommendedSetting, selfLimits, settingFit, surgeriesOf, treatable, txAvailable, type Venue, whenHolds } from '../med/plan';
+import { alsoSettings, choiceFor, evaluatePlan, primaryOf, recommendedSetting, selfLimits, settingFit, surgeriesOf, treatable, txAvailable, type Venue, verdictOf, whenHolds } from '../med/plan';
 import { examCost, indicated, nextStep, ORDER_MINUTES } from '../med/policy';
 import { buildReview, type ReviewData } from '../med/review';
 import { scoreCase } from '../med/score';
@@ -1118,7 +1118,6 @@ function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
   const patient = p.patient;
   const truth = patient.truth.conditions[0].id;
   const cond = db.conditions[truth];
-  const group = (x: Id) => db.conditions[x].group ?? x;
   const obs = observationsOf(p);
   const candidates = candidatesOf(db, p.departments ?? s.meta.department);
   const beliefs = posterior(db, candidates, obs, contextOf(db, patient, obs));
@@ -1136,7 +1135,8 @@ function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
   const outcome = rscFor(db, s, p, plan) ?? observe(db, patient, plan, ev, branch(s, `outcome:${p.id}`));
   const review = reviewOf(db, s, p, dx);
   const present = new Set(patient.truth.findings.map(f => f.f));
-  const verdict = dx === truth ? 'correct' : group(dx) === group(truth) ? 'partly' : 'wrong';
+  // та же группа — частично; с частью 48а — и источник сепсиса (пневмония вместо сепсиса из неё)
+  const verdict = verdictOf(db, dx, patient);
   // сроки (spec 2026-10-chapter-3, часть 37): лежит в смотровой с болью в груди — ЭКГ за 10 минут
   // с частью 39б — и решения: тромболизис и перевод сделаны в минуту, когда врач закрыл приём
   const targets = targetResults(db, p, targetPlace(db, s, p), { t: s.t, plan });

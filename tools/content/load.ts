@@ -346,6 +346,16 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (c.course.settles && c.course.selfLimiting) errors.push(`${owner}: и «проходит само», и «острый период проходит в стационаре» — что-то одно`);
     // с чем спутать по рекомендации (часть 33б): то, с чем приходят, и не сама болезнь
     for (const d of c.differential ?? []) if (d === c.id || !conditions[d]?.presenting) errors.push(`${owner}: с чем спутать — ${d} не найдено, не приходят с ним или это оно само`);
+    // источник по параметру (spec 2026-10-chapter-4, часть 48а): у каждого значения — болезнь, с которой приходят, и не сама
+    if (c.source) {
+      const values = c.params?.[c.source.param];
+      if (!values) errors.push(`${owner}: источник — по необъявленному параметру ${c.source.param}`);
+      else for (const v of Object.keys(values)) if (!c.source.map[v]) errors.push(`${owner}: для ${c.source.param}=${v} не сказано, какая болезнь — источник`);
+      for (const [v, d] of Object.entries(c.source.map)) {
+        if (values && !(v in values)) errors.push(`${owner}: источник — значения ${v} у параметра ${c.source.param} нет`);
+        if (d === c.id || !conditions[d]?.presenting) errors.push(`${owner}: источник ${d} не найден, с ним не приходят или это оно само`);
+      }
+    }
     if (!c.presenting && !c.epidemiology.chronic) errors.push(`${owner}: не бывает ни основным, ни хроническим`);
     // тактика: у всего, с чем приходят, и только из существующих лечений, без повторов
     const t = c.treatment;
@@ -735,6 +745,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     }
     for (const id of x.treatments) if (!treatments[id]) errors.push(`${x.id}: лечение ${id} не найдено`);
     for (const id of x.exams) if (!exams[id]) errors.push(`${x.id}: обследование ${id} не найдено`);
+    // часть 48а: правило отсчёта — из базы и решает по баллам или признакам, которые показывают обследования
+    if (x.rule && !rules[x.rule]) errors.push(`${x.id}: правило ${x.rule} не найдено`);
     if (x.room && !rooms[x.room]) errors.push(`${x.id}: помещение ${x.room} не найдено`);
     else if (x.room && !rooms[x.room].emergency) errors.push(`${x.id}: срок у лежащих — только в смотровой приёмного, а ${x.room} не она`);
     else if (x.room && x.exams.length > 0 && !x.exams.some(id => exams[id]?.bedside?.room === x.room && exams[id].bedside!.time.procedure <= x.minutes)) {
@@ -775,6 +787,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (c.checkup) out.checkup = true;
     if (c.arrival) out.arrival = c.arrival;
     if (c.group) out.group = c.group;
+    if (c.source) out.source = c.source;
     if (c.system) out.system = c.system;
     if (e.sex) out.sex = e.sex;
     if (e.season) out.season = e.season;

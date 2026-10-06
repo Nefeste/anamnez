@@ -178,6 +178,20 @@ export function primaryOf(patient: Patient) {
 }
 
 /**
+ * Диагноз — верно, частично или неверно (`04` §10): та же болезнь — верно; та же группа (ОРВИ и грипп) — частично.
+ * С частью 48а (spec 2026-10-chapter-4) — и источник: у сепсиса из пневмонии поставлена пневмония — частично: очаг
+ * найден, а органной дисфункции не увидели.
+ */
+export function verdictOf(db: ContentDb, diagnosis: Id, patient: Patient): 'correct' | 'partly' | 'wrong' {
+  const truth = primaryOf(patient);
+  if (diagnosis === truth.id) return 'correct';
+  const group = (id: Id) => db.conditions[id]?.group ?? id;
+  if (group(diagnosis) === group(truth.id)) return 'partly';
+  const source = db.conditions[truth.id]?.source;
+  return source && source.map[truth.params[source.param]] === diagnosis ? 'partly' : 'wrong';
+}
+
+/**
  * Обязательное лечение человеку можно (часть 45б): в каждой группе обязательного и обязательного до
  * перевода — хоть одно без противопоказания у него. Заданные пациенты первой смены главы — учебные:
  * тромболизис при инфаркте и инсульте им можно.

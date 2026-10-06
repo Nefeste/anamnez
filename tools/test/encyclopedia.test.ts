@@ -44,7 +44,8 @@ describe('энциклопедия', () => {
       expect(alike).not.toContain(id);
       expect(alike.length).toBeLessThanOrEqual(3);
     }
-    expect(similar(db, 'cond.pneumonia_cap')).toContain('cond.covid19');
+    // ближе всех к пневмонии с части 48а — сепсис из лёгких: у него те же признаки очага
+    expect(similar(db, 'cond.pneumonia_cap')).toContain('cond.sepsis');
     expect(similar(db, 'cond.cystitis')).toContain('cond.pyelonephritis');
     expect(similar(db, 'cond.migraine')).toContain('cond.tension_headache');
   });

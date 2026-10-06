@@ -411,6 +411,11 @@ export interface Condition {
   department: Id;
   /** состояния с одинаковой тактикой: путаница внутри группы — частичная точность (`04` §10) */
   group?: Id;
+  /**
+   * источник по скрытому параметру (spec 2026-10-chapter-4, часть 48а): поставили болезнь-источник вместо этой —
+   * частично верно, как в группе: у сепсиса из пневмонии — пневмония
+   */
+  source?: { param: string; map: Record<string, Id> };
   /** система органов — для списков диагнозов и энциклопедии */
   system?: BodySystem;
   kind: 'disease' | 'injury' | 'syndrome' | 'state';
@@ -1106,11 +1111,14 @@ export interface Target {
   exams: Id[];
   treatments: Id[];
   settings: Setting[];
-  from: 'arrival' | 'finding';
+  /** с частью 48а (spec 2026-10-chapter-4) — и от правила: антибиотик при сепсисе — от qSOFA 2 и больше */
+  from: 'arrival' | 'finding' | 'rule';
+  /** правило отсчёта `from: rule` (часть 48а) */
+  rule?: Id;
   /** только тем, кто остаётся у нас (часть 41а): тест глотания — в палате, ПИТ, операционной */
   stays?: true;
   minutes: number;
-  /** `from` и `after` — от чего срок: «от ЭКГ с подъёмом ST», «после ЭКГ с подъёмом ST» (у отсчёта от находки) */
+  /** `from` и `after` — от чего срок: «от ЭКГ с подъёмом ST», «после ЭКГ с подъёмом ST» (у отсчёта от находки и правила) */
   texts: { hint: Text; from?: Text; after?: Text };
   sources: Source[];
   review: Review;

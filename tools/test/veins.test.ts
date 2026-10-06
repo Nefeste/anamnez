@@ -35,6 +35,8 @@ const ED = ['dept.therapy', 'dept.surgery', 'dept.trauma'];
 const people = (primary: Id, n: number, from = 1, params?: Record<string, string>) =>
   Array.from({ length: n }, (_, i) => generatePatient(db, from + i, { department: 'dept.therapy', departments: ED, season: 'autumn', primary, ...(params ? { params } : {}) }));
 const has = (p: Patient, f: Id) => p.truth.findings.some(x => x.f === f);
+/** Больной без жалоб правила qSOFA (часть 48а): у кого жар или кашель, первой проверяют её, а здесь — шкала Уэллса. */
+const afebrile = (primary: Id) => people(primary, 20).find(p => !db.rules['rule.qsofa'].complaints.some(f => p.complaints.includes(f)))!;
 const params = (p: Patient) => p.truth.conditions[0].params;
 const share = <T>(xs: T[], ok: (x: T) => boolean) => xs.filter(ok).length / xs.length;
 const near = (x: number, want: number, tol: number) => {
@@ -155,7 +157,7 @@ describe('шкала Уэллса и D-димер', () => {
   });
 
   test('правило не решено — узнать, что осталось: шкала меньше двух — D-димер; решено или не применяют — ничего', () => {
-    const p = people(STRAIN, 1)[0];
+    const p = afebrile(STRAIN);
     expect(rulesFor(db, p).map(r => r.id)).toEqual([RULE]);
     expect(openRuleExams(db, p, with_('sign.pitting_edema'))).toEqual([DD]);
     expect(openRuleExams(db, p, with_('hx.bed_rest', 'sign.pitting_edema'))).toEqual([]);
@@ -318,7 +320,7 @@ describe('на экране и в энциклопедии', () => {
   });
 
   test('«Студенту»: правило в карте — что проверить, что велит, когда не применяют', () => {
-    const p = people(STRAIN, 1)[0];
+    const p = afebrile(STRAIN);
     const view = (obs: Observation[]) => makeCaseView({
       version: 0, patient: p, clock: 600, minutesSpent: 0, money: 0, step: 1,
       arrived: obs.length ? [{ exam: EXAM, step: 1, at: 600, obs }] : [], pending: [], meanwhile: [], done: obs.length ? [EXAM] : [],

@@ -36,7 +36,8 @@ describe('первые пациенты главы 1', () => {
   test('остальные пациенты дня и все следующих дней — как обычно, из своих зёрен', () => {
     const s = firstDay(8);
     const gen = { department: s.meta.department, season: s.meta.season };
-    const free = (p: ShiftPatient) => expect(p.patient).toEqual(generatePatient(db, p.patient.seed, gen));
+    // пришедшие сами — как в движке, без тех, кого привозит только скорая (часть 41а; с 0.4.2 — и сепсис)
+    const free = (p: ShiftPatient) => expect(p.patient).toEqual(generatePatient(db, p.patient.seed, { ...gen, walkIn: true }));
     const [a, b, c, ...rest] = byArrival(s);
     for (const [p, cond] of [[a, taught[0]], [b, taught[1]], [c, taught[2]]] as const) {
       expect(p.patient).toEqual(generatePatient(db, p.patient.seed, { ...gen, primary: cond }));

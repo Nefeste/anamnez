@@ -551,7 +551,7 @@ describe('каталог больницы', () => {
     });
     expect(has(second, 'cond.acs: исход перевода — нет смертности для killip=iv')).toBe(true);
     expect(has(second, 'cond.acs: исход перевода — у killip=i нижняя граница выше верхней')).toBe(true);
-    expect(has(second, 'срок от находки — с находками и словами «от чего» (texts.from, texts.after)')).toBe(true);
+    expect(has(second, 'срок от находки — с находками, от правила — с правилом, и со словами «от чего» (texts.from, texts.after)')).toBe(true);
   });
 
   test('тропонин 0/1 час и обязательное «одно из» (часть 39в): повторный забор — у анализа и своими проверками; группа — из базы', () => {

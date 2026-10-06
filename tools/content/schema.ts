@@ -92,6 +92,11 @@ export const conditionSchema = z.strictObject({
   icd10: z.string().optional(),
   department: z.string(),
   group: z.string().regex(/^grp\.[a-z0-9_]+$/).optional(),
+  /**
+   * источник по скрытому параметру (spec 2026-10-chapter-4, часть 48а): у сепсиса из пневмонии поставлена пневмония —
+   * диагноз частично верный: очаг найден, органной дисфункции не увидели
+   */
+  source: z.strictObject({ param: z.string(), map: z.record(z.string(), z.string().regex(/^cond\.[a-z0-9_]+$/)) }).optional(),
   /** система органов — для списков диагнозов и энциклопедии; обязательна у того, с чем приходят */
   system: z.enum(SYSTEMS).optional(),
   kind: z.enum(['disease', 'injury', 'syndrome', 'state']),
@@ -1002,8 +1007,14 @@ export const targetSchema = z.strictObject({
   exams: z.array(z.string().regex(/^exam\.[a-z0-9_]+$/)).default([]),
   treatments: z.array(txId).default([]),
   settings: z.array(setting).default([]),
-  /** отсчёт: от прихода или от результата с находкой (часть 39б) */
-  from: z.enum(['arrival', 'finding']).default('arrival'),
+  /**
+   * отсчёт: от прихода или от результата с находкой (часть 39б); с частью 48а (spec 2026-10-chapter-4) — и от
+   * результата, после которого правило `rule` сказало «да»: антибиотик при сепсисе — от того, как его можно
+   * предположить (qSOFA 2 и больше), а не от прихода
+   */
+  from: z.enum(['arrival', 'finding', 'rule']).default('arrival'),
+  /** правило отсчёта `from: rule` (часть 48а): срок — тем, у кого оно сказало «да», и с находками — у кого и они */
+  rule: z.string().regex(/^rule\.[a-z0-9_]+$/).optional(),
   /**
    * только тем, кто остаётся у нас (spec 2026-10-chapter-3, часть 41а): в палате, ПИТ или
    * операционной; переведённому тест глотания делают там, куда везут
@@ -1013,11 +1024,13 @@ export const targetSchema = z.strictObject({
   texts: z.strictObject({ hint, from: text.optional(), after: text.optional() }),
   sources: z.array(source).min(1),
   review,
-}).refine(x => x.complaints.length + x.findings.length > 0, { message: 'срок — кому: жалоба или находка' })
+}).refine(x => x.complaints.length + x.findings.length > 0 || x.from === 'rule', { message: 'срок — кому: жалоба, находка или правило' })
   .refine(x => x.exams.length + x.treatments.length + x.settings.length > 0, { message: 'срок — что: обследование, назначение или место' })
-  .refine(x => x.from === 'arrival' || (x.findings.length > 0 && x.texts.from !== undefined && x.texts.after !== undefined), {
-    message: 'срок от находки — с находками и словами «от чего» (texts.from, texts.after)',
-  });
+  .refine(x => x.from === 'arrival' || ((x.from === 'finding' ? x.findings.length > 0 : x.rule !== undefined) && x.texts.from !== undefined && x.texts.after !== undefined), {
+    message: 'срок от находки — с находками, от правила — с правилом, и со словами «от чего» (texts.from, texts.after)',
+  })
+  .refine(x => (x.rule !== undefined) === (x.from === 'rule'), { message: 'правило — только у срока от правила (from: rule), и у него — обязательно' })
+  .refine(x => x.from !== 'rule' || x.complaints.length === 0, { message: 'у срока от правила кому — по правилу: жалобы у правила' });
 
 export const versionSchema = z.strictObject({ contentVersion: z.number().int().min(1) });
 

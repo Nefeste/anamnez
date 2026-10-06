@@ -13,7 +13,7 @@ import { Rng } from '@/engine/core/rng';
 import { observe } from '@/engine/med/course';
 import { complaintObservations, examFits, runExam } from '@/engine/med/exams';
 import { generatePatient } from '@/engine/med/generate';
-import { evaluatePlan, primaryOf, selfLimits, txAvailable } from '@/engine/med/plan';
+import { evaluatePlan, primaryOf, selfLimits, txAvailable, verdictOf } from '@/engine/med/plan';
 import { examCost } from '@/engine/med/policy';
 import { buildReview } from '@/engine/med/review';
 import { scoreCase } from '@/engine/med/score';
@@ -171,14 +171,13 @@ export function createVisit(first: number, opts: { season?: Season; onFinish?: (
       const p = s.patient;
       const truth = p.truth.conditions[0].id;
       const cond = db.conditions[truth];
-      const group = (x: Id) => db.conditions[x].group ?? x;
       const obs = [...complaintObservations(p), ...resultsOf(s)];
       const confidence = beliefsOf(p, obs).find(x => x.id === dx)?.p ?? 0;
       const plan = { treatments: s.draft.treatments, setting: s.draft.setting };
       const ev = evaluatePlan(db, p, plan, obs);
       const outcome = observe(db, p, plan, ev, s.rng.fork('outcome'));
       const review = buildReview(db, p, s.arrived.map(a => ({ exam: a.exam, obs: a.obs })), dx, candidates(), Object.keys(db.exams).sort(), s.rng.fork('review'));
-      const verdict = dx === truth ? 'correct' : group(dx) === group(truth) ? 'partly' : 'wrong';
+      const verdict = verdictOf(db, dx, p);
       const present = new Set(p.truth.findings.map(f => f.f));
       const score = scoreCase({
         verdict, confidence, cost: s.done.reduce((a, id) => a + examCost(db, id), 0), rationalCost: review.rational.cost,

@@ -162,6 +162,10 @@ findings:
   # при инфаркте боль, как правило, в покое и от 20 минут до нескольких часов (157_5, раздел 1.6; 154_4, раздел 1.6)
   - { f: sym.chest_pain_rest_long, band: usually, when: { pain: [rest], type: [nste], mi: [yes] } }
   - { f: sym.chest_pain_rest_long, band: usually, when: { pain: [rest], type: [stemi] } }
+  # лактат (spec 2026-10-chapter-4, часть 48а): развёрнутый кардиогенный шок — «уровень лактата от 2 ммоль/л и выше», у
+  # начинающегося — гипотензия без гипоперфузии (157_5, стадии кардиогенного шока): доля — игровая оценка. В конце
+  # списка — прежние больные остаются прежними
+  - { f: lab.lactate_high, band: usually, when: { killip: [iv] } }
 confirm: [exam.ecg]
 redFlags: [sym.chest_pain_pressing, ecg.st_elevation, ecg.st_depression]
 # с чем спутать (часть 43д): перикардит — по шуму трения (157_5, раздел 2.2), расслоение аорты и ТЭЛА — по КТ с

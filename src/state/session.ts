@@ -1926,9 +1926,9 @@ function orBlockText(b: OrBlock): string {
 function targetLines(s: ShiftState, p: ShiftPatient): string[] {
   const t = T.spikes.patient;
   return targetsFor(db, p, targetPlace(db, s, p)).map(target => {
-    const done = minutesTo(p, target);
-    // от находки (часть 39б): «в первые 10 минут от ЭКГ с подъёмом ST; прошло — N мин»
-    const start = targetStart(p, target) ?? p.arriveT;
+    const done = minutesTo(db, p, target);
+    // от находки (часть 39б): «в первые 10 минут от ЭКГ с подъёмом ST; прошло — N мин»; от правила (часть 48а) — так же
+    const start = targetStart(db, p, target) ?? p.arriveT;
     if (done !== undefined) return t.targetDone(target.name.ru, done, target.minutes, target.texts.after?.ru);
     return t.target(target.name.ru, target.minutes, Math.round((s.t - start) / 60), target.texts.from?.ru);
   });
