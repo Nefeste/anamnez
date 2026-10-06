@@ -701,6 +701,11 @@ describe('кампания', () => {
     const target = broken(d => edit(d, 'campaign/chapters/vascular.yaml', 'target: target.stroke_ct', 'target: target.stroke_mri'));
     expect(target.some(e => e.includes('chapter.vascular: задание ct: срок target.stroke_mri не найден'))).toBe(true);
   });
+
+  test('помещение обучения (часть 45б) — из стройки главы или её готовой больницы', () => {
+    const room = broken(d => edit(d, 'campaign/chapters/district.yaml', 'tutorial: [cond.arvi,', 'tutorialRoom: room.ct\ntutorial: [cond.arvi,'));
+    expect(room.some(e => e.includes('chapter.district: помещение обучения room.ct в главе не построить'))).toBe(true);
+  });
 });
 
 describe('достижения', () => {

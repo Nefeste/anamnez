@@ -161,6 +161,19 @@ export function primaryOf(patient: Patient) {
   return patient.truth.conditions.find(c => c.role === 'primary') ?? patient.truth.conditions[0];
 }
 
+/**
+ * Обязательное лечение человеку можно (часть 45б): в каждой группе обязательного и обязательного до
+ * перевода — хоть одно без противопоказания у него. Заданные пациенты первой смены главы — учебные:
+ * тромболизис при инфаркте и инсульте им можно.
+ */
+export function treatable(db: ContentDb, patient: Patient): boolean {
+  const c = primaryOf(patient);
+  const base = db.conditions[c.id]?.treatment;
+  const truly = new Set([...patient.truth.risks, ...patient.truth.conditions.map(x => x.id)]);
+  const free = (tx: Id) => !db.treatments[tx]?.contraindications.some(k => truly.has(k.id));
+  return [...requireOf(base, c.params), ...beforeTransferOf(base, c.params)].every(g => g.some(free));
+}
+
 /** Совпало ли условие по скрытым параметрам болезни (часть 30в): нет условия — совпало. */
 export function whenHolds(when: Record<string, string[]> | undefined, params: Record<string, string>): boolean {
   return !when || Object.entries(when).every(([name, values]) => values.includes(params[name]));

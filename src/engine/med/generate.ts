@@ -127,10 +127,14 @@ export function generatePatient(db: ContentDb, seed: number, ctx: GenContext): P
 /**
  * Пациент с заданной болезнью, у которого она обычна: бывает основной в его возрасте и с его
  * болезнями, а по полу не редкость — цистит у женщины (заданные первые пациенты главы, spec
- * 2026-09-campaign); `age` — ещё и в этом возрасте (часть 34б: аппендицит у молодого). Зёрна — по
- * порядку из ряда `seeds`: первое, где так; не нашлось — первое.
+ * 2026-09-campaign); `age` — ещё и в этом возрасте (часть 34б: аппендицит у молодого); заданные
+ * производные параметры (часть 45б: инфаркт и инсульт в окне) — вышли такими: их не бросают, а
+ * выбирают; `accept` — и то, что спросит вызывающий (часть 45б: обязательное лечение можно дать). Зёрна —
+ * по порядку из ряда `seeds`: первое, где так; не нашлось — первое.
  */
-export function typicalPatient(db: ContentDb, seeds: (k: number) => number, ctx: GenContext & { primary: Id }, tries = 16, age?: readonly [number, number]): Patient {
+export function typicalPatient(
+  db: ContentDb, seeds: (k: number) => number, ctx: GenContext & { primary: Id }, tries = 16, age?: readonly [number, number], accept?: (p: Patient) => boolean,
+): Patient {
   const c = db.conditions[ctx.primary];
   let first: Patient | undefined;
   for (let k = 0; k < tries; k++) {
@@ -139,7 +143,9 @@ export function typicalPatient(db: ContentDb, seeds: (k: number) => number, ctx:
     const chronic = p.truth.conditions.filter(x => x.role === 'comorbid').map(x => x.id);
     const fits = presentingWeight(c, { sex: p.sex, age: p.age, season: p.season, risks: p.truth.risks, chronic }) > 0;
     const aged = !age || (p.age >= age[0] && p.age <= age[1]);
-    if (fits && aged && (!c.sex || 2 * c.sex[p.sex] >= Math.max(c.sex.m, c.sex.f))) return p;
+    const own = p.truth.conditions.find(x => x.role === 'primary')?.params ?? {};
+    const derived = Object.entries(ctx.params ?? {}).every(([name, value]) => !c.derived?.[name] || own[name] === value);
+    if (fits && aged && derived && (!c.sex || 2 * c.sex[p.sex] >= Math.max(c.sex.m, c.sex.f)) && (!accept || accept(p))) return p;
   }
   return first!;
 }

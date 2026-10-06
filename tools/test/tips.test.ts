@@ -55,7 +55,7 @@ describe('первые пациенты главы 1', () => {
   });
 });
 
-const at = (x: Partial<TipMoment>): TipMoment => ({ screen: 'card', patient: '1-01', condition: 'cond.arvi', asked: 0, examined: 0, decided: false, ...x });
+const at = (x: Partial<TipMoment>): TipMoment => ({ screen: 'card', patient: '1-01', condition: 'cond.arvi', asked: 0, examined: 0, tested: 0, decided: false, ...x });
 const tip = (shown: string[], m: TipMoment, hold?: string) => tipFor(db, { shown }, m, hold)?.id;
 
 describe('подсказки: какая и когда', () => {
@@ -85,6 +85,9 @@ describe('подсказки: какая и когда', () => {
     expect(tip(['tip.start'], both)).toBe('tip.examine');
     expect(tip(['tip.start', 'tip.examine'], both, momentKey(both))).toBeUndefined();
     expect(tip(['tip.start', 'tip.examine'], { ...both, asked: 3 }, momentKey(both))).toBe('tip.strep');
+    // обследование — тоже действие (часть 45б): после «Понятно» на первой подсказке и ЭКГ — следующая
+    const open = at({ condition: 'cond.strep_pharyngitis' });
+    expect(tip(['tip.start'], { ...open, tested: 1 }, momentKey(open))).toBe('tip.strep');
   });
 
   test('каждая — один раз; «Без подсказок» — ни одной', () => {

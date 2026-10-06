@@ -4,19 +4,24 @@
 // прежние, участок шире на крыло, отмена стройки — с чистого листа; в крыле строят кабинет КТ и ПИТ.
 // Готовая больница главы — районная с крылом: КТ, ПИТ на четыре койки и УЗИ. Задания — срок у больных
 // подряд, тромболизис без противопоказаний, смены без пропущенного инфаркта — и итоги дня для них;
-// вид главы и «Смена».
+// вид главы и «Смена». С частью 45б — первая смена отделения с заведующей: в первый день главы, когда
+// работает кабинет КТ, — инфаркт нижней стенки и инсульт в окне по скорой, паралич лица — пришедший сам,
+// всем троим обязательное лечение можно; подсказки заведующей.
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
 import type { Cell, Id, Mission } from '../../src/content/types';
 import { type CampaignView, dayOk, missionProgress, nextChapterOf, startChapter } from '../../src/engine/campaign/campaign';
-import { generatePatient } from '../../src/engine/med/generate';
+import { generatePatient, typicalPatient } from '../../src/engine/med/generate';
+import { primaryOf, treatable } from '../../src/engine/med/plan';
 import type { Patient } from '../../src/engine/med/types';
 import { type HospitalState, planOf, widenPlot } from '../../src/engine/hospital/build';
 import { apply, current, departmentsOf, emergencyBays, freeBeds, hospitalCtx, icuBeds, newCampaign, newSingle } from '../../src/engine/shift/engine';
-import { type DaySummary, SHIFT_SCHEMA_VERSION, type ShiftPatient, type ShiftState } from '../../src/engine/shift/types';
+import { DAY, type DaySummary, SHIFT_SCHEMA_VERSION, SHIFT_START, type ShiftPatient, type ShiftState } from '../../src/engine/shift/types';
 import { T } from '../../src/i18n';
 import { memoryStore, saveSlot } from '../../src/state/saves';
-import { campaignView, forgetShift, loadShift, moveToNextChapter, savedGames, setStore, shiftState, singleVenues } from '../../src/state/session';
+import {
+  callPatient, campaignView, examine, forgetShift, loadShift, moveToNextChapter, savedGames, seenTip, setStore, shiftState, singleVenues, sortAmbulance, tipView,
+} from '../../src/state/session';
 
 const ch2 = db.chapters['chapter.hospital'];
 const ch3 = db.chapters['chapter.vascular'];
@@ -327,5 +332,111 @@ describe('глава 3 между сменами', () => {
     await loadShift('campaign', 2);
     const c = campaignView()!;
     expect([c.after, c.next]).toEqual([T.campaign.completeLater(4), undefined]);
+  });
+});
+
+describe('первая смена отделения с заведующей (часть 45б)', () => {
+  const byArrival = (s: ShiftState) => Object.values(s.patients).sort((a, b) => a.arriveT - b.arriveT || (a.id < b.id ? -1 : 1));
+  /** Глава 3 с начала — кабинет КТ работает, открыт первый день; подсказки прежних глав показаны. */
+  function firstShift(seed: number): ShiftState {
+    const s = newCampaign(db, { seed, season: 'winter', career: 1, chapter: ch3.id });
+    s.campaign!.tips = { shown: Object.values(db.tips).filter(t => t.chapter !== ch3.id).map(t => t.id) };
+    apply(db, s, { kind: 'nextDay' });
+    return s;
+  }
+
+  test('первая скорая — в первые двадцать минут, инфаркт нижней стенки в окне; вторая — инсульт в окне; первый пришедший сам — паралич лица', () => {
+    expect([ch3.tutorialRoom, ch3.tutorial.map(t => t.condition)]).toEqual(['room.ct', ['cond.acs', 'cond.stroke_ischemic', 'cond.bell_palsy']]);
+    for (const seed of [81, 82, 83, 84, 85, 86]) {
+      const s = firstShift(seed);
+      expect(s.campaign!.tutorialDay).toBe(1);
+      const ps = byArrival(s);
+      const amb = ps.filter(p => p.kind === 'ambulance');
+      const walk = ps.filter(p => p.kind !== 'ambulance' && !p.returnOf);
+      expect(amb[0].arriveT - ((s.day - 1) * DAY + SHIFT_START)).toBeLessThanOrEqual(20 * 60);
+      expect(primaryOf(amb[0].patient)).toMatchObject({ id: ACS, params: { type: 'stemi', wall: 'inferior', killip: 'i', early: 'yes' } });
+      // в первые 3 часа от начала — с запасом до конца окна 4,5 часа
+      expect(primaryOf(amb[1].patient)).toMatchObject({
+        id: 'cond.stroke_ischemic', params: { deficit: 'motor', nihss: 'high', lvo: 'no', window: 'yes', lysis180: 'yes', minor: 'no', thrombectomy: 'no' },
+      });
+      expect(primaryOf(walk[0].patient)).toMatchObject({ id: 'cond.bell_palsy', params: { severity: 'moderate', h72: 'yes' } });
+      // учебные: тромболизис им можно — противопоказаний к обязательному лечению нет
+      expect([amb[0], amb[1], walk[0]].map(p => treatable(db, p.patient))).toEqual([true, true, true]);
+      expect(amb[0].patient.truth.risks.filter(r => RISKS.includes(r))).toEqual([]);
+    }
+  });
+
+  test('обязательное лечение можно — в каждой группе хоть одно без противопоказания у человека', () => {
+    const mi = generatePatient(db, 4501, { department: 'dept.therapy', season: 'winter', primary: ACS, params: { type: 'stemi', killip: 'i', early: 'yes' } });
+    const clean = { ...mi, truth: { ...mi.truth, risks: mi.truth.risks.filter(r => !RISKS.includes(r)) } };
+    expect(treatable(db, clean)).toBe(true);
+    // тромболизис до перевода — одно лечение в группе: антикоагулянты (относительное противопоказание) — нельзя
+    expect(treatable(db, { ...clean, truth: { ...clean.truth, risks: [...clean.truth.risks, 'risk.anticoagulants'] } })).toBe(false);
+    // вне окна тромболизиса нет — и противопоказание к нему не мешает
+    const late = { ...clean, truth: { ...clean.truth, risks: [...clean.truth.risks, 'risk.anticoagulants'], conditions: clean.truth.conditions.map(c => (c.role === 'primary' ? { ...c, params: { ...c.params, early: 'no' } } : c)) } };
+    expect(treatable(db, late)).toBe(true);
+  });
+
+  test('после перехода из главы 2 — без кабинета КТ обычные дни; первая смена отделения — в первый день, когда КТ работает', () => {
+    const s = doneChapter2(87);
+    apply(db, s, { kind: 'nextChapter' });
+    apply(db, s, { kind: 'nextDay' });
+    expect(s.campaign!.tutorialDay).toBeUndefined();
+    expect(Object.values(s.patients).filter(p => p.id.startsWith(`${s.day}-`)).some(p => primaryOf(p.patient).id === 'cond.stroke_ischemic')).toBe(false);
+    apply(db, s, { kind: 'closeDay' });
+    // крыло: коридоры, кабинет КТ с томографом, рентгенолаборант и рентгенолог
+    apply(db, s, { kind: 'build', cmd: { kind: 'corridor', cells: rect(38, 7, 49, 9) } });
+    apply(db, s, { kind: 'build', cmd: { kind: 'room', type: 'room.ct', size: 'M', x: 41, y: 0, rot: 0 } });
+    const ct = s.hospital!.rooms.find(r => r.type === 'room.ct')!;
+    apply(db, s, { kind: 'build', cmd: { kind: 'buy', room: ct.id, equipment: 'eq.ct_16' } });
+    apply(db, s, { kind: 'buildEnd' });
+    for (const role of ['role.radiographer', 'role.radiologist']) {
+      const c = s.candidates!.find(x => x.role === role)!;
+      apply(db, s, { kind: 'hire', id: c.id });
+      apply(db, s, { kind: 'assign', id: c.id, room: ct.id });
+    }
+    apply(db, s, { kind: 'nextDay' });
+    expect(s.campaign!.tutorialDay).toBe(s.day);
+    const today = byArrival(s).filter(p => p.id.startsWith(`${s.day}-`));
+    const amb = today.filter(p => p.kind === 'ambulance');
+    expect([primaryOf(amb[0].patient).id, primaryOf(amb[1].patient).id]).toEqual([ACS, 'cond.stroke_ischemic']);
+    // назавтра — как обычно
+    apply(db, s, { kind: 'closeDay' });
+    apply(db, s, { kind: 'nextDay' });
+    expect(s.campaign!.tutorialDay).toBe(s.day - 1);
+  });
+
+  test('производный параметр заданного пациента выбирают, а не задают: окно — из попыток генератора', () => {
+    const seeds = (k: number) => 9100 + k;
+    const ctx = { department: 'dept.therapy', departments: ['dept.therapy', 'dept.neurology'], season: 'winter' as const, primary: 'cond.stroke_ischemic' };
+    for (const window of ['yes', 'no']) {
+      expect(primaryOf(typicalPatient(db, seeds, { ...ctx, params: { window } })).params.window).toBe(window);
+    }
+  });
+
+  test('подсказки заведующей — только в главе 3 и только в первую смену отделения', async () => {
+    const scoped = Object.values(db.tips).filter(t => t.chapter === ch3.id);
+    expect(scoped.map(t => [t.id, t.from, t.when])).toEqual([
+      ['tip.stemi', 'char.neurologist', { condition: ACS }],
+      ['tip.stroke', 'char.neurologist', { condition: 'cond.stroke_ischemic' }],
+      ['tip.forehead', 'char.neurologist', { condition: 'cond.bell_palsy' }],
+    ]);
+    const s = firstShift(88);
+    const waiting = () => Object.values(s.patients).find(p => p.kind === 'ambulance' && p.status === 'waiting' && !p.sorted);
+    for (let i = 0; i < 40 && !waiting(); i++) apply(db, s, { kind: 'advance', seconds: 60 });
+    const amb = waiting()!;
+    expect(primaryOf(amb.patient).id).toBe(ACS);
+    const store = memoryStore();
+    setStore(store);
+    forgetShift();
+    await saveSlot(store, 'campaign-1', s, SHIFT_SCHEMA_VERSION, 'x');
+    await loadShift('campaign', 1);
+    sortAmbulance(amb.id, 'red');
+    expect(callPatient(amb.id)).toBe(true);
+    expect(tipView('card')).toBeUndefined();
+    examine('exam.ecg');
+    expect([tipView('card')?.id, tipView('card')?.from]).toEqual(['tip.stemi', db.characters['char.neurologist'].short.ru]);
+    seenTip('tip.stemi', 'card');
+    expect(tipView('card')).toBeUndefined();
   });
 });

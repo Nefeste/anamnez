@@ -23,6 +23,11 @@ export interface TipMoment {
   /** сколько задано вопросов и сколько раз осмотрен; давление в доврачебном — не в счёт */
   asked: number;
   examined: number;
+  /**
+   * сколько обследований — ЭКГ, анализов, снимков (часть 45б: у инфаркта первое — ЭКГ у постели);
+   * измерения у постели — не в счёт: давление и пульс меряют медсестра и фельдшер
+   */
+  tested: number;
   decided: boolean;
 }
 
@@ -34,22 +39,23 @@ export function momentOf(db: ContentDb, screen: TipScreen, p: ShiftPatient): Tip
     condition: p.patient.truth.conditions[0].id,
     asked: kinds.filter(k => k === 'ask').length,
     examined: kinds.filter(k => k === 'physical').length,
+    tested: kinds.filter(k => k !== undefined && k !== 'ask' && k !== 'physical' && k !== 'bedside').length,
     decided: !!p.closed,
   };
 }
 
 /** Момент одной строкой: пока он тот же, вторая подсказка подряд не показывается. */
-export const momentKey = (m: TipMoment) => `${m.screen}:${m.patient}:${m.asked}:${m.examined}`;
+export const momentKey = (m: TipMoment) => `${m.screen}:${m.patient}:${m.asked}:${m.examined}:${m.tested}`;
 
 /**
  * К месту ли подсказка: карта открылась, а врач ещё не спрашивал и не осматривал; задал два
- * вопроса и ещё не осматривал; у пациента с болезнью подсказки — после первого вопроса или
- * осмотра; «Решение»; разбор.
+ * вопроса и ещё не осматривал; у пациента с болезнью подсказки — после первого вопроса, осмотра
+ * или (часть 45б) обследования; «Решение»; разбор.
  */
 export function tipFits(t: Tip, m: TipMoment): boolean {
   const w = t.when;
   const card = m.screen === 'card' && !m.decided;
-  if (typeof w === 'object') return card && m.condition === w.condition && m.asked + m.examined > 0;
+  if (typeof w === 'object') return card && m.condition === w.condition && m.asked + m.examined + m.tested > 0;
   switch (w) {
     case 'caseOpen':
       return card && m.asked + m.examined === 0;

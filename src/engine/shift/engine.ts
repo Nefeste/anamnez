@@ -10,7 +10,7 @@ import {
   caseIncome, consumablesOf, emptyLedger, expensesOf, flowOf, incomeOf, interestOf, type Ledger, levelOf, payerOf, reputationAfter, salariesOf, upkeepOf,
   type WardClose, wardIncome,
 } from '../economy/economy';
-import { type CampaignProgress, campaignEvening, chapterOf, nextChapterOf, startChapter } from '../campaign/campaign';
+import { type CampaignProgress, campaignEvening, chapterOf, nextChapterOf, startChapter, tutorialDayOf } from '../campaign/campaign';
 import { build, emptyPlot, type HospitalState, type Plan, planOf, presetHospital, UNDO_DEPTH, widenPlot } from '../hospital/build';
 import { bedsideIn, DOCTOR, doctorRoom, examWhere, openBlocks, type Problem, problemsOf, type Staffing, workingRooms } from '../hospital/requirements';
 import { applicantsOf, doctorOf, grow, memberAt, presetStaff, readingOf, type StaffMember, speedOf, staffingOf } from '../hospital/staff';
@@ -21,7 +21,7 @@ import { complaintObservations, type ExamSkill, examFits, NORMAL_SKILL, runExam 
 import { freezeClock, generatePatient, patientAt, typicalPatient } from '../med/generate';
 import { contextOf, likelyParams, posterior } from '../med/infer';
 import { scaleTriage } from '../med/news2';
-import { alsoSettings, choiceFor, evaluatePlan, primaryOf, recommendedSetting, selfLimits, settingFit, surgeriesOf, txAvailable, type Venue, whenHolds } from '../med/plan';
+import { alsoSettings, choiceFor, evaluatePlan, primaryOf, recommendedSetting, selfLimits, settingFit, surgeriesOf, treatable, txAvailable, type Venue, whenHolds } from '../med/plan';
 import { examCost, indicated, nextStep } from '../med/policy';
 import { buildReview, type ReviewData } from '../med/review';
 import { scoreCase } from '../med/score';
@@ -44,8 +44,11 @@ const SLOT_MIN = 20;
 const SLOT_BOOKED = 6000;
 /** первая скорая в первую смену главы с обучением по скорой — не позже стольких минут (часть 34б) */
 const TUTORIAL_AMBULANCE_MIN = 20;
-/** сколько зёрен перебрать, чтобы заданная болезнь была у человека обычной (и в заданном возрасте) */
-const TUTORIAL_TRIES = 16;
+/**
+ * сколько зёрен перебрать, чтобы заданная болезнь была у человека обычной (и в заданном возрасте, с заданными
+ * производными параметрами, а обязательное лечение ему можно): инсульт в первые 3 часа — у каждого седьмого
+ */
+const TUTORIAL_TRIES = 64;
 /** Без записи — 2–6 человек, больше утром. */
 const WALK_INS: [number, number] = [2, 6];
 
@@ -561,8 +564,9 @@ function planDay(db: ContentDb, s: ShiftState) {
     plan.push({ t: base + SHIFT_START + r.fork(`return:${ret.of}`).range(0, 120) * MIN, kind, key: `return:${ret.of}`, ret });
   }
   // кампания: в первый день главы первые пришедшие — с болезнями, заданными главой (обучение
-  // с наставником); человек — тот же, что пришёл бы, если болезнь у него обычна
-  const tutorial = s.campaign && d === s.campaign.since + 1 ? (chapterOf(db, s.campaign)?.tutorial ?? []) : [];
+  // с наставником); человек — тот же, что пришёл бы, если болезнь у него обычна. У главы с помещением
+  // обучения (часть 45б) — в первый её день, когда оно работает
+  const tutorial = s.campaign && d === tutorialDay(db, s) ? (chapterOf(db, s.campaign)?.tutorial ?? []) : [];
   // скорая (spec 2026-09-chapter-2, часть 27): работает смотровая приёмного — машины в любое
   // время смены, из своей ветви дня; без смотровой день прежний
   if (emergencyBays(db, s).length > 0) {
@@ -592,7 +596,10 @@ function planDay(db: ContentDb, s: ShiftState) {
     const patient = a.ret
       ? returningPatient(db, s, a.ret)
       : teach
-        ? typicalPatient(db, n => fnv1a(`${s.meta.seed}:${d}:${a.key}${n ? `:${n}` : ''}`), { ...gen, primary: teach.condition, ...(teach.params ? { params: teach.params } : {}) }, TUTORIAL_TRIES, teach.age)
+        ? typicalPatient(
+          db, n => fnv1a(`${s.meta.seed}:${d}:${a.key}${n ? `:${n}` : ''}`), { ...gen, primary: teach.condition, ...(teach.params ? { params: teach.params } : {}) }, TUTORIAL_TRIES, teach.age,
+          p => treatable(db, p),
+        )
         : a.kind === 'ambulance'
           ? ambulancePatient(db, s, d, a.key, departments, varied)
           // пришёл сам (часть 41а): инсульта у него нет — его привозит скорая
@@ -613,6 +620,22 @@ function planDay(db: ContentDb, s: ShiftState) {
     schedule(s, a.t, { kind: 'arrive', id });
   });
   schedule(s, base + SHIFT_END, { kind: 'shiftEnd' });
+}
+
+/**
+ * День смены с обучением в главе (spec 2026-10-chapter-3, часть 45б): первый день главы; у главы с
+ * помещением обучения (`tutorialRoom`) — первый её день, когда оно работает, — его запоминает ход главы:
+ * главе 3 нужен кабинет КТ, без него неврологию не привозят.
+ */
+function tutorialDay(db: ContentDb, s: ShiftState): number | undefined {
+  const c = s.campaign;
+  const ch = c ? chapterOf(db, c) : undefined;
+  if (!c || !ch) return undefined;
+  if (ch.tutorialRoom && c.tutorialDay === undefined && s.day > c.since) {
+    const ctx = hospitalCtx(db, s);
+    if (ctx.plan.rooms.some(r => r.type === ch.tutorialRoom && ctx.working.has(r.id))) c.tutorialDay = s.day;
+  }
+  return tutorialDayOf(ch, c);
 }
 
 /**

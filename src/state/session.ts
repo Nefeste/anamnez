@@ -18,7 +18,7 @@ import { build, type BuildCommand, type BuildError, type HospitalState, type Pla
 import { type Block, doctorRoom, examWhere, openBlocks, type Problem, problemsOf, standInOf, workingRooms } from '@/engine/hospital/requirements';
 import { type ClinicLayout, cropPlan, layoutOf } from '@/engine/hospital/clinic';
 import { memberAt, type StaffMember, staffingOf } from '@/engine/hospital/staff';
-import { type MissionProgress, missionProgress, nextChapterOf } from '@/engine/campaign/campaign';
+import { type MissionProgress, missionProgress, nextChapterOf, tutorialDayOf } from '@/engine/campaign/campaign';
 import { levelOf } from '@/engine/economy/economy';
 import {
   apply, atDoorOf, bedsideEquipment, bedsideOf, current, freeBeds, freeIcuBeds, type HospitalCtx, hospitalCtx, icuBeds, inIcu, inpatientsOf, moreUrgent, newCampaign, newSandbox,
@@ -1207,7 +1207,9 @@ function tipMoment(screen: TipScreen): TipMoment | undefined {
   const c = s?.campaign;
   const ch = c ? db.chapters[c.chapter] : undefined;
   if (!s || !c || !ch || ch.tutorial.length === 0) return undefined;
-  if (!(s.day === c.since + 1 || (screen === 'rounds' && s.day === c.since + 2))) return undefined;
+  // смена с обучением — первый день главы; у главы с помещением обучения (часть 45б) — первый с ним
+  const first = tutorialDayOf(ch, c);
+  if (first === undefined || !(s.day === first || (screen === 'rounds' && s.day === first + 1))) return undefined;
   const id = screen === 'review'
     ? (session?.focus ?? s.current)
     : screen === 'queue'

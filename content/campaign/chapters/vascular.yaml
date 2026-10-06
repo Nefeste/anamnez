@@ -17,6 +17,18 @@ wing: 12
 budget: 2500000
 department: dept.therapy
 build: [room.reception, room.waiting, room.office, room.triage, room.procedure, room.lab, room.ecg, room.xray, room.toilet, room.staff, room.emergency, room.ward, room.or, room.ultrasound, room.ct, room.icu]
+# первая смена отделения с заведующей (часть 45б) — в первый день главы, когда работает кабинет КТ: без него
+# неврологию не привозят. Первая скорая — инфаркт с подъёмом ST нижней стенки в окне тромболизиса, без
+# сердечной недостаточности (ЭКГ у постели, тромболизис, перевод); вторая — ишемический инсульт со слабостью руки
+# и ноги, NIHSS 6 и больше, без окклюзии крупной артерии, в первые 3 часа — с запасом до конца окна (глюкоза, КТ,
+# тромболизис, ПИТ); первый пришедший сам — невропатия лицевого нерва в первые 72 часа, не тяжёлая (лоб не
+# морщится: не инсульт). Инсульт привозит только скорая: «пришедший сам» спецификации — второй скорой. Окно —
+# производный параметр: его не задают, а выбирают из попыток; противопоказаний к тромболизису у заданных нет
+tutorialRoom: room.ct
+tutorial:
+  - { condition: cond.acs, ambulance: true, params: { type: stemi, wall: inferior, killip: i, early: yes } }
+  - { condition: cond.stroke_ischemic, ambulance: true, params: { deficit: motor, nihss: high, lvo: no, window: yes, lysis180: yes } }
+  - { condition: cond.bell_palsy, params: { severity: moderate, h72: yes } }
 missions:
   - id: ecg
     main: true
@@ -78,7 +90,8 @@ letters:
         40: она исключает кровь в мозге, а без этого о тромболизисе не решить. Растворить тромб
         можно и у нас — если человек пришёл вовремя и противопоказаний нет. Остальное делают в
         региональном сосудистом центре, но до него два часа скорой, и решать, лечить здесь или
-        везти туда, будете вы.
+        везти туда, будете вы. Когда заработает кабинет КТ, первую смену отделения проведём
+        вместе.
   - id: clock
     from: char.mentor
     when: start

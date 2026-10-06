@@ -21,6 +21,11 @@ export interface CampaignProgress {
   /** когда выполнены все основные задания */
   complete?: number;
   /**
+   * день смены с обучением у главы с помещением обучения (spec 2026-10-chapter-3, часть 45б): первый
+   * день главы, когда оно работало; пока не было — нет
+   */
+  tutorialDay?: number;
+  /**
    * Подсказки наставника: какие уже показаны в этой карьере, выключены ли («Без подсказок»).
    * Отметка вида, как «прочитано» у письма, — движок её не читает (src/state/tips.ts).
    */
@@ -48,6 +53,12 @@ export interface CampaignView {
 }
 
 export const chapterOf = (db: ContentDb, c: CampaignProgress): Chapter | undefined => db.chapters[c.chapter];
+
+/**
+ * День смены с обучением (часть 45б): первый день главы; у главы с помещением обучения — день, когда
+ * оно впервые работало (его запоминает смена), пока не было — нет.
+ */
+export const tutorialDayOf = (ch: Chapter, c: CampaignProgress): number | undefined => (ch.tutorialRoom ? c.tutorialDay : c.since + 1);
 
 /** Следующая глава по порядку (spec 2026-09-chapter-2, часть 34); последняя — undefined. */
 export function nextChapterOf(db: ContentDb, c: CampaignProgress): Chapter | undefined {

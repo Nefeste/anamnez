@@ -784,6 +784,23 @@ function chapter2DoneSave(): string {
   return JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: '2026-10-05T00:00:00.000Z', data: s });
 }
 
+/**
+ * Карьера 3 с начала главы 3 (spec 2026-10-chapter-3, часть 45б): районная больница с крылом, кабинет КТ работает —
+ * первая смена отделения с заведующей; подсказки прежних глав уже показаны, письма прочитаны. Кто из заданных
+ * пришёл сам с параличом лица — по плану дня (он по зерну) на копии.
+ */
+function chapter3StartSave(): { save: string; palsy: string } {
+  const { db } = buildDb();
+  const s = newCampaign(db, { seed: 10, season: 'winter', difficulty: 'student', career: 3, chapter: 'chapter.vascular' });
+  s.campaign!.letters = s.campaign!.letters.map(l => ({ ...l, read: true }));
+  s.campaign!.tips = { shown: Object.values(db.tips).filter(t => t.chapter !== 'chapter.vascular').map(t => t.id) };
+  const day = structuredClone(s);
+  apply(db, day, { kind: 'nextDay' });
+  const palsy = Object.values(day.patients).find(p => p.kind !== 'ambulance' && p.patient.truth.conditions[0].id === 'cond.bell_palsy');
+  if (!palsy) throw new Error('глава 3: паралич лица не пришёл');
+  return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: '2026-10-06T00:00:00.000Z', data: s }), palsy: palsy.id };
+}
+
 function sandboxFreshSave(): string {
   const { db } = buildDb();
   const s = newSandbox(db, { seed: 5, season: 'winter', difficulty: 'student', start: 'clinic', budget: db.economy.sandbox.budgets.normal });
@@ -3023,6 +3040,86 @@ try {
   await page.waitForTimeout(500);
   await page.screenshot({ path: join(OUT, '15-chapter3-build.png') });
   await page.getByTestId('build-done').click();
+
+  // первая смена отделения (часть 45б, сценарий chapter3): глава 3 с начала — кабинет КТ работает; первая скорая —
+  // инфаркт нижней стенки: сортировка, карта, ЭКГ у постели — подсказка заведующей «Инфаркт и минуты»; расспрос
+  // перед тромболизисом, тромболизис со спутниками и перевод в сосудистый центр; первый пришедший сам — паралич
+  // лица: после первого вопроса — подсказка «Лицо и лоб», глюкокортикоид — домой
+  // сначала уйти со стройки в меню: уходя, игра сохраняет карьеру 3 — после этого её и заменяем
+  const c3 = chapter3StartSave();
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/campaign-3.json', c3.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-campaign').click();
+  await page.getByTestId('career-3').waitFor({ timeout: 10_000 });
+  await page.getByTestId('career-3').click();
+  await page.getByTestId('career-continue').click();
+  await page.getByTestId('sandbox-open').waitFor({ timeout: 10_000 });
+  await page.getByTestId('sandbox-open').click();
+  await page.getByTestId('clinic-map').waitFor({ timeout: 10_000 });
+  await fastClock(page);
+  const ambulanceIn = async () => (await page.locator('[data-testid^="ambulance-"]').count()) > 0;
+  check(await runClockUntil(page, ambulanceIn), 'глава 3: первая скорая смены отделения — в первые минуты');
+  await page.getByTestId('tab-pause').click();
+  const stemiId = (await page.locator('[data-testid^="ambulance-"]').first().getAttribute('data-testid'))!.replace('ambulance-', '');
+  await page.getByTestId(`ambulance-${stemiId}`).click();
+  await page.getByTestId('handover-reason').waitFor({ timeout: 5000 });
+  await page.getByTestId('sort-red').click();
+  await page.getByTestId('handover-sheet').waitFor({ state: 'detached', timeout: 5000 });
+  await page.getByTestId(`queue-${stemiId}`).waitFor({ timeout: 10_000 });
+  await page.getByTestId(`queue-${stemiId}`).click();
+  // карта открывается на «Спросить»: первым делом — ЭКГ у постели
+  await visible(page, 'visit-decide').waitFor({ timeout: 30_000 });
+  check(!(await page.getByTestId('tip-text').count()), 'глава 3: у инфаркта до первого дела подсказки нет');
+  await page.getByTestId('tab-order').click();
+  await page.getByTestId('exam-exam.ecg').click();
+  await page.getByTestId('tip-text').waitFor({ timeout: 10_000 });
+  check((await text(page, 'tip-text')).startsWith('ЭКГ у постели — в первые 10') && (await text(page, 'tip-sheet')).includes('Е. В. Соколова'),
+    `глава 3: у инфаркта после ЭКГ — подсказка заведующей (${(await text(page, 'tip-text')).slice(0, 60)})`);
+  await page.waitForTimeout(700);
+  await page.screenshot({ path: join(OUT, '15-chapter3-tip.png') });
+  await page.getByTestId('tip-sheet-close').click();
+  await page.getByTestId('tip-sheet').waitFor({ state: 'detached', timeout: 5000 });
+  await page.getByTestId('tab-ask').click();
+  await page.getByTestId('exam-exam.ask_lysis').click();
+  await page.getByTestId('done-exam.ask_lysis').waitFor({ timeout: 10_000 });
+  await visible(page, 'visit-decide').click();
+  await page.getByTestId('dx-cond.acs').click();
+  await page.getByTestId('decision-to-plan').click();
+  await page.getByTestId('tx-tx.thrombolysis').waitFor({ timeout: 5000 });
+  check(!(await page.getByTestId('tx-tx.thrombolysis').isDisabled()), 'глава 3: тромболизис у постели в смотровой — можно');
+  for (const tx of ['tx.thrombolysis', 'tx.aspirin_acs', 'tx.clopidogrel', 'tx.enoxaparin_acs']) await page.getByTestId(`tx-${tx}`).click();
+  await page.getByTestId('setting-ambulance').click();
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-outcome').waitFor({ timeout: 10_000 });
+  const stemiOut = await text(page, 'visit-outcome');
+  check((await text(page, 'visit-truth')).includes('Острый коронарный синдром')
+    && /(Переведён|Переведена) в сосудистый центр\. Тромболизис (помог|не помог)|в сосудистом центре на \d-е\u00a0сутки/.test(stemiOut),
+    `глава 3: инфаркт — тромболизис здесь и перевод («${stemiOut.replace(/\n/g, ' · ').slice(0, 160)}»)`);
+  await page.getByTestId('shift-to-queue').click();
+  // первый пришедший сам — паралич лица: ждёт в очереди с начала смены
+  await page.getByTestId(`queue-${c3.palsy}`).waitFor({ timeout: 10_000 });
+  await page.getByTestId(`queue-${c3.palsy}`).click();
+  await visible(page, 'visit-decide').waitFor({ timeout: 30_000 });
+  await page.getByTestId('exam-exam.ask_stroke').click();
+  await page.getByTestId('tip-text').waitFor({ timeout: 10_000 });
+  check((await text(page, 'tip-text')).startsWith('Перекошенное лицо — не всегда инсульт') && (await text(page, 'tip-sheet')).includes('Е. В. Соколова'),
+    `глава 3: у паралича лица после первого вопроса — подсказка «Лицо и лоб» (${(await text(page, 'tip-text')).slice(0, 60)})`);
+  await page.waitForTimeout(700);
+  await page.screenshot({ path: join(OUT, '15-chapter3-face-tip.png') });
+  await page.getByTestId('tip-sheet-close').click();
+  await page.getByTestId('tip-sheet').waitFor({ state: 'detached', timeout: 5000 });
+  await visible(page, 'visit-decide').click();
+  await visible(page, 'dx-cond.bell_palsy').click();
+  await visible(page, 'decision-to-plan').click();
+  await page.getByTestId('tx-tx.steroid_systemic_short').waitFor({ timeout: 5000 });
+  await page.getByTestId('tx-tx.steroid_systemic_short').click();
+  await page.getByTestId('setting-home').click();
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
+  check((await text(page, 'visit-truth')).includes('Невропатия лицевого нерва'), `глава 3: паралич лица — глюкокортикоид и домой (${await text(page, 'visit-truth')})`);
+  await page.getByTestId('shift-to-queue').click();
 
   // «Случай дня»: последние 30 дней, приём, разбор, отметка в списке (spec 2026-09-campaign, часть 14)
   await page.goto(base);

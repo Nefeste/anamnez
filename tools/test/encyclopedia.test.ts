@@ -121,11 +121,14 @@ describe('энциклопедия', () => {
   test('подсказки наставника: по порядку, в каком подсказывает; совет, когда и о чём', () => {
     expect(sectionView(db, 'tips').groups.flatMap(g => g.items.map(i => i.id))).toEqual([
       'tip.start', 'tip.examine', 'tip.strep', 'tip.decision', 'tip.urine', 'tip.review', 'tip.handover', 'tip.appendicitis', 'tip.rounds',
+      'tip.stemi', 'tip.stroke', 'tip.forehead',
     ]);
     const strep = article(db, 'tip.strep')!;
     expect([strep.section, strep.subtitle]).toEqual(['tips', 'Подсказка · Анна Сергеевна']);
     // глава 2 (часть 34б): подсказывает и заведующий хирургией; когда — на экране смены и на обходе
     expect(article(db, 'tip.appendicitis')!.subtitle).toBe('Подсказка · А. И. Зорин');
+    // глава 3 (часть 45б): заведующая сосудистым отделением
+    expect(article(db, 'tip.stemi')!.subtitle).toBe('Подсказка · Е. В. Соколова');
     expect(article(db, 'tip.handover')!.blocks.find(b => b.key === 'when')!.text).toEqual([T.encyclopedia.tipWhen.ambulance]);
     expect(article(db, 'tip.rounds')!.blocks.find(b => b.key === 'when')!.text).toEqual([T.encyclopedia.tipWhen.rounds]);
     expect(strep.blocks.map(b => b.key)).toEqual(['text', 'when', 'see']);

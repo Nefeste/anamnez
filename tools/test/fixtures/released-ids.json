@@ -1,6 +1,6 @@
 {
-  "version": "0.3.24",
-  "base": 65,
+  "version": "0.3.25",
+  "base": 66,
   "ids": {
     "achievements": [
       "ach.allergy_10",
@@ -923,11 +923,14 @@
       "tip.appendicitis",
       "tip.decision",
       "tip.examine",
+      "tip.forehead",
       "tip.handover",
       "tip.review",
       "tip.rounds",
       "tip.start",
+      "tip.stemi",
       "tip.strep",
+      "tip.stroke",
       "tip.urine"
     ],
     "treatments": [

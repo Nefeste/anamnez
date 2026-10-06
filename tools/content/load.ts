@@ -988,6 +988,8 @@ function checkCampaign(db: ContentDb, errors: string[]) {
     const preset = db.presets[c.preset];
     const departments = [c.department, ...new Set((preset?.rooms ?? []).flatMap(r => db.rooms[r.type]?.admits ?? []))];
     const emergency = (preset?.rooms ?? []).some(r => db.rooms[r.type]?.emergency);
+    // помещение обучения (часть 45б): из стройки главы или её готовой больницы
+    if (c.tutorialRoom && !c.build.includes(c.tutorialRoom) && !preset?.rooms.some(r => r.type === c.tutorialRoom)) at(`помещение обучения ${c.tutorialRoom} в главе не построить`);
     for (const t of c.tutorial) {
       const cond = db.conditions[t.condition];
       if (!cond) at(`болезнь обучения ${t.condition} не найдена`);
