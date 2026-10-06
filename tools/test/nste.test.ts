@@ -65,6 +65,22 @@ describe('инфаркт или нестабильная стенокардия'
       expect(rise.shown ? rise.value! >= 5 : rise.value! < 3).toBe(true);
     }
   });
+
+  test('боль в покое дольше 20 минут (часть 46а): у стенокардии покоя — у каждой, у инфаркта в покое — как правило; при нагрузке и у стабильной — нет', () => {
+    const LONG = 'sym.chest_pain_rest_long';
+    expect(share(people(300, { type: 'nste', mi: 'no', pain: 'rest' }), p => has(p, LONG))).toBe(1);
+    for (const params of [{ type: 'nste', mi: 'yes', pain: 'rest' }, { type: 'stemi', pain: 'rest' }] as Record<string, string>[]) {
+      const x = share(people(600, params, 5000), p => has(p, LONG));
+      expect(x).toBeGreaterThan(0.7);
+      expect(x).toBeLessThan(0.8);
+    }
+    expect(share(people(300, { pain: 'exertion' }, 9000), p => has(p, LONG))).toBe(0);
+    const stable = Array.from({ length: 300 }, (_, i) => generatePatient(db, 12000 + i, { department: 'dept.therapy', departments: ED, season: 'winter', primary: 'cond.angina_stable' }));
+    expect(share(stable, p => has(p, LONG))).toBe(0);
+    // её открывает расспрос о боли в груди; жалобой она не бывает — жалобы у больных прежние
+    expect(db.revealedBy[LONG]).toEqual(['exam.ask_chest_pain']);
+    expect(db.findings[LONG].salience).toBeLessThan(2);
+  });
 });
 
 /** Районная больница главы 2, открыт первый день. */

@@ -1,6 +1,6 @@
 {
-  "version": "0.3.25",
-  "base": 66,
+  "version": "0.3.26",
+  "base": 67,
   "ids": {
     "achievements": [
       "ach.allergy_10",
@@ -685,6 +685,7 @@
       "sym.chest_injury_pain",
       "sym.chest_pain_exertion",
       "sym.chest_pain_pressing",
+      "sym.chest_pain_rest_long",
       "sym.chest_tightness",
       "sym.chills",
       "sym.chronic_cough",

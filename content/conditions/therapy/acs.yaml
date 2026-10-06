@@ -153,6 +153,15 @@ findings:
     note: "кардиогенный шок — это Killip IV, и его основной признак — стойкая гипотензия, систолическое ≤ 90 мм рт. ст. (157_5, раздел 3.4.1.2): у каждого такого больного"
   - { f: vital.tachycardia, band: usually, when: { killip: [iv] } }
   - { f: sign.pallor, band: often, when: { killip: [iv] } }
+  # боль в покое дольше 20 минут (часть 46а): у стенокардии покоя — по определению, у инфаркта — как правило.
+  # В конце списка: жребий признака привязан к номеру строки, и прежние больные остаются прежними
+  - f: sym.chest_pain_rest_long
+    band: { pct: 100 }
+    when: { pain: [rest], type: [nste], mi: [no] }
+    note: "стенокардия покоя — при болевом синдроме более 20 минут, по определению (154_4, раздел 1.5)"
+  # при инфаркте боль, как правило, в покое и от 20 минут до нескольких часов (157_5, раздел 1.6; 154_4, раздел 1.6)
+  - { f: sym.chest_pain_rest_long, band: usually, when: { pain: [rest], type: [nste], mi: [yes] } }
+  - { f: sym.chest_pain_rest_long, band: usually, when: { pain: [rest], type: [stemi] } }
 confirm: [exam.ecg]
 redFlags: [sym.chest_pain_pressing, ecg.st_elevation, ecg.st_depression]
 # с чем спутать (часть 43д): перикардит — по шуму трения (157_5, раздел 2.2), расслоение аорты и ТЭЛА — по КТ с
