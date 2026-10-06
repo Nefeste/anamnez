@@ -15,9 +15,9 @@ shots:
   - file: screenshots/phone/02-xray.png
     caption: X-ray
     alt: "A visit: a chest X-ray with a finding in the lower right lung"
-  - file: screenshots/phone/03-fracture.png
-    caption: Fracture
-    alt: "A visit: an ankle X-ray in two views, a fracture of both malleoli with the foot shifted"
+  - file: screenshots/phone/03-ct.png
+    caption: CT
+    alt: "A visit in the stroke unit: a head CT slice with no bleeding inside the skull, the finding listed under the slice"
   - file: screenshots/phone/04-ecg.png
     caption: ECG
     alt: "A visit: a 12-lead ECG with ST elevation in II, III and aVF, the findings listed under the sheet"
@@ -36,7 +36,7 @@ shots:
 card:
   text: Patients come to you with real illnesses and injuries, and almost every sign stays hidden until you ask, examine or order a test. Make a diagnosis, choose a treatment and see the outcome — and between shifts, build your own hospital.
   points:
-    - 59 conditions and 23 injuries; each patient’s own X-rays, ultrasound and ECGs
+    - 59 conditions, 23 injuries; each patient’s own X-rays, ultrasound, CT and ECGs
     - Your own hospital with an emergency department, wards and an operating room
     - A review of every visit, a campaign with a mentor and a case of the day
     - Free, offline and ad-free
@@ -61,7 +61,7 @@ in Russian.
   temperature, pulse, blood pressure and oxygen saturation and sees urgent patients in first. The
   map shows who is where: at reception, in the waiting room, at the X-ray, in your office.
 - **Examination.** Questions about complaints and history, a physical exam, lab tests, X-rays,
-  ECGs and ultrasound — each with its own cost and time. While a test is running, you can send the
+  ECGs, ultrasound and CT — each with its own cost and time. While a test is running, you can send the
   patient to wait and see the next one; those who wait too long leave.
 - **Decision.** A diagnosis, a treatment and where to treat: at home, on a ward or in the operating
   room — or, if needed, a referral to another hospital or an ambulance.

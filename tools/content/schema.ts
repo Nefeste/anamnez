@@ -827,6 +827,8 @@ export const chapterSchema = z.strictObject({
   ])).default([]),
   /** помещение обучения (часть 45б): смена с обучением — первый день главы, когда оно работает */
   tutorialRoom: roomId.optional(),
+  /** промежуток обучения, минут (часть 46в): заданные пациенты — по порядку списка, не разом */
+  tutorialGap: z.number().int().min(1).max(240).optional(),
   missions: z.array(missionSchema).min(1),
   letters: z.array(letterSchema).default([]),
 });

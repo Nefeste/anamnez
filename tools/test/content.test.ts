@@ -706,6 +706,13 @@ describe('кампания', () => {
     const room = broken(d => edit(d, 'campaign/chapters/district.yaml', 'tutorial: [cond.arvi,', 'tutorialRoom: room.ct\ntutorial: [cond.arvi,'));
     expect(room.some(e => e.includes('chapter.district: помещение обучения room.ct в главе не построить'))).toBe(true);
   });
+
+  test('промежуток обучения (часть 46в) — между заданными пациентами: их хотя бы двое', () => {
+    const one = broken(d => edit(d, 'campaign/chapters/district.yaml', 'tutorial: [cond.arvi, cond.strep_pharyngitis, cond.cystitis]', 'tutorialGap: 30\ntutorial: [cond.arvi]'));
+    expect(one.some(e => e.includes('chapter.district: промежуток обучения, а заданных пациентов меньше двух'))).toBe(true);
+    const zero = broken(d => edit(d, 'campaign/chapters/vascular.yaml', 'tutorialGap: 40', 'tutorialGap: 0'));
+    expect(zero.length).toBeGreaterThan(0);
+  });
 });
 
 describe('достижения', () => {

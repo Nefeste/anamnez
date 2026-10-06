@@ -4,7 +4,7 @@
 // Две точки входа, как в `06-architecture.md` §2: `apply(state, command)` — действие врача,
 // которое двигает часы на свою цену, и команда `advance` — время на карте. Состояние
 // меняется на месте; случайность — только из именованных ветвей зерна смены (ADR 0004).
-import type { Chapter, ContentDb, Exam, Id, Season, Setting } from '../../content/types';
+import type { Chapter, ContentDb, Exam, Id, Season, Setting, TutorialPatient } from '../../content/types';
 import { fnv1a } from '../core/hash';
 import {
   caseIncome, consumablesOf, emptyLedger, expensesOf, flowOf, incomeOf, interestOf, type Ledger, levelOf, payerOf, reputationAfter, salariesOf, upkeepOf,
@@ -580,6 +580,9 @@ function planDay(db: ContentDb, s: ShiftState) {
       plan.push({ t: base + SHIFT_START + (early && i === 0 ? Math.min(minute, TUTORIAL_AMBULANCE_MIN) : minute) * MIN, kind: 'ambulance', key: `amb:${i}` });
     }
   }
+  // у главы с промежутком обучения (часть 46в) заданные приходят по порядку и не разом
+  const gap = s.campaign ? chapterOf(db, s.campaign)?.tutorialGap : undefined;
+  const spaced = tutorial.length > 0 && gap !== undefined ? spaceTutorial(tutorial, plan, gap * MIN, base + SHIFT_END - 30 * MIN) : undefined;
   plan.sort((a, b) => a.t - b.t || (a.key < b.key ? -1 : 1));
   // заданного пациента получает первый пришедший того же вида: скорая — скорая (часть 34б)
   const taught = new Set<number>();
@@ -590,7 +593,7 @@ function planDay(db: ContentDb, s: ShiftState) {
   plan.forEach((a, i) => {
     const id = `${d}-${String(i + 1).padStart(2, '0')}`;
     const gen = { department: s.meta.department, departments, season: s.meta.season, ...(varied ? { variety: true } : {}) };
-    const k = a.ret ? -1 : tutorial.findIndex((x, j) => !taught.has(j) && !!x.ambulance === (a.kind === 'ambulance'));
+    const k = spaced ? (spaced.get(a) ?? -1) : a.ret ? -1 : tutorial.findIndex((x, j) => !taught.has(j) && !!x.ambulance === (a.kind === 'ambulance'));
     const teach = k >= 0 ? tutorial[k] : undefined;
     if (teach) taught.add(k);
     const patient = a.ret
@@ -620,6 +623,29 @@ function planDay(db: ContentDb, s: ShiftState) {
     schedule(s, a.t, { kind: 'arrive', id });
   });
   schedule(s, base + SHIFT_END, { kind: 'shiftEnd' });
+}
+
+/**
+ * Заданные пациенты главы с промежутком обучения (spec 2026-10-chapter-3, часть 46в): по порядку списка, каждый — первому
+ * пришедшему того же вида не раньше чем через `gap` после предыдущего заданного (первый — как прежде, первому пришедшему).
+ * Машины скорой позже не нашлось — приезжает ближайшая к этому сроку из оставшихся, но не позже `last`. Кому из плана
+ * дня — какой по списку.
+ */
+function spaceTutorial(tutorial: readonly TutorialPatient[], plan: { t: number; kind: VisitKind; key: string; ret?: PlannedReturn }[], gap: number, last: number) {
+  const out = new Map<object, number>();
+  let after = -Infinity;
+  tutorial.forEach((x, j) => {
+    const free = plan.filter(a => !a.ret && !out.has(a) && !!x.ambulance === (a.kind === 'ambulance')).sort((a, b) => a.t - b.t || (a.key < b.key ? -1 : 1));
+    let a = free.find(e => e.t >= after);
+    if (!a && x.ambulance && free.length > 0 && after <= last) {
+      a = free[free.length - 1];
+      a.t = after;
+    }
+    if (!a) return;
+    out.set(a, j);
+    after = a.t + gap;
+  });
+  return out;
 }
 
 /**

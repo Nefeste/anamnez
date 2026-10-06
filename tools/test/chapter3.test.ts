@@ -345,24 +345,29 @@ describe('первая смена отделения с заведующей (ч
     return s;
   }
 
-  test('первая скорая — в первые двадцать минут, инфаркт нижней стенки в окне; вторая — инсульт в окне; первый пришедший сам — паралич лица', () => {
-    expect([ch3.tutorialRoom, ch3.tutorial.map(t => t.condition)]).toEqual(['room.ct', ['cond.acs', 'cond.stroke_ischemic', 'cond.bell_palsy']]);
+  test('первая скорая — в первые двадцать минут, инфаркт нижней стенки в окне; потом пришедший сам — паралич лица; потом скорая — инсульт в окне; каждый — не раньше чем через 40 минут после прежнего (часть 46в)', () => {
+    expect([ch3.tutorialRoom, ch3.tutorialGap, ch3.tutorial.map(t => t.condition)]).toEqual(['room.ct', 40, ['cond.acs', 'cond.bell_palsy', 'cond.stroke_ischemic']]);
     for (const seed of [81, 82, 83, 84, 85, 86]) {
       const s = firstShift(seed);
       expect(s.campaign!.tutorialDay).toBe(1);
       const ps = byArrival(s);
       const amb = ps.filter(p => p.kind === 'ambulance');
-      const walk = ps.filter(p => p.kind !== 'ambulance' && !p.returnOf);
-      expect(amb[0].arriveT - ((s.day - 1) * DAY + SHIFT_START)).toBeLessThanOrEqual(20 * 60);
-      expect(primaryOf(amb[0].patient)).toMatchObject({ id: ACS, params: { type: 'stemi', wall: 'inferior', killip: 'i', early: 'yes' } });
+      const mi = amb[0];
+      const palsy = ps.find(p => p.kind !== 'ambulance' && !p.returnOf && primaryOf(p.patient).id === 'cond.bell_palsy')!;
+      const stroke = amb.find(p => primaryOf(p.patient).id === 'cond.stroke_ischemic')!;
+      expect(mi.arriveT - ((s.day - 1) * DAY + SHIFT_START)).toBeLessThanOrEqual(20 * 60);
+      // не разом: все трое «красные», а врач один
+      expect(palsy.arriveT - mi.arriveT).toBeGreaterThanOrEqual(40 * 60);
+      expect(stroke.arriveT - palsy.arriveT).toBeGreaterThanOrEqual(40 * 60);
+      expect(primaryOf(mi.patient)).toMatchObject({ id: ACS, params: { type: 'stemi', wall: 'inferior', killip: 'i', early: 'yes' } });
       // в первые 3 часа от начала — с запасом до конца окна 4,5 часа
-      expect(primaryOf(amb[1].patient)).toMatchObject({
+      expect(primaryOf(stroke.patient)).toMatchObject({
         id: 'cond.stroke_ischemic', params: { deficit: 'motor', nihss: 'high', lvo: 'no', window: 'yes', lysis180: 'yes', minor: 'no', thrombectomy: 'no' },
       });
-      expect(primaryOf(walk[0].patient)).toMatchObject({ id: 'cond.bell_palsy', params: { severity: 'moderate', h72: 'yes' } });
+      expect(primaryOf(palsy.patient)).toMatchObject({ id: 'cond.bell_palsy', params: { severity: 'moderate', h72: 'yes' } });
       // учебные: тромболизис им можно — противопоказаний к обязательному лечению нет
-      expect([amb[0], amb[1], walk[0]].map(p => treatable(db, p.patient))).toEqual([true, true, true]);
-      expect(amb[0].patient.truth.risks.filter(r => RISKS.includes(r))).toEqual([]);
+      expect([mi, stroke, palsy].map(p => treatable(db, p.patient))).toEqual([true, true, true]);
+      expect(mi.patient.truth.risks.filter(r => RISKS.includes(r))).toEqual([]);
     }
   });
 
@@ -399,7 +404,9 @@ describe('первая смена отделения с заведующей (ч
     expect(s.campaign!.tutorialDay).toBe(s.day);
     const today = byArrival(s).filter(p => p.id.startsWith(`${s.day}-`));
     const amb = today.filter(p => p.kind === 'ambulance');
-    expect([primaryOf(amb[0].patient).id, primaryOf(amb[1].patient).id]).toEqual([ACS, 'cond.stroke_ischemic']);
+    const palsy = today.find(p => p.kind !== 'ambulance' && primaryOf(p.patient).id === 'cond.bell_palsy')!;
+    const stroke = amb.find(p => p.arriveT >= palsy.arriveT + 40 * 60)!;
+    expect([primaryOf(amb[0].patient).id, palsy.arriveT - amb[0].arriveT >= 40 * 60, primaryOf(stroke.patient).id]).toEqual([ACS, true, 'cond.stroke_ischemic']);
     // назавтра — как обычно
     apply(db, s, { kind: 'closeDay' });
     apply(db, s, { kind: 'nextDay' });

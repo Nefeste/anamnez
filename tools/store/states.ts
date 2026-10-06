@@ -87,35 +87,6 @@ export function sandboxState(db: ContentDb): ShiftState {
   return newSandbox(db, { seed: 1, ...winter, start: 'clinic', budget: db.economy.sandbox.budgets.normal });
 }
 
-/**
- * Своя больница с приёмным (spec 2026-09-chapter-2, части 27–28): к готовой амбулатории
- * песочницы пристроены смотровая приёмного и операционная, наняты медсестра приёмного и
- * операционная бригада; открыт первый день. Нужного кандидата нет — `undefined`.
- */
-function erHospital(db: ContentDb, seed: number): ShiftState | undefined {
-  const s = newSandbox(db, { seed, ...winter, start: 'clinic', budget: db.economy.sandbox.budgets.generous });
-  const cells: [number, number][] = [];
-  for (let x = 29; x <= 38; x++) for (let y = 7; y <= 9; y++) cells.push([x, y]);
-  run(db, s, [
-    { kind: 'build', cmd: { kind: 'corridor', cells } },
-    { kind: 'build', cmd: { kind: 'room', type: 'room.emergency', size: 'M', x: 29, y: 1, rot: 0 } },
-    { kind: 'build', cmd: { kind: 'room', type: 'room.or', size: 'M', x: 29, y: 10, rot: 2 } },
-  ]);
-  const room = (type: Id) => {
-    const r = s.hospital!.rooms.find(x => x.type === type);
-    if (!r) throw new Error(`erHospital: ${type} не встало на участок`);
-    return r.id;
-  };
-  run(db, s, [...['eq.or_table', 'eq.anesthesia'].map(equipment => ({ kind: 'build', cmd: { kind: 'buy', room: room('room.or'), equipment } }) as Command), { kind: 'buildEnd' }]);
-  for (const [role, type] of [['role.nurse', 'room.emergency'], ['role.surgeon', 'room.or'], ['role.anesthetist', 'room.or'], ['role.or_nurse', 'room.or']] as const) {
-    const c = s.candidates!.find(x => x.role === role);
-    if (!c) return undefined;
-    run(db, s, [{ kind: 'hire', id: c.id }, { kind: 'assign', id: c.id, room: room(type) }]);
-  }
-  apply(db, s, { kind: 'nextDay' });
-  return s;
-}
-
 /** Привезённых — отсортировать, как их цвет по шкале с листа передачи. */
 function sortAll(db: ContentDb, s: ShiftState) {
   for (const p of Object.values(s.patients)) if (p.kind === 'ambulance' && !p.sorted && p.status === 'waiting') apply(db, s, { kind: 'sort', id: p.id, triage: p.scale!.triage });
@@ -190,34 +161,36 @@ export function districtState(db: ContentDb): ShiftState {
 }
 
 /**
- * Своя больница с приёмным: пришёл с болью в голеностопе после травмы — нестабильный перелом
- * лодыжек. Расспрос о травме, осмотр голеностопа; снимок пришёл и показал перелом со сдвигом
- * таранной кости — «Новое» сверху.
+ * Первая смена сосудистого отделения (spec 2026-10-chapter-3, часть 45б): глава 3 с начала, кабинет КТ работает, скорая
+ * привезла инсульт в окне — в смотровой под монитором, вызван; осмотр, глюкоза, КТ и вопрос, когда началось,
+ * сделаны, КТ описана — крови внутри черепа нет. Письма прочитаны, подсказки заведующей показаны: их листа на снимке
+ * нет. Инфаркт и паралич лица первой смены ждут в очереди — на снимке их не видно.
  */
-export function fractureCase(db: ContentDb): ShiftState {
+export function strokeCtCase(db: ContentDb): ShiftState {
   for (let seed = 1; seed <= SEEDS; seed++) {
-    const s = erHospital(db, seed);
-    if (!s) continue;
-    for (let m = 0; m < 6 * 60 && s.t % DAY < SHIFT_END; m++) {
-      const id = s.queue.find(x => s.patients[x].kind !== 'ambulance' && truthOf(s, x) === 'cond.ankle_fracture' && s.patients[x].patient.truth.conditions[0].params.stability === 'unstable');
-      if (id) {
-        run(db, s, [
-          { kind: 'call', id },
-          { kind: 'exam', exam: 'exam.ask_complaints' },
-          { kind: 'exam', exam: 'exam.ask_injury' },
-          { kind: 'exam', exam: 'exam.ankle_exam' },
-          { kind: 'exam', exam: 'exam.xray_ankle' },
-        ]);
-        const p = current(s)!;
-        while (p.pending.length > 0) apply(db, s, { kind: 'waitResults' });
-        const xray = p.results.find(r => r.exam === 'exam.xray_ankle');
-        const shown = (f: Id) => xray?.obs.some(o => o.f === f && o.shown);
-        // жалоба одна — на голеностоп: с попутными жалобами снимок уехал бы вниз
-        if (shown('img.xr_ankle_fracture') && shown('img.xr_ankle_unstable') && p.patient.complaints.length === 1) return s;
-        break;
-      }
-      apply(db, s, { kind: 'advance', seconds: MIN });
-    }
+    const s = newCampaign(db, { seed, ...winter, career: 1, chapter: 'chapter.vascular' });
+    s.campaign!.letters = s.campaign!.letters.map(l => ({ ...l, read: true }));
+    s.campaign!.tips = { shown: Object.values(db.tips).map(t => t.id) };
+    apply(db, s, { kind: 'nextDay' });
+    const stroke = Object.values(s.patients).find(p => p.kind === 'ambulance' && truthOf(s, p.id) === 'cond.stroke_ischemic');
+    if (!stroke) continue;
+    for (let m = 0; m < 8 * 60 && stroke.status === 'coming'; m++) apply(db, s, { kind: 'advance', seconds: MIN });
+    if (stroke.status !== 'waiting' || current(s)) continue;
+    run(db, s, [
+      { kind: 'sort', id: stroke.id, triage: 'red' },
+      { kind: 'call', id: stroke.id },
+      { kind: 'exam', exam: 'exam.neuro_exam' },
+      { kind: 'exam', exam: 'exam.glucometer' },
+      { kind: 'exam', exam: 'exam.ct_head' },
+      { kind: 'exam', exam: 'exam.ask_stroke' },
+    ]);
+    const p = current(s);
+    if (p?.id !== stroke.id) continue;
+    while (p.pending.length > 0) apply(db, s, { kind: 'waitResults' });
+    const ct = p.results.find(r => r.exam === 'exam.ct_head');
+    // КТ без крови и без ранних признаков — тромболизис можно; жалобы — только от инсульта
+    const own = p.patient.complaints.every(c => db.conditions['cond.stroke_ischemic'].findings.some(l => l.f === c));
+    if (ct && !ct.obs.some(o => o.shown) && own) return s;
   }
-  throw new Error('fractureCase: не нашлось нестабильного перелома лодыжек, который показал снимок');
+  throw new Error('strokeCtCase: не нашлось инсульта первой смены отделения, у которого КТ без находок');
 }
