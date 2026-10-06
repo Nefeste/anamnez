@@ -18,10 +18,11 @@ import { build, type BuildCommand, type BuildError, type HospitalState, type Pla
 import { type Block, doctorRoom, examWhere, openBlocks, type Problem, problemsOf, standInOf, workingRooms } from '@/engine/hospital/requirements';
 import { type ClinicLayout, cropPlan, layoutOf } from '@/engine/hospital/clinic';
 import { memberAt, type StaffMember, staffingOf } from '@/engine/hospital/staff';
-import { type MissionProgress, missionProgress, nextChapterOf } from '@/engine/campaign/campaign';
+import { type MissionProgress, missionProgress, nextChapterOf, tutorialDayOf } from '@/engine/campaign/campaign';
 import { levelOf } from '@/engine/economy/economy';
 import {
-  apply, atDoorOf, bedsideEquipment, bedsideOf, current, freeBeds, freeIcuBeds, type HospitalCtx, hospitalCtx, icuBeds, inIcu, inpatientsOf, moreUrgent, newCampaign, newSandbox,
+  apply, atDoorOf, bedsideEquipment, bedsideOf, current, freeBeds, freeIcuBeds, freeRicuBeds, type HospitalCtx, hospitalCtx, icuBeds, inIcu, inpatientsOf, inRicu, moreUrgent, newCampaign, newSandbox,
+  ricuBeds,
   newShift, newSingle, observationsOf, operationOf, type OrBlock, orBlock, orQueueOf, reviewFor, SANDBOX_VENUE, stayEquipment, targetPlace, wardBeds,
 } from '@/engine/shift/engine';
 import { minutesTo, targetStart, targetsFor } from '@/engine/shift/targets';
@@ -1104,6 +1105,11 @@ function missionText(m: Mission, p: MissionProgress): string {
     case 'streak':
     case 'days':
       return t.dayProgress(p.value, p.target);
+    // глава 3 (spec 2026-10-chapter-3, часть 45а)
+    case 'deadline':
+      return t.deadlineProgress(p.value, p.target);
+    case 'thrombolysis':
+      return t.lysisProgress(p.value, p.target);
   }
 }
 
@@ -1136,8 +1142,10 @@ function buildCampaignView(): CampaignView | undefined {
     ...(complete ? { after: next ? t.completeNext : t.completeLater(ch.order + 1) } : {}),
     ...(next ? {
       next: {
-        title: t.chapter(next.order, next.name.ru), move: next.move?.ru ?? t.moveTo(next.order), place: next.place.ru, text: t.moveText(ch.place.ru),
-        ready: !s.dayOpen && !Object.values(s.patients).some(p => p.status === 'admitted'),
+        // глава с крылом (часть 45а) — та же больница: лежащих ждать не нужно
+        title: t.chapter(next.order, next.name.ru), move: next.move?.ru ?? t.moveTo(next.order), place: next.place.ru,
+        text: next.wing ? t.moveWingText(T.common.rub(next.budget)) : t.moveText(ch.place.ru),
+        ready: !s.dayOpen && (!!next.wing || !Object.values(s.patients).some(p => p.status === 'admitted')),
       },
     } : {}),
   };
@@ -1200,7 +1208,9 @@ function tipMoment(screen: TipScreen): TipMoment | undefined {
   const c = s?.campaign;
   const ch = c ? db.chapters[c.chapter] : undefined;
   if (!s || !c || !ch || ch.tutorial.length === 0) return undefined;
-  if (!(s.day === c.since + 1 || (screen === 'rounds' && s.day === c.since + 2))) return undefined;
+  // смена с обучением — первый день главы; у главы с помещением обучения (часть 45б) — первый с ним
+  const first = tutorialDayOf(ch, c);
+  if (first === undefined || !(s.day === first || (screen === 'rounds' && s.day === first + 1))) return undefined;
   const id = screen === 'review'
     ? (session?.focus ?? s.current)
     : screen === 'queue'
@@ -1410,8 +1420,9 @@ function wardLines(w: NonNullable<ShiftState['summary']['ward']>): string[] {
   if (w.early > 0) out.push(t.early(w.early));
   if ((w.died ?? 0) > 0) out.push(t.died(w.died!));
   if (w.discharged > 0) out.push(t.stay(Math.round((w.stayDays / w.discharged) * 10) / 10, Math.round((w.stayNorm / w.discharged) * 10) / 10));
-  // палата интенсивной терапии (часть 38а)
+  // палата интенсивной терапии (часть 38а) и реанимация (spec 2026-10-chapter-4, часть 47)
   if ((w.icu ?? 0) > 0 || (w.icuLying ?? 0) > 0) out.push(t.icu(w.icu ?? 0, w.icuLying ?? 0));
+  if ((w.ricu ?? 0) > 0 || (w.ricuLying ?? 0) > 0) out.push(t.ricu(w.ricu ?? 0, w.ricuLying ?? 0));
   return out;
 }
 
@@ -1598,7 +1609,7 @@ function doingText(s: ShiftState, p: ShiftPatient, d: Doing): string {
     case 'left':
       return t.left(female(p));
     case 'ward':
-      return d.op ? t.waitingOp(db.treatments[d.op]?.name.ru ?? d.op) : d.icu ? t.icu(d.days) : t.ward(d.days);
+      return d.op ? t.waitingOp(db.treatments[d.op]?.name.ru ?? d.op) : d.ricu ? t.ricu(d.days) : d.icu ? t.icu(d.days) : t.ward(d.days);
     case 'surgery':
       return t.onTable(db.treatments[d.tx]?.name.ru ?? d.tx, hhmm(minuteOfDay(d.end)));
     case 'ambulance':
@@ -1697,7 +1708,8 @@ export function roundsView(): RoundCard[] {
       ...(dxOp ? { operate: block ? { hint: orBlockText(block), disabled: true } : { hint: db.treatments[dxOp].name.ru } } : {}),
       canDischarge: !op || op.done === true,
       canTransfer: !op || op.done === true || op.start === undefined,
-      ...(inIcu(db, s, p) ? { icu: t.inIcu } : {}),
+      // реанимация (spec 2026-10-chapter-4, часть 47): на ИВЛ или под монитором
+      ...(inRicu(db, s, p) ? { icu: stay.plan.treatments.some(tx => db.treatments[tx]?.place === 'ricu') ? t.onVent : t.inRicu } : inIcu(db, s, p) ? { icu: t.inIcu } : {}),
       ...(stay.shock !== undefined && days === stay.shock + 1 ? { event: t.shock } : {}),
     };
   });
@@ -1862,7 +1874,8 @@ export function archiveCaseView(key: string): VisitView | undefined {
  * (сколько коек свободно; нет свободных — нельзя), направить в другую больницу, скорая. Есть
  * операционная (часть 28) — и «В операционную»: какая операция — по диагнозу, нельзя — почему.
  * Есть палата интенсивной терапии (spec 2026-10-chapter-3, часть 38а) — и «В ПИТ»: сколько коек
- * под монитором свободно, нет свободных — нельзя.
+ * под монитором свободно, нет свободных — нельзя. Есть реанимация (spec 2026-10-chapter-4, часть 47) — и
+ * «В ОРИТ»: сколько коек с монитором и аппаратом ИВЛ свободно.
  */
 function settingOptions(s: ShiftState, p: ShiftPatient): SettingOption[] {
   const diagnosis = p.draft.diagnosis;
@@ -1872,13 +1885,17 @@ function settingOptions(s: ShiftState, p: ShiftPatient): SettingOption[] {
   const setting = T.spikes.patient.setting;
   const rooms = hospitalCtx(db, s).plan.rooms;
   const hasOr = rooms.some(r => r.type === 'room.or');
-  const hasIcu = rooms.some(r => db.rooms[r.type]?.icu);
+  const hasIcu = rooms.some(r => db.rooms[r.type]?.icu && !db.rooms[r.type].vent);
   const icuAll = icuBeds(db, s).length;
   const icuFree = freeIcuBeds(db, s).length;
+  const hasRicu = rooms.some(r => db.rooms[r.type]?.vent);
+  const ricuAll = ricuBeds(db, s).length;
+  const ricuFree = freeRicuBeds(db, s).length;
   return [
     { key: 'home', title: setting.home },
     ...(all > 0 ? [{ key: 'admit' as const, title: t.admit, hint: free > 0 ? t.freeBeds(free, all) : t.noBeds, disabled: free === 0 }] : []),
     ...(hasIcu ? [{ key: 'icu' as const, title: t.icu, hint: icuFree > 0 ? t.freeIcuBeds(icuFree, icuAll) : t.noBeds, disabled: icuFree === 0 }] : []),
+    ...(hasRicu ? [{ key: 'ricu' as const, title: t.ricu, hint: ricuFree > 0 ? t.freeRicuBeds(ricuFree, ricuAll) : t.noBeds, disabled: ricuFree === 0 }] : []),
     ...(hasOr ? [orOption(s, p, diagnosis, free, all)] : []),
     { key: 'ward', title: t.refer },
     { key: 'ambulance', title: setting.ambulance },
@@ -1909,9 +1926,9 @@ function orBlockText(b: OrBlock): string {
 function targetLines(s: ShiftState, p: ShiftPatient): string[] {
   const t = T.spikes.patient;
   return targetsFor(db, p, targetPlace(db, s, p)).map(target => {
-    const done = minutesTo(p, target);
-    // от находки (часть 39б): «в первые 10 минут от ЭКГ с подъёмом ST; прошло — N мин»
-    const start = targetStart(p, target) ?? p.arriveT;
+    const done = minutesTo(db, p, target);
+    // от находки (часть 39б): «в первые 10 минут от ЭКГ с подъёмом ST; прошло — N мин»; от правила (часть 48а) — так же
+    const start = targetStart(db, p, target) ?? p.arriveT;
     if (done !== undefined) return t.targetDone(target.name.ru, done, target.minutes, target.texts.after?.ru);
     return t.target(target.name.ru, target.minutes, Math.round((s.t - start) / 60), target.texts.from?.ru);
   });
@@ -1960,6 +1977,8 @@ function buildCaseView(): VisitView | undefined {
     ...(Object.keys(bedside).length > 0 ? { bedside } : {}),
     // лечение у постели (часть 39а): тромболизис — лежащему под монитором
     bedsideEquipment: bedsideEquipment(db, s, p),
+    // лечение реанимации (spec 2026-10-chapter-4, часть 47): ИВЛ — если в ней есть свободная койка
+    ...(ricuBeds(db, s).length > 0 ? { ricu: freeRicuBeds(db, s).length > 0 ? 'free' as const : 'full' as const } : {}),
     ...(p.by ? {} : { targets: targetLines(s, p) }),
     // с какими отделениями его приняли (часть 30): с приёмным — и хирургия
     ...(p.departments ? { departments: p.departments } : {}),

@@ -21,6 +21,11 @@ export interface CampaignProgress {
   /** когда выполнены все основные задания */
   complete?: number;
   /**
+   * день смены с обучением у главы с помещением обучения (spec 2026-10-chapter-3, часть 45б): первый
+   * день главы, когда оно работало; пока не было — нет
+   */
+  tutorialDay?: number;
+  /**
    * Подсказки наставника: какие уже показаны в этой карьере, выключены ли («Без подсказок»).
    * Отметка вида, как «прочитано» у письма, — движок её не читает (src/state/tips.ts).
    */
@@ -49,6 +54,12 @@ export interface CampaignView {
 
 export const chapterOf = (db: ContentDb, c: CampaignProgress): Chapter | undefined => db.chapters[c.chapter];
 
+/**
+ * День смены с обучением (часть 45б): первый день главы; у главы с помещением обучения — день, когда
+ * оно впервые работало (его запоминает смена), пока не было — нет.
+ */
+export const tutorialDayOf = (ch: Chapter, c: CampaignProgress): number | undefined => (ch.tutorialRoom ? c.tutorialDay : c.since + 1);
+
 /** Следующая глава по порядку (spec 2026-09-chapter-2, часть 34); последняя — undefined. */
 export function nextChapterOf(db: ContentDb, c: CampaignProgress): Chapter | undefined {
   const ch = chapterOf(db, c);
@@ -69,7 +80,26 @@ export function dayOk(kind: DayKind, h: DaySummary): boolean {
       return !!h.economy && incomeOf(h.economy.ledger) - expensesOf(h.economy.ledger) >= 0;
     case 'noWaitComplication':
       return (h.surgery?.done ?? 0) > 0 && !h.surgery?.waited;
+    // глава 3 (spec 2026-10-chapter-3, часть 45а): были ваши больные с ОКС, и ни у одного он не пропущен
+    case 'noMissedMI':
+      return (h.acs?.seen ?? 0) > 0 && !h.acs?.missed;
   }
+}
+
+/**
+ * Срок у больных подряд (часть 45а): оценки срока по порядку закрытия во всех днях главы; выполнен — «A».
+ * Лучшая серия решает задание, нынешняя (с конца) — ход.
+ */
+function deadlineRuns(days: readonly DaySummary[], target: Id): { best: number; now: number } {
+  let best = 0;
+  let now = 0;
+  for (const h of days) {
+    for (const g of h.targetSeq?.[target] ?? '') {
+      now = g === 'A' ? now + 1 : 0;
+      best = Math.max(best, now);
+    }
+  }
+  return { best, now };
 }
 
 /** Ход задания сейчас; выполненное раньше — выполнено, что бы ни было потом. */
@@ -109,6 +139,17 @@ export function missionProgress(db: ContentDb, v: CampaignView, m: Mission): Mis
     }
     case 'operations': {
       const n = days.reduce((a, h) => a + (h.surgery?.good ?? 0), 0);
+      return { value: Math.min(n, m.count), target: m.count, done: was || n >= m.count };
+    }
+    // глава 3 (spec 2026-10-chapter-3, часть 45а): срок выполнен у N ваших больных подряд — серия рвётся
+    // на первом опоздании; тромболизисы в окне и без противопоказаний за главу
+    case 'deadline': {
+      const r = deadlineRuns(days, m.target);
+      const done = was || r.best >= m.count;
+      return { value: done ? m.count : Math.min(r.now, m.count), target: m.count, done };
+    }
+    case 'thrombolysis': {
+      const n = days.reduce((a, h) => a + (h.lysis?.good ?? 0), 0);
       return { value: Math.min(n, m.count), target: m.count, done: was || n >= m.count };
     }
     // выписанные подряд — от последнего дня назад; день с выпиской раньше срока рвёт серию: так

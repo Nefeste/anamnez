@@ -134,6 +134,10 @@ findings:
     band: { pct: 100 }
     when: { shock: [yes] }
     note: "при шоке — ПЖ/ЛЖ > 1 (ESC 2019, рис. 4)"
+  # лактат (spec 2026-10-chapter-4, часть 48а): обструктивный шок — давление ниже 90 и гипоперфузия органов, среди её
+  # признаков — повышенный лактат (ESC 2019, табл. 4); от 2 ммоль/л — предиктор осложнений (раздел 5.3.3). Доля —
+  # игровая оценка; в конце списка — прежние больные остаются прежними
+  - { f: lab.lactate_high, band: usually, when: { shock: [yes] } }
 confirm: [exam.cta_chest]
 redFlags: [vital.bp_low, img.cta_rv_overload]
 differential: [cond.acs, cond.pneumonia_cap, cond.aortic_dissection]

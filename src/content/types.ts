@@ -49,9 +49,10 @@ export interface Link {
  * центр, которого в районе нет, палата интенсивной терапии. У врача — что он выбрал: домой,
  * направить в стационар, вызвать скорую, в свою палату, в свою операционную, перевести, в свою
  * палату интенсивной терапии (spec 2026-09-chapter-2, «Место лечения»; spec 2026-10-chapter-3,
- * часть 38а — `icu`).
+ * часть 38а — `icu`). `ricu` (spec 2026-10-chapter-4, часть 47) — реанимация с ИВЛ: нужна больному —
+ * «В ОРИТ», нет своей — перевод.
  */
-export type Setting = 'home' | 'ward' | 'ambulance' | 'admit' | 'surgery' | 'transfer' | 'icu';
+export type Setting = 'home' | 'ward' | 'ambulance' | 'admit' | 'surgery' | 'transfer' | 'icu' | 'ricu';
 
 /** Система органов в порядке показа: простуда и ЛОР, лёгкие, сердце, живот, мочевые, обмен, голова и спина, кости и суставы (часть 32). */
 export const SYSTEMS = ['airways', 'lungs', 'heart', 'digestive', 'urinary', 'metabolic', 'nerves', 'bones', 'skin'] as const;
@@ -166,11 +167,26 @@ export interface DerivedByRule {
   from: number;
 }
 
-export type Derived = Id | DerivedByValue | DerivedByParams | DerivedByRule;
+/**
+ * Производный параметр по признаку (spec 2026-10-chapter-3, часть 44а): «yes», если признак `has` у пациента
+ * есть, — от какой бы причины: таблетки сульфонилмочевины пьёт и тот, у кого сахар упал от инсулина, а капельница
+ * при тяжёлой гипогликемии нужна, если он их пьёт. Врач судит по обследованию, которое признак проверяет; не
+ * проверял — по долям параметра.
+ */
+export interface DerivedByFinding {
+  has: Id;
+}
+
+export type Derived = Id | DerivedByValue | DerivedByParams | DerivedByRule | DerivedByFinding;
 
 /** Производный по числу признака (части 38б и 41а), а не по правилу или другим параметрам. */
 export function byValue(d: Derived | undefined): d is DerivedByValue {
   return d !== undefined && typeof d !== 'string' && 'f' in d;
+}
+
+/** Производный по признаку (часть 44а): есть ли он у пациента. */
+export function byPresence(d: Derived | undefined): d is DerivedByFinding {
+  return d !== undefined && typeof d !== 'string' && 'has' in d;
 }
 
 /** Производный по другим параметрам (части 41а и 43в). */
@@ -258,6 +274,12 @@ export interface Treatment {
    * больной лежит под монитором с дефибриллятором; в амбулатории и в кабинете врача его нет
    */
   bedside?: { equipment: Id[] };
+  /**
+   * лечение своего места (spec 2026-10-chapter-4, часть 47): ИВЛ и наркоз в вену — только в реанимации.
+   * Назначил — место становится «В ОРИТ», выбрал другое место — лечение снимается; можно, если в реанимации
+   * есть свободная койка, а на обходе — у лежащего в ней
+   */
+  place?: 'ricu';
   /**
    * назначают только вместе с этим (часть 39а): тромболизис — с АСК, клопидогрелом и антикоагулянтом;
    * группа — хоть одно из неё, первое — выбора (эноксапарин натрия, замена — фондапаринукс, гепарин)
@@ -389,6 +411,11 @@ export interface Condition {
   department: Id;
   /** состояния с одинаковой тактикой: путаница внутри группы — частичная точность (`04` §10) */
   group?: Id;
+  /**
+   * источник по скрытому параметру (spec 2026-10-chapter-4, часть 48а): поставили болезнь-источник вместо этой —
+   * частично верно, как в группе: у сепсиса из пневмонии — пневмония
+   */
+  source?: { param: string; map: Record<string, Id> };
   /** система органов — для списков диагнозов и энциклопедии */
   system?: BodySystem;
   kind: 'disease' | 'injury' | 'syndrome' | 'state';
@@ -633,6 +660,11 @@ export interface RoomSize {
   objects: { kind: ObjectKind; x: number; y: number }[];
   /** места под аппараты */
   slots: Cell[];
+  /**
+   * места под аппарат — номера из `slots` по порядку коек (spec 2026-10-chapter-4, часть 47): у койки реанимации
+   * — монитор и аппарат ИВЛ; нет — аппарат встаёт на своё место или на первое свободное
+   */
+  slotsOf?: Record<Id, number[]>;
   /** где стоит человек каждой должности */
   staff: Record<Id, Cell>;
   /** куда встаёт или садится пациент */
@@ -662,6 +694,11 @@ export interface RoomType {
    * монитором; койка работает, если на её месте (место под аппарат с тем же номером) стоит монитор
    */
   icu: boolean;
+  /**
+   * реанимация (spec 2026-10-chapter-4, часть 47): у койки ещё и аппарат ИВЛ; койка работает, если на её
+   * местах (`slotsOf` размера) стоят и монитор, и аппарат ИВЛ. Сама — тоже интенсивная терапия (`icu`)
+   */
+  vent: boolean;
   /** работает — в больницу приходят и больные этих отделений: приёмное — хирургию (часть 30) */
   admits?: Id[];
   sizes: RoomSize[];
@@ -778,6 +815,7 @@ export interface Economy {
     omsOperation: number;
     /** случай с палатой интенсивной терапии по показаниям — прибавка (spec 2026-10-chapter-3, часть 38а) */
     omsIcu: number;
+    omsRicu: number;
     omsQuality: Record<'A' | 'B' | 'C' | 'D', number>;
     omsUnconfirmed: number;
     /** показанные обследования, % цены в базе */
@@ -797,6 +835,7 @@ export interface Economy {
   ward: { bedDay: number; interrupted: number };
   /** палата интенсивной терапии: койко-день, ₽ (часть 38а) */
   icu: { bedDay: number };
+  ricu: { bedDay: number };
   /**
    * перевод в сосудистый центр (spec 2026-10-chapter-3, часть 39б): часов пути и часов от приезда до
    * вмешательства — по ним исход переведённого с подъёмом ST
@@ -832,8 +871,8 @@ export interface Character {
   role: Text;
 }
 
-/** Условие дня для заданий «N дней». */
-export type DayKind = 'noNeedlessAntibiotic' | 'noLeft' | 'cashPositive' | 'noWaitComplication';
+/** Условие дня для заданий «N дней»; с главой 3 — были ОКС, и ни один не пропущен (`noMissedMI`). */
+export type DayKind = 'noNeedlessAntibiotic' | 'noLeft' | 'cashPositive' | 'noWaitComplication' | 'noMissedMI';
 
 export type Mission = { id: string; main: boolean; text: Text } & (
   | { kind: 'seen'; count: number; accuracy: number }
@@ -844,6 +883,12 @@ export type Mission = { id: string; main: boolean; text: Text } & (
   | { kind: 'triage'; count: number }
   | { kind: 'operations'; count: number }
   | { kind: 'stay'; count: number }
+  /**
+   * глава 3 (spec 2026-10-chapter-3, часть 45а): срок `target` выполнен у ваших больных подряд;
+   * тромболизисов в окне и без противопоказаний
+   */
+  | { kind: 'deadline'; target: Id; count: number }
+  | { kind: 'thrombolysis'; count: number }
 );
 
 export type LetterWhen = 'start' | 'end' | { afterDay: number } | { mission: string };
@@ -858,7 +903,9 @@ export interface Letter {
 /**
  * Заданный пациент первой смены главы: болезнь, привезёт ли его скорая, какие скрытые параметры
  * заданы и в каком он возрасте (часть 34б: тяжёлая пневмония, стабильный перелом лодыжек,
- * аппендицит у молодого).
+ * аппендицит у молодого). Производный параметр (часть 45б: инфаркт и инсульт в окне) не задают, а
+ * выбирают: из попыток генератора — та, где он вышел таким. Обязательное лечение заданному пациенту можно
+ * (часть 45б): учебному тромболизис не противопоказан.
  */
 export interface TutorialPatient {
   condition: Id;
@@ -877,10 +924,28 @@ export interface Chapter {
   /** кнопка перехода в главу в конце прежней (часть 34) */
   move?: Text;
   preset: Id;
+  /**
+   * крыло (spec 2026-10-chapter-3, часть 45а): больница прежней главы остаётся — штат, касса,
+   * репутация, построенное и лежащие, — а участок прирастает справа столькими клетками; бюджет главы
+   * прибавляется к кассе. Нет — больница главы новая, её готовая больница `preset`
+   */
+  wing?: number;
+  /** касса главы; у главы с крылом — прибавка к кассе на крыло */
   budget: number;
   department: Id;
   build: Id[];
   tutorial: TutorialPatient[];
+  /**
+   * помещение обучения (spec 2026-10-chapter-3, часть 45б): смена с обучением — первый день главы,
+   * когда оно работает (главе 3 — кабинет КТ: без него неврологию не привозят). Нет — первый день главы
+   */
+  tutorialRoom?: Id;
+  /**
+   * промежуток обучения, минут (spec 2026-10-chapter-3, часть 46в): заданные пациенты приходят по порядку списка,
+   * каждый — не раньше чем через столько минут после предыдущего; у главы 3 все трое «красные», и врач один. Нет —
+   * заданного получает первый пришедший того же вида
+   */
+  tutorialGap?: number;
   missions: Mission[];
   letters: Letter[];
 }
@@ -1040,15 +1105,20 @@ export interface Target {
   name: Text;
   complaints: Id[];
   findings: Id[];
+  /** кроме тех, у кого обследование показало одну из этих находок (часть 44б): периферический парез лица — не инсульт */
+  except?: Id[];
   room?: Id;
   exams: Id[];
   treatments: Id[];
   settings: Setting[];
-  from: 'arrival' | 'finding';
+  /** с частью 48а (spec 2026-10-chapter-4) — и от правила: антибиотик при сепсисе — от qSOFA 2 и больше */
+  from: 'arrival' | 'finding' | 'rule';
+  /** правило отсчёта `from: rule` (часть 48а) */
+  rule?: Id;
   /** только тем, кто остаётся у нас (часть 41а): тест глотания — в палате, ПИТ, операционной */
   stays?: true;
   minutes: number;
-  /** `from` и `after` — от чего срок: «от ЭКГ с подъёмом ST», «после ЭКГ с подъёмом ST» (у отсчёта от находки) */
+  /** `from` и `after` — от чего срок: «от ЭКГ с подъёмом ST», «после ЭКГ с подъёмом ST» (у отсчёта от находки и правила) */
   texts: { hint: Text; from?: Text; after?: Text };
   sources: Source[];
   review: Review;

@@ -21,23 +21,25 @@ export type TxRole = 'firstLine' | 'acceptable' | 'supportive' | 'notIndicated' 
 type ListRole = Exclude<TxRole, 'prevent' | 'require' | 'beforeTransfer'>;
 const ROLES: ListRole[] = ['firstLine', 'acceptable', 'supportive', 'notIndicated', 'harmful'];
 
-/** Насколько серьёзна помощь: чем выше, тем срочнее и сложнее. */
-export const SETTING_ORDER: Record<Setting, number> = { home: 0, ward: 1, admit: 1, ambulance: 2, icu: 2, surgery: 3, transfer: 3 };
+/** Насколько серьёзна помощь: чем выше, тем срочнее и сложнее; реанимация с ИВЛ (часть 47) — между ПИТ и операцией. */
+export const SETTING_ORDER: Record<Setting, number> = { home: 0, ward: 1, admit: 1, ambulance: 2, icu: 2, ricu: 2.5, surgery: 3, transfer: 3 };
 
 /**
  * Что закрывает выбор врача (spec 2026-09-chapter-2, «Место лечения»): «Вызвать скорую» везёт
  * в больницу, где сделают нужное, — и операцию, и центр, и палату интенсивной терапии; своя
  * палата — стационар сразу, но не операцию, не центр и не ПИТ; своя ПИТ — и палату, и срочный
- * стационар (spec 2026-10-chapter-3, часть 38а).
+ * стационар (spec 2026-10-chapter-3, часть 38а); своя реанимация (spec 2026-10-chapter-4, часть 47) — и ПИТ, а
+ * ПИТ кому нужна ИВЛ — меньше нужного.
  */
 const COVERS: Record<Setting, readonly Setting[]> = {
   home: ['home'],
   ward: ['ward'],
-  ambulance: ['ambulance', 'surgery', 'transfer', 'icu'],
+  ambulance: ['ambulance', 'surgery', 'transfer', 'icu', 'ricu'],
   admit: ['ward', 'ambulance'],
   surgery: ['surgery'],
-  transfer: ['ambulance', 'surgery', 'transfer', 'icu'],
+  transfer: ['ambulance', 'surgery', 'transfer', 'icu', 'ricu'],
   icu: ['ward', 'ambulance', 'icu'],
+  ricu: ['ward', 'ambulance', 'icu', 'ricu'],
 };
 
 /**
@@ -53,12 +55,14 @@ export function settingFit(need: Setting, chosen: Setting, also: readonly Settin
 /**
  * Что есть в больнице: свободная своя койка — стационар свой (часть 26); работает операционная с
  * бригадой и аппаратами для нужной операции и есть койка после неё — операция своя (часть 28);
- * свободная койка палаты интенсивной терапии под монитором — ПИТ своя (часть 38а).
+ * свободная койка палаты интенсивной терапии под монитором — ПИТ своя (часть 38а); свободная койка
+ * реанимации с монитором и аппаратом ИВЛ — реанимация своя (spec 2026-10-chapter-4, часть 47).
  */
 export interface Venue {
   ward?: boolean;
   or?: boolean;
   icu?: boolean;
+  ricu?: boolean;
   /**
    * аппараты у постели этого больного (spec 2026-10-chapter-3, часть 39а): лежит в смотровой
    * приёмного под монитором с дефибриллятором — тромболизис можно; нет — в кабинете врача его нет
@@ -69,11 +73,21 @@ export interface Venue {
    * идёт обследование, — тромболизис при инсульте делают в первые 4,5 часа
    */
   minutes?: number;
+  /**
+   * через сколько минут придёт результат обследования, если назначить его сейчас (часть 46б): очередь к аппарату,
+   * его скорость и люди этой больницы; нет — по записи в базе
+   */
+  ready?: (exam: Id) => number | undefined;
 }
 
-/** Какого аппарата у постели не хватает лечению у постели (часть 39а); всё есть — undefined. */
+/**
+ * Какого аппарата у постели не хватает лечению у постели (часть 39а); всё есть — undefined. Лечение своего
+ * места (spec 2026-10-chapter-4, часть 47) — ИВЛ — делают там: есть свободная койка реанимации — аппарат будет.
+ */
 export function bedsideLack(db: ContentDb, tx: Id, venue: Venue = {}): Id | undefined {
-  return db.treatments[tx]?.bedside?.equipment.find(e => venue.bedside?.includes(e) !== true);
+  const t = db.treatments[tx];
+  if (t?.place === 'ricu' && venue.ricu) return undefined;
+  return t?.bedside?.equipment.find(e => venue.bedside?.includes(e) !== true);
 }
 
 /**
@@ -93,11 +107,13 @@ export function txAvailable(db: ContentDb, tx: Id, venue: Venue = {}): boolean {
 /**
  * Что выбрать при такой нужде здесь: в амбулатории — направить или скорая, со своей палатой — в
  * неё, со своей операционной — оперировать, со своей ПИТ — в неё; центра, которого в районе нет, и
- * ПИТ, которой в больнице нет, — скорая.
+ * ПИТ, которой в больнице нет, — скорая. С частью 47 (spec 2026-10-chapter-4): ПИТ нет, а реанимация
+ * есть — в неё; кому нужна ИВЛ — в свою реанимацию, нет её — скорая («Перевести»).
  */
 export function choiceFor(need: Setting, venue: Venue = {}): Setting {
   if (need === 'home') return 'home';
-  if (need === 'icu') return venue.icu ? 'icu' : 'ambulance';
+  if (need === 'icu') return venue.icu ? 'icu' : venue.ricu ? 'ricu' : 'ambulance';
+  if (need === 'ricu') return venue.ricu ? 'ricu' : 'ambulance';
   if (need === 'ward' || need === 'ambulance') return venue.ward ? 'admit' : need;
   if (need === 'surgery' && venue.or) return 'surgery';
   return 'ambulance';
@@ -159,6 +175,33 @@ export interface PlanEval {
 
 export function primaryOf(patient: Patient) {
   return patient.truth.conditions.find(c => c.role === 'primary') ?? patient.truth.conditions[0];
+}
+
+/**
+ * Диагноз — верно, частично или неверно (`04` §10): та же болезнь — верно; та же группа (ОРВИ и грипп) — частично.
+ * С частью 48а (spec 2026-10-chapter-4) — и источник: у сепсиса из пневмонии поставлена пневмония — частично: очаг
+ * найден, а органной дисфункции не увидели.
+ */
+export function verdictOf(db: ContentDb, diagnosis: Id, patient: Patient): 'correct' | 'partly' | 'wrong' {
+  const truth = primaryOf(patient);
+  if (diagnosis === truth.id) return 'correct';
+  const group = (id: Id) => db.conditions[id]?.group ?? id;
+  if (group(diagnosis) === group(truth.id)) return 'partly';
+  const source = db.conditions[truth.id]?.source;
+  return source && source.map[truth.params[source.param]] === diagnosis ? 'partly' : 'wrong';
+}
+
+/**
+ * Обязательное лечение человеку можно (часть 45б): в каждой группе обязательного и обязательного до
+ * перевода — хоть одно без противопоказания у него. Заданные пациенты первой смены главы — учебные:
+ * тромболизис при инфаркте и инсульте им можно.
+ */
+export function treatable(db: ContentDb, patient: Patient): boolean {
+  const c = primaryOf(patient);
+  const base = db.conditions[c.id]?.treatment;
+  const truly = new Set([...patient.truth.risks, ...patient.truth.conditions.map(x => x.id)]);
+  const free = (tx: Id) => !db.treatments[tx]?.contraindications.some(k => truly.has(k.id));
+  return [...requireOf(base, c.params), ...beforeTransferOf(base, c.params)].every(g => g.some(free));
 }
 
 /** Совпало ли условие по скрытым параметрам болезни (часть 30в): нет условия — совпало. */

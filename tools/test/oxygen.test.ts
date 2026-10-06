@@ -120,6 +120,7 @@ describe('энциклопедия', () => {
     const o2 = article(db, O2)!;
     const must = o2.blocks.flatMap(b => b.rows ?? []).find(r => r.label === 'Обязательно при')!;
     // и при ТЭЛА (часть 43б; ESC 2019, раздел 6.1.1: кислород при SaO2 < 90 %), и при ОДСН (часть 43в; 156_2, раздел 7.4.1.2)
-    expect(must.refs!.map(r => r.id).sort()).toEqual([ACS, 'cond.adhf', ANA, ASTHMA, COPD, COVID, CAP, 'cond.pe'].sort());
+    // и при сепсисе (часть 48а): как у пневмонии
+    expect(must.refs!.map(r => r.id).sort()).toEqual([ACS, 'cond.adhf', ANA, ASTHMA, COPD, COVID, CAP, 'cond.pe', 'cond.sepsis', 'cond.status_epilepticus'].sort());
   });
 });

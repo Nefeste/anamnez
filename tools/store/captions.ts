@@ -3,7 +3,7 @@
 export const CAPTIONS = [
   { file: '01-emergency.png', caption: 'Скорая привезла:\nкого смотреть первым?' },
   { file: '02-xray.png', caption: 'Спросите, осмотрите,\nназначьте снимок' },
-  { file: '03-fracture.png', caption: 'Перелом на снимке:\nгипс или операция?' },
+  { file: '03-ct.png', caption: 'Инсульт? КТ покажет,\nрастворять ли тромб' },
   { file: '04-ecg.png', caption: 'Боль в груди?\nЭКГ покажет, звать ли скорую' },
   { file: '05-diagnosis.png', caption: 'Диагноз ставите вы —\nпо тому, что узнали' },
   { file: '06-plan.png', caption: 'Лечение и место:\nдома, стационар, скорая' },

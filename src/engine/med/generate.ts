@@ -3,7 +3,7 @@
 // Каждый бросок берётся из своей именованной ветви зерна (`fork`), поэтому добавление
 // новой записи в базу не сдвигает случайность у остальных признаков и золотые случаи
 // меняются только там, где изменилась медицина.
-import { byParams, byRule, byValue, crosses, paramsHold, type Condition, type ContentDb, type Id, type Link, type Onset, type Risk, type Season } from '../../content/types';
+import { byParams, byPresence, byRule, byValue, crosses, paramsHold, type Condition, type ContentDb, type Id, type Link, type Onset, type Risk, type Season } from '../../content/types';
 import { P_ONE, Rng } from '../core/rng';
 import { checkRule, type Who as RuleWho } from './rules';
 import type { ActiveCondition, Patient, Sex, TrueFinding } from './types';
@@ -127,10 +127,14 @@ export function generatePatient(db: ContentDb, seed: number, ctx: GenContext): P
 /**
  * Пациент с заданной болезнью, у которого она обычна: бывает основной в его возрасте и с его
  * болезнями, а по полу не редкость — цистит у женщины (заданные первые пациенты главы, spec
- * 2026-09-campaign); `age` — ещё и в этом возрасте (часть 34б: аппендицит у молодого). Зёрна — по
- * порядку из ряда `seeds`: первое, где так; не нашлось — первое.
+ * 2026-09-campaign); `age` — ещё и в этом возрасте (часть 34б: аппендицит у молодого); заданные
+ * производные параметры (часть 45б: инфаркт и инсульт в окне) — вышли такими: их не бросают, а
+ * выбирают; `accept` — и то, что спросит вызывающий (часть 45б: обязательное лечение можно дать). Зёрна —
+ * по порядку из ряда `seeds`: первое, где так; не нашлось — первое.
  */
-export function typicalPatient(db: ContentDb, seeds: (k: number) => number, ctx: GenContext & { primary: Id }, tries = 16, age?: readonly [number, number]): Patient {
+export function typicalPatient(
+  db: ContentDb, seeds: (k: number) => number, ctx: GenContext & { primary: Id }, tries = 16, age?: readonly [number, number], accept?: (p: Patient) => boolean,
+): Patient {
   const c = db.conditions[ctx.primary];
   let first: Patient | undefined;
   for (let k = 0; k < tries; k++) {
@@ -139,7 +143,9 @@ export function typicalPatient(db: ContentDb, seeds: (k: number) => number, ctx:
     const chronic = p.truth.conditions.filter(x => x.role === 'comorbid').map(x => x.id);
     const fits = presentingWeight(c, { sex: p.sex, age: p.age, season: p.season, risks: p.truth.risks, chronic }) > 0;
     const aged = !age || (p.age >= age[0] && p.age <= age[1]);
-    if (fits && aged && (!c.sex || 2 * c.sex[p.sex] >= Math.max(c.sex.m, c.sex.f))) return p;
+    const own = p.truth.conditions.find(x => x.role === 'primary')?.params ?? {};
+    const derived = Object.entries(ctx.params ?? {}).every(([name, value]) => !c.derived?.[name] || own[name] === value);
+    if (fits && aged && derived && (!c.sex || 2 * c.sex[p.sex] >= Math.max(c.sex.m, c.sex.f)) && (!accept || accept(p))) return p;
   }
   return first!;
 }
@@ -221,14 +227,20 @@ function presentationDay(c: Condition, rng: Rng): { day: number; stage: string }
  * Производные параметры (spec 2026-09-chapter-2, часть 32г): «yes», если правило решения выполнено
  * на настоящих признаках и возрасте, иначе «no» — показана ли КТ при сотрясении; по баллам шкалы
  * (часть 41б) — если их не меньше порога параметра: высокий риск по ABCD2; с частью 42а — и по полу
- * (CHA₂DS₂-VASc). Признаки от них не зависят (валидатор), поэтому считаются после признаков; новых
- * бросков нет. Уже посчитанные не трогает: так при загрузке досчитываются пациенты из сохранений до
- * появления параметра (часть 39в: коронарография в первые сутки при ОКС).
+ * (CHA₂DS₂-VASc); с частью 44а — по признаку: пьёт ли таблетки сульфонилмочевины. Признаки от них не
+ * зависят (валидатор), поэтому считаются после признаков; новых бросков нет. Уже посчитанные не трогает:
+ * так при загрузке досчитываются пациенты из сохранений до появления параметра (часть 39в: коронарография
+ * в первые сутки при ОКС).
  */
 export function deriveParams(db: ContentDb, conditions: ActiveCondition[], who: RuleWho, findings: readonly Pick<TrueFinding, 'f'>[]): void {
   const has = new Set(findings.map(x => x.f));
   for (const c of conditions) {
     for (const [name, d] of Object.entries(db.conditions[c.id].derived ?? {})) {
+      // по признаку (часть 44а): есть ли он, от какой бы причины
+      if (byPresence(d)) {
+        if (c.params[name] === undefined) c.params[name] = has.has(d.has) ? 'yes' : 'no';
+        continue;
+      }
       const r = byRule(d);
       if (!r || c.params[name] !== undefined) continue;
       c.params[name] = checkRule(db.rules[r.rule], who, f => has.has(f), r.from).verdict === 'yes' ? 'yes' : 'no';

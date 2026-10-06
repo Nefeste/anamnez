@@ -270,7 +270,8 @@ describe('тактика и разбор', () => {
 
   test('правило «Нейтрализовать ли антикоагулянт»: ждёт крови на КТ; при крови в бороздах не применяют', () => {
     const rule = db.rules['rule.ich_reversal'];
-    expect(rule).toMatchObject({ any: ['hx.anticoagulants'], requires: [BLOOD], excludes: [SAH_CT], decides: PCC, onlyIfApplies: true });
+    // с частью 44б — и периферический парез лица: невропатия лицевого нерва, КТ в экстренном порядке не нужна
+    expect(rule).toMatchObject({ any: ['hx.anticoagulants'], requires: [BLOOD], excludes: [SAH_CT, 'sign.facial_palsy_peripheral'], decides: PCC, onlyIfApplies: true });
     const asked = seen('hx.anticoagulants', 'exam.ask_lysis');
     expect(checkRule(rule, 70, knownOf([asked])).verdict).toBe('unknown');
     expect(checkRule(rule, 70, knownOf([asked, seen(BLOOD, CT)])).verdict).toBe('yes');

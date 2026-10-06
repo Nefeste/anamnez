@@ -15,9 +15,9 @@ shots:
   - file: screenshots/phone/02-xray.png
     caption: X-ray
     alt: "A visit: a chest X-ray with a finding in the lower right lung"
-  - file: screenshots/phone/03-fracture.png
-    caption: Fracture
-    alt: "A visit: an ankle X-ray in two views, a fracture of both malleoli with the foot shifted"
+  - file: screenshots/phone/03-ct.png
+    caption: CT
+    alt: "A visit in the stroke unit: a head CT slice with no bleeding inside the skull, the finding listed under the slice"
   - file: screenshots/phone/04-ecg.png
     caption: ECG
     alt: "A visit: a 12-lead ECG with ST elevation in II, III and aVF, the findings listed under the sheet"
@@ -36,7 +36,7 @@ shots:
 card:
   text: Patients come to you with real illnesses and injuries, and almost every sign stays hidden until you ask, examine or order a test. Make a diagnosis, choose a treatment and see the outcome — and between shifts, build your own hospital.
   points:
-    - 54 conditions and 23 injuries; each patient’s own X-rays, ultrasound and ECGs
+    - 60 conditions, 23 injuries; each patient’s own X-rays, ultrasound, CT and ECGs
     - Your own hospital with an emergency department, wards and an operating room
     - A review of every visit, a campaign with a mentor and a case of the day
     - Free, offline and ad-free
@@ -61,7 +61,7 @@ in Russian.
   temperature, pulse, blood pressure and oxygen saturation and sees urgent patients in first. The
   map shows who is where: at reception, in the waiting room, at the X-ray, in your office.
 - **Examination.** Questions about complaints and history, a physical exam, lab tests, X-rays,
-  ECGs and ultrasound — each with its own cost and time. While a test is running, you can send the
+  ECGs, ultrasound and CT — each with its own cost and time. While a test is running, you can send the
   patient to wait and see the next one; those who wait too long leave.
 - **Decision.** A diagnosis, a treatment and where to treat: at home, on a ward or in the operating
   room — or, if needed, a referral to another hospital or an ambulance.
@@ -69,8 +69,9 @@ in Russian.
   an experienced doctor would have reasoned. Patients sent home sometimes get worse and come back,
   and the end-of-day summary tells you what happened to earlier patients.
 - **Campaign.** A young doctor at a village clinic, and then at a district hospital with an
-  emergency department, wards and an operating room. The first shift is with a mentor; after that
-  come letters and tasks without deadlines.
+  emergency department, wards and an operating room, where a vascular unit with a CT room and an
+  intensive care ward opens. The first shift is with a mentor; after that come letters and tasks
+  without deadlines.
 - **Your own hospital.** Offices, a lab, X-ray, ultrasound and CT rooms, an emergency department, wards
   and an operating room, hiring, the cash desk. Doctors you hire see patients on their own. Insurance
   pays for a justified diagnosis and for tests that were indicated.
@@ -81,8 +82,8 @@ in Russian.
 
 ## What’s inside
 
-- 54 conditions and 23 injuries. At the clinic — 36 conditions a general practitioner sees: from
-  colds and flu to pneumonia, angina, heart attack, hypertensive crisis, acute heart failure, atrial fibrillation, tachycardias, heart block, pulmonary embolism, nosebleeds and anaphylactic shock. In a hospital with an
+- 60 conditions and 23 injuries. At the clinic — 38 conditions a general practitioner sees: from
+  colds and flu to pneumonia, angina, heart attack, hypertensive crisis, pericarditis, acute heart failure, atrial fibrillation, tachycardias, heart block, pulmonary embolism, hypoglycaemia, nosebleeds and anaphylactic shock. In a hospital with an
   emergency department — 13 more surgical ones, from biliary colic to a perforated ulcer, bowel
   obstruction, deep vein thrombosis and acute ischaemia of the leg, and injuries: fractures, knee ligament tears, a torn calf muscle,
   hand and scalp wounds, burns, chest trauma, concussion. With a CT room, the ambulance brings
@@ -92,7 +93,10 @@ in Russian.
   neurosurgeon within 60 minutes; with an aortic dissection — CT angiography with a chest slice,
   intravenous morphine and a beta blocker, and type A goes to a surgical centre; with a pulmonary
   embolism — the Geneva score and D-dimer, clots on the same chest slice, and the sPESI score decides
-  where to treat.
+  where to treat. A drooping face is not always a stroke: in Bell’s palsy the forehead is weak too, no
+  CT is needed, and a corticosteroid works best within 72 hours. After a seizure — blood glucose, and
+  a first-ever seizure means a CT and admission; seizures that do not stop are status epilepticus: an
+  anticonvulsant within 5 minutes and the intensive care unit.
 - Wounds and burns as in a real emergency department: stitch now or delay the stitches, check the
   finger tendons, measure a burn with the patient’s palms and its depth with a pinprick, tetanus
   shots by vaccination records, and after a dog bite, a rabies vaccine with immunoglobulin.
@@ -140,6 +144,6 @@ see a doctor; in an emergency, call your local emergency number (112 in Russia a
 
 ## What’s next
 
-Coming up: new campaign chapters and departments: cardiology, neurology and MRI. The game is
+Coming up: new campaign chapters and MRI. The game is
 being prepared for release in RuStore for Android, in Russian first. Questions:
 support@gornitsa.games.

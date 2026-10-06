@@ -606,8 +606,64 @@ function crisisSave(): { save: string; id: string } {
   return neuroSave('cond.hypertensive_crisis', fits, ['exam.ecg', 'exam.ask_chronic', 'exam.ask_complaints', 'exam.ask_abdomen', 'exam.vitals', 'exam.neuro_exam', 'exam.fundoscopy']);
 }
 
-/** Больница с приёмным, КТ и ПИТ; первую машину скорой подменяет больной `primary`, для которого верно `fits`; сделаны `exams`. */
-function neuroSave(primary: string, fits: (x: ReturnType<typeof generatePatient>) => boolean, exams: string[]): { save: string; id: string } {
+/**
+ * Песочница с приёмным, КТ, ПИТ и кабинетом УЗИ (часть 43д): первая машина скорой везёт острый перикардит низкого
+ * риска — боль, легче сидя с наклоном вперёд, подъём ST почти везде с депрессией PQ на ЭКГ у постели и выпот на УЗИ
+ * сердца; без аллергии на НПВС. Готовы ЭКГ, хронические болезни, расспрос о боли, аускультация сердца, СРБ, тропонин и
+ * УЗИ сердца.
+ */
+function periSave(): { save: string; id: string } {
+  const fits = (x: ReturnType<typeof generatePatient>) => {
+    const k = x.truth.conditions[0].params;
+    return x.age >= 25 && k.form === 'typical' && x.complaints.includes('sym.pericardial_pain') && x.truth.risks.length <= 2 && !x.truth.risks.includes('risk.allergy_nsaid')
+      && ['ecg.pericarditis', 'img.echo_effusion'].every(f => x.truth.findings.some(y => y.f === f));
+  };
+  return neuroSave('cond.pericarditis', fits, ['exam.ecg', 'exam.ask_chronic', 'exam.ask_chest_pain', 'exam.heart_auscultation', 'exam.crp', 'exam.troponin_hs', 'exam.echo'], { ultrasound: true });
+}
+
+/**
+ * Песочница с приёмным, КТ и ПИТ (часть 44а): первая машина скорой везёт тяжёлую гипогликемию от сульфонилмочевины —
+ * спутанность со слов родных, оглушение, глюкоза ниже 3,0; без нарушения речи. Готовы хронические болезни,
+ * неврологический осмотр, глюкометр и расспрос о лекарствах.
+ */
+function hypoSave(): { save: string; id: string } {
+  const fits = (x: ReturnType<typeof generatePatient>) => {
+    const k = x.truth.conditions[0].params;
+    return k.severity === 'severe' && k.drug === 'sulfonylurea' && k.speech === 'no' && x.truth.risks.length <= 2 && x.complaints.includes('sym.confusion');
+  };
+  return neuroSave('cond.hypoglycemia', fits, ['exam.ask_chronic', 'exam.neuro_exam', 'exam.glucometer', 'exam.ask_meds']);
+}
+
+/**
+ * Песочница с приёмным, КТ и ПИТ (часть 44б): первая машина скорой везёт невропатию лицевого нерва — умеренную,
+ * в первые 72 часа, глаз не закрывается; перекосило лицо, и только. Готовы неврологический осмотр, расспрос при
+ * инсульте и глюкометр.
+ */
+function bellSave(): { save: string; id: string } {
+  const fits = (x: ReturnType<typeof generatePatient>) => {
+    const k = x.truth.conditions[0].params;
+    return k.severity === 'moderate' && k.h72 === 'yes' && k.eye === 'yes' && x.truth.risks.length <= 2 && x.complaints.includes('sym.face_droop');
+  };
+  return neuroSave('cond.bell_palsy', fits, ['exam.neuro_exam', 'exam.ask_stroke', 'exam.glucometer']);
+}
+
+/**
+ * Песочница с приёмным, КТ и ПИТ (часть 44в): первая машина скорой везёт эпилептический статус у больного эпилепсией —
+ * судороги не прекращаются, сатурация 90 и выше. Готов только глюкометр: противосудорожное — в первые 5 минут.
+ */
+function statusSave(): { save: string; id: string } {
+  const fits = (x: ReturnType<typeof generatePatient>) => {
+    const k = x.truth.conditions[0].params;
+    return k.history === 'epilepsy' && k.spo2_below90 === 'no' && x.truth.risks.length <= 2 && x.complaints.includes('sym.seizure_ongoing');
+  };
+  return neuroSave('cond.status_epilepticus', fits, ['exam.glucometer']);
+}
+
+/**
+ * Больница с приёмным, КТ и ПИТ; первую машину скорой подменяет больной `primary`, для которого верно `fits`; сделаны
+ * `exams`. С `ultrasound` (часть 43д) — ещё кабинет УЗИ под старым зданием, коридор к нему продлён влево.
+ */
+function neuroSave(primary: string, fits: (x: ReturnType<typeof generatePatient>) => boolean, exams: string[], extra: { ultrasound?: boolean } = {}): { save: string; id: string } {
   const { db } = buildDb();
   const s = newSandbox(db, { seed: 25, season: 'winter', difficulty: 'student', start: 'clinic', budget: db.economy.sandbox.budgets.generous });
   // томограф дороже «щедрого» бюджета
@@ -626,9 +682,16 @@ function neuroSave(primary: string, fits: (x: ReturnType<typeof generatePatient>
   const er = room('room.emergency', 'M', 29, 1, 0, ['eq.monitor_defib']);
   const ct = room('room.ct', 'M', 29, 10, 2, ['eq.ct_16']);
   const icu = room('room.icu', 'S', 29, 20, 2, ['eq.monitor_defib', 'eq.monitor_defib']);
+  const hires: [string, string][] = [['role.radiographer', ct], ['role.radiologist', ct], ['role.nurse', icu], ['role.anesthetist', icu]];
+  if (extra.ultrasound) {
+    const way: [number, number][] = [];
+    for (let x = 20; x <= 28; x++) for (let y = 17; y <= 19; y++) way.push([x, y]);
+    apply(db, s, { kind: 'build', cmd: { kind: 'corridor', cells: way } });
+    hires.push(['role.sonographer', room('room.ultrasound', 'S', 21, 20, 2, ['eq.us_basic'])]);
+  }
   apply(db, s, { kind: 'buildEnd' });
   apply(db, s, { kind: 'assign', id: s.staff!.find(m => m.role === 'role.nurse' && m.room === 'r7')!.id, room: er });
-  for (const [role, to] of [['role.radiographer', ct], ['role.radiologist', ct], ['role.nurse', icu], ['role.anesthetist', icu]] as const) {
+  for (const [role, to] of hires) {
     const c = s.candidates!.find(x => x.role === role && !s.staff!.some(m => m.id === x.id));
     if (!c) throw new Error(`neuroSave: среди кандидатов нет ${role}`);
     apply(db, s, { kind: 'hire', id: c.id });
@@ -693,6 +756,52 @@ function chapterDoneSave(): string {
   s.campaign!.tips = { shown: Object.values(db.tips).filter(t => !t.chapter).map(t => t.id) };
   if (!ch.missions.filter(m => m.main).every(m => s.campaign!.done[m.id])) throw new Error('глава 1: не все основные задания в сохранении');
   return JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: '2026-09-30T00:00:00.000Z', data: s });
+}
+
+/**
+ * Карьера 3 (spec 2026-10-chapter-3, часть 45а): глава 2 выполнена в первый же свой день; первый пришедший
+ * сам лежит в палате — переход в главу 3 с крылом его не ждёт.
+ */
+function chapter2DoneSave(): string {
+  const { db } = buildDb();
+  const s = newCampaign(db, { seed: 9, season: 'winter', difficulty: 'student', career: 3, chapter: 'chapter.hospital' });
+  apply(db, s, { kind: 'nextDay' });
+  const walkIn = () => Object.values(s.patients).find(p => p.status === 'waiting' && p.kind !== 'ambulance' && !p.bay);
+  for (let i = 0; i < 6 * 60 && !walkIn(); i++) apply(db, s, { kind: 'advance', seconds: 60 });
+  const p = walkIn();
+  if (!p) throw new Error('глава 2: никто не пришёл сам');
+  apply(db, s, { kind: 'call', id: p.id });
+  apply(db, s, { kind: 'diagnose', id: p.patient.truth.conditions[0].id });
+  apply(db, s, { kind: 'setting', setting: 'admit' });
+  apply(db, s, { kind: 'finish' });
+  if (p.status !== 'admitted') throw new Error('глава 2: пришедший сам не лёг в палату');
+  apply(db, s, { kind: 'closeDay' });
+  const ch = db.chapters['chapter.hospital'];
+  for (const m of ch.missions) if (m.main) s.campaign!.done[m.id] = s.day;
+  s.campaign!.letters = [...s.campaign!.letters, { id: 'end', day: s.day }].map(l => ({ ...l, read: true }));
+  s.campaign!.complete = s.day;
+  s.campaign!.tips = { shown: Object.values(db.tips).map(t => t.id) };
+  return JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: '2026-10-05T00:00:00.000Z', data: s });
+}
+
+/**
+ * Карьера 3 с начала главы 3 (spec 2026-10-chapter-3, часть 45б): районная больница с крылом, кабинет КТ работает —
+ * первая смена отделения с заведующей; подсказки прежних глав уже показаны, письма прочитаны. Кто из заданных
+ * пришёл сам с параличом лица и кого скорая привезла с инсультом — по плану дня (он по зерну) на копии.
+ */
+function chapter3StartSave(): { save: string; palsy: string; stroke: string } {
+  const { db } = buildDb();
+  const s = newCampaign(db, { seed: 10, season: 'winter', difficulty: 'student', career: 3, chapter: 'chapter.vascular' });
+  s.campaign!.letters = s.campaign!.letters.map(l => ({ ...l, read: true }));
+  s.campaign!.tips = { shown: Object.values(db.tips).filter(t => t.chapter !== 'chapter.vascular').map(t => t.id) };
+  const day = structuredClone(s);
+  apply(db, day, { kind: 'nextDay' });
+  const palsy = Object.values(day.patients).find(p => p.kind !== 'ambulance' && p.patient.truth.conditions[0].id === 'cond.bell_palsy');
+  if (!palsy) throw new Error('глава 3: паралич лица не пришёл');
+  // инсульт — после паралича лица (часть 46в: заданные приходят по порядку и не разом)
+  const stroke = Object.values(day.patients).find(p => p.kind === 'ambulance' && p.arriveT > palsy.arriveT && p.patient.truth.conditions[0].id === 'cond.stroke_ischemic');
+  if (!stroke) throw new Error('глава 3: инсульт по скорой не пришёл');
+  return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: '2026-10-06T00:00:00.000Z', data: s }), palsy: palsy.id, stroke: stroke.id };
 }
 
 function sandboxFreshSave(): string {
@@ -1210,6 +1319,9 @@ try {
   // кабинет КТ (часть 40) — в списке помещений песочницы, с ценой
   const ctType = await text(page, 'room-type-room.ct');
   check(ctType.startsWith('Кабинет КТ') && ctType.includes('70 000 ₽'), `песочница: в списке помещений — «${ctType.replace(/\n/g, ' · ').slice(0, 120)}»`);
+  // реанимация (spec 2026-10-chapter-4, часть 47) — тоже в списке, с ценой
+  const ricuType = await text(page, 'room-type-room.ricu');
+  check(ricuType.startsWith('Реанимация (ОРИТ)') && ricuType.includes('110 000 ₽'), `песочница: в списке помещений — «${ricuType.replace(/\n/g, ' · ').slice(0, 120)}»`);
   await page.getByTestId('room-type-room.reception').click();
   await page.getByTestId('build-place').waitFor({ timeout: 5000 });
   // призрак — посреди участка (17, 10); тянем на пять клеток влево
@@ -2342,6 +2454,185 @@ try {
     && urgencyArticle.includes('Снижение давления препаратом в вену'),
     `энциклопедия, подъём без поражения органов: ${await visibleText(page, 'enc-article-title')} — дома, препарат в вену в «Опасно»`);
 
+  // острый перикардит (часть 43д): у вас — низкого риска; в карте — боль, легче сидя с наклоном вперёд, подъём ST почти
+  // во всех отведениях и лента, выпот на УЗИ сердца; ибупрофен, колхицин, ИПП и «Домой» — разбор без замечаний; в
+  // энциклопедии — тампонада в ПИТ и пункция перикарда
+  const peri = periSave();
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', peri.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId('shift-continue').waitFor({ timeout: 15_000 });
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId('shift-continue').click();
+  await visible(page, 'visit-decide').waitFor({ timeout: 10_000 });
+  const periCard = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  // боль — словами больного: жалоба известна с прихода, расспрос её не повторяет
+  check(/Сяду, наклонюсь вперёд — легче|Лёжа не могу, легче сидя/.test(periCard) && periCard.includes('Подъём ST почти во всех отведениях, вогнутый, депрессия PQ')
+    && periCard.includes('Выпот в перикарде: листки расходятся'),
+    `Перикардит: в карте — боль, легче сидя с наклоном вперёд, ЭКГ и выпот на УЗИ сердца («${periCard.replace(/\n/g, ' · ').slice(0, 300)}»)`);
+  await visible(page, 'result-ecg').scrollIntoViewIfNeeded();
+  check((await visible(page, 'result-ecg').boundingBox() ?? { height: 0 }).height > 100, 'Перикардит: ЭКГ — лентой');
+  await page.screenshot({ path: join(OUT, '28-peri-card.png'), fullPage: true });
+  await visible(page, 'visit-decide').click();
+  await visible(page, 'dx-cond.pericarditis').click();
+  await visible(page, 'decision-to-plan').click();
+  await page.getByTestId('tx-tx.colchicine').waitFor({ timeout: 5000 });
+  for (const tx of ['tx.ibuprofen', 'tx.colchicine', 'tx.ppi']) await page.getByTestId(`tx-${tx}`).click();
+  await page.getByTestId('setting-home').click();
+  await page.screenshot({ path: join(OUT, '28-peri-decision.png'), fullPage: true });
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
+  const periReview = await page.locator('body').innerText();
+  check(periReview.includes('Острый перикардит') && !/[Нн]е назначено|не показано|вредно|Недооценили тяжесть|Обоснованность [CD]/.test(periReview),
+    `Перикардит низкого риска: ибупрофен, колхицин, ИПП и домой, разбор — «${periReview.replace(/\n/g, ' · ').slice(0, 300)}»`);
+  await page.screenshot({ path: join(OUT, '28-peri-review.png'), fullPage: true });
+  await page.goto(`${base}/encyclopedia/article/cond.pericarditis`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const periArticle = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  check((await visibleText(page, 'enc-article-title')) === 'Острый перикардит' && periArticle.includes('Обычно — дома.')
+    && periArticle.includes('При тампонаде — палата интенсивной терапии.') && periArticle.includes('Пункция перикарда под контролем УЗИ'),
+    `энциклопедия, перикардит: ${await visibleText(page, 'enc-article-title')} — дома, тампонада в ПИТ, пункция`);
+
+  // гипогликемия (часть 44а): у вас — тяжёлая от сульфонилмочевины; в карте — спутанность словами родных, глюкоза ниже
+  // 3,0 и «пьёт таблетки сульфонилмочевины»; декстроза в вену струйно и капельно, «В ПИТ» — разбор без замечаний; в
+  // энциклопедии — тяжёлая на скорой, быстрые углеводы при ней — в «Опасно»
+  const hypo = hypoSave();
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', hypo.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId('shift-continue').waitFor({ timeout: 15_000 });
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId('shift-continue').click();
+  await visible(page, 'visit-decide').waitFor({ timeout: 10_000 });
+  const hypoCard = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  check(/заговариваться|отвечает невпопад/.test(hypoCard) && /Глюкоза \d,\d ммоль\/л — гипогликемия/.test(hypoCard) && hypoCard.includes('Пьёт таблетки сульфонилмочевины'),
+    `Гипогликемия: в карте — спутанность, глюкоза ниже 3,0 и сульфонилмочевина («${hypoCard.replace(/\n/g, ' · ').slice(0, 300)}»)`);
+  await page.screenshot({ path: join(OUT, '29-hypo-card.png'), fullPage: true });
+  await visible(page, 'visit-decide').click();
+  await visible(page, 'dx-cond.hypoglycemia').click();
+  await visible(page, 'decision-to-plan').click();
+  await page.getByTestId('tx-tx.dextrose_iv').waitFor({ timeout: 5000 });
+  for (const tx of ['tx.dextrose_iv', 'tx.dextrose_infusion']) await page.getByTestId(`tx-${tx}`).click();
+  await page.getByTestId('setting-icu').click();
+  await page.screenshot({ path: join(OUT, '29-hypo-decision.png'), fullPage: true });
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
+  const hypoReview = await page.locator('body').innerText();
+  check(hypoReview.includes('Гипогликемия') && !/[Нн]е назначено|не показано|вредно|Недооценили тяжесть|Обоснованность [CD]/.test(hypoReview),
+    `Гипогликемия от сульфонилмочевины: декстроза струйно и капельно, ПИТ, разбор — «${hypoReview.replace(/\n/g, ' · ').slice(0, 300)}»`);
+  await page.screenshot({ path: join(OUT, '29-hypo-review.png'), fullPage: true });
+  await page.goto(`${base}/encyclopedia/article/cond.hypoglycemia`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const hypoArticle = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  check((await visibleText(page, 'enc-article-title')) === 'Гипогликемия' && hypoArticle.includes('При тяжёлом течении — скорая, больница.')
+    && hypoArticle.includes('Быстрые углеводы внутрь') && hypoArticle.includes('Декстроза капельно'),
+    `энциклопедия, гипогликемия: ${await visibleText(page, 'enc-article-title')} — тяжёлая на скорой, углеводы и капельница`);
+
+  // невропатия лицевого нерва (часть 44б): у вас — умеренная, в первые 72 часа, глаз не закрывается; невролог
+  // нашёл парез всей половины лица, и лоб, — в сроках только осмотр, без КТ и теста глотания; преднизолон внутрь,
+  // искусственная слеза, домой — разбор без замечаний; в энциклопедии — дома, при тяжёлой в первые 72 часа — палата
+  const bell = bellSave();
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', bell.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId('shift-continue').waitFor({ timeout: 15_000 });
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId('shift-continue').click();
+  await visible(page, 'visit-decide').waitFor({ timeout: 10_000 });
+  const bellCard = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  check(/Перекосило лицо|Лицо вдруг стало кривым/.test(bellCard) && /Слаба вся половина лица (справа|слева), и лоб/.test(bellCard)
+    && /Глаз (справа|слева) не закрывается до конца/.test(bellCard),
+    `Невропатия лицевого нерва: в карте — перекошенное лицо, парез всей половины с лбом, глаз не закрывается («${bellCard.replace(/\n/g, ' · ').slice(0, 300)}»)`);
+  const bellTarget = await text(page, 'visit-target-0');
+  check(/^Осмотр при подозрении на инсульт — через \d+\u00a0мин после прихода, в срок$/.test(bellTarget) && (await page.getByTestId('visit-target-1').count()) === 0,
+    `невропатия: в сроках только осмотр — «${bellTarget}», без КТ и теста глотания`);
+  await page.screenshot({ path: join(OUT, '30-bell-card.png'), fullPage: true });
+  await visible(page, 'visit-decide').click();
+  await visible(page, 'dx-cond.bell_palsy').click();
+  await visible(page, 'decision-to-plan').click();
+  await page.getByTestId('tx-tx.steroid_systemic_short').waitFor({ timeout: 5000 });
+  for (const tx of ['tx.steroid_systemic_short', 'tx.eye_lubricant']) await page.getByTestId(`tx-${tx}`).click();
+  await page.getByTestId('setting-home').click();
+  await page.screenshot({ path: join(OUT, '30-bell-decision.png'), fullPage: true });
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
+  const bellReview = await page.locator('body').innerText();
+  check(bellReview.includes('Невропатия лицевого нерва') && !/[Нн]е назначено|не показано|вредно|Недооценили тяжесть|Обоснованность [CD]|КТ при подозрении на инсульт/.test(bellReview),
+    `Невропатия лицевого нерва: преднизолон внутрь, искусственная слеза, домой — разбор «${bellReview.replace(/\n/g, ' · ').slice(0, 300)}»`);
+  const bellLine = await text(page, 'visit-target-line-0');
+  check((await text(page, 'visit-targets-grade')) === 'A' && /^• Осмотр при подозрении на инсульт: через \d+\u00a0мин после прихода — в срок$/.test(bellLine)
+    && (await page.getByTestId('visit-target-line-1').count()) === 0, `невропатия, сроки в разборе: ${bellLine}`);
+  await page.screenshot({ path: join(OUT, '30-bell-review.png'), fullPage: true });
+  await page.goto(`${base}/encyclopedia/article/cond.bell_palsy`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const bellArticle = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  check((await visibleText(page, 'enc-article-title')) === 'Невропатия лицевого нерва' && bellArticle.includes('Обычно — дома.')
+    && bellArticle.includes('При тяжёлом течении в первые 72 часа — в стационаре.') && bellArticle.includes('Искусственная слеза днём, гель на ночь'),
+    `энциклопедия, невропатия: ${await visibleText(page, 'enc-article-title')} — дома, тяжёлая в первые 72 часа — в стационаре, слеза и гель`);
+
+  // эпилептический статус (часть 44в): у вас — больной эпилепсией, судороги не прекращаются; в сроках —
+  // противосудорожное за 5 минут от прихода; диазепам или мидазолам и «В ПИТ» — разбор без замечаний, срок — в
+  // срок; в энциклопедии — ПИТ у статуса, дома или в стационаре у приступа
+  const status = statusSave();
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', status.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId('shift-continue').waitFor({ timeout: 15_000 });
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId('shift-continue').click();
+  await visible(page, 'visit-decide').waitFor({ timeout: 10_000 });
+  const statusCard = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  check(/Судороги не прекращаются|Приступы идут один за другим/.test(statusCard),
+    `Эпилептический статус: в карте — судороги не прекращаются («${statusCard.replace(/\n/g, ' · ').slice(0, 300)}»)`);
+  const statusTarget = await text(page, 'visit-target-0');
+  check(/^Противосудорожное при эпилептическом статусе — в первые 5\u00a0минут; с прихода — \d+\u00a0мин$/.test(statusTarget),
+    `статус: в сроках — противосудорожное за 5 минут — «${statusTarget}»`);
+  await page.screenshot({ path: join(OUT, '31-status-card.png'), fullPage: true });
+  await visible(page, 'visit-decide').click();
+  await visible(page, 'dx-cond.status_epilepticus').click();
+  await visible(page, 'decision-to-plan').click();
+  await page.getByTestId('tx-tx.benzodiazepine').waitFor({ timeout: 5000 });
+  await page.getByTestId('tx-tx.benzodiazepine').click();
+  await page.getByTestId('setting-icu').click();
+  await page.screenshot({ path: join(OUT, '31-status-decision.png'), fullPage: true });
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
+  const statusReview = await page.locator('body').innerText();
+  check(statusReview.includes('Эпилептический статус') && !/[Нн]е назначено|не показано|вредно|Недооценили тяжесть|Обоснованность [CD]/.test(statusReview),
+    `Эпилептический статус: бензодиазепин и ПИТ — разбор «${statusReview.replace(/\n/g, ' · ').slice(0, 300)}»`);
+  const statusLine = await text(page, 'visit-target-line-0');
+  check((await text(page, 'visit-targets-grade')) === 'A' && /^• Противосудорожное при эпилептическом статусе: через \d+\u00a0мин после прихода — в срок$/.test(statusLine),
+    `статус, сроки в разборе: ${statusLine}`);
+  await page.screenshot({ path: join(OUT, '31-status-review.png'), fullPage: true });
+  await page.goto(`${base}/encyclopedia/article/cond.status_epilepticus`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const statusArticle = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  check((await visibleText(page, 'enc-article-title')) === 'Эпилептический статус' && statusArticle.includes('Обычно — палата интенсивной терапии.')
+    && statusArticle.includes('Диазепам в вену медленно или мидазолам в мышцу') && statusArticle.includes('Вальпроевая кислота в вену'),
+    `энциклопедия, статус: ${await visibleText(page, 'enc-article-title')} — ПИТ, бензодиазепин, вальпроевая кислота`);
+  await page.goto(`${base}/encyclopedia/article/cond.seizure`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const seizureArticle = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  check((await visibleText(page, 'enc-article-title')) === 'Судорожный приступ' && seizureArticle.includes('При первом в жизни приступе — в стационаре.')
+    && seizureArticle.includes('Нужна ли КТ при судорожном приступе') && seizureArticle.includes('Свой противоэпилептический препарат — без пропусков'),
+    `энциклопедия, приступ: ${await visibleText(page, 'enc-article-title')} — стационар при первом, правило КТ, свой препарат`);
+
   // хирургия живота (spec 2026-09-chapter-2, часть 30): со смотровой приёмного больница принимает
   // и хирургию — у вас больной острым холециститом; УЗИ — желчный пузырь с камнями и толстой
   // стенкой; в выборе диагноза — колика, холецистит, панкреатит; в энциклопедии — срок операции
@@ -2691,6 +2982,219 @@ try {
   check((await page.locator('[data-testid^="round-op-"]').count()) === 1, 'глава 2: на обходе — оперированный');
   await page.goBack();
 
+  // глава 3 (spec 2026-10-chapter-3, часть 45а): карьера 3 с выполненной главой 2 и лежащим в палате —
+  // «Открыть сосудистое отделение» сразу, выписки не ждут; лист перехода — та же больница, крыло и деньги на
+  // него; глава 3 — письма заведующей и задания; на стройке участок шире: кабинет КТ встаёт в крыле
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/campaign-3.json', chapter2DoneSave()]);
+  await page.goto(base);
+  await page.getByTestId('menu-campaign').click();
+  await page.getByTestId('career-3').waitFor({ timeout: 10_000 });
+  check((await text(page, 'career-3')).includes('Глава 2. Приёмное'), `глава 3: карьера 3 — ${(await text(page, 'career-3')).replace(/\n/g, ' · ')}`);
+  await page.getByTestId('career-3').click();
+  await page.getByTestId('career-continue').click();
+  await page.getByTestId('chapter-next').waitFor({ timeout: 10_000 });
+  check((await text(page, 'chapter-next')).startsWith('Открыть сосудистое отделение'), `глава 2 выполнена: ${(await text(page, 'chapter-next')).replace(/\n/g, ' · ')}`);
+  await page.getByTestId('chapter-next').click();
+  await page.getByTestId('chapter-next-text').waitFor({ timeout: 5000 });
+  check((await text(page, 'chapter-next-text')).includes('Участок прирастает крылом справа') && (await text(page, 'chapter-next-text')).includes('2\u00a0500\u00a0000'),
+    `глава 3: лист перехода — ${(await text(page, 'chapter-next-text')).replace(/\n/g, ' · ')}`);
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(OUT, '15-chapter3-move.png') });
+  await page.getByTestId('chapter-next-yes').click();
+  await page.getByTestId('chapter-next-sheet').waitFor({ state: 'detached', timeout: 5000 });
+  await page.waitForTimeout(500);
+  check((await text(page, 'chapter')).startsWith('Глава 3. Сердце и мозг') && (await text(page, 'chapter-day')).startsWith('сосудистое отделение районной больницы в Нижнеборске · перед первой сменой')
+    && (await page.locator('[data-testid^="mission-"]').count()) === 7 && (await page.getByTestId('chapter-next').count()) === 0,
+    `глава 3: ${(await text(page, 'chapter-day'))}, заданий ${await page.locator('[data-testid^="mission-"]').count()}`);
+  check((await text(page, 'mission-ecg')).includes('0 из 5\u00a0больных подряд') && (await text(page, 'mission-ctRoom')).includes('пока нет'), 'глава 3: ход заданий — срок подряд, кабинет КТ');
+  await page.getByTestId('letter-minutes').click();
+  await page.getByTestId('letter-text').waitFor({ timeout: 5000 });
+  check((await text(page, 'letter-text')).startsWith('Здравствуйте. В нашем деле решают минуты') && (await text(page, 'letter-sheet')).includes('Е. В. Соколова'),
+    'глава 3: письмо заведующей сосудистым отделением');
+  await page.screenshot({ path: join(OUT, '15-chapter3-letter.png') });
+  await page.getByTestId('letter-sheet-close').click();
+  await page.getByTestId('letter-sheet').waitFor({ state: 'detached', timeout: 5000 });
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(OUT, '15-chapter3.png'), fullPage: true });
+  await page.getByTestId('sandbox-build').click();
+  await page.getByTestId('build-map').waitFor({ timeout: 10_000 });
+  await page.getByTestId('build-tool-room').click();
+  check(await page.getByTestId('room-type-room.icu').isVisible(), 'глава 3: на стройке — и палата интенсивной терапии');
+  await page.getByTestId('room-type-room.ct').click();
+  await page.getByTestId('build-place').waitFor({ timeout: 5000 });
+  await page.waitForTimeout(500);
+  // участок с крылом — 52 × 28, весь на экране; призрак кабинета КТ — посреди участка (21, 10): тянем в
+  // крыло, к верхнему краю (41, 0)
+  const wingCell = async (x: number, y: number) => {
+    const box = (await page.getByTestId('build-map').boundingBox())!;
+    const c = 16 * Math.min(box.width / (52 * 16), box.height / (28 * 16));
+    return { x: box.x + (box.width - 52 * c) / 2 + (x + 0.5) * c, y: box.y + (box.height - 28 * c) / 2 + (y + 0.5) * c };
+  };
+  const from = await wingCell(25, 13);
+  const to = await wingCell(45, 3);
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 20 });
+  await page.waitForTimeout(150);
+  await page.mouse.up();
+  await page.waitForTimeout(400);
+  const wingCash = await text(page, 'build-cash');
+  await page.getByTestId('build-place').click();
+  await page.getByTestId('build-tool-room').waitFor({ timeout: 5000 });
+  check((await text(page, 'build-cash')) !== wingCash && (await page.getByTestId('build-undo').innerText()).includes('(1)'),
+    `глава 3: кабинет КТ — в крыле (${wingCash} → ${await text(page, 'build-cash')})`);
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(OUT, '15-chapter3-build.png') });
+  await page.getByTestId('build-done').click();
+
+  // первая смена отделения (часть 45б, сценарий chapter3): глава 3 с начала — кабинет КТ работает; первая скорая —
+  // инфаркт нижней стенки: сортировка, карта, ЭКГ у постели — подсказка заведующей «Инфаркт и минуты»; расспрос
+  // перед тромболизисом, тромболизис со спутниками и перевод в сосудистый центр; потом пришедший сам — паралич
+  // лица: после первого вопроса — подсказка «Лицо и лоб», глюкокортикоид — домой; потом скорая — инсульт (часть 46в):
+  // осмотр — подсказка «Инсульт: счёт от начала», глюкоза, КТ — с заключением в 40 минут, тромболизис у постели и
+  // «В ПИТ», на обходе — в палате интенсивной терапии. Заданные приходят не разом (часть 46в): каждый — не раньше
+  // чем через 40 минут после прежнего
+  // сначала уйти со стройки в меню: уходя, игра сохраняет карьеру 3 — после этого её и заменяем
+  const c3 = chapter3StartSave();
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/campaign-3.json', c3.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-campaign').click();
+  await page.getByTestId('career-3').waitFor({ timeout: 10_000 });
+  await page.getByTestId('career-3').click();
+  await page.getByTestId('career-continue').click();
+  await page.getByTestId('sandbox-open').waitFor({ timeout: 10_000 });
+  await page.getByTestId('sandbox-open').click();
+  await page.getByTestId('clinic-map').waitFor({ timeout: 10_000 });
+  await fastClock(page);
+  const ambulanceIn = async () => (await page.locator('[data-testid^="ambulance-"]').count()) > 0;
+  check(await runClockUntil(page, ambulanceIn), 'глава 3: первая скорая смены отделения — в первые минуты');
+  await page.getByTestId('tab-pause').click();
+  const stemiId = (await page.locator('[data-testid^="ambulance-"]').first().getAttribute('data-testid'))!.replace('ambulance-', '');
+  await page.getByTestId(`ambulance-${stemiId}`).click();
+  await page.getByTestId('handover-reason').waitFor({ timeout: 5000 });
+  await page.getByTestId('sort-red').click();
+  await page.getByTestId('handover-sheet').waitFor({ state: 'detached', timeout: 5000 });
+  await page.getByTestId(`queue-${stemiId}`).waitFor({ timeout: 10_000 });
+  await page.getByTestId(`queue-${stemiId}`).click();
+  // карта открывается на «Спросить»: первым делом — ЭКГ у постели
+  await visible(page, 'visit-decide').waitFor({ timeout: 30_000 });
+  check(!(await page.getByTestId('tip-text').count()), 'глава 3: у инфаркта до первого дела подсказки нет');
+  await page.getByTestId('tab-order').click();
+  await page.getByTestId('exam-exam.ecg').click();
+  await page.getByTestId('tip-text').waitFor({ timeout: 10_000 });
+  check((await text(page, 'tip-text')).startsWith('ЭКГ у постели — в первые 10') && (await text(page, 'tip-sheet')).includes('Е. В. Соколова'),
+    `глава 3: у инфаркта после ЭКГ — подсказка заведующей (${(await text(page, 'tip-text')).slice(0, 60)})`);
+  await page.waitForTimeout(700);
+  await page.screenshot({ path: join(OUT, '15-chapter3-tip.png') });
+  await page.getByTestId('tip-sheet-close').click();
+  await page.getByTestId('tip-sheet').waitFor({ state: 'detached', timeout: 5000 });
+  await page.getByTestId('tab-ask').click();
+  await page.getByTestId('exam-exam.ask_lysis').click();
+  await page.getByTestId('done-exam.ask_lysis').waitFor({ timeout: 10_000 });
+  await visible(page, 'visit-decide').click();
+  await page.getByTestId('dx-cond.acs').click();
+  await page.getByTestId('decision-to-plan').click();
+  await page.getByTestId('tx-tx.thrombolysis').waitFor({ timeout: 5000 });
+  check(!(await page.getByTestId('tx-tx.thrombolysis').isDisabled()), 'глава 3: тромболизис у постели в смотровой — можно');
+  for (const tx of ['tx.thrombolysis', 'tx.aspirin_acs', 'tx.clopidogrel', 'tx.enoxaparin_acs']) await page.getByTestId(`tx-${tx}`).click();
+  await page.getByTestId('setting-ambulance').click();
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-outcome').waitFor({ timeout: 10_000 });
+  const stemiOut = await text(page, 'visit-outcome');
+  check((await text(page, 'visit-truth')).includes('Острый коронарный синдром')
+    && /(Переведён|Переведена) в сосудистый центр\. Тромболизис (помог|не помог)|в сосудистом центре на \d-е\u00a0сутки/.test(stemiOut),
+    `глава 3: инфаркт — тромболизис здесь и перевод («${stemiOut.replace(/\n/g, ' · ').slice(0, 160)}»)`);
+  await page.getByTestId('shift-to-queue').click();
+  // потом пришедший сам — паралич лица: не раньше чем через 40 минут после инфаркта
+  await fastClock(page);
+  check(await runClockUntil(page, async () => (await page.getByTestId(`queue-${c3.palsy}`).count()) > 0, 120_000), 'глава 3: паралич лица — в очереди после инфаркта');
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId(`queue-${c3.palsy}`).click();
+  await visible(page, 'visit-decide').waitFor({ timeout: 30_000 });
+  await page.getByTestId('exam-exam.ask_stroke').click();
+  await page.getByTestId('tip-text').waitFor({ timeout: 10_000 });
+  check((await text(page, 'tip-text')).startsWith('Перекошенное лицо — не всегда инсульт') && (await text(page, 'tip-sheet')).includes('Е. В. Соколова'),
+    `глава 3: у паралича лица после первого вопроса — подсказка «Лицо и лоб» (${(await text(page, 'tip-text')).slice(0, 60)})`);
+  await page.waitForTimeout(700);
+  await page.screenshot({ path: join(OUT, '15-chapter3-face-tip.png') });
+  await page.getByTestId('tip-sheet-close').click();
+  await page.getByTestId('tip-sheet').waitFor({ state: 'detached', timeout: 5000 });
+  await visible(page, 'visit-decide').click();
+  await visible(page, 'dx-cond.bell_palsy').click();
+  await visible(page, 'decision-to-plan').click();
+  await page.getByTestId('tx-tx.steroid_systemic_short').waitFor({ timeout: 5000 });
+  await page.getByTestId('tx-tx.steroid_systemic_short').click();
+  await page.getByTestId('setting-home').click();
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
+  check((await text(page, 'visit-truth')).includes('Невропатия лицевого нерва'), `глава 3: паралич лица — глюкокортикоид и домой (${await text(page, 'visit-truth')})`);
+  await page.getByTestId('shift-to-queue').click();
+  // потом скорая — инсульт в окне: не раньше чем через 40 минут после паралича лица
+  await fastClock(page);
+  check(await runClockUntil(page, async () => (await page.getByTestId(`ambulance-${c3.stroke}`).count()) > 0, 180_000), 'глава 3: инсульт по скорой — после паралича лица');
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId(`ambulance-${c3.stroke}`).click();
+  await page.getByTestId('handover-reason').waitFor({ timeout: 5000 });
+  await page.getByTestId('sort-red').click();
+  await page.getByTestId('handover-sheet').waitFor({ state: 'detached', timeout: 5000 });
+  await page.getByTestId(`queue-${c3.stroke}`).waitFor({ timeout: 10_000 });
+  await page.getByTestId(`queue-${c3.stroke}`).click();
+  await visible(page, 'visit-decide').waitFor({ timeout: 30_000 });
+  await visible(page, 'tab-examine').click();
+  await visible(page, 'exam-exam.neuro_exam').click();
+  await page.getByTestId('tip-text').waitFor({ timeout: 10_000 });
+  check((await text(page, 'tip-text')).startsWith('Внезапная слабость, перекошенное лицо') && (await text(page, 'tip-sheet')).includes('Е. В. Соколова'),
+    `глава 3: у инсульта после осмотра — подсказка «Инсульт: счёт от начала» (${(await text(page, 'tip-text')).slice(0, 60)})`);
+  await page.waitForTimeout(700);
+  await page.screenshot({ path: join(OUT, '15-chapter3-stroke-tip.png') });
+  await page.getByTestId('tip-sheet-close').click();
+  await page.getByTestId('tip-sheet').waitFor({ state: 'detached', timeout: 5000 });
+  // сначала глюкоза, потом КТ — с заключением в 40 минут; пока КТ идёт — когда началось, противопоказания и тест
+  // глотания
+  await visible(page, 'exam-exam.glucometer').click();
+  await page.getByTestId('done-exam.glucometer').waitFor({ timeout: 10_000 });
+  await visible(page, 'tab-order').click();
+  await visible(page, 'exam-exam.ct_head').click();
+  await page.getByTestId('done-exam.ct_head').waitFor({ timeout: 10_000 });
+  await visible(page, 'tab-ask').click();
+  await visible(page, 'exam-exam.ask_stroke').click();
+  await page.getByTestId('done-exam.ask_stroke').waitFor({ timeout: 10_000 });
+  await visible(page, 'exam-exam.ask_lysis').click();
+  await page.getByTestId('done-exam.ask_lysis').waitFor({ timeout: 10_000 });
+  await visible(page, 'tab-examine').click();
+  await visible(page, 'exam-exam.swallow_test').click();
+  await page.getByTestId('done-exam.swallow_test').waitFor({ timeout: 10_000 });
+  const dysphagia = (await text(page, 'done-exam.swallow_test')).includes('не пройден');
+  // ждать заключения КТ (привезённая скорая обрывает ожидание — ещё раз)
+  for (let i = 0; i < 8 && (await page.getByTestId('visit-wait').count()) > 0; i++) await page.getByTestId('visit-wait').click();
+  await visible(page, 'result-ct').waitFor({ timeout: 10_000 });
+  check(await page.locator('text=Крови внутри черепа нет').first().isVisible().catch(() => false), 'глава 3: инсульт — КТ срезом в карте, крови внутри черепа нет');
+  await visible(page, 'visit-decide').click();
+  await visible(page, 'dx-cond.stroke_ischemic').click();
+  await visible(page, 'decision-to-plan').click();
+  await page.getByTestId('tx-tx.thrombolysis_stroke').waitFor({ timeout: 5000 });
+  check(!(await page.getByTestId('tx-tx.thrombolysis_stroke').isDisabled()), 'глава 3: тромболизис при инсульте у постели в смотровой — можно');
+  await page.getByTestId('tx-tx.thrombolysis_stroke').click();
+  // тест глотания не пройден — зонд (814_1, раздел 3.1.1.6)
+  if (dysphagia) await page.getByTestId('tx-tx.ng_tube').click();
+  await page.getByTestId('setting-icu').click();
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
+  const strokeOut = await page.locator('body').innerText();
+  check(strokeOut.includes('Ишемический инсульт') && strokeOut.includes('Лежит в палате интенсивной терапии') && !/Не назначено|не показано|Окно закрылось|позже срока/.test(strokeOut),
+    `глава 3: инсульт — тромболизис и ПИТ («${strokeOut.replace(/\n/g, ' · ').slice(0, 240)}»)`);
+  await page.screenshot({ path: join(OUT, '15-chapter3-stroke.png'), fullPage: true });
+  await page.getByTestId('shift-to-queue').click();
+  await page.getByTestId('rounds-open').waitFor({ timeout: 10_000 });
+  await page.getByTestId('rounds-open').click();
+  await page.getByTestId(`round-icu-${c3.stroke}`).waitFor({ timeout: 10_000 });
+  check((await text(page, `round-icu-${c3.stroke}`)) === 'Палата интенсивной терапии, под монитором', `глава 3: инсульт на обходе — ${await text(page, `round-icu-${c3.stroke}`)}`);
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(OUT, '15-chapter3-rounds.png'), fullPage: true });
+  await page.goBack();
+
   // «Случай дня»: последние 30 дней, приём, разбор, отметка в списке (spec 2026-09-campaign, часть 14)
   await page.goto(base);
   await page.getByTestId('menu-quick').click();
@@ -2722,9 +3226,10 @@ try {
   await page.getByTestId('menu-single').click();
   await page.getByTestId('venue-preset.clinic').waitFor({ timeout: 10_000 });
   // районная больница — с тех пор как карьера 2 перешла в главу 2
+  // с частью 45а — и районная больница с сосудистым отделением: карьера 3 перешла в главу 3
   check(!(await page.getByTestId('venue-preset.village').isDisabled()) && !(await page.getByTestId('venue-preset.district').isDisabled())
-    && (await page.locator('[data-testid^="venue-"]').count()) === 4,
-    `смена: больницы — практика, посёлок, районная, своя (${(await text(page, 'venue-sandbox')).replace(/\n/g, ' · ')})`);
+    && !(await page.getByTestId('venue-preset.vascular').isDisabled()) && (await page.locator('[data-testid^="venue-"]').count()) === 5,
+    `смена: больницы — практика, посёлок, районная, с сосудистым отделением, своя (${(await text(page, 'venue-sandbox')).replace(/\n/g, ' · ')})`);
   await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/single.json', singleEndOfDaySave()]);
   await page.goto(base);
   await page.getByTestId('menu-continue').waitFor({ timeout: 10_000 });

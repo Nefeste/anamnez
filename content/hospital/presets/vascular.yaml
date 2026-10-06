@@ -1,0 +1,58 @@
+# Районная больница с сосудистым отделением — больница главы 3 «Сердце и мозг» (spec 2026-10-chapter-3,
+# часть 45а): районная больница главы 2, к участку которой справа пристроено крыло на 12 клеток. Её
+# помещения — те же, на тех же местах и в том же порядке (это проверяет загрузчик); справа от
+# ординаторской — кабинет УЗИ, его строят заданием главы 2. Оба коридора продлены в крыло: сверху в
+# крыле — кабинет КТ, снизу — палата интенсивной терапии на четыре койки с мониторами. Штат — на всё,
+# что построено. Это больница «Смены» и начала карьеры с главы 3; в карьере крыло строит сам врач.
+id: preset.vascular
+name: { ru: "Районная больница с сосудистым отделением" }
+plot: [52, 28]
+entrance: [0, 8]
+corridor:
+  - [1, 7, 49, 9]
+  - [18, 10, 20, 16]
+  - [1, 17, 49, 19]
+rooms:
+  - { type: room.reception, size: S, x: 0, y: 0, rot: 0 }
+  - { type: room.triage, size: S, x: 5, y: 0, rot: 0 }
+  - { type: room.office, size: M, x: 10, y: 0, rot: 0 }
+  - { type: room.procedure, size: S, x: 17, y: 0, rot: 0 }
+  - { type: room.lab, size: M, x: 22, y: 0, rot: 0, equipment: [eq.hematology_analyzer, eq.biochem_analyzer, eq.urine_analyzer, eq.immuno_analyzer] }
+  - { type: room.staff, size: S, x: 29, y: 0, rot: 0 }
+  - { type: room.waiting, size: L, x: 0, y: 10, rot: 2 }
+  - { type: room.ecg, size: S, x: 12, y: 10, rot: 2, equipment: [eq.ecg] }
+  - { type: room.xray, size: M, x: 21, y: 10, rot: 2, equipment: [eq.xray_digital] }
+  - { type: room.toilet, size: S, x: 28, y: 10, rot: 2 }
+  - { type: room.emergency, size: M, x: 0, y: 20, rot: 2, equipment: [eq.monitor_defib] }
+  - { type: room.ward, size: M, x: 8, y: 20, rot: 2 }
+  - { type: room.ward, size: M, x: 16, y: 20, rot: 2 }
+  - { type: room.or, size: M, x: 24, y: 20, rot: 2, equipment: [eq.or_table, eq.anesthesia] }
+  - { type: room.ultrasound, size: S, x: 34, y: 0, rot: 0, equipment: [eq.us_basic] }
+  - { type: room.ct, size: M, x: 41, y: 0, rot: 0, equipment: [eq.ct_16] }
+  - { type: room.icu, size: M, x: 41, y: 20, rot: 2, equipment: [eq.monitor_defib, eq.monitor_defib, eq.monitor_defib, eq.monitor_defib] }
+decor:
+  - [bench, 9, 9]
+  - [bench, 10, 9]
+  - [bench, 11, 9]
+  - [bench, 12, 9]
+  - [bench, 26, 9]
+  - [bench, 27, 9]
+staff:
+  - { role: role.registrar, room: 0 }
+  - { role: role.nurse, room: 1 }
+  - { role: role.nurse, room: 3 }
+  - { role: role.lab_tech, room: 4 }
+  - { role: role.nurse, room: 7 }
+  - { role: role.radiographer, room: 8 }
+  - { role: role.radiologist, room: 8 }
+  - { role: role.nurse, room: 10 }
+  - { role: role.nurse, room: 11 }
+  - { role: role.nurse, room: 12 }
+  - { role: role.surgeon, room: 13 }
+  - { role: role.anesthetist, room: 13 }
+  - { role: role.or_nurse, room: 13 }
+  - { role: role.sonographer, room: 14 }
+  - { role: role.radiographer, room: 15 }
+  - { role: role.radiologist, room: 15 }
+  - { role: role.nurse, room: 16 }
+  - { role: role.anesthetist, room: 16 }

@@ -1,0 +1,7 @@
+id: ach.vascular
+order: 23
+category: campaign
+name: { ru: "Сердце и мозг" }
+need: { ru: "Выполнить основные задания главы 3 «Сердце и мозг»." }
+kind: chapter
+chapter: chapter.vascular

@@ -284,9 +284,11 @@ export function build(db: ContentDb, s: Built, cmd: BuildCommand): BuildResult {
     // места — по нынешнему размеру: у смотровой приёмного из сохранений до 0.3.2 места под
     // монитор ещё нет (часть 37)
     const slots = z.slots.map((_, i) => room.equipment[i] ?? null);
-    // у аппарата может быть своё место: стол операционной — под пациентом (часть 28)
+    // у аппарата может быть своё место: стол операционной — под пациентом (часть 28); в реанимации (spec
+    // 2026-10-chapter-4, часть 47) у монитора и аппарата ИВЛ — свои места у коек, по порядку коек
+    const mine = z.slotsOf?.[eq.id];
     const own = eq.slot !== undefined && slots[eq.slot] === null ? eq.slot : -1;
-    const slot = own >= 0 ? own : slots.indexOf(null);
+    const slot = mine ? (mine.find(i => slots[i] === null) ?? -1) : own >= 0 ? own : slots.indexOf(null);
     if (slot < 0) return fail({ kind: 'noSlot' });
     if (s.cash < eq.price) return fail({ kind: 'money', need: eq.price - s.cash });
     const equipment = slots.map((x, i) => (i === slot ? eq.id : x));
@@ -308,6 +310,16 @@ export function build(db: ContentDb, s: Built, cmd: BuildCommand): BuildResult {
 /** Пустой участок: вход в краю и отрезок коридора от него. */
 export function emptyPlot(w: number, h: number, entrance: Cell, corridor: Cell[]): HospitalState {
   return { w, h, entrance, corridor: corridor.map(([x, y]) => y * w + x).sort((a, b) => a - b), rooms: [], decor: [], next: 1 };
+}
+
+/**
+ * Участок шире справа на `dw` клеток (spec 2026-10-chapter-3, часть 45а: крыло главы 3). Помещения,
+ * вход и предметы — на прежних местах; клетки коридора — номера `y·w + x`, их пересчитывают под новую
+ * ширину, порядок сохраняется. Новый объект: план больницы кэшируется по нему.
+ */
+export function widenPlot(h: HospitalState, dw: number): HospitalState {
+  const w = h.w + dw;
+  return { ...h, w, corridor: h.corridor.map(i => Math.floor(i / h.w) * w + (i % h.w)) };
 }
 
 /** Чего не удалось при постройке готовой больницы: номер помещения в записи, команда, причина. */

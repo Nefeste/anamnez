@@ -38,6 +38,9 @@ export const campaign = {
   operationsProgress: (n: number, of: number) => `${n} из ${of}\u00a0${pluralRu(of, 'операции', 'операций', 'операций')}`,
   stayProgress: (n: number, of: number, stay?: { days: number; norm: number }) =>
     `${n} из ${of}\u00a0${pluralRu(of, 'выписанного', 'выписанных', 'выписанных')} подряд${stay ? ` · в среднем ${String(stay.days).replace('.', ',')}\u00a0сут. при обычных ${String(stay.norm).replace('.', ',')}` : ''}`,
+  // глава 3 (spec 2026-10-chapter-3, часть 45а): срок у больных подряд, тромболизисы в окне
+  deadlineProgress: (n: number, of: number) => `${n} из ${of}\u00a0${pluralRu(of, 'больного', 'больных', 'больных')} подряд`,
+  lysisProgress: (n: number, of: number) => `${n} из ${of}`,
   notYet: 'пока нет',
   doneOn: (day: number) => `выполнено, день ${day}`,
   completeLater: (next: number) => `Основные задания главы выполнены. Глава ${next} — в следующей версии; работать здесь можно и дальше.`,
@@ -47,6 +50,9 @@ export const campaign = {
   moveTitle: (move: string) => `${move}?`,
   moveText: (from: string) =>
     `Больница, штат и касса будут новыми; врач, сложность, достижения и энциклопедия — прежними. Прежняя больница — ${from} — останется в «Смене» быстрой игры.`,
+  // глава с крылом (часть 45а): та же больница
+  moveWingText: (budget: string) =>
+    `Больница остаётся та же: штат, касса, построенное и лежащие — прежние. Участок прирастает крылом справа, а на стройку в кассу придёт ${budget}. Больница без крыла останется в «Смене» быстрой игры.`,
   move: 'Перейти',
   close: 'Закрыть',
 

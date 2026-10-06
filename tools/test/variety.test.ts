@@ -67,7 +67,9 @@ describe('жребий болезни', () => {
       const a = generatePatient(db, 8_000 + i, ctx);
       const b = generatePatient(db, 8_000 + i, { ...ctx, variety: true });
       expect([b.sex, b.age, b.truth.risks]).toEqual([a.sex, a.age, a.truth.risks]);
-      expect(b.truth.conditions.filter(c => c.role === 'comorbid')).toEqual(a.truth.conditions.filter(c => c.role === 'comorbid'));
+      // порядок не важен: болезнь, которой нужна хроническая (криз — гипертония), ставит её сразу за собой
+      const comorbid = (p: typeof a) => p.truth.conditions.filter(c => c.role === 'comorbid').sort((x, y) => (x.id < y.id ? -1 : 1));
+      expect(comorbid(b)).toEqual(comorbid(a));
       if (b.truth.conditions[0].id !== a.truth.conditions[0].id) differ++;
     }
     expect(differ).toBeGreaterThan(50);

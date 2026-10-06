@@ -142,7 +142,8 @@ describe('«виртуальный врач»', () => {
   });
 
   test('снимок груди — каждому с закрытой травмой груди, и при ушибе (728_2, раздел 2.4); страховая его оплачивает', () => {
-    expect(db.exams['exam.xray_chest'].routineFor).toEqual(['sym.chest_injury_pain']);
+    // с частью 43д — и при боли, которая легче сидя с наклоном вперёд: снимок при подозрении на перикардит (746_2)
+    expect(db.exams['exam.xray_chest'].routineFor).toEqual(['sym.chest_injury_pain', 'sym.pericardial_pain']);
     for (const id of NEW) {
       for (const p of people(id, 20, 1301)) {
         expect(doctor(p).exams).toContain('exam.xray_chest');

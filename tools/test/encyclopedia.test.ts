@@ -44,7 +44,8 @@ describe('энциклопедия', () => {
       expect(alike).not.toContain(id);
       expect(alike.length).toBeLessThanOrEqual(3);
     }
-    expect(similar(db, 'cond.pneumonia_cap')).toContain('cond.covid19');
+    // ближе всех к пневмонии с части 48а — сепсис из лёгких: у него те же признаки очага
+    expect(similar(db, 'cond.pneumonia_cap')).toContain('cond.sepsis');
     expect(similar(db, 'cond.cystitis')).toContain('cond.pyelonephritis');
     expect(similar(db, 'cond.migraine')).toContain('cond.tension_headache');
   });
@@ -121,11 +122,14 @@ describe('энциклопедия', () => {
   test('подсказки наставника: по порядку, в каком подсказывает; совет, когда и о чём', () => {
     expect(sectionView(db, 'tips').groups.flatMap(g => g.items.map(i => i.id))).toEqual([
       'tip.start', 'tip.examine', 'tip.strep', 'tip.decision', 'tip.urine', 'tip.review', 'tip.handover', 'tip.appendicitis', 'tip.rounds',
+      'tip.stemi', 'tip.stroke', 'tip.forehead',
     ]);
     const strep = article(db, 'tip.strep')!;
     expect([strep.section, strep.subtitle]).toEqual(['tips', 'Подсказка · Анна Сергеевна']);
     // глава 2 (часть 34б): подсказывает и заведующий хирургией; когда — на экране смены и на обходе
     expect(article(db, 'tip.appendicitis')!.subtitle).toBe('Подсказка · А. И. Зорин');
+    // глава 3 (часть 45б): заведующая сосудистым отделением
+    expect(article(db, 'tip.stemi')!.subtitle).toBe('Подсказка · Е. В. Соколова');
     expect(article(db, 'tip.handover')!.blocks.find(b => b.key === 'when')!.text).toEqual([T.encyclopedia.tipWhen.ambulance]);
     expect(article(db, 'tip.rounds')!.blocks.find(b => b.key === 'when')!.text).toEqual([T.encyclopedia.tipWhen.rounds]);
     expect(strep.blocks.map(b => b.key)).toEqual(['text', 'when', 'see']);

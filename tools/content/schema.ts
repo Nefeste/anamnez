@@ -71,9 +71,10 @@ const required = z.array(z.union([txId, z.array(txId).min(2)])).min(1);
 /**
  * Где лечить — что нужно пациенту; `admit` («в палату») — только выбор врача, в базе его нет;
  * `icu` — палата интенсивной терапии (spec 2026-10-chapter-3, часть 38а): своя — «В ПИТ», нет её —
- * перевод, из амбулатории — скорая.
+ * перевод, из амбулатории — скорая; `ricu` — реанимация с ИВЛ (spec 2026-10-chapter-4, часть 47): своя —
+ * «В ОРИТ», нет её — перевод.
  */
-export const SETTINGS = ['home', 'ward', 'ambulance', 'surgery', 'transfer', 'icu'] as const;
+export const SETTINGS = ['home', 'ward', 'ambulance', 'surgery', 'transfer', 'icu', 'ricu'] as const;
 const setting = z.enum(SETTINGS);
 const season = z.strictObject({ winter: z.number(), spring: z.number(), summer: z.number(), autumn: z.number() });
 
@@ -91,6 +92,11 @@ export const conditionSchema = z.strictObject({
   icd10: z.string().optional(),
   department: z.string(),
   group: z.string().regex(/^grp\.[a-z0-9_]+$/).optional(),
+  /**
+   * источник по скрытому параметру (spec 2026-10-chapter-4, часть 48а): у сепсиса из пневмонии поставлена пневмония —
+   * диагноз частично верный: очаг найден, органной дисфункции не увидели
+   */
+  source: z.strictObject({ param: z.string(), map: z.record(z.string(), z.string().regex(/^cond\.[a-z0-9_]+$/)) }).optional(),
   /** система органов — для списков диагнозов и энциклопедии; обязательна у того, с чем приходят */
   system: z.enum(SYSTEMS).optional(),
   kind: z.enum(['disease', 'injury', 'syndrome', 'state']),
@@ -147,6 +153,11 @@ export const conditionSchema = z.strictObject({
      * риск по ABCD2 с 6 баллов
      */
     z.strictObject({ rule: z.string().regex(/^rule\.[a-z0-9_]+$/), from: z.number().int().min(1) }),
+    /**
+     * по признаку (spec 2026-10-chapter-3, часть 44а): «yes», если признак `has` у пациента есть, от какой бы
+     * причины, — пьёт таблетки сульфонилмочевины
+     */
+    z.strictObject({ has: z.string().regex(/^[a-z]+\.[a-z0-9_]+$/) }),
   ])).optional(),
   course: z.strictObject({
     stages: z.array(z.strictObject({ id: z.string(), days: z.tuple([z.number(), z.number()]), needs: z.literal('treatment').optional() })).min(1),
@@ -484,6 +495,11 @@ export const treatmentSchema = z.strictObject({
   })).default([]),
   /** только у постели с этими аппаратами (часть 39а): тромболизис — под монитором с дефибриллятором */
   bedside: z.strictObject({ equipment: z.array(eqId).min(1) }).optional(),
+  /**
+   * лечение своего места (spec 2026-10-chapter-4, часть 47): ИВЛ и наркоз в вену — только в реанимации;
+   * назначил — место становится «В ОРИТ», выбрал другое — лечение снимается
+   */
+  place: z.literal('ricu').optional(),
   /** назначают только вместе с этим (часть 39а); группа — хоть одно из неё, первое — выбора */
   companions: z.array(z.union([txId, z.array(txId).min(2)])).min(1).optional(),
   /** спутники — только при этих болезнях (часть 42б): антикоагулянт рядом с кардиоверсией — при фибрилляции предсердий */
@@ -547,6 +563,11 @@ const roomSize = z.strictObject({
   objects: z.array(z.tuple([z.enum(OBJECT_KINDS), z.number().int(), z.number().int()])),
   /** места под аппараты */
   slots: z.array(cellSrc).default([]),
+  /**
+   * места под аппарат — номера из `slots` по порядку коек (spec 2026-10-chapter-4, часть 47): в реанимации у
+   * каждой койки монитор и аппарат ИВЛ; нет — аппарат встаёт на первое свободное место
+   */
+  slotsOf: z.record(eqId, z.array(z.number().int().min(0)).min(1)).optional(),
   /** где стоит человек каждой должности */
   staff: z.record(roleId, cellSrc).default({}),
   /** куда встаёт или садится пациент */
@@ -574,6 +595,11 @@ export const roomSchema = z.strictObject({
    * монитором; койка работает, если на её месте (`slots` по порядку коек) стоит монитор
    */
   icu: z.boolean().default(false),
+  /**
+   * реанимация (spec 2026-10-chapter-4, часть 47) — палата интенсивной терапии, где у койки ещё и аппарат ИВЛ:
+   * койка работает, если на её местах (`slotsOf`) стоят и монитор, и аппарат ИВЛ
+   */
+  vent: z.boolean().default(false),
   /** работает — в больницу приходят и больные этих отделений: приёмное — хирургию (часть 30) */
   admits: z.array(z.string().regex(/^dept\.[a-z0-9_]+$/)).min(1).optional(),
   sizes: z.array(roomSize).min(1),
@@ -698,6 +724,8 @@ export const economySchema = z.strictObject({
     omsOperation: int,
     /** случай с палатой интенсивной терапии по показаниям — прибавка к тарифу (spec 2026-10-chapter-3, часть 38а) */
     omsIcu: int,
+    /** случай в реанимации с ИВЛ по показаниям — прибавка к тарифу, больше, чем за ПИТ (spec 2026-10-chapter-4, часть 47) */
+    omsRicu: int,
     omsQuality: z.strictObject({ A: pct, B: pct, C: pct, D: pct }),
     omsUnconfirmed: pct,
     omsExam: int,
@@ -716,6 +744,8 @@ export const economySchema = z.strictObject({
   ward: z.strictObject({ bedDay: int, interrupted: pct }),
   /** палата интенсивной терапии (часть 38а): койко-день — дороже палатного, ₽ */
   icu: z.strictObject({ bedDay: int }),
+  /** реанимация (spec 2026-10-chapter-4, часть 47): койко-день с ИВЛ — дороже ПИТ, ₽ */
+  ricu: z.strictObject({ bedDay: int }),
   /** перевод в сосудистый центр (часть 39б): часов пути и часов от приезда до вмешательства */
   transfer: z.strictObject({ hours: z.number().int().min(1).max(12), pci: z.number().int().min(0).max(6) }),
   /**
@@ -765,7 +795,8 @@ export const characterSchema = z.strictObject({
 /** Условие дня для заданий «N дней»: без непоказанного антибиотика, без ушедших, касса в плюсе. */
 // noWaitComplication (spec 2026-09-chapter-2, часть 34): операции были, и ни у кого болезнь не
 // осложнилась, пока он ждал в больнице
-const dayKind = z.enum(['noNeedlessAntibiotic', 'noLeft', 'cashPositive', 'noWaitComplication']);
+// noMissedMI (spec 2026-10-chapter-3, часть 45а): были ваши больные с ОКС, и ни у одного он не пропущен
+const dayKind = z.enum(['noNeedlessAntibiotic', 'noLeft', 'cashPositive', 'noWaitComplication', 'noMissedMI']);
 
 /** Задание главы: вид — в движке, числа и текст — здесь. */
 const missionSchema = z.discriminatedUnion('kind', [
@@ -778,6 +809,10 @@ const missionSchema = z.discriminatedUnion('kind', [
   z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('triage'), count, text }),
   z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('operations'), count, text }),
   z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('stay'), count, text }),
+  // глава 3 (spec 2026-10-chapter-3, часть 45а): срок выполнен у стольких ваших больных подряд;
+  // столько тромболизисов в окне и без противопоказаний
+  z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('deadline'), target: z.string().regex(/^target\.[a-z0-9_]+$/), count, text }),
+  z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('thrombolysis'), count, text }),
 ]);
 
 /** Письмо: от кого, когда — в начале главы, после дня N, при задании, в конце главы. */
@@ -797,6 +832,8 @@ export const chapterSchema = z.strictObject({
   /** кнопка перехода в главу в конце прежней: «Перейти в районную больницу» (часть 34) */
   move: text.optional(),
   preset: z.string().regex(/^preset\.[a-z0-9_]+$/),
+  /** крыло (часть 45а): больница прежней главы остаётся, участок шире на столько клеток справа */
+  wing: z.number().int().min(1).max(24).optional(),
   budget: int,
   department: z.string().regex(/^dept\.[a-z0-9_]+$/),
   build: z.array(roomId).min(1),
@@ -813,6 +850,10 @@ export const chapterSchema = z.strictObject({
       age: z.tuple([z.number().int().min(0).max(110), z.number().int().min(0).max(110)]).optional(),
     }),
   ])).default([]),
+  /** помещение обучения (часть 45б): смена с обучением — первый день главы, когда оно работает */
+  tutorialRoom: roomId.optional(),
+  /** промежуток обучения, минут (часть 46в): заданные пациенты — по порядку списка, не разом */
+  tutorialGap: z.number().int().min(1).max(240).optional(),
   missions: z.array(missionSchema).min(1),
   letters: z.array(letterSchema).default([]),
 });
@@ -955,13 +996,25 @@ export const targetSchema = z.strictObject({
   /** кому: по жалобе при поступлении или (часть 39б) по находке, которую показали обследования */
   complaints: z.array(z.string().regex(/^sym\.[a-z0-9_]+$/)).default([]),
   findings: z.array(z.string().regex(/^[a-z]+\.[a-z0-9_]+$/)).default([]),
+  /**
+   * кроме тех, у кого обследование показало одну из этих находок (spec 2026-10-chapter-3, часть 44б): КТ при
+   * перекошенном лице не нужна, если невролог нашёл периферический парез, — «при типичной клинической картине…
+   * в экстренном порядке нецелесообразно» (895_1, раздел 2.4)
+   */
+  except: z.array(z.string().regex(/^[a-z]+\.[a-z0-9_]+$/)).min(1).optional(),
   room: roomId.optional(),
   /** что: обследование — пришёл результат; назначение или место (часть 39б) — решение */
   exams: z.array(z.string().regex(/^exam\.[a-z0-9_]+$/)).default([]),
   treatments: z.array(txId).default([]),
   settings: z.array(setting).default([]),
-  /** отсчёт: от прихода или от результата с находкой (часть 39б) */
-  from: z.enum(['arrival', 'finding']).default('arrival'),
+  /**
+   * отсчёт: от прихода или от результата с находкой (часть 39б); с частью 48а (spec 2026-10-chapter-4) — и от
+   * результата, после которого правило `rule` сказало «да»: антибиотик при сепсисе — от того, как его можно
+   * предположить (qSOFA 2 и больше), а не от прихода
+   */
+  from: z.enum(['arrival', 'finding', 'rule']).default('arrival'),
+  /** правило отсчёта `from: rule` (часть 48а): срок — тем, у кого оно сказало «да», и с находками — у кого и они */
+  rule: z.string().regex(/^rule\.[a-z0-9_]+$/).optional(),
   /**
    * только тем, кто остаётся у нас (spec 2026-10-chapter-3, часть 41а): в палате, ПИТ или
    * операционной; переведённому тест глотания делают там, куда везут
@@ -971,11 +1024,13 @@ export const targetSchema = z.strictObject({
   texts: z.strictObject({ hint, from: text.optional(), after: text.optional() }),
   sources: z.array(source).min(1),
   review,
-}).refine(x => x.complaints.length + x.findings.length > 0, { message: 'срок — кому: жалоба или находка' })
+}).refine(x => x.complaints.length + x.findings.length > 0 || x.from === 'rule', { message: 'срок — кому: жалоба, находка или правило' })
   .refine(x => x.exams.length + x.treatments.length + x.settings.length > 0, { message: 'срок — что: обследование, назначение или место' })
-  .refine(x => x.from === 'arrival' || (x.findings.length > 0 && x.texts.from !== undefined && x.texts.after !== undefined), {
-    message: 'срок от находки — с находками и словами «от чего» (texts.from, texts.after)',
-  });
+  .refine(x => x.from === 'arrival' || ((x.from === 'finding' ? x.findings.length > 0 : x.rule !== undefined) && x.texts.from !== undefined && x.texts.after !== undefined), {
+    message: 'срок от находки — с находками, от правила — с правилом, и со словами «от чего» (texts.from, texts.after)',
+  })
+  .refine(x => (x.rule !== undefined) === (x.from === 'rule'), { message: 'правило — только у срока от правила (from: rule), и у него — обязательно' })
+  .refine(x => x.from !== 'rule' || x.complaints.length === 0, { message: 'у срока от правила кому — по правилу: жалобы у правила' });
 
 export const versionSchema = z.strictObject({ contentVersion: z.number().int().min(1) });
 

@@ -64,8 +64,8 @@ describe('оценка срока', () => {
   test('минуты — от прихода до первого пришедшего результата; нет результата — не сделано', () => {
     const t = db.targets[TARGET];
     const results = [{ exam: 'exam.ecg', obs: [], at: 600 + 7 * 60, step: 0 }, { exam: 'exam.ecg', obs: [], at: 600 + 30 * 60, step: 1 }];
-    expect(minutesTo({ arriveT: 600, results }, t)).toBe(7);
-    expect(minutesTo({ arriveT: 600, results: [] }, t)).toBeUndefined();
+    expect(minutesTo(db, { arriveT: 600, results }, t)).toBe(7);
+    expect(minutesTo(db, { arriveT: 600, results: [] }, t)).toBeUndefined();
   });
 
   test('срок — десятая доля итога; у приёма без срока итог прежний', () => {

@@ -72,7 +72,7 @@ export function roomSigns(layout: ClinicLayout, s: ShiftState, down: ReadonlySet
     const room = p.status === 'admitted' ? p.stay?.room
       : p.bay && (p.status === 'waiting' || p.status === 'inRoom' || p.status === 'away') ? p.bay.room : undefined;
     const sign = room === undefined ? undefined : signs.get(room);
-    if (sign && (typeOf.get(room!) === 'icu' || typeOf.get(room!) === 'emergency')) sign.lit = true;
+    if (sign && (typeOf.get(room!) === 'icu' || typeOf.get(room!) === 'ricu' || typeOf.get(room!) === 'emergency')) sign.lit = true;
   }
   return layout.rooms.map(r => signs.get(r.id)!);
 }

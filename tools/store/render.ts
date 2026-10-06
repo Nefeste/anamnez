@@ -12,7 +12,7 @@ import { type Browser, chromium, type Page } from 'playwright';
 import { buildDb } from '../content/load';
 import { BRAND, iconSvg, markSvg } from './art';
 import { CAPTIONS } from './captions';
-import { acsCase, districtState, envelope, fractureCase, pneumoniaCase, sandboxState } from './states';
+import { acsCase, districtState, envelope, pneumoniaCase, sandboxState, strokeCtCase } from './states';
 
 const ROOT = join(import.meta.dir, '../..');
 const DIST = join(ROOT, 'dist-web');
@@ -236,14 +236,15 @@ async function shots(browser: Browser): Promise<Record<string, Buffer>> {
     raw['07-outcome.png'] = await snap(p);
     await p.context().close();
 
-    // 3. травма голеностопа: снимок пришёл — перелом лодыжек со сдвигом таранной кости
-    p = await openSandbox(browser, base, envelope(fractureCase(db)));
+    // 3. инсульт в первую смену сосудистого отделения (глава 3): КТ пришла срезом — крови внутри черепа нет
+    // (открывают, как игрок: «Кампания» → «Карьера 1» → «Продолжить»)
+    p = await openCampaign(browser, base, envelope(strokeCtCase(db)));
     await p.getByTestId('shift-continue').click();
-    await p.getByTestId('result-xray-bone').waitFor({ timeout: 20_000 });
+    await p.getByTestId('result-ct').waitFor({ timeout: 20_000 });
+    // сверху — «Новое»: строка обследования со временем, срез и строка находки
     await p.getByTestId('visit-fresh').first().evaluate(el => el.scrollIntoView({ block: 'start' }));
-    await p.mouse.wheel(0, -64);
     await p.waitForTimeout(700);
-    raw['03-fracture.png'] = await snap(p);
+    raw['03-ct.png'] = await snap(p);
     await p.context().close();
 
     // 4. боль в груди: на ЭКГ подъём ST — в тёмной теме, как на мониторе; лист двенадцати

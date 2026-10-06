@@ -178,7 +178,9 @@ describe('обследования ожога', () => {
   });
 
   test('осмотр ожога — первым после вопроса о хронических болезнях; струп виден — пробы на глубину', () => {
-    const p = find({ form: 'deep' });
+    // без кашля и жара: у кого они, врач спросит и о лихорадке — применима ли qSOFA (часть 48а)
+    let p = find({ form: 'deep' });
+    for (let from = p.seed + 1; db.rules['rule.qsofa'].complaints.some(f => p.complaints.includes(f)); from = p.seed + 1) p = find({ form: 'deep' }, from);
     const said = complaintObservations(p);
     // давление уже измерила медсестра на сортировке: с 0.3.19 его меряют и при головной боли (62_3, раздел 2.1)
     const first = nextStep(db, p, said, ['exam.vitals', 'exam.ask_chronic'], {}, { candidates, exams, threshold: 0.9, minGain: 0.02 }).step;
@@ -217,7 +219,9 @@ describe('на экране и в энциклопедии', () => {
     const groups = Object.fromEntries(treatmentGroupsFor([]).map(g => [g.key, { title: g.title, ids: g.items.map(x => x.id) }]));
     expect(groups.wounds.ids).toContain(DRESSING);
     expect(groups.fluids).toEqual({ title: 'Растворы и капельницы', ids: expect.arrayContaining([IV, ORS]) });
-    expect(groups.fluids.ids).toHaveLength(2);
+    // с частью 48а — и сбалансированный солевой раствор в вену
+    expect(groups.fluids.ids).toEqual(expect.arrayContaining(['tx.balanced_fluids']));
+    expect(groups.fluids.ids).toHaveLength(3);
     expect(groups.digestive.ids).not.toContain(IV);
   });
 

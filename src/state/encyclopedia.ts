@@ -163,7 +163,9 @@ function preventOnly(c: Condition): Set<string> {
  * Жаккар по частотам признаков: сумма меньших частот к сумме больших. Признаки, которые зависят
  * только от прививок (`preventOnly`), не считаются: иначе рана «похожа» на ожог по записям о
  * прививках от столбняка (часть 32д-2). Названное рекомендацией (`differential`, часть 33б) — первым
- * и в обе стороны: острую ишемию ноги путают с тромбозом вен, хотя признаки у них разные.
+ * и в обе стороны: острую ишемию ноги путают с тромбозом вен, хотя признаки у них разные. Сначала своё,
+ * затем назвавшие эту болезнь, пока есть место (часть 43д): ОКС называют и ТЭЛА, и расслоение аорты, и
+ * перикардит, и анафилаксия — больше трёх.
  */
 export function similar(db: ContentDb, id: Id): Id[] {
   let cache = similarCache.get(db);
@@ -191,8 +193,10 @@ export function similar(db: ContentDb, id: Id): Id[] {
         })
         .filter(x => x.s >= SIMILAR_MIN)
         .sort((x, y) => y.s - x.s || (x.id < y.id ? -1 : 1));
-      const named = all.filter(o => c.differential?.includes(o.id) || o.differential?.includes(c.id)).map(o => o.id).sort();
-      cache.set(c.id, [...named, ...scored.map(x => x.id).filter(x => !named.includes(x))].slice(0, Math.max(SIMILAR_MAX, named.length)));
+      const mine = all.filter(o => c.differential?.includes(o.id)).map(o => o.id).sort();
+      const theirs = all.filter(o => !mine.includes(o.id) && o.differential?.includes(c.id)).map(o => o.id).sort();
+      const named = [...mine, ...theirs];
+      cache.set(c.id, [...named, ...scored.map(x => x.id).filter(x => !named.includes(x))].slice(0, Math.max(SIMILAR_MAX, mine.length)));
     }
     similarCache.set(db, cache);
   }
@@ -236,9 +240,10 @@ function whereLines(db: ContentDb, c: Condition, t: Tactics): string[] {
   for (const r of s.risks ?? []) if (r.setting !== s.default) lines.push(e.whereRisk(nameOf(db, r.id), e.setting[r.setting]));
   // без аппарата у постели (часть 42б): приступ наджелудочковой тахикардии снимают под монитором
   if (s.without && s.without.setting !== s.default) lines.push(e.whereWithout(s.without.equipment.map(id => db.equipment[id]?.gen.ru ?? id), e.setting[s.without.setting]));
-  // ПИТ не обычное место, но бывает нужна — без своей та же скорая
+  // ПИТ не обычное место, но бывает нужна — без своей та же скорая; реанимация с ИВЛ (часть 47) — так же
   const icu = [...Object.values(s.param?.map ?? {}), s.redFlag, ...(s.risks ?? []).map(r => r.setting), s.without?.setting];
   if (s.default !== 'icu' && icu.includes('icu')) lines.push(e.whereNoIcu(e.setting.ambulance));
+  if (s.default === 'ricu' || icu.includes('ricu')) lines.push(e.whereNoRicu(e.setting.ambulance));
   // операция и срок стационара (spec 2026-09-chapter-2, части 26 и 28), после осложнённой стадии — свой (28б)
   if (c.surgery) lines.push(e.whereSurgery(nameOf(db, c.surgery.tx), c.surgery.window, c.surgery.from === 'onset'));
   // операция по скрытому параметру (часть 32б): «Без смещения — остеосинтез шейки бедра винтами.»
@@ -443,7 +448,8 @@ function treatmentArticle(db: ContentDb, x: Treatment): Article {
   // лечение у постели (часть 39а): только под своим аппаратом — и где он стоит
   if (x.bedside) {
     const rooms = [...new Set(x.bedside.equipment.flatMap(id => db.equipment[id]?.rooms ?? []))];
-    blocks.push({ key: 'where', title: e.whereDone, text: [e.bedsideOnly], refs: [...x.bedside.equipment, ...rooms].map(id => ref(db, id)) });
+    // лечение реанимации (часть 47): ИВЛ — только «В ОРИТ»
+    blocks.push({ key: 'where', title: e.whereDone, text: [x.place ? e.ricuOnly : e.bedsideOnly], refs: [...x.bedside.equipment, ...rooms].map(id => ref(db, id)) });
   }
   // спутники (часть 39а): каждое — обязательно, из группы — одно; с частью 42б — только при названных
   // болезнях: антикоагулянт рядом с кардиоверсией — при фибрилляции предсердий
@@ -587,7 +593,8 @@ function roomArticle(db: ContentDb, r: RoomType): Article {
   const rows: Row[] = [];
   if (r.staff.length > 0) rows.push({ label: e.needPeople, refs: r.staff.map(id => ref(db, id)) });
   const allAtOnce = ops.length > 0 && r.equipment.every(id => ops.some(t => t.surgery!.equipment.includes(id)));
-  const label = allAtOnce ? e.needMachines : r.needsEquipment ? e.needMachine : e.machines;
+  // у койки реанимации (часть 47) — монитор и аппарат ИВЛ, каждый на своём месте
+  const label = allAtOnce ? e.needMachines : r.vent ? e.needMachinesPerBed : r.needsEquipment ? e.needMachine : e.machines;
   if (r.equipment.length > 0) rows.push({ label, refs: r.equipment.map(id => ref(db, id, rub(db.equipment[id].price))) });
   if (rows.length > 0) blocks.push({ key: 'needs', title: e.needs, rows });
   blocks.push({
