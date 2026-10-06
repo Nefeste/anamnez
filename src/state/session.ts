@@ -1952,7 +1952,7 @@ function buildCaseView(): VisitView | undefined {
     decision: p.closed ? decisionFor(s.meta, p, arrived, outcomeKnown(s, p)) : undefined,
     canSendAway: p.status === 'inRoom' && p.pending.length > 0,
     // ждать нечего, а ждёт кто-то срочнее — «Попросить подождать» (часть 37)
-    canStepOut: p.status === 'inRoom' && p.pending.length === 0 && moreUrgent(s, p),
+    canStepOut: p.status === 'inRoom' && p.pending.length === 0 && moreUrgent(db, s, p),
     returnNote: p.returnReason && prev?.closed ? T.shift.returnNote(p.returnReason, closedDay(prev), female(p)) : undefined,
     difficulty: s.meta.difficulty ?? 'doctor',
     // и в практике: кабинета УЗИ в амбулатории нет (часть 29)

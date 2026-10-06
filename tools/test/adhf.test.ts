@@ -83,7 +83,7 @@ describe('каталог', () => {
     // ЭКГ — всем с ОДСН (раздел 7.3.2); холодную кожу и слабый пульс отмечают вместе с пульсом
     expect(db.exams['exam.ecg'].routineFor).toContain('sym.orthopnea');
     expect(db.exams['exam.ecg'].routineSeen).toEqual(expect.arrayContaining(['sign.crackles_bilateral', 'sign.crackles_diffuse']));
-    expect(db.exams['exam.vitals'].checks.find(k => k.f === 'sign.cold_clammy')).toMatchObject({ sens: 9500, spec: 9800 });
+    expect(db.exams['exam.vitals'].checks.find(k => k.f === 'sign.cold_clammy')).toMatchObject({ sens: 9500, spec: 9950 });
     for (const f of ['sign.crackles_bilateral', 'sign.crackles_diffuse']) expect(db.exams['exam.lung_auscultation'].checks.some(k => k.f === f)).toBe(true);
     expect(db.exams['exam.ask_complaints'].checks.some(k => k.f === 'sym.orthopnea')).toBe(true);
   });
@@ -131,9 +131,9 @@ describe('производные параметры: порог «выше» и 
     expect(yes([])).toBeCloseTo(1 - warm * share('rr_above25', 'no') * share('spo2_below90', 'no'), 6);
     // дыхание 30 в минуту — ПИТ наверняка
     expect(yes([{ f: 'vital.tachypnea', shown: true, exam: 'exam.vitals', value: 30 }])).toBeCloseTo(1, 6);
-    // холодная кожа на осмотре с пульсом (95/98) — «холодный» почти наверняка: 14 из 100 до осмотра, по Байесу — 89
+    // холодная кожа на осмотре с пульсом (95/99,5) — «холодный» почти наверняка: 14 из 100 до осмотра, по Байесу — 97
     const cold = share('type', 'cold');
-    const after = (cold * 0.95) / (cold * 0.95 + (1 - cold) * 0.02);
+    const after = (cold * 0.95) / (cold * 0.95 + (1 - cold) * 0.005);
     expect(paramBeliefs(db, HF, 'type', [seen('sign.cold_clammy', 'exam.vitals')], 75).find(b => b.value === 'cold')!.p).toBeCloseTo(after, 6);
     expect(after).toBeGreaterThan(0.85);
   });

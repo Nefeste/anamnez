@@ -31,7 +31,7 @@ import {
   SHIFT_START, type ShiftEvent, type ShiftPatient, type ShiftState, type Triage, type VisitKind, type WardDay, type AmbulanceDay, type SurgeryDay,
 } from './types';
 import { COMPLICATION_DAYS, complicationAt, complicationsOf, deathsOf, onsetHours, operationFor } from './surgery';
-import { type TargetPlace, targetResults } from './targets';
+import { dueIn, type TargetPlace, targetResults } from './targets';
 import { type Bed, daysIn, type StayEnd, stayNorm, wardCourse, wardState } from './ward';
 
 const MIN = 60;
@@ -317,7 +317,7 @@ export function apply(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
       const p = current(s);
       // ждать нечего — «подождите» только ради того, кто срочнее (spec 2026-10-chapter-3, часть 37):
       // иначе срок 10 минут не выполнить, пока идёт долгий опрос
-      if (!p || (p.pending.length === 0 && !moreUrgent(s, p))) return [];
+      if (!p || (p.pending.length === 0 && !moreUrgent(db, s, p))) return [];
       p.step++; // что придёт, пока его нет, — «новое» при следующем вызове, а прежнее — нет
       s.current = undefined;
       if (p.pending.length > 0) {
@@ -769,10 +769,18 @@ export function bedsideOf(db: ContentDb, s: ShiftState, p: ShiftPatient, examId:
   return bedsideIn(db, ctx.plan, ctx.working, examId, p.bay.room) ? db.exams[examId].bedside : undefined;
 }
 
-/** Где лежит пациент — для сроков (часть 37): вид помещения по номеру и что можно у постели. */
+/**
+ * Где лежит пациент — для сроков (часть 37): вид помещения по номеру, что можно у постели и (часть 43г) что
+ * — в этой больнице: у постели или в работающем кабинете.
+ */
 export function targetPlace(db: ContentDb, s: ShiftState, p: ShiftPatient): TargetPlace {
   const ctx = hospitalCtx(db, s);
-  return { roomType: room => ctx.plan.rooms.find(r => r.id === room)?.type, bedside: exam => bedsideOf(db, s, p, exam) !== undefined };
+  const bedside = (exam: Id) => bedsideOf(db, s, p, exam) !== undefined;
+  return {
+    roomType: room => ctx.plan.rooms.find(r => r.id === room)?.type,
+    bedside,
+    can: exam => bedside(exam) || !('block' in examWhere(db, ctx.plan, ctx.working, ctx.staffed, exam)),
+  };
 }
 
 /**
@@ -1675,12 +1683,20 @@ export function triageOf(db: ContentDb, p: ShiftPatient): Triage {
 const rankOf = (q: ShiftPatient) => (q.triaged === false ? TRIAGE_RANK.green : TRIAGE_RANK[q.triage]);
 
 /**
- * Ждёт ли кто-то срочнее того, кто в кабинете (часть 37): в очереди — с срочностью выше, или
- * скорая привезла и ещё не рассортировали — по листу передачи он может оказаться «красным».
+ * Ждёт ли кто-то срочнее того, кто в кабинете (часть 37): скорая привезла и ещё не рассортировали — по
+ * листу передачи он может оказаться «красным»; в очереди — с идущим сроком, который кончается раньше,
+ * чем у того, кто в кабинете (часть 43г: ЭКГ привезённому с давлением 180/110 — за 15 минут, а опрос
+ * жёлтого в кабинете идёт и полчаса); у того, кто в кабинете, срока нет — и тот, кто выше по срочности.
  */
-export function moreUrgent(s: ShiftState, p: ShiftPatient): boolean {
+export function moreUrgent(db: ContentDb, s: ShiftState, p: ShiftPatient): boolean {
   if (Object.values(s.patients).some(q => q.kind === 'ambulance' && q.status === 'waiting' && !q.sorted)) return true;
-  return s.queue.some(id => rankOf(s.patients[id]) < rankOf(p));
+  const mine = dueIn(db, p, targetPlace(db, s, p), s.t);
+  return s.queue.some(id => {
+    const q = s.patients[id];
+    const left = dueIn(db, q, targetPlace(db, s, q), s.t);
+    if (left !== undefined && (mine === undefined || left < mine)) return true;
+    return mine === undefined && rankOf(q) < rankOf(p);
+  });
 }
 
 function enqueue(s: ShiftState, p: ShiftPatient, queuedT: number) {

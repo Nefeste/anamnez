@@ -422,7 +422,7 @@ describe('сроки', () => {
       [SYMS, [], [SWALLOW], 180, true],
     ]);
     const p = find(x => x.complaints.includes('sym.weakness_one_side'));
-    const at = { roomType: () => undefined, bedside: () => false };
+    const at = { roomType: () => undefined, bedside: () => false, can: () => true };
     const arrived = (exam: Id, minute: number) => ({ exam, obs: [], at: minute * 60, step: 1 });
     const visit = { patient: p, arriveT: 0, results: [arrived(NEURO, 8), arrived(CTA, 35), arrived(SWALLOW, 50)] };
     const results = (setting: Setting) => targetResults(db, visit, at, { t: 60 * 60, plan: { treatments: [], setting } });
@@ -670,8 +670,8 @@ describe('энциклопедия', () => {
     expect(t.blocks.find(b => b.key === 'where')!.refs!.map(r => r.id)).toEqual([MONITOR, 'room.emergency', 'room.icu']);
     const used = t.blocks.find(b => b.key === 'usedAs')!.rows!.map(r => [r.label, r.refs.map(x => x.id)]);
     // с частью 41в — опасно при кровоизлияниях в мозг: кровь на КТ — абсолютное противопоказание; с частью 43а — и при
-    // расслоении аорты
-    expect(used).toEqual([['Опасно при', ['cond.ich', 'cond.aortic_dissection', 'cond.sah']], ['Обязательно при', [STROKE]], ['Обязательно до перевода при', [STROKE]]]);
+    // расслоении аорты; с частью 43г — и при гипертоническом кризе: давление выше 185/110 — противопоказание
+    expect(used).toEqual([['Опасно при', ['cond.ich', 'cond.hypertensive_crisis', 'cond.aortic_dissection', 'cond.sah']], ['Обязательно при', [STROKE]], ['Обязательно до перевода при', [STROKE]]]);
     expect(article(db, 'rule.lysis_stroke')!.blocks.find(b => b.key === 'decides')!.refs!.map(r => r.id)).toEqual([LYSIS]);
     expect(article(db, CTA)!.blocks.find(b => b.key === 'where')!.refs!.map(r => r.id)).toEqual(['room.ct', 'eq.ct_16', 'eq.ct_64']);
     expect(article(db, 'room.ct')!.blocks.flatMap(b => b.refs ?? []).map(r => r.id)).toContain(CTA);

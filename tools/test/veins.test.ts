@@ -171,7 +171,8 @@ describe('шкала Уэллса и D-димер', () => {
     const said = complaintObservations(p);
     const opt = { candidates, exams, threshold: 0.9, minGain: 0.02 };
     const steps: Id[] = [];
-    let done: Id[] = ['exam.ask_chronic'];
+    // давление уже измерила медсестра на сортировке: с 0.3.19 его меряют и при головной боли (62_3, раздел 2.1)
+    let done: Id[] = ['exam.vitals', 'exam.ask_chronic'];
     for (let i = 0; i < 2; i++) {
       const s = nextStep(db, p, said, done, {}, opt).step;
       if (s.kind !== 'exam') break;
