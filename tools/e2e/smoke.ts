@@ -758,6 +758,32 @@ function chapterDoneSave(): string {
   return JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: '2026-09-30T00:00:00.000Z', data: s });
 }
 
+/**
+ * Карьера 3 (spec 2026-10-chapter-3, часть 45а): глава 2 выполнена в первый же свой день; первый пришедший
+ * сам лежит в палате — переход в главу 3 с крылом его не ждёт.
+ */
+function chapter2DoneSave(): string {
+  const { db } = buildDb();
+  const s = newCampaign(db, { seed: 9, season: 'winter', difficulty: 'student', career: 3, chapter: 'chapter.hospital' });
+  apply(db, s, { kind: 'nextDay' });
+  const walkIn = () => Object.values(s.patients).find(p => p.status === 'waiting' && p.kind !== 'ambulance' && !p.bay);
+  for (let i = 0; i < 6 * 60 && !walkIn(); i++) apply(db, s, { kind: 'advance', seconds: 60 });
+  const p = walkIn();
+  if (!p) throw new Error('глава 2: никто не пришёл сам');
+  apply(db, s, { kind: 'call', id: p.id });
+  apply(db, s, { kind: 'diagnose', id: p.patient.truth.conditions[0].id });
+  apply(db, s, { kind: 'setting', setting: 'admit' });
+  apply(db, s, { kind: 'finish' });
+  if (p.status !== 'admitted') throw new Error('глава 2: пришедший сам не лёг в палату');
+  apply(db, s, { kind: 'closeDay' });
+  const ch = db.chapters['chapter.hospital'];
+  for (const m of ch.missions) if (m.main) s.campaign!.done[m.id] = s.day;
+  s.campaign!.letters = [...s.campaign!.letters, { id: 'end', day: s.day }].map(l => ({ ...l, read: true }));
+  s.campaign!.complete = s.day;
+  s.campaign!.tips = { shown: Object.values(db.tips).map(t => t.id) };
+  return JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: '2026-10-05T00:00:00.000Z', data: s });
+}
+
 function sandboxFreshSave(): string {
   const { db } = buildDb();
   const s = newSandbox(db, { seed: 5, season: 'winter', difficulty: 'student', start: 'clinic', budget: db.economy.sandbox.budgets.normal });
@@ -2933,6 +2959,71 @@ try {
   check((await page.locator('[data-testid^="round-op-"]').count()) === 1, 'глава 2: на обходе — оперированный');
   await page.goBack();
 
+  // глава 3 (spec 2026-10-chapter-3, часть 45а): карьера 3 с выполненной главой 2 и лежащим в палате —
+  // «Открыть сосудистое отделение» сразу, выписки не ждут; лист перехода — та же больница, крыло и деньги на
+  // него; глава 3 — письма заведующей и задания; на стройке участок шире: кабинет КТ встаёт в крыле
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/campaign-3.json', chapter2DoneSave()]);
+  await page.goto(base);
+  await page.getByTestId('menu-campaign').click();
+  await page.getByTestId('career-3').waitFor({ timeout: 10_000 });
+  check((await text(page, 'career-3')).includes('Глава 2. Приёмное'), `глава 3: карьера 3 — ${(await text(page, 'career-3')).replace(/\n/g, ' · ')}`);
+  await page.getByTestId('career-3').click();
+  await page.getByTestId('career-continue').click();
+  await page.getByTestId('chapter-next').waitFor({ timeout: 10_000 });
+  check((await text(page, 'chapter-next')).startsWith('Открыть сосудистое отделение'), `глава 2 выполнена: ${(await text(page, 'chapter-next')).replace(/\n/g, ' · ')}`);
+  await page.getByTestId('chapter-next').click();
+  await page.getByTestId('chapter-next-text').waitFor({ timeout: 5000 });
+  check((await text(page, 'chapter-next-text')).includes('Участок прирастает крылом справа') && (await text(page, 'chapter-next-text')).includes('2\u00a0500\u00a0000'),
+    `глава 3: лист перехода — ${(await text(page, 'chapter-next-text')).replace(/\n/g, ' · ')}`);
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(OUT, '15-chapter3-move.png') });
+  await page.getByTestId('chapter-next-yes').click();
+  await page.getByTestId('chapter-next-sheet').waitFor({ state: 'detached', timeout: 5000 });
+  await page.waitForTimeout(500);
+  check((await text(page, 'chapter')).startsWith('Глава 3. Сердце и мозг') && (await text(page, 'chapter-day')).startsWith('сосудистое отделение районной больницы в Нижнеборске · перед первой сменой')
+    && (await page.locator('[data-testid^="mission-"]').count()) === 7 && (await page.getByTestId('chapter-next').count()) === 0,
+    `глава 3: ${(await text(page, 'chapter-day'))}, заданий ${await page.locator('[data-testid^="mission-"]').count()}`);
+  check((await text(page, 'mission-ecg')).includes('0 из 10\u00a0больных подряд') && (await text(page, 'mission-ctRoom')).includes('пока нет'), 'глава 3: ход заданий — срок подряд, кабинет КТ');
+  await page.getByTestId('letter-minutes').click();
+  await page.getByTestId('letter-text').waitFor({ timeout: 5000 });
+  check((await text(page, 'letter-text')).startsWith('Здравствуйте. В нашем деле решают минуты') && (await text(page, 'letter-sheet')).includes('Е. В. Соколова'),
+    'глава 3: письмо заведующей сосудистым отделением');
+  await page.screenshot({ path: join(OUT, '15-chapter3-letter.png') });
+  await page.getByTestId('letter-sheet-close').click();
+  await page.getByTestId('letter-sheet').waitFor({ state: 'detached', timeout: 5000 });
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(OUT, '15-chapter3.png'), fullPage: true });
+  await page.getByTestId('sandbox-build').click();
+  await page.getByTestId('build-map').waitFor({ timeout: 10_000 });
+  await page.getByTestId('build-tool-room').click();
+  check(await page.getByTestId('room-type-room.icu').isVisible(), 'глава 3: на стройке — и палата интенсивной терапии');
+  await page.getByTestId('room-type-room.ct').click();
+  await page.getByTestId('build-place').waitFor({ timeout: 5000 });
+  await page.waitForTimeout(500);
+  // участок с крылом — 52 × 28, весь на экране; призрак кабинета КТ — посреди участка (21, 10): тянем в
+  // крыло, к верхнему краю (41, 0)
+  const wingCell = async (x: number, y: number) => {
+    const box = (await page.getByTestId('build-map').boundingBox())!;
+    const c = 16 * Math.min(box.width / (52 * 16), box.height / (28 * 16));
+    return { x: box.x + (box.width - 52 * c) / 2 + (x + 0.5) * c, y: box.y + (box.height - 28 * c) / 2 + (y + 0.5) * c };
+  };
+  const from = await wingCell(25, 13);
+  const to = await wingCell(45, 3);
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 20 });
+  await page.waitForTimeout(150);
+  await page.mouse.up();
+  await page.waitForTimeout(400);
+  const wingCash = await text(page, 'build-cash');
+  await page.getByTestId('build-place').click();
+  await page.getByTestId('build-tool-room').waitFor({ timeout: 5000 });
+  check((await text(page, 'build-cash')) !== wingCash && (await page.getByTestId('build-undo').innerText()).includes('(1)'),
+    `глава 3: кабинет КТ — в крыле (${wingCash} → ${await text(page, 'build-cash')})`);
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(OUT, '15-chapter3-build.png') });
+  await page.getByTestId('build-done').click();
+
   // «Случай дня»: последние 30 дней, приём, разбор, отметка в списке (spec 2026-09-campaign, часть 14)
   await page.goto(base);
   await page.getByTestId('menu-quick').click();
@@ -2964,9 +3055,10 @@ try {
   await page.getByTestId('menu-single').click();
   await page.getByTestId('venue-preset.clinic').waitFor({ timeout: 10_000 });
   // районная больница — с тех пор как карьера 2 перешла в главу 2
+  // с частью 45а — и районная больница с сосудистым отделением: карьера 3 перешла в главу 3
   check(!(await page.getByTestId('venue-preset.village').isDisabled()) && !(await page.getByTestId('venue-preset.district').isDisabled())
-    && (await page.locator('[data-testid^="venue-"]').count()) === 4,
-    `смена: больницы — практика, посёлок, районная, своя (${(await text(page, 'venue-sandbox')).replace(/\n/g, ' · ')})`);
+    && !(await page.getByTestId('venue-preset.vascular').isDisabled()) && (await page.locator('[data-testid^="venue-"]').count()) === 5,
+    `смена: больницы — практика, посёлок, районная, с сосудистым отделением, своя (${(await text(page, 'venue-sandbox')).replace(/\n/g, ' · ')})`);
   await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/single.json', singleEndOfDaySave()]);
   await page.goto(base);
   await page.getByTestId('menu-continue').waitFor({ timeout: 10_000 });

@@ -847,8 +847,8 @@ export interface Character {
   role: Text;
 }
 
-/** Условие дня для заданий «N дней». */
-export type DayKind = 'noNeedlessAntibiotic' | 'noLeft' | 'cashPositive' | 'noWaitComplication';
+/** Условие дня для заданий «N дней»; с главой 3 — были ОКС, и ни один не пропущен (`noMissedMI`). */
+export type DayKind = 'noNeedlessAntibiotic' | 'noLeft' | 'cashPositive' | 'noWaitComplication' | 'noMissedMI';
 
 export type Mission = { id: string; main: boolean; text: Text } & (
   | { kind: 'seen'; count: number; accuracy: number }
@@ -859,6 +859,12 @@ export type Mission = { id: string; main: boolean; text: Text } & (
   | { kind: 'triage'; count: number }
   | { kind: 'operations'; count: number }
   | { kind: 'stay'; count: number }
+  /**
+   * глава 3 (spec 2026-10-chapter-3, часть 45а): срок `target` выполнен у ваших больных подряд;
+   * тромболизисов в окне и без противопоказаний
+   */
+  | { kind: 'deadline'; target: Id; count: number }
+  | { kind: 'thrombolysis'; count: number }
 );
 
 export type LetterWhen = 'start' | 'end' | { afterDay: number } | { mission: string };
@@ -892,6 +898,13 @@ export interface Chapter {
   /** кнопка перехода в главу в конце прежней (часть 34) */
   move?: Text;
   preset: Id;
+  /**
+   * крыло (spec 2026-10-chapter-3, часть 45а): больница прежней главы остаётся — штат, касса,
+   * репутация, построенное и лежащие, — а участок прирастает справа столькими клетками; бюджет главы
+   * прибавляется к кассе. Нет — больница главы новая, её готовая больница `preset`
+   */
+  wing?: number;
+  /** касса главы; у главы с крылом — прибавка к кассе на крыло */
   budget: number;
   department: Id;
   build: Id[];

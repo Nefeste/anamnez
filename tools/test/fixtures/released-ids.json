@@ -1,6 +1,6 @@
 {
-  "version": "0.3.23",
-  "base": 64,
+  "version": "0.3.24",
+  "base": 65,
   "ids": {
     "achievements": [
       "ach.allergy_10",
@@ -24,11 +24,13 @@
       "ach.therapy",
       "ach.thrift_1",
       "ach.thrift_25",
+      "ach.vascular",
       "ach.xray"
     ],
     "chapters": [
       "chapter.district",
-      "chapter.hospital"
+      "chapter.hospital",
+      "chapter.vascular"
     ],
     "chapters.letters": [
       "chapter.district/antibioticsDone",
@@ -46,7 +48,19 @@
       "chapter.hospital/stayDone",
       "chapter.hospital/surgeon",
       "chapter.hospital/triageDone",
-      "chapter.hospital/ultrasoundDone"
+      "chapter.hospital/ultrasoundDone",
+      "chapter.vascular/clock",
+      "chapter.vascular/ctDone",
+      "chapter.vascular/ctRoomDone",
+      "chapter.vascular/ecgDone",
+      "chapter.vascular/end",
+      "chapter.vascular/firstDay",
+      "chapter.vascular/hello",
+      "chapter.vascular/icuDone",
+      "chapter.vascular/lysisDone",
+      "chapter.vascular/minutes",
+      "chapter.vascular/noMissedMIDone",
+      "chapter.vascular/swallowDone"
     ],
     "chapters.missions": [
       "chapter.district/antibiotics",
@@ -58,11 +72,19 @@
       "chapter.hospital/operation",
       "chapter.hospital/stay",
       "chapter.hospital/triage",
-      "chapter.hospital/ultrasound"
+      "chapter.hospital/ultrasound",
+      "chapter.vascular/ct",
+      "chapter.vascular/ctRoom",
+      "chapter.vascular/ecg",
+      "chapter.vascular/icu",
+      "chapter.vascular/lysis",
+      "chapter.vascular/noMissedMI",
+      "chapter.vascular/swallow"
     ],
     "characters": [
       "char.chief",
       "char.mentor",
+      "char.neurologist",
       "char.surgeon"
     ],
     "conditions": [
@@ -780,6 +802,7 @@
     "presets": [
       "preset.clinic",
       "preset.district",
+      "preset.vascular",
       "preset.village"
     ],
     "risks": [

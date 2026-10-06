@@ -266,6 +266,15 @@ export interface DaySummary {
   surgery?: SurgeryDay;
   /** сроки за день (часть 37): у скольких ваших приёмов срок был и у скольких выполнен */
   targets?: Record<Id, { onTime: number; total: number }>;
+  /**
+   * глава 3 (spec 2026-10-chapter-3, часть 45а): оценки сроков ваших приёмов по порядку закрытия —
+   * «AAB», для заданий «срок у N больных подряд»
+   */
+  targetSeq?: Record<Id, string>;
+  /** тромболизисы ваших приёмов (часть 45а): в окне и без противопоказаний — и остальные */
+  lysis?: { good: number; bad: number };
+  /** ОКС у ваших приёмов (часть 45а): сколько было и у скольких он пропущен — диагноз не тот */
+  acs?: { seen: number; missed: number };
 }
 
 export interface SurgeryDay {

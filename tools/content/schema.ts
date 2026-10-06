@@ -770,7 +770,8 @@ export const characterSchema = z.strictObject({
 /** Условие дня для заданий «N дней»: без непоказанного антибиотика, без ушедших, касса в плюсе. */
 // noWaitComplication (spec 2026-09-chapter-2, часть 34): операции были, и ни у кого болезнь не
 // осложнилась, пока он ждал в больнице
-const dayKind = z.enum(['noNeedlessAntibiotic', 'noLeft', 'cashPositive', 'noWaitComplication']);
+// noMissedMI (spec 2026-10-chapter-3, часть 45а): были ваши больные с ОКС, и ни у одного он не пропущен
+const dayKind = z.enum(['noNeedlessAntibiotic', 'noLeft', 'cashPositive', 'noWaitComplication', 'noMissedMI']);
 
 /** Задание главы: вид — в движке, числа и текст — здесь. */
 const missionSchema = z.discriminatedUnion('kind', [
@@ -783,6 +784,10 @@ const missionSchema = z.discriminatedUnion('kind', [
   z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('triage'), count, text }),
   z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('operations'), count, text }),
   z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('stay'), count, text }),
+  // глава 3 (spec 2026-10-chapter-3, часть 45а): срок выполнен у стольких ваших больных подряд;
+  // столько тромболизисов в окне и без противопоказаний
+  z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('deadline'), target: z.string().regex(/^target\.[a-z0-9_]+$/), count, text }),
+  z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('thrombolysis'), count, text }),
 ]);
 
 /** Письмо: от кого, когда — в начале главы, после дня N, при задании, в конце главы. */
@@ -802,6 +807,8 @@ export const chapterSchema = z.strictObject({
   /** кнопка перехода в главу в конце прежней: «Перейти в районную больницу» (часть 34) */
   move: text.optional(),
   preset: z.string().regex(/^preset\.[a-z0-9_]+$/),
+  /** крыло (часть 45а): больница прежней главы остаётся, участок шире на столько клеток справа */
+  wing: z.number().int().min(1).max(24).optional(),
   budget: int,
   department: z.string().regex(/^dept\.[a-z0-9_]+$/),
   build: z.array(roomId).min(1),

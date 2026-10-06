@@ -1104,6 +1104,11 @@ function missionText(m: Mission, p: MissionProgress): string {
     case 'streak':
     case 'days':
       return t.dayProgress(p.value, p.target);
+    // глава 3 (spec 2026-10-chapter-3, часть 45а)
+    case 'deadline':
+      return t.deadlineProgress(p.value, p.target);
+    case 'thrombolysis':
+      return t.lysisProgress(p.value, p.target);
   }
 }
 
@@ -1136,8 +1141,10 @@ function buildCampaignView(): CampaignView | undefined {
     ...(complete ? { after: next ? t.completeNext : t.completeLater(ch.order + 1) } : {}),
     ...(next ? {
       next: {
-        title: t.chapter(next.order, next.name.ru), move: next.move?.ru ?? t.moveTo(next.order), place: next.place.ru, text: t.moveText(ch.place.ru),
-        ready: !s.dayOpen && !Object.values(s.patients).some(p => p.status === 'admitted'),
+        // глава с крылом (часть 45а) — та же больница: лежащих ждать не нужно
+        title: t.chapter(next.order, next.name.ru), move: next.move?.ru ?? t.moveTo(next.order), place: next.place.ru,
+        text: next.wing ? t.moveWingText(T.common.rub(next.budget)) : t.moveText(ch.place.ru),
+        ready: !s.dayOpen && (!!next.wing || !Object.values(s.patients).some(p => p.status === 'admitted')),
       },
     } : {}),
   };

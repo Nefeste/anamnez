@@ -414,7 +414,9 @@ function career(seed: number): Career {
       const days = c.complete - c.since;
       if (c.chapter === 'chapter.district') out.chapter1 = days;
       else out.chapter2 = days;
-      if (!nextChapterOf(db, c)) break;
+      // карьера симулятора — главы 1 и 2: переход в главу 3 с крылом (spec 2026-10-chapter-3, часть 45а) и её
+      // задания войдут в него с частью 46
+      if (c.chapter !== 'chapter.district' || !nextChapterOf(db, c)) break;
       apply(db, s, { kind: 'nextChapter' });
       if (s.campaign!.chapter === c.chapter) throw new Error('карьера: в главу 2 не перейти');
     }

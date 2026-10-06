@@ -4,14 +4,14 @@
 // Две точки входа, как в `06-architecture.md` §2: `apply(state, command)` — действие врача,
 // которое двигает часы на свою цену, и команда `advance` — время на карте. Состояние
 // меняется на месте; случайность — только из именованных ветвей зерна смены (ADR 0004).
-import type { ContentDb, Exam, Id, Season, Setting } from '../../content/types';
+import type { Chapter, ContentDb, Exam, Id, Season, Setting } from '../../content/types';
 import { fnv1a } from '../core/hash';
 import {
   caseIncome, consumablesOf, emptyLedger, expensesOf, flowOf, incomeOf, interestOf, type Ledger, levelOf, payerOf, reputationAfter, salariesOf, upkeepOf,
   type WardClose, wardIncome,
 } from '../economy/economy';
-import { campaignEvening, chapterOf, nextChapterOf, startChapter } from '../campaign/campaign';
-import { build, emptyPlot, type HospitalState, type Plan, planOf, presetHospital, UNDO_DEPTH } from '../hospital/build';
+import { type CampaignProgress, campaignEvening, chapterOf, nextChapterOf, startChapter } from '../campaign/campaign';
+import { build, emptyPlot, type HospitalState, type Plan, planOf, presetHospital, UNDO_DEPTH, widenPlot } from '../hospital/build';
 import { bedsideIn, DOCTOR, doctorRoom, examWhere, openBlocks, type Problem, problemsOf, type Staffing, workingRooms } from '../hospital/requirements';
 import { applicantsOf, doctorOf, grow, memberAt, presetStaff, readingOf, type StaffMember, speedOf, staffingOf } from '../hospital/staff';
 import { log2 } from '../core/math';
@@ -234,6 +234,9 @@ export function newCampaign(db: ContentDb, opts: { seed: number; season: Season;
   const ch = opts.chapter ? db.chapters[opts.chapter] : Object.values(db.chapters)[0];
   const preset = db.presets[ch.preset];
   const hired = applicantsOf(db, opts.seed >>> 0, 0, 1, builtIn(db, ch.build, ch.preset));
+  // больница главы с крылом (часть 45а) шире участка песочницы — на её собственном участке
+  const sb = db.economy.sandbox.plot;
+  const plot: [number, number] = [Math.max(sb[0], preset.plot[0]), Math.max(sb[1], preset.plot[1])];
   return {
     meta: {
       schemaVersion: SHIFT_SCHEMA_VERSION, contentVersion: db.contentVersion, rngVersion: RNG_VERSION, mode: 'campaign', career: opts.career,
@@ -251,7 +254,7 @@ export function newCampaign(db: ContentDb, opts: { seed: number; season: Season;
     summary: emptySummary(0),
     history: [],
     journal: [],
-    hospital: presetHospital(db, preset, db.economy.sandbox.plot).hospital,
+    hospital: presetHospital(db, preset, plot).hospital,
     economy: { cash: ch.budget, reputation: db.economy.reputation.start, ledger: emptyLedger() },
     undo: [],
     staff: presetStaff(db, preset),
@@ -265,13 +268,19 @@ export function newCampaign(db: ContentDb, opts: { seed: number; season: Season;
  * Следующая глава карьеры (spec 2026-09-chapter-2, часть 34): основные задания главы выполнены,
  * день закрыт — врач переходит в готовую больницу следующей главы. Врач, сложность, итоги дней и
  * подсказки — прежние; больница, штат, кандидаты, касса (бюджет главы) и репутация — новые. Кто
- * должен был вернуться — вернётся в прежнюю больницу: его возврат снят.
+ * должен был вернуться — вернётся в прежнюю больницу: его возврат снят. Глава с крылом (spec
+ * 2026-10-chapter-3, часть 45а) — та же больница: см. `wingChapter`.
  */
 function nextChapter(db: ContentDb, s: ShiftState) {
   const c = s.campaign;
   const next = c ? nextChapterOf(db, c) : undefined;
+  if (!c || !next || c.complete === undefined || s.dayOpen) return;
+  if (next.wing) {
+    wingChapter(db, s, c, next);
+    return;
+  }
   // лежащих в главе 1 нет — палат там не строят; с палатами прежней главы переход подождёт выписки
-  if (!c || !next || c.complete === undefined || s.dayOpen || Object.values(s.patients).some(p => p.status === 'admitted')) return;
+  if (Object.values(s.patients).some(p => p.status === 'admitted')) return;
   const preset = db.presets[next.preset];
   const hired = applicantsOf(db, s.meta.seed, s.day, s.nextStaff ?? 1, builtIn(db, next.build, next.preset));
   s.meta.department = next.department;
@@ -284,6 +293,48 @@ function nextChapter(db: ContentDb, s: ShiftState) {
   s.rooms = {};
   s.returns = [];
   delete s.desk;
+  s.campaign = { ...startChapter(db, next.id, s.day), ...(c.tips ? { tips: c.tips } : {}) };
+}
+
+/** Острый коронарный синдром — задание «без пропущенного инфаркта» (часть 45а). */
+const ACS = 'cond.acs';
+/** Замечания разбора, с которыми тромболизис не в счёт: вредно, не показан (в том числе поздно), противопоказание нарушено. */
+const LYSIS_BAD: readonly string[] = ['tx.harmful', 'tx.notIndicated', 'safety.knownViolation', 'safety.unaskedViolation'];
+
+/**
+ * Итоги дня для заданий главы 3 (spec 2026-10-chapter-3, часть 45а), ваш приём: тромболизис — в окне и
+ * без противопоказаний (не «вредно» и не «не показан», противопоказания спрошены и не нарушены) или нет;
+ * ОКС — был ли и пропущен ли (диагноз не тот).
+ */
+function campaignCase(db: ContentDb, sum: DaySummary, p: ShiftPatient, closed: ClosedCase) {
+  for (const tx of closed.plan.treatments.filter(id => db.treatments[id]?.class === 'thrombolytic')) {
+    const contra = new Set(db.treatments[tx].contraindications.map(k => k.id));
+    const bad = closed.notes.some(n => ('tx' in n && n.tx === tx && LYSIS_BAD.includes(n.code)) || (n.code === 'safety.notAsked' && contra.has(n.by)));
+    const day = (sum.lysis ??= { good: 0, bad: 0 });
+    if (bad) day.bad++;
+    else day.good++;
+  }
+  if (primaryOf(p.patient).id === ACS) {
+    const day = (sum.acs ??= { seen: 0, missed: 0 });
+    day.seen++;
+    if (closed.verdict === 'wrong') day.missed++;
+  }
+}
+
+/**
+ * Глава с крылом (spec 2026-10-chapter-3, часть 45а): больница остаётся — штат, построенное, лежащие,
+ * кто должен вернуться, репутация и касса, к которой прибавляется бюджет главы; участок прирастает
+ * справа клетками крыла. Кандидаты — по стройке новой главы; отмена стройки — с чистого листа: в
+ * прежних снимках участок уже.
+ */
+function wingChapter(db: ContentDb, s: ShiftState, c: CampaignProgress, next: Chapter) {
+  const hired = applicantsOf(db, s.meta.seed, s.day, s.nextStaff ?? 1, builtIn(db, next.build, next.preset));
+  s.meta.department = next.department;
+  if (s.hospital) s.hospital = widenPlot(s.hospital, next.wing ?? 0);
+  s.candidates = hired.list;
+  s.nextStaff = hired.next;
+  if (s.economy) s.economy.cash += next.budget;
+  s.undo = [];
   s.campaign = { ...startChapter(db, next.id, s.day), ...(c.tips ? { tips: c.tips } : {}) };
 }
 
@@ -883,12 +934,15 @@ function closePatient(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase
       closed.notes.push({ code: d > 0 ? 'triage.under' : 'triage.over', triage: p.scale.triage, news2: p.scale.news2, ...(p.scale.flag ? { flag: p.scale.flag } : {}) });
     }
   }
-  // сроки за день (часть 37): ваши приёмы — у скольких срок был и у скольких выполнен
+  // сроки за день (часть 37): ваши приёмы — у скольких срок был и у скольких выполнен; с частью 45а —
+  // и оценки по порядку закрытия, для заданий «срок у N больных подряд»
   if (!p.by) {
     for (const t of closed.targets ?? []) {
       const day = ((s.summary.targets ??= {})[t.id] ??= { onTime: 0, total: 0 });
       day.total++;
       if (t.grade === 'A') day.onTime++;
+      const seq = (s.summary.targetSeq ??= {});
+      seq[t.id] = (seq[t.id] ?? '') + t.grade;
     }
   }
   if (p.bay) {
@@ -923,6 +977,7 @@ function closePatient(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase
     if (s.campaign && closed.notes.some(n => n.code === 'tx.notIndicated' && db.treatments[n.tx]?.class?.startsWith('antibiotic.'))) {
       sum.needlessAntibiotic = (sum.needlessAntibiotic ?? 0) + 1;
     }
+    if (s.campaign) campaignCase(db, sum, p, closed);
   }
   const back = closed.outcome.returns;
   if (back) {

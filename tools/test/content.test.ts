@@ -689,6 +689,18 @@ describe('кампания', () => {
     const order = broken(d => edit(d, 'campaign/tips/review.yaml', 'order: 6', 'order: 5'));
     expect(order.some(e => e.includes('порядок 5 уже у другой подсказки'))).toBe(true);
   });
+
+  test('глава с крылом (часть 45а): готовая больница — прежняя, шире ровно на крыло, с тем же входом и прежними помещениями на местах; срок задания — из базы', () => {
+    const wing = broken(d => edit(d, 'campaign/chapters/vascular.yaml', 'wing: 12', 'wing: 10'));
+    expect(wing.some(e => e.includes('chapter.vascular: крыло 10: участок preset.vascular — 52 × 28, а у preset.district с крылом — 50 × 28'))).toBe(true);
+    expect(wing.some(e => e.includes('preset.vascular: участок 52 × 28 больше участка песочницы с крылом'))).toBe(true);
+    const door = broken(d => edit(d, 'hospital/presets/vascular.yaml', 'entrance: [0, 8]', 'entrance: [0, 18]'));
+    expect(door.some(e => e.includes('chapter.vascular: крыло: вход preset.vascular не тот, что у preset.district'))).toBe(true);
+    const moved = broken(d => edit(d, 'hospital/presets/vascular.yaml', '{ type: room.toilet, size: S, x: 28, y: 10, rot: 2 }', '{ type: room.toilet, size: S, x: 34, y: 10, rot: 2 }'));
+    expect(moved.some(e => e.includes('chapter.vascular: крыло: помещения preset.vascular не начинаются с помещений preset.district на тех же местах'))).toBe(true);
+    const target = broken(d => edit(d, 'campaign/chapters/vascular.yaml', 'target: target.stroke_ct', 'target: target.stroke_mri'));
+    expect(target.some(e => e.includes('chapter.vascular: задание ct: срок target.stroke_mri не найден'))).toBe(true);
+  });
 });
 
 describe('достижения', () => {

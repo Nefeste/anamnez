@@ -310,6 +310,16 @@ export function emptyPlot(w: number, h: number, entrance: Cell, corridor: Cell[]
   return { w, h, entrance, corridor: corridor.map(([x, y]) => y * w + x).sort((a, b) => a - b), rooms: [], decor: [], next: 1 };
 }
 
+/**
+ * Участок шире справа на `dw` клеток (spec 2026-10-chapter-3, часть 45а: крыло главы 3). Помещения,
+ * вход и предметы — на прежних местах; клетки коридора — номера `y·w + x`, их пересчитывают под новую
+ * ширину, порядок сохраняется. Новый объект: план больницы кэшируется по нему.
+ */
+export function widenPlot(h: HospitalState, dw: number): HospitalState {
+  const w = h.w + dw;
+  return { ...h, w, corridor: h.corridor.map(i => Math.floor(i / h.w) * w + (i % h.w)) };
+}
+
 /** Чего не удалось при постройке готовой больницы: номер помещения в записи, команда, причина. */
 export interface PresetFailure {
   room: number;

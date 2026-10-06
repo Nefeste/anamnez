@@ -69,8 +69,9 @@ in Russian.
   an experienced doctor would have reasoned. Patients sent home sometimes get worse and come back,
   and the end-of-day summary tells you what happened to earlier patients.
 - **Campaign.** A young doctor at a village clinic, and then at a district hospital with an
-  emergency department, wards and an operating room. The first shift is with a mentor; after that
-  come letters and tasks without deadlines.
+  emergency department, wards and an operating room, where a vascular unit with a CT room and an
+  intensive care ward opens. The first shift is with a mentor; after that come letters and tasks
+  without deadlines.
 - **Your own hospital.** Offices, a lab, X-ray, ultrasound and CT rooms, an emergency department, wards
   and an operating room, hiring, the cash desk. Doctors you hire see patients on their own. Insurance
   pays for a justified diagnosis and for tests that were indicated.

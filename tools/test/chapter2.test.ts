@@ -130,12 +130,14 @@ describe('переход в главу 2', () => {
     apply(db, open, { kind: 'nextChapter' });
     expect([open.campaign!.chapter, open.dayOpen]).toEqual([ch1.id, true]);
 
-    const last = chapter2();
+    // последняя глава — по порядку: с частью 45а это уже глава 3
+    const final = Object.values(db.chapters).reduce((a, b) => (b.order > a.order ? b : a));
+    const last = newCampaign(db, { seed: 51, season: 'winter', career: 1, chapter: final.id });
     last.campaign!.complete = 0;
     expect(nextChapterOf(db, last.campaign!)).toBeUndefined();
     const cash = last.economy!.cash;
     apply(db, last, { kind: 'nextChapter' });
-    expect([last.campaign!.chapter, last.economy!.cash]).toEqual([ch2.id, cash]);
+    expect([last.campaign!.chapter, last.economy!.cash]).toEqual([final.id, cash]);
   });
 
   test('те же команды — та же глава 2', () => {
@@ -285,7 +287,8 @@ describe('глава между сменами', () => {
     expect(venues.filter(x => x.ok).map(x => x.venue)).toEqual(expect.arrayContaining(['preset.clinic', 'preset.village', 'preset.district']));
   });
 
-  test('последняя глава выполнена — «в следующей версии», кнопки нет; ход сроков стационара — со средним', async () => {
+  // последняя глава выполнена — «в следующей версии»: с частью 45а это глава 3 (chapter3.test.ts)
+  test('выполнена — дальше глава 3 в той же больнице; ход сроков стационара — со средним', async () => {
     const s = chapter2(45);
     s.campaign!.complete = 0;
     s.history = [day(1, { ward: { admitted: 3, discharged: 3, early: 0, transferred: 0, lying: 0, stayDays: 10, stayNorm: 15 } })];
@@ -295,7 +298,8 @@ describe('глава между сменами', () => {
     await saveSlot(store, 'campaign-2', { ...s, meta: { ...s.meta, career: 2 } }, SHIFT_SCHEMA_VERSION, 'x');
     await loadShift('campaign', 2);
     const c = campaignView()!;
-    expect([c.after, c.next]).toEqual([T.campaign.completeLater(3), undefined]);
+    const ch3 = db.chapters['chapter.vascular'];
+    expect([c.after, c.next?.title, c.next?.move]).toEqual([T.campaign.completeNext, T.campaign.chapter(3, ch3.name.ru), ch3.move!.ru]);
     expect(c.missions.find(m => m.id === 'stay')!.progress).toBe('3 из 10 выписанных подряд · в среднем 3,3 сут. при обычных 5');
   });
 });

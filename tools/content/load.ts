@@ -952,11 +952,14 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     for (const r of Object.values(db.rooms)) {
       for (const d of r.admits ?? []) if (!Object.values(db.conditions).some(x => x.presenting && x.department === d)) errors.push(`${r.id}: принимает ${d}, а болезней этого отделения в базе нет`);
     }
-    // готовая амбулатория помещается на участок песочницы, вход песочницы — в краю
+    // готовая амбулатория помещается на участок песочницы, вход песочницы — в краю; больница главы с
+    // крылом (часть 45а) — на участок песочницы с её крылом справа
     const sb = db.economy.sandbox;
+    const wings = new Map(Object.values(db.chapters).filter(c => c.wing).map(c => [c.preset, c.wing!]));
     for (const p of Object.values(db.presets)) {
-      if (p.plot[0] > sb.plot[0] || p.plot[1] > sb.plot[1]) errors.push(`${p.id}: участок ${p.plot.join(' × ')} больше участка песочницы`);
-      else errors.push(...presetHospital(db, p, sb.plot).failed.map(f => `${p.id}: на участке песочницы помещение ${f.room} — ${f.error.kind}`));
+      const plot: [number, number] = [sb.plot[0] + (wings.get(p.id) ?? 0), sb.plot[1]];
+      if (p.plot[0] > plot[0] || p.plot[1] > plot[1]) errors.push(`${p.id}: участок ${p.plot.join(' × ')} больше участка песочницы${wings.has(p.id) ? ' с крылом' : ''}`);
+      else errors.push(...presetHospital(db, p, plot).failed.map(f => `${p.id}: на участке песочницы помещение ${f.room} — ${f.error.kind}`));
     }
     for (const r of Object.keys(db.economy.level.rooms)) if (!db.rooms[r]) errors.push(`hospital/economy.yaml: уровень ОМС — помещение ${r} не найдено`);
     const [ex, ey] = sb.entrance;
@@ -1005,6 +1008,25 @@ function checkCampaign(db: ContentDb, errors: string[]) {
       missions.add(m.id);
       if (m.kind === 'roomWorks' && !db.rooms[m.room]) at(`задание ${m.id}: помещение ${m.room} не найдено`);
       if (m.kind === 'roomWorks' && !c.build.includes(m.room) && !db.presets[c.preset]?.rooms.some(r => r.type === m.room)) at(`задание ${m.id}: ${m.room} нельзя построить в главе`);
+      // срок подряд (часть 45а): срок есть в базе
+      if (m.kind === 'deadline' && !db.targets[m.target]) at(`задание ${m.id}: срок ${m.target} не найден`);
+    }
+    // крыло (часть 45а): больница прежней главы остаётся, участок шире — готовая больница главы (её
+    // «Смена» и начало карьеры с этой главы) — та же больница прежней главы, шире ровно на крыло, с тем же
+    // входом и теми же помещениями на тех же местах в начале записи
+    if (c.wing) {
+      const prev = Object.values(db.chapters).find(x => x.order === c.order - 1);
+      const was = prev ? db.presets[prev.preset] : undefined;
+      if (!prev || !was) at('крыло — а прежней главы с готовой больницей нет');
+      else if (preset) {
+        if (preset.plot[0] !== was.plot[0] + c.wing || preset.plot[1] !== was.plot[1]) at(`крыло ${c.wing}: участок ${preset.id} — ${preset.plot.join(' × ')}, а у ${was.id} с крылом — ${was.plot[0] + c.wing} × ${was.plot[1]}`);
+        if (preset.entrance.join(',') !== was.entrance.join(',')) at(`крыло: вход ${preset.id} не тот, что у ${was.id}`);
+        const same = was.rooms.every((r, i) => {
+          const q = preset.rooms[i];
+          return q && q.type === r.type && q.size === r.size && q.x === r.x && q.y === r.y && q.rot === r.rot;
+        });
+        if (!same) at(`крыло: помещения ${preset.id} не начинаются с помещений ${was.id} на тех же местах`);
+      }
     }
     if (!c.missions.some(m => m.main)) at('нет основных заданий');
     const letters = new Set<string>();
