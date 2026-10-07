@@ -1,4 +1,4 @@
-// из votchina: tools/test/guardrails.test.ts @ 0605847
+// из votchina: tools/test/guardrails.test.ts @ 00d89c0
 // Порядок работы с репозиторием (ADR студии 0018 и 0019): пути владельца в CODEOWNERS,
 // проверки на PR, автослияние по метке, сборка APK только по тегу. Тест держит то, что
 // легко сломать правкой одного файла: список путей, разбор CODEOWNERS для automerge.yml,
@@ -55,6 +55,10 @@ describe('workflow', () => {
     expect(on.push).toEqual({ tags: ['v*'] });
     const src = readFileSync(join(root, '.github', 'workflows', 'android.yml'), 'utf8');
     expect(src).not.toContain('bundleRelease');
+    // тег сверяется с версией до проверок и сборки, а не рядом с ними: иначе ошибка тега сжигает минуты
+    const jobs = wf('android.yml').jobs;
+    expect(jobs.version.needs).toBeUndefined();
+    for (const job of ['checks', 'web', 'key']) expect({ job, needs: jobs[job].needs }).toEqual({ job, needs: 'version' });
   });
 
   test('PR: база, типы, линтер и тесты без сборки, на каждом PR; имя проверки — то, что ждёт автослияние', () => {

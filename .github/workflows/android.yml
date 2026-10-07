@@ -1,4 +1,4 @@
-# из votchina: .github/workflows/android.yml @ 063515b
+# из votchina: .github/workflows/android.yml @ 00d89c0
 # Только на тег версии vX.Y.Z, ручного запуска нет (ADR студии 0019, решение владельца
 # 03.10.2026): проверки, сценарий в браузере, APK, подписанный постоянным ключом, и
 # публикация в Releases (docs/08-process.md «Сборка и выкладывание», ADR 0015). Слияние в main
@@ -26,8 +26,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Тег должен называть ту версию, что в app.json: иначе релиз v0.3.2 с файлами 0.3.1. Отдельным
+  # заданием и первым — чтобы при ошибке не сгорели минуты проверок и сборки (так же в «Вотчине»).
+  version:
+    name: Тег и версия
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: app.json
+          sparse-checkout-cone-mode: false
+      - name: Тег и версия совпадают
+        run: |
+          V=$(node -p "require('./app.json').expo.version")
+          if [ "$GITHUB_REF_NAME" != "v$V" ]; then echo "::error::Тег $GITHUB_REF_NAME, а в app.json версия $V. Тег — v$V."; exit 1; fi
+
   checks:
     name: Проверки
+    needs: version
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -60,6 +77,7 @@ jobs:
   # релиза, которые берегут минуты Actions (решение владельца).
   web:
     name: Веб-сборка и сценарий
+    needs: version
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -84,23 +102,15 @@ jobs:
           path: tools/e2e/out/
           if-no-files-found: ignore
 
-  # Есть ли постоянный ключ — решается один раз, до сборок: от этого зависит, что собирать. Тег
-  # сверяется с версией в app.json тоже до сборок: v0.3.2 при 0.3.1 — ошибка, а не чужой релиз.
+  # Есть ли постоянный ключ — решается один раз, до сборок: от этого зависит, что собирать.
   key:
     name: Ключ подписи
+    needs: version
     runs-on: ubuntu-24.04
     outputs:
       ready: ${{ steps.k.outputs.ready }}
       matrix: ${{ steps.k.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v5
-        with:
-          sparse-checkout: app.json
-          sparse-checkout-cone-mode: false
-      - name: Тег и версия
-        run: |
-          V=$(node -p "require('./app.json').expo.version")
-          if [ "$GITHUB_REF_NAME" != "v$V" ]; then echo "::error::Тег $GITHUB_REF_NAME, а в app.json версия $V."; exit 1; fi
       - id: k
         env:
           KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -326,7 +336,7 @@ jobs:
       - name: Версия и «Что нового»
         id: ver
         run: |
-          # тег сверен с app.json в задании «Ключ подписи»
+          # тег сверен с app.json в задании «Тег и версия»
           V=$(node -p "require('./repo/app.json').expo.version")
           echo "version=$V" >> "$GITHUB_OUTPUT"
           # «Что нового» — раздел «### X.Y.Z …» из «## Версии» README, до следующего заголовка
