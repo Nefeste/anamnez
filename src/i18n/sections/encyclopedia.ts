@@ -146,6 +146,8 @@ export const encyclopedia = {
     // почки, сознание или давление
     'source:lungs': 'при очаге в лёгких',
     'source:urinary': 'при очаге в мочевых путях',
+    'source:abdomen': 'при очаге в желчном пузыре',
+    'source:lungs|urinary': 'при очаге в лёгких или мочевых путях',
     'organ:kidney': 'при поражении почек',
     'organ:mind': 'при оглушении',
     'organ:pressure': 'при давлении 100 и ниже',

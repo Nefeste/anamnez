@@ -25,8 +25,10 @@ const ABX = 'tx.antibiotic_iv';
 const CULTURE = 'tx.blood_culture';
 const BALANCED = 'tx.balanced_fluids';
 const NORE = 'tx.norepinephrine';
+const CHOLE = 'tx.cholecystostomy';
 const SHOCK_T = 'target.sepsis_abx_shock';
 const SEPSIS_T = 'target.sepsis_abx';
+const SOURCE_T = 'target.sepsis_source';
 const MONITOR = 'eq.monitor_defib';
 const ED = ['dept.therapy', 'dept.surgery', 'dept.trauma', 'dept.neurology'];
 const BAY: Venue = { bedside: [MONITOR], icu: true };
@@ -57,14 +59,14 @@ const ALL = ['exam.ask_chronic', 'exam.ask_complaints', 'exam.vitals', 'exam.neu
 const rule = () => db.rules[QSOFA];
 
 describe('каталог', () => {
-  test('терапия, угрожает жизни, привозит скорая; диагноз клинический; источник — пневмония или пиелонефрит; место — ПИТ', () => {
+  test('терапия, угрожает жизни, привозит скорая; диагноз клинический; источник — пневмония, пиелонефрит или холецистит; место — ПИТ', () => {
     const c = db.conditions[SEPSIS];
     expect(c).toMatchObject({
       icd10: 'A41.9', department: 'dept.therapy', system: 'heart', severity: 'critical', arrival: 'ambulance', confirm: 'clinical',
-      source: { param: 'source', map: { lungs: 'cond.pneumonia_cap', urinary: 'cond.pyelonephritis' } },
+      source: { param: 'source', map: { lungs: 'cond.pneumonia_cap', urinary: 'cond.pyelonephritis', abdomen: 'cond.cholecystitis' } },
     });
-    // очаги у сепсиса — дыхательные пути 43,6 %, мочеполовые 27,1 % (EpiSEP) — на два источника; шок — 42 из 175
-    expect(c.params!.source).toEqual({ lungs: 62, urinary: 38 });
+    // очаги у сепсиса — дыхательные пути 43,6 %, мочеполовые 27,1 %, живот 12,0 % (EpiSEP) — на три источника; шок — 42 из 175
+    expect(c.params!.source).toEqual({ lungs: 53, urinary: 33, abdomen: 14 });
     expect(c.params!.shock).toEqual({ no: 76, yes: 24 });
     expect(c.params!.organ).toEqual({ kidney: 40, mind: 30, pressure: 30 });
     expect(c.treatment!.setting).toEqual({ default: 'icu' });
@@ -114,9 +116,9 @@ describe('qSOFA', () => {
     expect(verdict(['vital.tachypnea'], ['vital.bp_low', 'vital.bp_100', 'sign.gcs_low'])).toBe('no');
   });
 
-  test('кому: при жалобе на жар, озноб, кашель, боль в пояснице или при мочеиспускании — и при признаках инфекции; без них не считают', () => {
+  test('кому: при жалобе на жар, озноб, кашель, боль в пояснице, при мочеиспускании или в животе — и при признаках инфекции', () => {
     const r = rule();
-    expect(r.complaints).toEqual(['sym.fever_hx', 'sym.chills', 'sym.cough', 'sym.flank_pain', 'sym.dysuria']);
+    expect(r.complaints).toEqual(['sym.fever_hx', 'sym.chills', 'sym.cough', 'sym.flank_pain', 'sym.dysuria', 'sym.abdominal_pain', 'sym.ruq_pain']);
     expect([r.requires, r.onlyIfApplies]).toEqual([['sym.fever_hx', 'sym.chills', 'vital.fever'], true]);
     // кашель без жара, озноба и температуры: давление ниже 90 и частое дыхание баллов не дают — шкалу не считают
     const cough = { age: 70, complaints: ['sym.cough'] };
@@ -142,8 +144,8 @@ describe('больные', () => {
   const xs = people(1500);
   const part = (f: (p: Patient) => boolean, ps = xs) => ps.filter(f).length / ps.length;
 
-  test('очаг — лёгкие 62, мочевые пути 38; шок — 24 из 100; органная дисфункция — почки 40, сознание 30, давление 30', () => {
-    for (const [name, v, want] of [['source', 'lungs', 0.62], ['shock', 'yes', 0.24], ['organ', 'kidney', 0.4], ['organ', 'mind', 0.3]] as const) {
+  test('очаг — лёгкие 53, мочевые пути 33, желчный пузырь 14; шок — 24 из 100; органная дисфункция — почки 40, сознание 30, давление 30', () => {
+    for (const [name, v, want] of [['source', 'lungs', 0.53], ['source', 'abdomen', 0.14], ['shock', 'yes', 0.24], ['organ', 'kidney', 0.4], ['organ', 'mind', 0.3]] as const) {
       expect(Math.abs(part(p => paramsOf(p)[name] === v) - want)).toBeLessThan(0.035);
     }
   });
@@ -160,11 +162,21 @@ describe('больные', () => {
     }
   });
 
-  test('очаг по параметру: в лёгких — инфильтрат на снимке у каждого, в мочевых путях — лейкоциты в моче', () => {
+  test('очаг по параметру: в лёгких — инфильтрат на снимке у каждого, в мочевых путях — лейкоциты в моче, в желчном пузыре — воспаление на УЗИ', () => {
     for (const p of xs) {
-      const lungs = paramsOf(p).source === 'lungs';
-      expect({ seed: p.seed, xray: bySepsis(p, 'img.cxr_infiltrate'), urine: bySepsis(p, 'lab.urine_leuk') }).toEqual({ seed: p.seed, xray: lungs, urine: !lungs });
+      const src = paramsOf(p).source;
+      expect({ seed: p.seed, xray: bySepsis(p, 'img.cxr_infiltrate'), urine: bySepsis(p, 'lab.urine_leuk'), us: bySepsis(p, 'img.us_cholecystitis') })
+        .toEqual({ seed: p.seed, xray: src === 'lungs', urine: src === 'urinary', us: src === 'abdomen' });
     }
+  });
+
+  test('очаг в желчном пузыре — как холецистит: боль справа под рёбрами у большинства, симптом Мерфи у двух из трёх', () => {
+    const abd = xs.filter(p => paramsOf(p).source === 'abdomen');
+    expect(abd.length).toBeGreaterThan(150);
+    expect(part(p => bySepsis(p, 'sym.ruq_pain'), abd)).toBeGreaterThan(0.7);
+    expect(Math.abs(part(p => bySepsis(p, 'sign.murphy'), abd) - 0.65)).toBeLessThan(0.08);
+    // признаки очага — только при нём
+    expect(part(p => bySepsis(p, 'sign.murphy'), xs.filter(p => paramsOf(p).source !== 'abdomen'))).toBe(0);
   });
 
   test('qSOFA два балла и больше по правде — у большинства, но не у всех: меньше двух сепсис не исключает', () => {
@@ -187,6 +199,7 @@ describe('больные', () => {
 describe('диагноз: источник угадан — частично', () => {
   const lungs = people(1, { source: 'lungs' })[0];
   const urinary = people(1, { source: 'urinary' })[0];
+  const abdomen = people(1, { source: 'abdomen' })[0];
 
   test('сепсис — верно; пневмония при очаге в лёгких и пиелонефрит при мочевом — частично; чужой очаг — неверно', () => {
     expect(verdictOf(db, SEPSIS, lungs)).toBe('correct');
@@ -194,6 +207,9 @@ describe('диагноз: источник угадан — частично', (
     expect(verdictOf(db, 'cond.pyelonephritis', urinary)).toBe('partly');
     expect(verdictOf(db, 'cond.pyelonephritis', lungs)).toBe('wrong');
     expect(verdictOf(db, 'cond.pneumonia_cap', urinary)).toBe('wrong');
+    // очаг в желчном пузыре — острый холецистит (часть 48б)
+    expect(verdictOf(db, 'cond.cholecystitis', abdomen)).toBe('partly');
+    expect(verdictOf(db, 'cond.pneumonia_cap', abdomen)).toBe('wrong');
     // и наоборот — нет: у пневмонии сепсис не «частично»
     const pneumonia = generatePatient(db, 5, { department: 'dept.therapy', departments: ED, season: 'winter', primary: 'cond.pneumonia_cap' });
     expect(verdictOf(db, SEPSIS, pneumonia)).toBe('wrong');
@@ -210,6 +226,12 @@ describe('сроки от правила', () => {
     expect(db.targets[SEPSIS_T]).toMatchObject({ from: 'rule', rule: QSOFA, except: ['vital.bp_low'], treatments: [ABX], minutes: 180 });
     expect(T.spikes.patient.targetLine(db.targets[SHOCK_T].name.ru, 42, 60, db.targets[SHOCK_T].texts.from!.ru, db.targets[SHOCK_T].texts.after!.ru))
       .toBe('Антибиотик при септическом шоке: через 42 мин после того, как qSOFA дал 2 балла — в срок');
+  });
+
+  test('очаг в желчном пузыре: контроль источника — холецистостомия в первые 12 часов от того, как qSOFA дал 2 балла', () => {
+    expect(db.targets[SOURCE_T]).toMatchObject({ from: 'rule', rule: QSOFA, findings: ['img.us_cholecystitis'], treatments: [CHOLE], minutes: 720 });
+    expect(T.spikes.patient.targetLine(db.targets[SOURCE_T].name.ru, 95, 720, db.targets[SOURCE_T].texts.from!.ru, db.targets[SOURCE_T].texts.after!.ru))
+      .toBe('Контроль источника при сепсисе: через 95 мин после того, как qSOFA дал 2 балла — в срок');
   });
 
   test('отсчёт — с результата, после которого правило сказало «да»; до него срока нет', () => {
@@ -254,9 +276,11 @@ describe('сроки от правила', () => {
 describe('тактика и разбор', () => {
   const xs = people(600);
   const pick = (f: (q: Record<string, string>) => boolean) => xs.find(p => f(paramsOf(p)))!;
-  const warm = pick(q => q.shock === 'no' && q.spo2_below90 === 'no');
-  const shock = pick(q => q.shock === 'yes' && q.spo2_below90 === 'no');
-  const hypox = pick(q => q.shock === 'no' && q.spo2_below90 === 'yes');
+  const warm = pick(q => q.shock === 'no' && q.spo2_below90 === 'no' && q.source !== 'abdomen');
+  const shock = pick(q => q.shock === 'yes' && q.spo2_below90 === 'no' && q.source !== 'abdomen');
+  const hypox = pick(q => q.shock === 'no' && q.spo2_below90 === 'yes' && q.source !== 'abdomen');
+  const gall = pick(q => q.shock === 'no' && q.spo2_below90 === 'no' && q.source === 'abdomen');
+  const gallShock = pick(q => q.shock === 'yes' && q.spo2_below90 === 'no' && q.source === 'abdomen');
   const ev = (p: Patient, x: Plan, venue: Venue = BAY) => evaluatePlan(db, p, x, truthful(p, ALL), venue);
 
   test('обязательно: посевы крови, антибиотик и раствор — сбалансированный первый; при шоке — норэпинефрин; ПИТ', () => {
@@ -268,6 +292,16 @@ describe('тактика и разбор', () => {
     expect(ev(shock, plan([CULTURE, ABX, BALANCED])).requireMissing).toEqual([NORE]);
     expect(ev(shock, plan([CULTURE, ABX, BALANCED, NORE])).requireMissing).toEqual([]);
     expect(ev(hypox, plan([CULTURE, ABX, BALANCED])).requireMissing).toEqual(['tx.oxygen_mask']);
+  });
+
+  test('очаг в желчном пузыре: обязательна и холецистостомия у постели под монитором — контроль источника; до перевода — нет', () => {
+    expect(ev(gall, plan([CULTURE, ABX, BALANCED])).requireMissing).toEqual([CHOLE]);
+    expect(ev(gall, plan([CULTURE, ABX, BALANCED, CHOLE])).requireMissing).toEqual([]);
+    expect(ev(gallShock, plan([CULTURE, ABX, BALANCED, CHOLE])).requireMissing).toEqual([NORE]);
+    expect(ev(gall, plan([], 'transfer')).beforeTransferMissing).toEqual([ABX, BALANCED, CULTURE]);
+    expect(db.treatments[CHOLE]).toMatchObject({ kind: 'procedure', class: 'drainage.biliary', bedside: { equipment: [MONITOR] } });
+    expect(txAvailable(db, CHOLE, BAY)).toBe(true);
+    expect(txAvailable(db, CHOLE, { icu: true })).toBe(false);
   });
 
   test('до перевода — посевы, антибиотик, раствор и при шоке норэпинефрин, если у постели монитор', () => {
@@ -288,6 +322,13 @@ describe('тактика и разбор', () => {
     expect(p(warm, ['tx.amoxicillin', BALANCED])).toEqual([]);
     expect(untreatedOf(db, { id: SEPSIS, params: paramsOf(shock) })).toMatchObject({ p: 9500, days: [0, 1] });
     expect(untreatedOf(db, { id: SEPSIS, params: paramsOf(warm) })).toMatchObject({ p: 7500, days: [1, 3] });
+  });
+
+  test('очаг в желчном пузыре: антибиотик без холецистостомии только облегчает; с ней — выздоравливают, как при других очагах', () => {
+    const p = (x: Patient, txs: Id[]) => curesOf(db, { id: SEPSIS, params: paramsOf(x) }, txs).map(e => e.p);
+    expect(p(gall, [ABX, BALANCED])).toEqual([]);
+    expect(p(gall, [ABX, BALANCED, CHOLE])).toEqual([8800]);
+    expect(p(gallShock, [ABX, BALANCED, NORE, CHOLE])).toEqual([6200]);
   });
 });
 
