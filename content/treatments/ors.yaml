@@ -5,11 +5,14 @@ class: rehydration.oral
 route: oral
 cost: 100
 effects:
-  - { on: cond.gastroenteritis, kind: relieve, band: usually, days: [0, 1] }
+  # при дегидратационном шоке (IV степень по Покровскому) пить человек не может — питьё не помогает (875_1, приложение А3.1:
+  # «неутолимая (или не может пить)»; spec 2026-10-chapter-4, часть 49а)
+  - { on: cond.gastroenteritis, kind: relieve, band: usually, days: [0, 1], when: { severity: [mild, moderate, severe] } }
 texts:
   hint:
     ru: "Специальные растворы соли и сахара, которые пьют маленькими глотками: восполняют воду и соли, потерянные с рвотой и поносом. Главное лечение кишечной инфекции."
 sources:
   - { kind: guideline, title: "Riddle MS et al. ACG Clinical Guideline: Diagnosis, Treatment, and Prevention of Acute Diarrheal Infections in Adults. Am J Gastroenterol 2016;111(5):602–622" }
+  - { kind: guideline, title: "Острые кишечные инфекции (ОКИ) у взрослых", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/875_1", note: "ID 875_1, опубликованы 25.12.2024, применяются; сверено с рубрикатором 06.10.2026; раздел 3.1.2 (УУР C, УДД 5): пероральная регидратация всем с секреторной и гиперосмолярной диареей, раствор подогревают до 37–40 °С, объём — по степени обезвоживания и массе тела" }
   - { kind: guideline, title: "Ожоги термические и химические. Ожоги солнечные. Ожоги дыхательных путей.", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/687_3", note: "ID 687_3, опубликованы 31.08.2024, применяются; сверено с рубрикатором 29.09.2026; раздел 3.1.4 (УУР C, УДД 5): у взрослых при площади ожогов меньше 15 % — энтеральная регидратация; поощряется и при большей площади, особенно если инфузию провести нельзя" }
 review: draft

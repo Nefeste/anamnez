@@ -426,7 +426,9 @@ export function planOf(db: ContentDb, hs: HospitalState): Plan {
         .sort((a, b) => b.row - a.row || a.cell[1] - b.cell[1] || a.cell[0] - b.cell[0])
         .map(o => o.cell)
       : [];
-    const beds = db.rooms[r.type].beds || db.rooms[r.type].emergency || db.rooms[r.type].icu ? z.objects.filter(o => o.kind === 'bed').map(o => at([o.x, o.y])) : [];
+    // койки — у палаты, смотровой приёмного, ПИТ и бокса инфекционного отделения (spec 2026-10-chapter-4, часть 49а)
+    const kind = db.rooms[r.type];
+    const beds = kind.beds || kind.emergency || kind.icu || kind.box ? z.objects.filter(o => o.kind === 'bed').map(o => at([o.x, o.y])) : [];
     const ok = doorOk(z, r, r.door, hs, occ);
     rooms.push({
       id: r.id, type: r.type, size: r.size, rot: r.rot, x: r.x, y: r.y, w, h,

@@ -30,7 +30,7 @@ export const NO_ECONOMY: ContentDb['economy'] = {
     traits: { careful: { weight: 0 }, fast: { weight: 0 }, novice: { weight: 0 }, experienced: { weight: 0 } },
     doctor: { threshold: [90, 90, 90, 90, 90], minGain: [20, 20, 20, 20, 20], forget: [0, 0, 0, 0, 0] },
   },
-  tariffs: { oms: { minor: 0, moderate: 0, serious: 0, critical: 0 }, omsWard: { minor: 0, moderate: 0, serious: 0, critical: 0 }, omsOperation: 0, omsIcu: 0, omsRicu: 0, omsQuality: { A: 0, B: 0, C: 0, D: 0 }, omsUnconfirmed: 0, omsExam: 0, dms: { visit: 0, price: 0 }, self: { visit: 0, price: 0 } },
+  tariffs: { oms: { minor: 0, moderate: 0, serious: 0, critical: 0 }, omsWard: { minor: 0, moderate: 0, serious: 0, critical: 0 }, omsOperation: 0, omsIcu: 0, omsRicu: 0, omsBox: 0, omsQuality: { A: 0, B: 0, C: 0, D: 0 }, omsUnconfirmed: 0, omsExam: 0, dms: { visit: 0, price: 0 }, self: { visit: 0, price: 0 } },
   level: { base: 100, rooms: {} },
   payers: { dms: [0, 0, 0], self: [0, 0, 0] },
   consumables: { ask: 0, physical: 0, bedside: 0, lab: 0, rapid: 0, functional: 0, imaging: 0 },
@@ -38,6 +38,7 @@ export const NO_ECONOMY: ContentDb['economy'] = {
   ward: { bedDay: 0, interrupted: 0 },
   icu: { bedDay: 0 },
   ricu: { bedDay: 0 },
+  box: { bedDay: 0 },
   transfer: { hours: 2, pci: 1 },
   ambulance: { perDay: [0, 0], weight: { minor: 0, moderate: 0, serious: 0, critical: 0 }, severe: 0 },
   reputation: { start: 50, pull: 1, waitShort: 0, waitShortMin: 0, waitLong: 0, waitLongMin: 0, noToilet: 0, died: 0 },
@@ -74,6 +75,15 @@ function compileLink(l: LinkSrc): Link {
     }
   }
   return out;
+}
+
+/** Все места, которые называет правило места лечения (spec 2026-10-chapter-4, часть 49а): по умолчанию, по параметру, при флагах и рисках. */
+function placesOf(rule: NonNullable<ConditionSrc['treatment']>['setting']): string[] {
+  return [
+    rule.default, ...Object.values(rule.param?.map ?? {}), ...(rule.redFlag ? [rule.redFlag] : []), ...(rule.risks ?? []).map(r => r.setting),
+    ...(rule.also ?? []).flatMap(a => a.settings), ...(rule.after ? [rule.after.setting, ...(rule.after.flags ? [rule.after.flags.setting] : [])] : []),
+    ...(rule.without ? [rule.without.setting] : []),
+  ];
 }
 
 /** Записи «без лечения» списком (часть 41б): одна запись — список из неё. */
@@ -346,6 +356,10 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (c.course.settles && c.course.selfLimiting) errors.push(`${owner}: и «проходит само», и «острый период проходит в стационаре» — что-то одно`);
     // с чем спутать по рекомендации (часть 33б): то, с чем приходят, и не сама болезнь
     for (const d of c.differential ?? []) if (d === c.id || !conditions[d]?.presenting) errors.push(`${owner}: с чем спутать — ${d} не найдено, не приходят с ним или это оно само`);
+    // заразна (spec 2026-10-chapter-4, часть 49а): бокс нужен заразному, а заразному в стационаре нужен бокс
+    const places = c.treatment ? placesOf(c.treatment.setting) : [];
+    if (places.includes('box') && !c.isolation) errors.push(`${owner}: место — бокс, а путь передачи (isolation) не назван`);
+    if (c.isolation && !places.includes('box')) errors.push(`${owner}: заразна, а места «бокс» в правиле места нет`);
     // источник по параметру (spec 2026-10-chapter-4, часть 48а): у каждого значения — болезнь, с которой приходят, и не сама
     if (c.source) {
       const values = c.params?.[c.source.param];
@@ -786,6 +800,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (c.icd10) out.icd10 = c.icd10;
     if (c.checkup) out.checkup = true;
     if (c.arrival) out.arrival = c.arrival;
+    if (c.isolation) out.isolation = c.isolation;
     if (c.group) out.group = c.group;
     if (c.source) out.source = c.source;
     if (c.system) out.system = c.system;
@@ -912,14 +927,14 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   const examIds = Object.keys(exams).sort();
   for (const r of Object.values(rooms).sort((a, b) => (a.id < b.id ? -1 : 1))) {
     const out: RoomType = {
-      id: r.id, name: r.name, gen: r.gen, staff: r.staff, needsEquipment: r.needsEquipment, seats: r.seats, beds: r.beds, emergency: r.emergency, icu: r.icu, vent: r.vent,
+      id: r.id, name: r.name, gen: r.gen, staff: r.staff, needsEquipment: r.needsEquipment, seats: r.seats, beds: r.beds, emergency: r.emergency, icu: r.icu, vent: r.vent, box: r.box,
       ...(r.admits ? { admits: r.admits } : {}),
       sizes: r.sizes.map(z => ({
         id: z.id, w: z.w, h: z.h, cost: z.cost, upkeep: z.upkeep, door: { x: z.door.x, width: z.door.width },
         objects: z.objects.map(([kind, x, y]) => ({ kind, x, y })), slots: z.slots, ...(z.slotsOf ? { slotsOf: z.slotsOf } : {}), staff: z.staff,
         ...(z.patient ? { patient: z.patient } : {}),
         seats: r.seats ? z.objects.filter(([kind]) => kind === 'chair').length : 0,
-        beds: r.beds || r.emergency || r.icu ? z.objects.filter(([kind]) => kind === 'bed').length : 0,
+        beds: r.beds || r.emergency || r.icu || r.box ? z.objects.filter(([kind]) => kind === 'bed').length : 0,
         places: z.places,
       })),
       equipment: sortedIds(Object.values(equipment).filter(e => e.rooms.includes(r.id)).map(e => e.id)),
@@ -1259,6 +1274,9 @@ function checkHospital(c: {
       if (r.beds && !z.objects.some(([kind]) => kind === 'bed')) errors.push(`${at}: палата без коек`);
       if (r.emergency && !z.objects.some(([kind]) => kind === 'bed')) errors.push(`${at}: смотровая приёмного без мест для скорой`);
       if (r.beds && r.emergency) errors.push(`${at}: помещение — или палата, или смотровая приёмного`);
+      // бокс инфекционного отделения (spec 2026-10-chapter-4, часть 49а): свои койки, отдельно от палат
+      if (r.box && (r.beds || r.emergency || r.icu)) errors.push(`${at}: бокс — не палата, не смотровая приёмного и не палата интенсивной терапии`);
+      if (r.box && !z.objects.some(([kind]) => kind === 'bed')) errors.push(`${at}: бокс без койки`);
       // палата интенсивной терапии (часть 38а): койка работает с монитором на своём месте — мест
       // под аппараты не меньше, чем коек
       if (r.icu && (r.beds || r.emergency)) errors.push(`${at}: палата интенсивной терапии — не палата и не смотровая приёмного`);

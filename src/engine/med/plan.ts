@@ -21,25 +21,33 @@ export type TxRole = 'firstLine' | 'acceptable' | 'supportive' | 'notIndicated' 
 type ListRole = Exclude<TxRole, 'prevent' | 'require' | 'beforeTransfer'>;
 const ROLES: ListRole[] = ['firstLine', 'acceptable', 'supportive', 'notIndicated', 'harmful'];
 
-/** Насколько серьёзна помощь: чем выше, тем срочнее и сложнее; реанимация с ИВЛ (часть 47) — между ПИТ и операцией. */
-export const SETTING_ORDER: Record<Setting, number> = { home: 0, ward: 1, admit: 1, ambulance: 2, icu: 2, ricu: 2.5, surgery: 3, transfer: 3 };
+/**
+ * Насколько серьёзна помощь: чем выше, тем срочнее и сложнее; реанимация с ИВЛ (часть 47) — между ПИТ и операцией; бокс
+ * (spec 2026-10-chapter-4, часть 49а) — стационар с изоляцией: выше палаты, ниже скорой и ПИТ.
+ */
+export const SETTING_ORDER: Record<Setting, number> = { home: 0, ward: 1, admit: 1, box: 1.5, ambulance: 2, icu: 2, ricu: 2.5, surgery: 3, transfer: 3 };
+
+/** Где больного оставляют у себя: своя палата, операционная, ПИТ, реанимация (часть 47) и бокс (spec 2026-10-chapter-4, часть 49а). */
+export const STAYS: readonly Setting[] = ['admit', 'surgery', 'icu', 'ricu', 'box'];
 
 /**
  * Что закрывает выбор врача (spec 2026-09-chapter-2, «Место лечения»): «Вызвать скорую» везёт
  * в больницу, где сделают нужное, — и операцию, и центр, и палату интенсивной терапии; своя
  * палата — стационар сразу, но не операцию, не центр и не ПИТ; своя ПИТ — и палату, и срочный
  * стационар (spec 2026-10-chapter-3, часть 38а); своя реанимация (spec 2026-10-chapter-4, часть 47) — и ПИТ, а
- * ПИТ кому нужна ИВЛ — меньше нужного.
+ * ПИТ кому нужна ИВЛ — меньше нужного. Бокс (часть 49а) — палата с изоляцией: закрывает и палату; заразного направить или
+ * перевести в инфекционную больницу — не ошибка, а положить в общую палату — меньше нужного.
  */
 const COVERS: Record<Setting, readonly Setting[]> = {
   home: ['home'],
-  ward: ['ward'],
-  ambulance: ['ambulance', 'surgery', 'transfer', 'icu', 'ricu'],
+  ward: ['ward', 'box'],
+  ambulance: ['ambulance', 'surgery', 'transfer', 'icu', 'ricu', 'box'],
   admit: ['ward', 'ambulance'],
   surgery: ['surgery'],
-  transfer: ['ambulance', 'surgery', 'transfer', 'icu', 'ricu'],
+  transfer: ['ambulance', 'surgery', 'transfer', 'icu', 'ricu', 'box'],
   icu: ['ward', 'ambulance', 'icu'],
   ricu: ['ward', 'ambulance', 'icu', 'ricu'],
+  box: ['ward', 'ambulance', 'box'],
 };
 
 /**
@@ -63,6 +71,8 @@ export interface Venue {
   or?: boolean;
   icu?: boolean;
   ricu?: boolean;
+  /** свободный бокс инфекционного отделения (spec 2026-10-chapter-4, часть 49а) */
+  box?: boolean;
   /**
    * аппараты у постели этого больного (spec 2026-10-chapter-3, часть 39а): лежит в смотровой
    * приёмного под монитором с дефибриллятором — тромболизис можно; нет — в кабинете врача его нет
@@ -108,10 +118,12 @@ export function txAvailable(db: ContentDb, tx: Id, venue: Venue = {}): boolean {
  * Что выбрать при такой нужде здесь: в амбулатории — направить или скорая, со своей палатой — в
  * неё, со своей операционной — оперировать, со своей ПИТ — в неё; центра, которого в районе нет, и
  * ПИТ, которой в больнице нет, — скорая. С частью 47 (spec 2026-10-chapter-4): ПИТ нет, а реанимация
- * есть — в неё; кому нужна ИВЛ — в свою реанимацию, нет её — скорая («Перевести»).
+ * есть — в неё; кому нужна ИВЛ — в свою реанимацию, нет её — скорая («Перевести»). Заразному в стационаре (часть 49а) —
+ * свой бокс, нет его — скорая в инфекционную больницу.
  */
 export function choiceFor(need: Setting, venue: Venue = {}): Setting {
   if (need === 'home') return 'home';
+  if (need === 'box') return venue.box ? 'box' : 'ambulance';
   if (need === 'icu') return venue.icu ? 'icu' : venue.ricu ? 'ricu' : 'ambulance';
   if (need === 'ricu') return venue.ricu ? 'ricu' : 'ambulance';
   if (need === 'ward' || need === 'ambulance') return venue.ward ? 'admit' : need;

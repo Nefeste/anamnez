@@ -23,6 +23,10 @@ effects:
   # сепсис (часть 48а, spec 2026-10-chapter-4): растворы электролитов — первая линия; сбалансированным приоритет перед
   # 0,9 % натрия хлорида (898_1, раздел 3.3) — этот допустим; облегчение — игровая оценка
   - { on: cond.sepsis, kind: relieve, band: often, days: [0, 1] }
+  # кишечная инфекция с тяжёлым обезвоживанием (spec 2026-10-chapter-4, часть 49а; 875_1, раздел 3.1.2): растворы в вену —
+  # как сбалансированные, этот допустим; дни — игровая оценка
+  - { on: cond.gastroenteritis, kind: cure, band: usually, days: [2, 4], when: { severity: [severe, critical] } }
+  - { on: cond.gastroenteritis, kind: relieve, band: usually, days: [0, 1], when: { severity: [moderate] } }
 contraindications: []
 texts:
   hint:

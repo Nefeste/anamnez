@@ -6,7 +6,7 @@
 // (ADR 0004): одинаковый исход на телефоне и в тестах.
 import type { ContentDb, Id } from '../../content/types';
 import { P_ONE, type Rng } from '../core/rng';
-import { curesOf, harmsOf, type Plan, type PlanEval, primaryOf, selfLimits, SETTING_ORDER, untreatedOf, whenHolds } from './plan';
+import { curesOf, harmsOf, type Plan, type PlanEval, primaryOf, selfLimits, SETTING_ORDER, STAYS, untreatedOf, whenHolds } from './plan';
 import type { Patient } from './types';
 
 /** Сколько дней после приёма модель следит за пациентом, отпущенным домой. */
@@ -67,8 +67,9 @@ function anyOf(ps: readonly number[]): number {
 }
 
 export function observe(db: ContentDb, patient: Patient, plan: Plan, ev: PlanEval, rng: Rng): Outcome {
-  // своя палата, операционная, ПИТ (часть 38а) и реанимация (часть 47) — лежит у нас; иначе — увезли или направили
-  if (plan.setting === 'admit' || plan.setting === 'surgery' || plan.setting === 'icu' || plan.setting === 'ricu') return { kind: 'admitted', day: 0, cured: ev.effective };
+  // своя палата, операционная, ПИТ (часть 38а), реанимация (часть 47) и бокс (часть 49а) — лежит у нас; иначе — увезли или
+  // направили
+  if (STAYS.includes(plan.setting)) return { kind: 'admitted', day: 0, cured: ev.effective };
   if (plan.setting !== 'home') return { kind: 'transferred', day: 0, cured: false };
   const primary = primaryOf(patient);
   const cond = db.conditions[primary.id];

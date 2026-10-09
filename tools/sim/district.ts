@@ -30,7 +30,7 @@ import { contextOf, posterior } from '../../src/engine/med/infer';
 import { alsoSettings, recommendedSetting, settingFit, type Venue } from '../../src/engine/med/plan';
 import { choosePlan, decisionLimit, type DoctorPhase, MIN_GAIN, nextStep, runDoctor, type Strategy } from '../../src/engine/med/policy';
 import {
-  apply, bedsideEquipment, candidatesOf, careUnit, current, freeBeds, freeIcuBeds, freeRicuBeds, hospitalCtx, inIcu, inpatientsOf, moreUrgent, newCampaign, observationsOf,
+  apply, bedsideEquipment, candidatesOf, careUnit, current, freeBeds, freeBoxBeds, freeIcuBeds, freeRicuBeds, hospitalCtx, inIcu, inpatientsOf, moreUrgent, newCampaign, observationsOf,
   operationOf, readyIn, targetPlace,
 } from '../../src/engine/shift/engine';
 import { minutesTo, targetsFor, targetStart } from '../../src/engine/shift/targets';
@@ -227,12 +227,12 @@ function decide(s: ShiftState, p: ShiftPatient, diagnosis: Id, plan: { treatment
 /**
  * Что есть у разумного для этого больного (spec 2026-10-chapter-3, часть 46б): свободная койка палаты и ПИТ,
  * операционная, аппараты у постели (в смотровой с монитором — тромболизис), минуты с прихода — окна по часам, и
- * через сколько придёт результат обследования в этой больнице. С частью 47 — и реанимация с ИВЛ.
+ * через сколько придёт результат обследования в этой больнице. С частью 47 — и реанимация с ИВЛ, с частью 49а — боксы.
  */
 function venueFor(s: ShiftState, p: ShiftPatient): Venue {
   return {
     ...(freeBeds(db, s).length > 0 ? { ward: true } : {}), or: true, ...(freeIcuBeds(db, s).length > 0 ? { icu: true } : {}),
-    ...(freeRicuBeds(db, s).length > 0 ? { ricu: true } : {}),
+    ...(freeRicuBeds(db, s).length > 0 ? { ricu: true } : {}), ...(freeBoxBeds(db, s).length > 0 ? { box: true } : {}),
     bedside: bedsideEquipment(db, s, p), minutes: Math.round((s.t - p.arriveT) / 60), ready: id => readyIn(db, s, p, id),
   };
 }
@@ -429,7 +429,7 @@ function run(seed: number, player: Player, chapter: Id): Run {
       if (p.closed?.stay && p.stay && !closedStays.has(p.id)) {
         closedStays.add(p.id);
         const end = p.closed.stay.end;
-        const chosen = p.stay.plan.setting === 'surgery' ? 'surgery' : p.stay.plan.setting === 'icu' || p.stay.plan.setting === 'ricu' ? p.stay.plan.setting : 'admit';
+        const chosen = ['surgery', 'icu', 'ricu', 'box'].includes(p.stay.plan.setting) ? p.stay.plan.setting : 'admit';
         const done = p.results.map(r => r.exam);
         const recommended = recommendedSetting(db, p.patient, done, p.closed.bedside);
         const over = settingFit(recommended, chosen, alsoSettings(db, p.patient, done)) === 'over';

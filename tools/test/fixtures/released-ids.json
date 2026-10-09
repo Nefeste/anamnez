@@ -585,6 +585,7 @@
       "sign.cva_tenderness",
       "sign.deep_vein_tenderness",
       "sign.dehydration",
+      "sign.dry_mucosa",
       "sign.dry_skin",
       "sign.dullness",
       "sign.dysphagia",
@@ -601,6 +602,7 @@
       "sign.hemiparesis",
       "sign.hernia_strangulated",
       "sign.hip_tenderness",
+      "sign.hoarse_voice",
       "sign.homans",
       "sign.interrupted_inspiration",
       "sign.jaundice",
@@ -740,8 +742,10 @@
       "sym.itchy_eyes",
       "sym.knee_instability",
       "sym.knee_pain",
+      "sym.leg_cramps",
       "sym.leg_numb",
       "sym.leg_pain",
+      "sym.less_urine",
       "sym.llq_pain",
       "sym.loss_of_consciousness",
       "sym.melena",
@@ -855,6 +859,7 @@
       "role.therapist"
     ],
     "rooms": [
+      "room.box",
       "room.ct",
       "room.ecg",
       "room.emergency",
@@ -874,6 +879,7 @@
       "room.xray"
     ],
     "rooms.sizes": [
+      "room.box/S",
       "room.ct/M",
       "room.ecg/S",
       "room.emergency/L",
