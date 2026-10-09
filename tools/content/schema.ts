@@ -72,9 +72,10 @@ const required = z.array(z.union([txId, z.array(txId).min(2)])).min(1);
  * Где лечить — что нужно пациенту; `admit` («в палату») — только выбор врача, в базе его нет;
  * `icu` — палата интенсивной терапии (spec 2026-10-chapter-3, часть 38а): своя — «В ПИТ», нет её —
  * перевод, из амбулатории — скорая; `ricu` — реанимация с ИВЛ (spec 2026-10-chapter-4, часть 47): своя —
- * «В ОРИТ», нет её — перевод.
+ * «В ОРИТ», нет её — перевод; `box` — бокс инфекционного отделения (часть 49а): заразного кладут отдельно, свой бокс —
+ * «В бокс», нет его — перевод в инфекционную больницу, общая палата — меньше нужного.
  */
-export const SETTINGS = ['home', 'ward', 'ambulance', 'surgery', 'transfer', 'icu', 'ricu'] as const;
+export const SETTINGS = ['home', 'ward', 'ambulance', 'surgery', 'transfer', 'icu', 'ricu', 'box'] as const;
 const setting = z.enum(SETTINGS);
 const season = z.strictObject({ winter: z.number(), spring: z.number(), summer: z.number(), autumn: z.number() });
 
@@ -109,6 +110,11 @@ export const conditionSchema = z.strictObject({
    * смотровую приёмного, к монитору, — пришедших самих с ним нет
    */
   arrival: z.literal('ambulance').optional(),
+  /**
+   * заразна (spec 2026-10-chapter-4, часть 49а): путь передачи — контактный (кишечные инфекции) или воздушно-капельный; в
+   * стационаре лежит в боксе (место `box`), в общей палате соседи — контактные
+   */
+  isolation: z.enum(['contact', 'airborne']).optional(),
   epidemiology: z.strictObject({
     prevalence: z.enum(Object.keys(PREVALENCE) as [keyof typeof PREVALENCE, ...(keyof typeof PREVALENCE)[]]),
     age: z.strictObject({ min: z.number().int(), max: z.number().int().optional(), peak: z.tuple([z.number(), z.number()]).optional() }),
@@ -600,6 +606,11 @@ export const roomSchema = z.strictObject({
    * койка работает, если на её местах (`slotsOf`) стоят и монитор, и аппарат ИВЛ
    */
   vent: z.boolean().default(false),
+  /**
+   * бокс инфекционного отделения (spec 2026-10-chapter-4, часть 49а): койки — места лежащих с изоляцией, отдельно от
+   * палат; заразного больного кладут сюда
+   */
+  box: z.boolean().default(false),
   /** работает — в больницу приходят и больные этих отделений: приёмное — хирургию (часть 30) */
   admits: z.array(z.string().regex(/^dept\.[a-z0-9_]+$/)).min(1).optional(),
   sizes: z.array(roomSize).min(1),
@@ -726,6 +737,8 @@ export const economySchema = z.strictObject({
     omsIcu: int,
     /** случай в реанимации с ИВЛ по показаниям — прибавка к тарифу, больше, чем за ПИТ (spec 2026-10-chapter-4, часть 47) */
     omsRicu: int,
+    /** случай в боксе инфекционного отделения по показаниям — прибавка к тарифу за изоляцию (spec 2026-10-chapter-4, часть 49а) */
+    omsBox: int,
     omsQuality: z.strictObject({ A: pct, B: pct, C: pct, D: pct }),
     omsUnconfirmed: pct,
     omsExam: int,
@@ -746,6 +759,8 @@ export const economySchema = z.strictObject({
   icu: z.strictObject({ bedDay: int }),
   /** реанимация (spec 2026-10-chapter-4, часть 47): койко-день с ИВЛ — дороже ПИТ, ₽ */
   ricu: z.strictObject({ bedDay: int }),
+  /** бокс инфекционного отделения (часть 49а): койко-день с изоляцией — дороже палатного, ₽ */
+  box: z.strictObject({ bedDay: int }),
   /** перевод в сосудистый центр (часть 39б): часов пути и часов от приезда до вмешательства */
   transfer: z.strictObject({ hours: z.number().int().min(1).max(12), pci: z.number().int().min(0).max(6) }),
   /**

@@ -5,6 +5,7 @@
 // антибиотик при сепсисе — от того, как qSOFA дал 2 балла.
 import type { ContentDb, Id, Setting, Target } from '../../content/types';
 import { complaintObservations } from '../med/exams';
+import { STAYS } from '../med/plan';
 import { checkRule, knownOf } from '../med/rules';
 import type { Grade } from '../med/score';
 import type { Observation } from '../med/types';
@@ -134,9 +135,6 @@ export function minutesTo(db: ContentDb, p: Timed, t: Target, decision?: TargetD
   const at = Math.min(exam, decision && decided(t, decision) ? decision.t : Infinity);
   return at === Infinity ? undefined : Math.round((at - start) / 60);
 }
-
-/** Остаётся у нас (часть 41а): в палате, ПИТ, реанимации (часть 47) или операционной; переведённому срок — там, куда везут. */
-const STAYS: readonly Setting[] = ['admit', 'icu', 'ricu', 'surgery'];
 
 /**
  * Сроки закрытого приёма. Срок на назначение или место — только тем, кому его сделали (часть 39б):

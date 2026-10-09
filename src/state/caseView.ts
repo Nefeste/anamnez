@@ -8,7 +8,7 @@ import { fnv1a } from '@/engine/core/hash';
 import type { Outcome } from '@/engine/med/course';
 import { complaintObservations, examFits } from '@/engine/med/exams';
 import { type Belief, contextOf, knownFacts, posterior } from '@/engine/med/infer';
-import { bedsideLack, type PlanEval } from '@/engine/med/plan';
+import { bedsideLack, type PlanEval, STAYS } from '@/engine/med/plan';
 import type { ReviewData } from '@/engine/med/review';
 import { type CaseScore, type Grade, type ScoreNote, worstGrade } from '@/engine/med/score';
 import { ageBand, checkRule, knownOf, rulesFor } from '@/engine/med/rules';
@@ -756,9 +756,9 @@ export function outcomeText(outcome: Outcome, setting: Setting, female: boolean)
     case 'reaction': return outcome.reaction ? out.reaction(db.treatments[outcome.reaction.tx].name.ru, riskName(outcome.reaction.by)) : out.unchanged;
     case 'transferred':
       if (outcome.severe) return out.transferredSevere(female);
-      return setting === 'ambulance' ? out.ambulance : setting === 'admit' || setting === 'surgery' || setting === 'icu' || setting === 'ricu' ? out.transferred(female) : out.ward(female);
+      return setting === 'ambulance' ? out.ambulance : STAYS.includes(setting) ? out.transferred(female) : out.ward(female);
     // своя палата интенсивной терапии (spec 2026-10-chapter-3, часть 38а) и реанимация (spec 2026-10-chapter-4, часть 47)
-    case 'admitted': return setting === 'surgery' ? out.operated : setting === 'icu' ? out.icu : setting === 'ricu' ? out.ricu : out.admitted;
+    case 'admitted': return setting === 'surgery' ? out.operated : setting === 'icu' ? out.icu : setting === 'ricu' ? out.ricu : setting === 'box' ? out.box : out.admitted;
     case 'died': return out.died(outcome.day, female);
   }
 }
@@ -800,6 +800,7 @@ export function noteText(n: ScoreNote): string {
     case 'tx.windowMissed': return t.windowMissed(tx(n.tx), n.at);
     case 'setting.under': return t.settingUnder(n.recommended);
     case 'setting.over': return t.settingOver(n.recommended);
+    case 'setting.contacts': return t.settingContacts;
     case 'safety.knownViolation': return t.knownViolation(tx(n.tx), riskName(n.by));
     case 'safety.unaskedViolation': return t.unaskedViolation(tx(n.tx), riskName(n.by));
     case 'safety.notAsked': return t.notAsked(riskName(n.by));

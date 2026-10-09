@@ -120,6 +120,8 @@ export const shift = {
       icu: (admitted: number, lying: number) => `Из них в палате интенсивной терапии — поступили: ${admitted}, лежат: ${lying}.`,
       // реанимация (spec 2026-10-chapter-4, часть 47)
       ricu: (admitted: number, lying: number) => `Из них в реанимации — поступили: ${admitted}, лежат: ${lying}.`,
+      // боксы инфекционного отделения (часть 49а)
+      box: (admitted: number, lying: number) => `Из них в боксах — поступили: ${admitted}, лежат: ${lying}.`,
     },
     // операционная за день (часть 28)
     surgery: {
@@ -164,6 +166,8 @@ export const shift = {
       ct: 'КТ',
       // реанимация (spec 2026-10-chapter-4, часть 47)
       ricu: 'ОРИТ',
+      // бокс инфекционного отделения (часть 49а)
+      box: 'Бокс',
     } as Record<string, string>,
     // для чтения с экрана: что на карте, словами
     label: (waiting: number, away: number, inRoom: string | undefined) =>
@@ -238,6 +242,8 @@ export const shift = {
       icu: (days: number) => `В палате интенсивной терапии: ${days + 1}-е\u00a0сутки`,
       // реанимация (spec 2026-10-chapter-4, часть 47)
       ricu: (days: number) => `В реанимации: ${days + 1}-е\u00a0сутки`,
+      // бокс инфекционного отделения (часть 49а)
+      box: (days: number) => `В боксе: ${days + 1}-е\u00a0сутки`,
       // операционная (часть 28): на столе и ждёт операции в палате
       onTable: (op: string, until: string) => `Идёт операция: ${lowerFirst(op)}, до ${until}`,
       waitingOp: (op: string) => `В палате, ждёт операции: ${lowerFirst(op)}`,
@@ -264,6 +270,10 @@ export const shift = {
     freeRicuBeds: (free: number, all: number) => `реанимация · коек с ИВЛ свободно ${free} из ${all}`,
     inRicu: 'Реанимация, под монитором',
     onVent: 'Реанимация, на ИВЛ',
+    // бокс инфекционного отделения (spec 2026-10-chapter-4, часть 49а): заразного кладут отдельно
+    box: 'В бокс',
+    freeBoxBeds: (free: number, all: number) => `инфекционное отделение · боксов свободно ${free} из ${all}`,
+    inBox: 'Бокс инфекционного отделения',
     // фибрилляция желудочков в ПИТ (часть 39б): дежурные сняли её разрядом — строка обхода наутро
     shock: 'За сутки — фибрилляция желудочков: дежурные сняли её разрядом под монитором, ритм восстановлен',
     refer: 'Направить в другую больницу',

@@ -127,8 +127,8 @@ describe('где лечить и чем', () => {
     expect(evaluatePlan(db, no, { treatments: ['tx.iv_fluids'], setting: 'admit' }, []).effective).toBe(true);
     expect(evaluatePlan(db, yes, { treatments: ['tx.iv_fluids'], setting: 'admit' }, []).effective).toBe(false);
     expect(evaluatePlan(db, yes, { treatments: ['tx.iv_fluids', OP], setting: 'surgery' }, []).effective).toBe(true);
-    // у панкреатита и холецистита капельница — как была, без условий
-    expect(db.treatments['tx.iv_fluids'].effects.filter(e => e.on !== SBO).every(e => e.when === undefined)).toBe(true);
+    // у панкреатита и холецистита капельница — как была, без условий; у кишечной инфекции — по степени обезвоживания (часть 49а)
+    expect(db.treatments['tx.iv_fluids'].effects.filter(e => e.on !== SBO && e.on !== 'cond.gastroenteritis').every(e => e.when === undefined)).toBe(true);
   });
 });
 

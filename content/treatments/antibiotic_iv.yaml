@@ -10,8 +10,11 @@ cost: 1500
 effects:
   # 30-дневная смертность больных сепсисом в приёмном — 12,0 %, при шоке — 38,1 % (EpiSEP, Wolfertz 2022): выздоравливает
   # остальной — как часто помогает, по этим числам
-  - { on: cond.sepsis, kind: cure, band: { pct: 88 }, days: [5, 10], when: { shock: [no] } }
-  - { on: cond.sepsis, kind: cure, band: { pct: 62 }, days: [7, 14], when: { shock: [yes] } }
+  - { on: cond.sepsis, kind: cure, band: { pct: 88 }, days: [5, 10], when: { source: [lungs, urinary], shock: [no] } }
+  - { on: cond.sepsis, kind: cure, band: { pct: 62 }, days: [7, 14], when: { source: [lungs, urinary], shock: [yes] } }
+  # очаг в желчном пузыре антибиотик не вычищает (898_1, раздел 3.1: контроль источника): без холецистостомии — только
+  # легче (часть 48б), выздоравливает — с ней
+  - { on: cond.sepsis, kind: relieve, band: usually, days: [1, 3], when: { source: [abdomen] } }
 texts:
   hint:
     ru: "Антибиотик, который действует на большинство возбудителей, — в вену, пока посев не назвал микроб. При сепсисе — в первые 3 часа, при шоке — в первый час; посевы крови берут до него."

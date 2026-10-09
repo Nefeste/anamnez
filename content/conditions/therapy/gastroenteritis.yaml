@@ -1,10 +1,17 @@
 id: cond.gastroenteritis
 name: { ru: "Острый гастроэнтерит" }
+# острая кишечная инфекция с водянистым стулом — вирусная или неуточнённая (875_1). Тяжесть — степень обезвоживания по
+# В. И. Покровскому (875_1, приложение А3.1; spec 2026-10-chapter-4, часть 49а): лёгкое течение — I степень, потеря до 3 %
+# массы тела; среднетяжёлое — II, 4–6 %; тяжёлое — III, 7–9 %; очень тяжёлое — IV, 10 % и больше, дегидратационный шок.
+# Кишечные инфекции с кровью в стуле — сальмонеллёз и шигеллёз (часть 49б)
 icd10: A09
 department: dept.therapy
 system: digestive
 kind: disease
 severity: moderate
+# заразна: путь передачи фекально-оральный — пищевой, водный, контактно-бытовой (875_1, раздел 1.3); в стационаре —
+# инфекционное отделение (раздел 3), в игре — бокс
+isolation: contact
 epidemiology:
   prevalence: common
   age: { min: 18 }
@@ -13,18 +20,33 @@ epidemiology:
     - { id: risk.sick_contact, x: 2 }
     - { id: risk.travel, x: 3 }
 params:
-  severity: { mild: 80, moderate: 17, severe: 3 }
+  # степень обезвоживания (875_1, приложение А3.1): mild — I, moderate — II, severe — III, critical — IV. Долей степеней в
+  # рекомендации нет; у взрослых тяжёлое обезвоживание редко (приложение А3.4: при ротавирусном гастроэнтерите — «у взрослых
+  # редко»): игровая оценка. Скорая и вернувшийся хуже — тяжёлое (III)
+  severity: { mild: 76, moderate: 18, severe: 5, critical: 1 }
 course:
   stages:
     - { id: active, days: [0, 3] }
     - { id: resolution, days: [3, 7] }
   presentation: [0, 2]
-  selfLimiting: true
-  untreated: { band: rarely, days: [1, 3] }
+  # «часто адекватная регидратационная терапия приводит к выздоровлению… даже без каких-либо дополнительных методов лечения»
+  # (875_1, раздел 3.1.2): лёгкое и среднетяжёлое проходят с питьём солевых растворов; тяжёлое и очень тяжёлое — только с
+  # регидратацией в вену
+  selfLimiting: { when: { severity: [mild, moderate] } }
+  # без лечения: при I–II степени хуже — редко; при III — обычно в первые сутки-двое, при IV — шок уже есть (игровая оценка)
+  untreated:
+    - { band: rarely, days: [1, 3], when: { severity: [mild, moderate] } }
+    - { band: usually, days: [0, 2], when: { severity: [severe] } }
+    - { band: always, days: [0, 1], when: { severity: [critical] } }
+  # выписка — нормализация температуры и купирование рвоты (875_1, раздел 6); сутки — игровая оценка
+  stay: [3, 5]
 findings:
   - { f: sym.diarrhea, band: always }
   - { f: sym.nausea, band: usually }
-  - { f: sym.vomiting, band: often }
+  # рвота: при I степени — до 5 раз, при II — до 10, при III — до 20, при IV — неукротимая (приложение А3.1)
+  - { f: sym.vomiting, band: often, when: { severity: [mild] } }
+  - { f: sym.vomiting, band: usually, when: { severity: [moderate, severe] } }
+  - { f: sym.vomiting, band: always, when: { severity: [critical] } }
   - { f: sym.abdominal_pain, band: often }
   - { f: sym.anorexia, band: often }
   - { f: sym.fatigue, band: often }
@@ -32,32 +54,93 @@ findings:
   - { f: vital.fever, band: sometimes }
   - { f: sym.myalgia, band: sometimes }
   - { f: sym.headache, band: sometimes }
-  - { f: sign.dehydration, band: rarely }
-  - { f: sign.dehydration, band: sometimes, when: { severity: [moderate] } }
-  - { f: sign.dehydration, band: usually, when: { severity: [severe] } }
-  - { f: vital.tachycardia, band: rarely }
-  - { f: vital.tachycardia, band: usually, when: { severity: [severe] } }
+  # жажда: слабая при I степени, умеренная при II, резкая при III, неутолимая при IV (приложение А3.1); полосы — игровые
+  - { f: sym.thirst, band: sometimes, when: { severity: [mild] } }
+  - { f: sym.thirst, band: usually, when: { severity: [moderate] } }
+  - { f: sym.thirst, band: always, when: { severity: [severe, critical] } }
+  # диурез: норма при I, снижен при II, олигурия при III, анурия при IV
+  - { f: sym.less_urine, band: usually, when: { severity: [moderate] } }
+  - { f: sym.less_urine, band: always, when: { severity: [severe, critical] } }
+  # судороги: нет при I, икроножные кратковременные при II, продолжительные и болезненные при III, генерализованные при IV
+  - { f: sym.leg_cramps, band: sometimes, when: { severity: [moderate] } }
+  - { f: sym.leg_cramps, band: usually, when: { severity: [severe, critical] } }
+  # слизистые: влажные при I, суховатые при II, сухие при III–IV; тургор снижен — с III степени (кожная складка расправляется
+  # дольше секунды, при IV — дольше двух)
+  - { f: sign.dry_mucosa, band: usually, when: { severity: [moderate] } }
+  - { f: sign.dry_mucosa, band: always, when: { severity: [severe, critical] } }
+  - { f: sign.dehydration, band: always, when: { severity: [severe, critical] } }
+  # голос: сохранён при I–II, осиплость при III, афония при IV
+  - { f: sign.hoarse_voice, band: often, when: { severity: [severe] } }
+  - { f: sign.hoarse_voice, band: always, when: { severity: [critical] } }
+  # пульс: норма при I, до 100 при II, 100–120 при III — чаще 100 у каждого, выше 120 при IV; верхнее давление: норма при
+  # I, до 100 при II, 60–100 при III — 100 и ниже у каждого, ниже 60 при IV; дыхание: умеренное тахипноэ при III, тахипноэ
+  # при IV (приложение А3.1). Остальные полосы — игровые
+  - { f: vital.tachycardia, band: rarely, when: { severity: [moderate] } }
+  - { f: vital.tachycardia, band: always, when: { severity: [severe] } }
+  - { f: vital.tachycardia, band: always, when: { severity: [critical] } }
+  - { f: vital.bp_100, band: sometimes, when: { severity: [moderate] } }
+  - { f: vital.bp_100, band: always, when: { severity: [severe] } }
+  - { f: vital.bp_low, band: always, when: { severity: [critical] } }
+  - { f: vital.tachypnea, band: sometimes, when: { severity: [severe] } }
+  - { f: vital.tachypnea, band: usually, when: { severity: [critical] } }
+  # дегидратационный шок — «окна шока»: кожа холодная и мраморная, сознание, диурез (875_1, раздел 1.6)
+  - { f: sign.cold_clammy, band: usually, when: { severity: [critical] } }
+  - { f: sym.confusion, band: sometimes, when: { severity: [critical] } }
+  # острое повреждение почек при кишечной инфекции — преренальное (раздел 1.6): креатинин; лактат — при шоке
+  - { f: lab.creatinine_high, band: often, when: { severity: [severe] } }
+  - { f: lab.creatinine_high, band: usually, when: { severity: [critical] } }
+  - { f: lab.lactate_high, band: usually, when: { severity: [critical] } }
   - { f: lab.wbc_high, band: sometimes }
   - { f: lab.crp_high, band: sometimes }
   - { f: sign.rlq_tenderness, band: very_rarely }
 confirm: clinical
-redFlags: [sign.dehydration]
+redFlags: [sign.dehydration, vital.bp_low]
 treatment:
+  # пероральная регидратация — всем с водянистой (секреторной) и вирусной диареей (875_1, раздел 3.1.2, УУР C, УДД 5);
+  # антибиотик не нужен: при вирусной этиологии этиотропное лечение не рекомендовано (раздел 3.1.1); голодание — нет
   firstLine: [tx.ors]
   supportive: [tx.rest_fluids, tx.paracetamol]
-  notIndicated: [tx.amoxicillin, tx.amoxicillin_clavulanate, tx.macrolide, tx.fluoroquinolone, tx.cephalosporin_oral, tx.ppi, tx.ibuprofen]
-  setting: { default: home, param: { name: severity, map: { mild: home, moderate: home, severe: ward } }, redFlag: ward }
+  notIndicated: [tx.amoxicillin, tx.amoxicillin_clavulanate, tx.macrolide, tx.fluoroquinolone, tx.cephalosporin_oral, tx.antibiotic_iv, tx.ppi, tx.ibuprofen, tx.norepinephrine]
+  byParam:
+    # II степень — питьё солевых растворов; капельница не ошибка
+    - when: { severity: [moderate] }
+      acceptable: [tx.balanced_fluids, tx.iv_fluids]
+    # III степень — регидратация в вену (раздел 3.1.2: «госпитализированным пациентам… обезвоживания II-III степени»):
+    # обязательна, из группы хватит одного, сбалансированный раствор — выбора; питьё — когда прекратится рвота. Первой линии
+    # сверх обязательного нет
+    - when: { severity: [severe] }
+      acceptable: [tx.ors]
+      require: [[tx.balanced_fluids, tx.iv_fluids]]
+    # IV степень — дегидратационный шок: «быстрое внутривенное введение сбалансированных изотонических солевых растворов»
+    # (раздел 1.6) — здесь и до перевода; пить человек не может, вазопрессор без жидкости не поможет
+    - when: { severity: [critical] }
+      notIndicated: [tx.ors]
+      require: [[tx.balanced_fluids, tx.iv_fluids]]
+      beforeTransfer: [[tx.balanced_fluids, tx.iv_fluids]]
+  # где лечить (875_1, раздел 3): лёгкое и среднетяжёлое — дома; тяжёлое — инфекционное отделение, в игре бокс; при
+  # гиповолемическом шоке — реанимация (раздел 2.5), в игре — ПИТ. Среднетяжёлое в боксе — тоже не ошибка (эпидпоказания,
+  # тяжёлый фон — раздел 6). Место — по степени обезвоживания, а не по одному признаку: осмотр делают каждому с поносом, и
+  # «выраженное обезвоживание», которое осмотр увидел зря, не отправляет лёгкого больного в бокс; красные флаги — для
+  # разбора: отпустили домой, видя их, — опасное решение
+  setting:
+    default: home
+    param: { name: severity, map: { mild: home, moderate: home, severe: box, critical: icu } }
+    also:
+      - { when: { severity: [moderate] }, settings: [box] }
 texts:
   summary:
     ru: >-
-      Кишечная инфекция, чаще вирусная: жидкий стул, тошнота и рвота, схваткообразная
-      боль в животе, иногда температура. Проходит за несколько дней; главное — пить
-      солевые растворы. Антибиотики почти никогда не нужны.
+      Кишечная инфекция, чаще вирусная: жидкий стул, тошнота и рвота, боль в животе, иногда температура. Главное —
+      степень обезвоживания: пульс, давление, сколько мочи, сухость во рту, голос, судороги в ногах. Лёгкое и
+      среднетяжёлое проходят за несколько дней дома — пить солевые растворы маленькими глотками; при тяжёлом — бокс
+      инфекционного отделения и растворы в вену; при шоке — в первую очередь растворы в вену и интенсивная терапия.
+      Антибиотики почти никогда не нужны.
 pearls:
-  - ru: "При кишечной инфекции главное — восполнить воду и соли: солевые растворы маленькими глотками."
+  - ru: "Обезвоживание оценивают у каждого: пульс, давление, моча, слизистые, голос. От степени зависит, где и чем лечить."
+  - ru: "Заразного больного не кладут в общую палату: в стационаре — бокс, своих боксов нет — инфекционная больница."
   - ru: "Боль, которая сместилась вправо вниз, без поноса — это не отравление, а повод думать об аппендиците."
-simplified: "Кишечные инфекции с кровью в стуле и тяжёлые бактериальные — позже, с инфекционным отделением."
+simplified: "Степень обезвоживания в игре — по признакам из таблицы Покровского, без взвешивания: потерю массы тела не считают. Баланс жидкости, электролиты и анализ кала на возбудителей — позже. Кишечные инфекции с кровью в стуле — сальмонеллёз и шигеллёз, часть 49б."
 sources:
-  - { kind: guideline, title: "Riddle MS et al. ACG Clinical Guideline: Diagnosis, Treatment, and Prevention of Acute Diarrheal Infections in Adults. Am J Gastroenterol 2016;111(5):602–622", note: "частоты — черновик" }
-  - { kind: guideline, title: "Острые кишечные инфекции (ОКИ) у взрослых", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/875_1", note: "ID 875_1, опубликованы 25.12.2024, применяются; сверено с рубрикатором 28.09.2026" }
+  - { kind: guideline, title: "Острые кишечные инфекции (ОКИ) у взрослых", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/875_1", note: "ID 875_1, опубликованы 25.12.2024, применяются; сверено с рубрикатором 06.10.2026; приложение А3.1 — степени обезвоживания по В. И. Покровскому; раздел 3.1.2 — пероральная регидратация всем с секреторной и гиперосмолярной диареей, внутривенная — госпитализированным с шоком, острым повреждением почек, обезвоживанием II–III степени; раздел 3.1.1 — при вирусной этиологии этиотропное лечение не рекомендовано; раздел 3 — дома лёгкое и среднетяжёлое течение без тяжёлого фона, тяжёлое — инфекционное отделение; доли степеней — игровая оценка" }
+  - { kind: guideline, title: "Riddle MS et al. ACG Clinical Guideline: Diagnosis, Treatment, and Prevention of Acute Diarrheal Infections in Adults. Am J Gastroenterol 2016;111(5):602–622", note: "частоты симптомов — черновик" }
 review: draft

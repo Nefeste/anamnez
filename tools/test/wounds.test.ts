@@ -200,8 +200,10 @@ describe('обследования ран', () => {
       }
       return done;
     };
-    expect(firstExams(people(HEAD, 1)[0], 4).sort()).toEqual(['exam.ask_chronic', 'exam.ask_head_injury', 'exam.neuro_exam', 'exam.wound_exam']);
-    expect(firstExams(people(HAND, 1)[0], 3).sort()).toEqual(['exam.ask_chronic', 'exam.hand_function', 'exam.wound_exam']);
+    // у этого человека ещё и понос: общий осмотр — тоже каждому (spec 2026-10-chapter-4, часть 49а)
+    for (const id of [HEAD, HAND]) expect(people(id, 1)[0].complaints).toContain('sym.diarrhea');
+    expect(firstExams(people(HEAD, 1)[0], 5).sort()).toEqual(['exam.ask_chronic', 'exam.ask_head_injury', 'exam.general_exam', 'exam.neuro_exam', 'exam.wound_exam']);
+    expect(firstExams(people(HAND, 1)[0], 4).sort()).toEqual(['exam.ask_chronic', 'exam.general_exam', 'exam.hand_function', 'exam.wound_exam']);
     expect(firstExams(people('cond.migraine', 1)[0], 2)).not.toContain('exam.neuro_exam');
   });
 });

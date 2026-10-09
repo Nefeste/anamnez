@@ -244,6 +244,9 @@ function whereLines(db: ContentDb, c: Condition, t: Tactics): string[] {
   const icu = [...Object.values(s.param?.map ?? {}), s.redFlag, ...(s.risks ?? []).map(r => r.setting), s.without?.setting];
   if (s.default !== 'icu' && icu.includes('icu')) lines.push(e.whereNoIcu(e.setting.ambulance));
   if (s.default === 'ricu' || icu.includes('ricu')) lines.push(e.whereNoRicu(e.setting.ambulance));
+  // заразная (spec 2026-10-chapter-4, часть 49а): путь передачи; в стационаре — бокс, нет его — перевод
+  if (c.isolation) lines.push(e.isolation[c.isolation]);
+  if (s.default === 'box' || icu.includes('box')) lines.push(e.whereNoBox);
   // операция и срок стационара (spec 2026-09-chapter-2, части 26 и 28), после осложнённой стадии — свой (28б)
   if (c.surgery) lines.push(e.whereSurgery(nameOf(db, c.surgery.tx), c.surgery.window, c.surgery.from === 'onset'));
   // операция по скрытому параметру (часть 32б): «Без смещения — остеосинтез шейки бедра винтами.»
