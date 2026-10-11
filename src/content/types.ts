@@ -652,7 +652,7 @@ export type Season = 'winter' | 'spring' | 'summer' | 'autumn';
 // --- каталог больницы (spec 2026-09-own-hospital) ------------------------------------------
 
 export type Cell = [number, number];
-export type ObjectKind = 'bed' | 'chair' | 'desk' | 'couch' | 'cabinet' | 'machine' | 'plant' | 'sink' | 'bench' | 'xray' | 'table' | 'ecg' | 'analyzer' | 'or_table' | 'anesthesia' | 'us' | 'monitor' | 'ct';
+export type ObjectKind = 'bed' | 'chair' | 'desk' | 'couch' | 'cabinet' | 'machine' | 'plant' | 'sink' | 'bench' | 'xray' | 'table' | 'ecg' | 'analyzer' | 'or_table' | 'anesthesia' | 'us' | 'monitor' | 'ct' | 'mri';
 export type RoomSizeId = 'S' | 'M' | 'L';
 
 /**
@@ -731,7 +731,7 @@ export interface Equipment {
   gen: Text;
   /** куда ставят: монитор с дефибриллятором — в смотровую приёмного и в палату интенсивной терапии (часть 38а) */
   rooms: Id[];
-  sprite: 'ecg' | 'analyzer' | 'xray' | 'or_table' | 'anesthesia' | 'us' | 'monitor' | 'ct';
+  sprite: 'ecg' | 'analyzer' | 'xray' | 'or_table' | 'anesthesia' | 'us' | 'monitor' | 'ct' | 'mri';
   upgradeOf?: Id;
   /** своё место в помещении — номер из `slots`; занято — первое свободное */
   slot?: number;

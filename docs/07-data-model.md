@@ -305,7 +305,7 @@ interface RoomSize {
 }
 interface Equipment {
   id: Id; name: Text; gen: Text; rooms: Id[]; upgradeOf?: Id;   // rooms — с 0.3.3, было room: Id
-  sprite: 'ecg' | 'analyzer' | 'xray' | 'or_table' | 'anesthesia' | 'us' | 'monitor' | 'ct';  // monitor — 0.3.3, ct — 0.3.9
+  sprite: 'ecg' | 'analyzer' | 'xray' | 'or_table' | 'anesthesia' | 'us' | 'monitor' | 'ct' | 'mri';  // monitor — 0.3.3, ct — 0.3.9, mri — 0.4.3
   slot?: number;                         // своё место в помещении (стол — под пациентом, 0.0.45)
   price: number; upkeep: number;
   breakdown: P;                          // шанс поломки за день работы; поломок в 0.2.0 нет
@@ -501,6 +501,11 @@ interface Patient {
   обследование или жалоба). У `Venue` — `done` (сделанные обследования, и те, чей результат не пришёл), у оценки плана —
   `examHarms: { exam, by, known }[]` (`examHarmsOf`), у исхода — `examHarm: { exam, by }`, в разборе — замечания
   `safety.examHarmKnown` и `safety.examHarmUnchecked`. Схема сохранения прежняя: исход без `examHarm` — как был.
+  С частью 50б — кабинет МРТ: помещение `room.mri` (рентгенолаборант и рентгенолог, `admits: [dept.neurology]`, как у
+  кабинета КТ), аппарат `eq.mri_15` с рисунком `mri` (`ObjectKind` и `RoomType` — `mri`), обследование `exam.mri_head`;
+  у карты — место `spots.mri` и фигурки `mriTech`, `mriDoctor`. У вида `head` в `ResultImage` — необязательный `mode:
+  'mri'` (срез рисуется в режиме МРТ, `HeadSlice` уже умел, часть 20); очаг ишемии и очаг в височной доле — клин
+  `HeadFocus`. Новых полей в записях нет. Схема сохранения прежняя.
 - С 0.4.0 — у главы необязательный промежуток обучения (`Chapter.tutorialGap`, минут; spec 2026-10-chapter-3, часть
   46в): заданные пациенты приходят по порядку списка, каждый — не раньше чем через столько минут после прежнего. Схема
   сохранения прежняя: поле — у главы в базе, не в сохранении.

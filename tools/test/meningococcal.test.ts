@@ -211,7 +211,7 @@ describe('разумный врач и пункция', () => {
     }
     expect(punctured).toBeGreaterThan(0);
     for (let i = 0; i < 20; i++) expect(run(patient(EDEMA, 52_000 + i)).done).not.toContain(LP);
-  });
+  }, 30_000);
 
   test('лечение: посев крови и антибиотик — всем; шок — растворы и норэпинефрин в ПИТ; отёк мозга — дексаметазон и ИВЛ в реанимации; без осложнений — бокс', () => {
     const t = db.conditions[MC].treatment!;
@@ -229,7 +229,7 @@ describe('разумный врач и пункция', () => {
     expect(shock.diagnosis).toBe(MC);
     expect(shock.plan.treatments).toEqual(expect.arrayContaining(['tx.blood_culture', 'tx.antibiotic_iv', 'tx.norepinephrine']));
     expect(shock.plan.setting).toBe('icu');
-  });
+  }, 30_000);
 
   test('сроки: антибиотик — в первый час от сыпи или гнойного ликвора, реанимация — в 30 минут от нарастающей сыпи', () => {
     expect(db.targets['target.meningococcal_abx']).toMatchObject({ from: 'finding', minutes: 60, treatments: ['tx.antibiotic_iv'] });

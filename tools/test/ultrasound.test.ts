@@ -86,13 +86,14 @@ describe('кабинет УЗИ: где можно сделать', () => {
       const v = shiftCaseView()!;
       // УЗИ почек (часть 30г) — в том же кабинете; тропонин (часть 39в) — кровь в смотровой приёмного, её нет, и
       // люмбальной пункции тоже (spec 2026-10-chapter-4, часть 50а); кабинета КТ тоже нет (часть 40), КТ-ангиография —
-      // там же (часть 41а), груди — тоже (часть 43а); УЗИ сердца — в кабинете УЗИ (часть 43д)
+      // там же (часть 41а), груди — тоже (часть 43а); УЗИ сердца — в кабинете УЗИ (часть 43д); кабинета МРТ нет (часть 50б)
       expect(v.unavailable).toEqual({
         'exam.echo': T.sandbox.examBlock.none('кабинета УЗИ'),
         [US]: T.sandbox.examBlock.none('кабинета УЗИ'), 'exam.us_kidney': T.sandbox.examBlock.none('кабинета УЗИ'), 'exam.us_leg_arteries': T.sandbox.examBlock.none('кабинета УЗИ'),
         'exam.us_leg_veins': T.sandbox.examBlock.none('кабинета УЗИ'), 'exam.troponin_hs': T.sandbox.examBlock.none('смотровой приёмного'),
         'exam.lumbar_puncture': T.sandbox.examBlock.none('смотровой приёмного'),
         'exam.ct_head': T.sandbox.examBlock.none('кабинета КТ'), 'exam.cta_head': T.sandbox.examBlock.none('кабинета КТ'), 'exam.cta_chest': T.sandbox.examBlock.none('кабинета КТ'),
+        'exam.mri_head': T.sandbox.examBlock.none('кабинета МРТ'),
       });
     });
   });

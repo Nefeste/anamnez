@@ -73,7 +73,8 @@ describe('каталог', () => {
     expect(sah).toMatchObject({ department: 'dept.neurology', system: 'nerves', severity: 'critical', icd10: 'I60.9' });
     expect(sah.arrival).toBeUndefined();
     for (const c of [ich, sah]) {
-      expect(c.confirm).toEqual([CT, CTA]);
+      // с частью 50б — и МРТ: кровь и гематому она видит не хуже КТ (523_3)
+      expect(c.confirm).toEqual([CT, CTA, 'exam.mri_head']);
       expect(c.sources[0].url).toBe('https://cr.minzdrav.gov.ru/view-cr/523_3');
     }
     // мужчин в 1,6 раза больше; аневризмы у женщин в 1,5 раза чаще (523_3, раздел 1.3)

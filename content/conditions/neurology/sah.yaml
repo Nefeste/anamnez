@@ -63,7 +63,7 @@ findings:
   - f: lab.csf_blood
     band: { pct: 100 }
     note: "субарахноидальное кровоизлияние — кровь в пространстве, где ликвор, у каждого такого больного (523_3, раздел 2.4: пункция — для определения крови в ликворе)"
-confirm: [exam.ct_head, exam.cta_head]
+confirm: [exam.ct_head, exam.cta_head, exam.mri_head]
 redFlags: [sym.thunderclap, sign.neck_stiffness]
 differential: [cond.migraine, cond.tension_headache]
 treatment:

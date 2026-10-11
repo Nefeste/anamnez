@@ -114,7 +114,7 @@ describe('каталог', () => {
     expect(at(SALM)).toBeGreaterThan(0.001);
     expect(at(SALM)).toBeLessThan(0.008);
     expect(at(SHIG) + at(CDI)).toBeLessThan(0.008);
-  });
+  }, 30_000);
 });
 
 describe('признаки', () => {

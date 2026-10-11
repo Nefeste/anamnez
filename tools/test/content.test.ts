@@ -161,8 +161,9 @@ describe('валидатор базы', () => {
 describe('каталог больницы', () => {
   test('собран: у помещений — что открывают, у аппаратов — какие обследования, у должностей — где работают', () => {
     const { db } = buildDb();
-    // с частью 47 (spec 2026-10-chapter-4) — и реанимация, с частью 49а — бокс инфекционного отделения
-    expect(Object.keys(db.rooms)).toHaveLength(18);
+    // с частью 47 (spec 2026-10-chapter-4) — и реанимация, с частью 49а — бокс инфекционного отделения, с частью 50б —
+    // кабинет МРТ
+    expect(Object.keys(db.rooms)).toHaveLength(19);
     // нанятый врач (spec 2026-09-hired-doctors): встаёт на место врача, нужна ординаторская с местами
     expect(db.roles['role.therapist']).toMatchObject({ hire: true, stands: 'role.doctor', needs: 'room.staff', rooms: ['room.office'] });
     expect(db.rooms['room.staff'].sizes.map(z => z.places)).toEqual([2, 4]);

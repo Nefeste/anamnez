@@ -88,7 +88,8 @@ const ICU = (treatments: Id[]): Plan => ({ treatments: [...treatments].sort(), s
 describe('каталог: инсульт, КТ-ангиография, тромболизис', () => {
   test('инсульт — неврология, критический; привозит только скорая; неврологию принимает больница с кабинетом КТ', () => {
     const c = db.conditions[STROKE];
-    expect(c).toMatchObject({ department: 'dept.neurology', severity: 'critical', arrival: 'ambulance', settles: true, stay: [2, 3], confirm: [CT, CTA], redFlags: SYMS });
+    // с частью 50б подтверждает и МРТ (814_1, раздел 2.4)
+    expect(c).toMatchObject({ department: 'dept.neurology', severity: 'critical', arrival: 'ambulance', settles: true, stay: [2, 3], confirm: [CT, CTA, 'exam.mri_head'], redFlags: SYMS });
     expect(db.rooms['room.ct'].admits).toEqual(['dept.neurology']);
     // первой линии нет: тромболизис — по окну и тяжести, антиагрегант — без него, место — ПИТ или перевод
     expect(c.treatment!.firstLine).toEqual([]);
@@ -416,10 +417,11 @@ describe('сроки', () => {
   test('осмотр — 10 минут, КТ или КТ-ангиография — 40, тест глотания — 3 часа, и только тем, кто остаётся у нас', () => {
     // с частью 41б осмотр и КТ — и при прошедших слабости и нарушении речи: всем с подозрением на ОНМК
     const onmk = [...SYMS, 'sym.transient_weakness', 'sym.transient_speech'];
-    // с частью 41в КТ — и при внезапной сильнейшей головной боли, и всем, у кого КТ показала кровь
+    // с частью 41в КТ — и при внезапной сильнейшей головной боли, и всем, у кого КТ показала кровь; с частью 50б срок
+    // закрывает и МРТ
     expect([db.targets['target.stroke_exam'], db.targets['target.stroke_ct'], db.targets['target.stroke_swallow']].map(t => [t.complaints, t.findings, t.exams, t.minutes, t.stays ?? false])).toEqual([
       [onmk, [], [NEURO], 10, false],
-      [[...onmk, 'sym.thunderclap'], ['img.ct_blood'], [CT, CTA], 40, false],
+      [[...onmk, 'sym.thunderclap'], ['img.ct_blood'], [CT, CTA, 'exam.mri_head'], 40, false],
       [SYMS, [], [SWALLOW], 180, true],
     ]);
     const p = find(x => x.complaints.includes('sym.weakness_one_side'));

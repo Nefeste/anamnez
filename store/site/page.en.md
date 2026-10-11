@@ -36,7 +36,7 @@ shots:
 card:
   text: Patients come to you with real illnesses and injuries, and almost every sign stays hidden until you ask, examine or order a test. Make a diagnosis, choose a treatment and see the outcome — and between shifts, build your own hospital.
   points:
-    - 64 conditions, 23 injuries; each patient’s own X-rays, ultrasound, CT and ECGs
+    - 65 conditions, 23 injuries; each patient’s own X-rays, scans and ECGs
     - Your own hospital with an emergency department, wards and an operating room
     - A review of every visit, a campaign with a mentor and a case of the day
     - Free, offline and ad-free
@@ -72,7 +72,7 @@ in Russian.
   emergency department, wards and an operating room, where a vascular unit with a CT room and an
   intensive care ward opens. The first shift is with a mentor; after that come letters and tasks
   without deadlines.
-- **Your own hospital.** Offices, a lab, X-ray, ultrasound and CT rooms, an emergency department, wards
+- **Your own hospital.** Offices, a lab, X-ray, ultrasound, CT and MRI rooms, an emergency department, wards
   and an operating room, hiring, the cash desk. Doctors you hire see patients on their own. Insurance
   pays for a justified diagnosis and for tests that were indicated.
 - **Emergency department.** The ambulance brings in the seriously ill, and urgency is checked
@@ -82,7 +82,7 @@ in Russian.
 
 ## What’s inside
 
-- 64 conditions and 23 injuries. At the clinic — 38 conditions a general practitioner sees: from
+- 65 conditions and 23 injuries. At the clinic — 38 conditions a general practitioner sees: from
   colds and flu to pneumonia, angina, heart attack, hypertensive crisis, pericarditis, acute heart failure, atrial fibrillation, tachycardias, heart block, pulmonary embolism, hypoglycaemia, nosebleeds and anaphylactic shock. In a hospital with an
   emergency department — 13 more surgical ones, from biliary colic to a perforated ulcer, bowel
   obstruction, deep vein thrombosis and acute ischaemia of the leg, and injuries: fractures, knee ligament tears, a torn calf muscle,
@@ -99,7 +99,9 @@ in Russian.
   anticonvulsant within 5 minutes and the intensive care unit. With the isolation rooms of an infectious
   diseases ward — gut infections: salmonellosis, shigellosis and C. difficile colitis after antibiotics —
   and meningococcal disease: intravenous antibiotics within the first hour, and a lumbar puncture only
-  without contraindications; an infectious patient is never put in a shared ward.
+  without contraindications; an infectious patient is never put in a shared ward. Fever with odd
+  behaviour and seizures is herpes simplex encephalitis: intravenous aciclovir at once, without
+  waiting for the spinal fluid PCR, and MRI shows the temporal lobe lesion.
 - Wounds and burns as in a real emergency department: stitch now or delay the stitches, check the
   finger tendons, measure a burn with the patient’s palms and its depth with a pinprick, tetanus
   shots by vaccination records, and after a dog bite, a rabies vaccine with immunoglobulin.
@@ -108,7 +110,7 @@ in Russian.
   congestion and pulmonary oedema,
   abdominal, leg vein and leg artery ultrasound — a vein with a clot won’t compress under the probe,
   a blocked artery looks grey inside — 12-lead ECGs with ST elevation in the leads of the
-  affected wall and atrial fibrillation, and a CT slice of the head.
+  affected wall and atrial fibrillation, and a CT or MRI slice of the head.
 - Decision rules from clinical guidelines: whether an ankle, foot or knee X-ray is needed, whether a
   CT scan is needed after a blow to the head, whether a leg vein ultrasound is needed for leg pain —
   by the Wells score and D-dimer.

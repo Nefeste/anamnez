@@ -1,7 +1,7 @@
 // «Виртуальный врач» (`docs/05-content.md` §6, `docs/09-testing.md` §3): три стратегии,
 // которыми проверяется база. Шаг разумного врача (`nextStep`) — и нанятый врач своей больницы
 // (spec 2026-09-hired-doctors): тот делает шаги по одному, с порогами своего навыка.
-import { byValue, type ContentDb, type Exam, type Id, type Target } from '../../content/types';
+import { byParams, byValue, type ContentDb, type Exam, type Id, paramsOf, type Target } from '../../content/types';
 import { Rng } from '../core/rng';
 import { complaintObservations, examFits, runExam } from './exams';
 import { type Belief, contextOf, expectedGain, knownFacts, likelyParams, paramBeliefs, paramGain, posterior } from './infer';
@@ -184,6 +184,33 @@ function clockQuestion(db: ContentDb, condId: Id | undefined, patient: Patient, 
   const asking = [...new Set(clocks.filter(f => !obs.some(o => o.f === f)).flatMap(f => db.revealedBy[f] ?? []))]
     .filter(id => exams.includes(id) && !done.includes(id) && db.exams[id].routineFor?.some(f => patient.complaints.includes(f)));
   return asking.sort((a, b) => examCost(db, a) - examCost(db, b) || (a < b ? -1 : 1))[0];
+}
+
+const gatedCache = new WeakMap<ContentDb, ReadonlySet<Id>>();
+
+/**
+ * Обследования, которые выбирают по часам от начала болезни (spec 2026-10-chapter-4, часть 50б): у болезни есть
+ * производный параметр по параметрам вместе с часами (тромбэктомия — окклюзия, NIHSS и меньше 6 часов от начала), и
+ * обследование проверяет признак, который зависит от другого его параметра: окклюзию видит КТ-ангиография. КТ и МРТ — не
+ * такие: какую из них делать, часы не решают.
+ */
+function clockGated(db: ContentDb): ReadonlySet<Id> {
+  const cached = gatedCache.get(db);
+  if (cached) return cached;
+  const out = new Set<Id>();
+  for (const c of Object.values(db.conditions)) {
+    if (!c.derived) continue;
+    const clocks = new Set(Object.entries(c.derived).flatMap(([k, d]) => (byValue(d) && d.clock ? [k] : [])));
+    const gated = new Set(Object.values(c.derived).flatMap(d => {
+      if (!byParams(d)) return [];
+      const keys = Object.keys(paramsOf(d));
+      return keys.some(k => clocks.has(k)) ? keys.filter(k => !clocks.has(k)) : [];
+    }));
+    const shows = new Set(c.findings.filter(l => Object.keys(l.when ?? {}).some(k => gated.has(k))).map(l => l.f));
+    for (const e of Object.values(db.exams)) if (e.checks.some(k => shows.has(k.f))) out.add(e.id);
+  }
+  gatedCache.set(db, out);
+  return out;
 }
 
 /**
@@ -519,10 +546,13 @@ function nextStepFor(db: ContentDb, patient: Patient, obs: readonly Observation[
     if (pressing) {
       // только сначала — когда началось (пара минут): без часов от начала не выбрать между КТ и КТ-ангиографией. С
       // частью 46б — если и после вопроса будет из чего выбрать: КТ-ангиография после него к концу срока уже не
-      // успеет — сразу КТ, а когда началось, спросят, пока она идёт
+      // успеет — сразу КТ, а когда началось, спросят, пока она идёт. С частью 50б выбор — между тем, что выбирают по
+      // часам, и остальным: успеют КТ и МРТ, а КТ-ангиография — нет, и спрашивать незачем
       const clock = clockQuestion(db, leadOf()?.id, patient, obs, opt.exams, done);
       const after = clock === undefined ? [] : inTime(db, pressing.target, opt.exams, elapsed + examMinutes(db.exams[clock]), opt.venue);
-      const exam = clock === undefined ? pressing.exam : after.length > 1 ? clock : (after[0] ?? fastest(db, pressing.target.exams.filter(e => opt.exams.includes(e)), opt.venue));
+      const byClock = after.filter(e => clockGated(db).has(e));
+      const choice = byClock.length > 0 && byClock.length < after.length;
+      const exam = clock === undefined ? pressing.exam : choice ? clock : (after[0] ?? fastest(db, pressing.target.exams.filter(e => opt.exams.includes(e)), opt.venue));
       return { step: { kind: 'exam', exam }, phase: now };
     }
     // вопросы всем и то, что делают каждому с такой жалобой (часть 32г-2: неврологический осмотр при ране головы)

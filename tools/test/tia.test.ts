@@ -74,7 +74,8 @@ const truthPoints = (p: Patient) => pointsOf(rule().points!, p.age, f => has(p, 
 describe('каталог', () => {
   test('ТИА — неврология, серьёзная; приходят сами и привозит скорая; КТ — всем; ПИТ', () => {
     const c = db.conditions[TIA];
-    expect(c).toMatchObject({ department: 'dept.neurology', severity: 'serious', confirm: ['exam.ct_head'], redFlags: [WEAK, SPEECH], stay: [1, 2], selfLimiting: true });
+    // с частью 50б подтверждает и МРТ: свежего очага ишемии у ТИА нет (814_1)
+    expect(c).toMatchObject({ department: 'dept.neurology', severity: 'serious', confirm: ['exam.ct_head', 'exam.mri_head'], redFlags: [WEAK, SPEECH], stay: [1, 2], selfLimiting: true });
     expect(c.arrival).toBeUndefined();
     expect(c.treatment!.firstLine).toEqual([]);
     expect(c.treatment!.setting).toEqual({ default: 'icu' });

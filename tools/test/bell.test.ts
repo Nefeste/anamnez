@@ -175,7 +175,8 @@ describe('сроки и правила', () => {
     const cands = candidatesOf(db, ED);
     const before = complaintObservations(p);
     const after = [...before, seen(PERIPHERAL, NEURO), seen(ONSET, ASK, true, 20)];
-    expect(targetExams(db, p)).toEqual(['exam.ct_head', 'exam.cta_head', 'exam.neuro_exam', 'exam.swallow_test']);
+    // с частью 50б срок закрывает и МРТ
+    expect(targetExams(db, p)).toEqual(['exam.ct_head', 'exam.cta_head', 'exam.mri_head', 'exam.neuro_exam', 'exam.swallow_test']);
     expect(targetExams(db, p, after)).toEqual(['exam.neuro_exam']);
     expect(urgentExam(db, p, [NEURO], exams, Infinity, undefined, before)).toBe(CT);
     expect(urgentExam(db, p, [NEURO], exams, Infinity, undefined, after)).toBeUndefined();

@@ -66,8 +66,11 @@ export type ResultImage =
   | { kind: 'abdomen'; freeGas: boolean; levels: boolean; seed: number }
   /** снимок костей (часть 32): запястье или голеностоп в двух проекциях — линия перелома и смещение, что нашёл рентгенолог */
   | ({ kind: 'bone'; seed: number } & BoneFindings)
-  /** срез головы на КТ (spec 2026-10-chapter-3, часть 40): кровь внутри черепа — светлое пятно, если её показала КТ */
-  | { kind: 'head'; seed: number; findings: HeadFindings }
+  /**
+   * срез головы на КТ (spec 2026-10-chapter-3, часть 40): кровь внутри черепа — светлое пятно, если её показала КТ; с
+   * частью 50б (spec 2026-10-chapter-4) — и на МРТ (`mode`), там же свежий очаг ишемии и очаг в височной доле
+   */
+  | { kind: 'head'; seed: number; findings: HeadFindings; mode?: 'mri' }
   /** срез груди на КТ-ангиографии (часть 43а): расслоение аорты — тип A или B, если его показала КТ */
   | { kind: 'chestCt'; seed: number; findings: ChestCtFindings };
 
@@ -491,7 +494,8 @@ function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observat
   // неё — обычный срез. С частью 41в — и КТ-ангиография (её первая серия — без контраста): гематома —
   // пятно по объёму, больше 30 см³ — со смещением срединных структур; кровь под паутинной оболочкой —
   // светлые борозды и щели
-  if (exam === 'exam.ct_head' || exam === 'exam.cta_head') {
+  if (exam === 'exam.ct_head' || exam === 'exam.cta_head' || exam === 'exam.mri_head') {
+    const mri = exam === 'exam.mri_head';
     const hematoma = shown('img.ct_hematoma_large') ?? shown('img.ct_hematoma');
     const sah = shown('img.ct_sah') !== undefined;
     const blood = shown('img.ct_blood') ? sideOf('img.ct_blood') : undefined;
@@ -499,13 +503,20 @@ function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observat
     // площадь пятна на срезе — как объём в степени 2/3; 80 см³ — наибольшее
     const size = hematoma?.value !== undefined ? Math.min(1, Math.max(0.15, (hematoma.value / 80) ** (2 / 3))) : 0.45;
     const shift = hematoma?.value !== undefined && hematoma.value >= 30 ? Math.min(1, (hematoma.value - 20) / 60) : 0;
+    // без крови — клин от коры (часть 50б): очаг в височной доле или свежий очаг ишемии — их ищет только МРТ, на её срезе
+    // они светлые; на срезе один очаг — кровь, потом воспаление, потом ишемия
+    const temporal = sideOf('img.temporal_lesion');
+    const ischemia = mri ? sideOf('img.mri_ischemia') : undefined;
+    const wedgeSide = side || sah ? undefined : temporal ?? ischemia;
+    const wedge = wedgeSide ? { density: mri ? 'high' as const : 'low' as const, shape: 'wedge' as const, side: wedgeSide, region: 'middle' as const, size: temporal ? 0.55 : 0.65 } : undefined;
     return {
       kind: 'head', seed,
       findings: {
-        ...(side ? { focus: { density: 'high' as const, shape: 'blob' as const, side, region: 'middle' as const, size } } : {}),
+        ...(side ? { focus: { density: 'high' as const, shape: 'blob' as const, side, region: 'middle' as const, size } } : wedge ? { focus: wedge } : {}),
         ...(side && shift > 0 ? { shift } : {}),
         ...(sah ? { sah: 0.7 } : {}),
       },
+      ...(mri ? { mode: 'mri' as const } : {}),
     };
   }
   // кости (часть 32): что нашёл рентгенолог — линия перелома, смещение, признаки нестабильности;

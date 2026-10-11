@@ -127,6 +127,9 @@ findings:
   - { f: lab.creatinine_high, band: often, when: { form: [sepsis, mixed], shock: [yes] } }
   # эпиданамнез (раздел 2.1): контакт с лихорадящими больными в последние 7–10 дней, закрытый коллектив — игровая оценка
   - { f: hx.sick_contact, band: sometimes }
+  # психомоторное возбуждение при отёке-набухании мозга (spec 2026-10-chapter-4, часть 50б; 1020_1, раздел 1.6) — со слов
+  # родных «ведёт себя странно»; доля — игровая оценка. В конце списка: прежние больные остались прежними
+  - { f: sym.strange_behavior, band: often, when: { form: [meningitis, mixed], edema: [yes] } }
 # клинико-лабораторный диагноз допустим и при отрицательных посеве и ПЦР (раздел 2.3): лечение ликвора не ждёт
 confirm: clinical
 redFlags: [vital.bp_low, sign.rash_spreading, sign.gcs_coma]

@@ -2569,7 +2569,7 @@ try {
   await page.getByTestId('visit-finish').click();
   await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
   const bellReview = await page.locator('body').innerText();
-  check(bellReview.includes('Невропатия лицевого нерва') && !/[Нн]е назначено|не показано|вредно|Недооценили тяжесть|Обоснованность [CD]|КТ при подозрении на инсульт/.test(bellReview),
+  check(bellReview.includes('Невропатия лицевого нерва') && !/[Нн]е назначено|не показано|вредно|Недооценили тяжесть|Обоснованность [CD]|КТ (или МРТ )?при подозрении на инсульт/.test(bellReview),
     `Невропатия лицевого нерва: преднизолон внутрь, искусственная слеза, домой — разбор «${bellReview.replace(/\n/g, ' · ').slice(0, 300)}»`);
   const bellLine = await text(page, 'visit-target-line-0');
   check((await text(page, 'visit-targets-grade')) === 'A' && /^• Осмотр при подозрении на инсульт: через \d+\u00a0мин после прихода — в срок$/.test(bellLine)

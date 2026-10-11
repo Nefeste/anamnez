@@ -119,7 +119,7 @@ findings:
   - f: lab.csf_blood
     band: { pct: 50 }
     note: "прорыв крови в желудочковую систему — у половины пациентов (523_3, раздел 1.6)"
-confirm: [exam.ct_head, exam.cta_head]
+confirm: [exam.ct_head, exam.cta_head, exam.mri_head]
 redFlags: [sym.weakness_one_side, sym.speech_trouble, sym.face_droop]
 differential: [cond.stroke_ischemic]
 treatment:

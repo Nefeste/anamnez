@@ -75,8 +75,8 @@ findings:
   # давление 140/90 и выше — пункт ABCD2; доля — игровая оценка
   - { f: vital.bp_high, band: usually }
   - { f: sym.headache, band: rarely }
-# КТ или МРТ — всем с признаками ОНМК (814_1, разделы 1.6 и 2.4): ТИА — когда на снимке инфаркта нет
-confirm: [exam.ct_head]
+# КТ или МРТ — всем с признаками ОНМК (814_1, разделы 1.6 и 2.4): ТИА — когда на снимке инфаркта нет; МРТ — с частью 50б
+confirm: [exam.ct_head, exam.mri_head]
 redFlags: [sym.transient_weakness, sym.transient_speech]
 treatment:
   # первой линии нет: антиагреганты — по баллам ABCD2; тромболизиса нет — нет и дефицита

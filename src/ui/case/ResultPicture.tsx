@@ -43,10 +43,11 @@ export function ResultPicture({ image }: { image: ResultImage }) {
     );
   }
   if (image.kind === 'head') {
-    // срез КТ (часть 40) — квадрат, не шире колонки сектора УЗИ: кровь у свода видна и на телефоне
+    // срез КТ (часть 40) — квадрат, не шире колонки сектора УЗИ: кровь у свода видна и на телефоне; МРТ (часть 50б) — тот
+    // же срез в своём режиме
     return (
-      <View testID="result-ct" style={{ borderRadius: 6, overflow: 'hidden', alignSelf: 'center' }}>
-        <HeadSlice width={Math.min(w, 360)} seed={image.seed} findings={image.findings} />
+      <View testID={image.mode === 'mri' ? 'result-mri' : 'result-ct'} style={{ borderRadius: 6, overflow: 'hidden', alignSelf: 'center' }}>
+        <HeadSlice width={Math.min(w, 360)} seed={image.seed} findings={image.findings} mode={image.mode ?? 'ct'} />
       </View>
     );
   }
