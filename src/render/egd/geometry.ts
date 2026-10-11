@@ -24,6 +24,8 @@ export interface EgdFindings {
   tear?: { bleeding: boolean; size: number };
   /** кровь в просвете, а источника не видно */
   blood?: boolean;
+  /** гастрит (часть 53б): диффузное покраснение и отёк слизистой — по Киотской характеристике, при H. pylori */
+  gastritis?: boolean;
 }
 
 export interface EgdGeometry {
@@ -46,6 +48,8 @@ export interface EgdGeometry {
   tear?: { outline: Pt[]; axis: [Pt, Pt]; width: number; bleeding: boolean };
   /** кровь: лужица у источника и струйки — вниз по стенке или в просвет; `tip` — ширина в конце пути, доля начальной */
   blood?: { pool: Pt[]; streams: { path: Pt[]; width: number; tip: number }[] };
+  /** гастрит: пятна покраснения по стенке, не в просвете */
+  erythema?: Round[];
 }
 
 export const FIELD: Round = { c: [0.5, 0.5], r: 0.47 };
@@ -244,6 +248,22 @@ export function egdGeometry(findings: EgdFindings, seed: number): EgdGeometry {
     blood = { pool: [...outer, ...edge], streams: [] };
   }
 
+  // гастрит (часть 53б): пятна покраснения по всей стенке антрального отдела, гуще вокруг привратника; не в просвете
+  let erythema: Round[] | undefined;
+  if (findings.gastritis && view === 'stomach') {
+    const erng = rng.fork('erythema');
+    const eu = () => erng.int(1000) / 1000;
+    erythema = [];
+    for (let k = 0; k < 60 && erythema.length < 9; k++) {
+      const near = erythema.length < 4;
+      const t = eu() * TAU, d = near ? lr * (1.8 + eu() * 2.2) : Math.sqrt(eu()) * field.r * 0.85;
+      const c: Pt = near ? [lc[0] + d * Math.cos(t), lc[1] + d * Math.sin(t)] : [field.c[0] + d * Math.cos(t), field.c[1] + d * Math.sin(t)];
+      const r = 0.06 + eu() * 0.07;
+      if (dist(c, lc) < lr + r * 0.6 || dist(c, field.c) + r * 0.5 > field.r) continue;
+      erythema.push({ c, r });
+    }
+  }
+
   // блики: несколько мелких по стенке и пара крупных у света — в желудке на стенке под торцом эндоскопа, в кардии на
   // стенке вокруг просвета; не в просвете. Если крупным места нет (свет закрыла большая язва), — только мелкие
   const glints: EgdGeometry['glints'] = [];
@@ -268,5 +288,5 @@ export function egdGeometry(findings: EgdFindings, seed: number): EgdGeometry {
     glints.push({ c, rx, ry: rx * (0.35 + gu() * 0.3), angle: gu() * Math.PI });
   }
 
-  return { view, field, light, lumen, folds, ...(zline ? { zline } : {}), glints, ...(ulcer ? { ulcer } : {}), ...(tear ? { tear } : {}), ...(blood ? { blood } : {}) };
+  return { view, field, light, lumen, folds, ...(zline ? { zline } : {}), glints, ...(ulcer ? { ulcer } : {}), ...(tear ? { tear } : {}), ...(blood ? { blood } : {}), ...(erythema ? { erythema } : {}) };
 }

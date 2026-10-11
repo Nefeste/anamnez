@@ -202,7 +202,7 @@ export interface EgdCase {
 
 const g = T.spikes.imaging.egd;
 
-/** ЭГДС (spec 2026-10-chapter-4, часть 53а-2): слизистая желудка, дно язвы по Форресту, разрыв кардии, кровь без источника. */
+/** ЭГДС (spec 2026-10-chapter-4, часть 53а-2): слизистая желудка, дно язвы по Форресту, разрыв кардии, кровь без источника; с частью 53б — гастрит. */
 export const EGD_CASES: EgdCase[] = [
   { key: 'egd-normal', findings: {}, seed: 1, label: g.normal },
   { key: 'egd-clean', findings: { ulcer: { base: 'clean', size: 0.6 } }, seed: 2, label: g.clean },
@@ -213,4 +213,6 @@ export const EGD_CASES: EgdCase[] = [
   { key: 'egd-tear', findings: { tear: { bleeding: false, size: 0.6 } }, seed: 7, label: g.tear },
   { key: 'egd-tear-bleeding', findings: { tear: { bleeding: true, size: 0.7 } }, seed: 8, label: g.tearBleeding },
   { key: 'egd-blood', findings: { blood: true }, seed: 9, label: g.blood },
+  // гастрит с H. pylori (часть 53б)
+  { key: 'egd-gastritis', findings: { gastritis: true }, seed: 10, label: g.gastritis },
 ];

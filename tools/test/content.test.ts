@@ -172,9 +172,9 @@ describe('каталог больницы', () => {
     expect(db.rooms['room.procedure'].collects).toContain('exam.cbc');
     expect(db.rooms['room.lab'].equipment).toContain('eq.biochem_analyzer');
     // NT-proBNP (часть 43в) — тоже на иммунохимическом; с частью 49б — антиген и токсины C. difficile в кале, с частью 51 —
-    // антитела к боррелиям и к вирусу клещевого энцефалита
+    // антитела к боррелиям и к вирусу клещевого энцефалита, с частью 53б — антиген H. pylori в кале
     expect(db.equipment['eq.immuno_analyzer'].exams).toEqual([
-      'exam.borrelia_elisa', 'exam.cdiff_stool', 'exam.d_dimer', 'exam.hantavirus_elisa', 'exam.hepatitis_markers', 'exam.nt_probnp', 'exam.tbe_elisa', 'exam.troponin_hs', 'exam.tsh',
+      'exam.borrelia_elisa', 'exam.cdiff_stool', 'exam.d_dimer', 'exam.hantavirus_elisa', 'exam.hepatitis_markers', 'exam.hp_stool', 'exam.nt_probnp', 'exam.tbe_elisa', 'exam.troponin_hs', 'exam.tsh',
     ]);
     expect(db.equipment['eq.xray_digital'].upgradeOf).toBe('eq.xray_analog');
     expect(db.roles['role.nurse'].rooms).toEqual(['room.box', 'room.ecg', 'room.emergency', 'room.endoscopy', 'room.icu', 'room.procedure', 'room.ricu', 'room.triage', 'room.ward']);
@@ -448,8 +448,9 @@ describe('каталог больницы', () => {
       edit(d, 'exams/troponin_hs.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.biochem_analyzer]');
       edit(d, 'exams/nt_probnp.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.biochem_analyzer]');
       // кал на C. difficile (часть 49б), антитела к боррелиям и к вирусу клещевого энцефалита (часть 51), маркёры гепатитов
-      // (часть 52а) и антитела к хантавирусам (часть 52б) — тоже
+      // (часть 52а), антитела к хантавирусам (часть 52б) и антиген H. pylori в кале (часть 53б) — тоже
       edit(d, 'exams/cdiff_stool.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.biochem_analyzer]');
+      edit(d, 'exams/hp_stool.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.biochem_analyzer]');
       edit(d, 'exams/borrelia_elisa.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.biochem_analyzer]');
       edit(d, 'exams/tbe_elisa.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.biochem_analyzer]');
       edit(d, 'exams/hepatitis_markers.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.biochem_analyzer]');

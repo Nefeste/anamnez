@@ -452,16 +452,20 @@ function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observat
     };
   }
   // ЭГДС (часть 53а-2): что показала — язва и что в её дне, разрыв кардии, кровь. Сосуд или сгусток, плоские пятна или
-  // чистое дно — одна строка находки на двоих классов Форреста: какой из двух, решает зерно пациента
+  // чистое дно — одна строка находки на два класса Форреста: какой из двух, решает зерно пациента. Плоские пятна (F2c) —
+  // след недавнего кровотечения: без рвоты кровью и чёрного стула дно у язвы чистое (часть 53б)
   if (exam === 'exam.egd') {
     const ulcer = shown('img.egd_ulcer') !== undefined;
     const bleeding = shown('img.egd_bleeding') !== undefined;
     const stigmata = shown('img.egd_stigmata') !== undefined;
+    const bled = known.some(o => o.shown && (o.f === 'sym.hematemesis' || o.f === 'sym.melena'));
     const odd = patientSeed % 2 === 1;
     const size = 0.35 + (patientSeed % 5) / 10;
-    const base = bleeding ? 'bleeding' : stigmata ? (odd ? 'vessel' : 'clot') : odd ? 'spots' : 'clean';
-    // язва — её дно; разрыв без язвы — кардия; кровь без найденного источника — кровь в просвете
-    const findings: EgdFindings = ulcer ? { ulcer: { base, size } } : shown('img.egd_tear') ? { tear: { bleeding, size } } : bleeding ? { blood: true } : {};
+    const base = bleeding ? 'bleeding' : stigmata ? (odd ? 'vessel' : 'clot') : bled && odd ? 'spots' : 'clean';
+    // язва — её дно; разрыв без язвы — кардия; кровь без найденного источника — кровь в просвете. Гастрит (часть 53б) — на
+    // стенке желудка, с язвой или без неё
+    const gastritis = shown('img.egd_gastritis') !== undefined ? { gastritis: true } : {};
+    const findings: EgdFindings = ulcer ? { ulcer: { base, size }, ...gastritis } : shown('img.egd_tear') ? { tear: { bleeding, size } } : bleeding ? { blood: true, ...gastritis } : gastritis;
     return { kind: 'egd', seed, findings };
   }
   if (exam === 'exam.ecg') {

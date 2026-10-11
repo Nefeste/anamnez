@@ -1,5 +1,5 @@
 // ЭГДС кодом (spec 2026-10-chapter-4, часть 53а-2; ADR 0013): поле зрения эндоскопа — язва и что в её дне по Форресту,
-// разрыв слизистой кардии, кровь без видимого источника. Геометрия — в долях кадра; рисунок без экрана (Skia через
+// разрыв слизистой кардии, кровь без видимого источника; с частью 53б — гастрит. Геометрия — в долях кадра; рисунок без экрана (Skia через
 // CanvasKit, tools/imaging/headless.ts): где бело, где красно и где темно, то же зерно — те же байты. Картинка в карте
 // пациента — по тому, что показала ЭГДС.
 import { beforeAll, describe, expect, test } from 'bun:test';
@@ -143,6 +143,27 @@ describe('ЭГДС: геометрия', () => {
     }
   });
 
+  test('гастрит: пятна покраснения — по стенке желудка, гуще у привратника, не в просвете и в поле зрения; в кардии — нет', () => {
+    for (const seed of SEEDS) {
+      const g = egdGeometry({ gastritis: true }, seed);
+      const e = g.erythema!;
+      expect(e.length).toBeGreaterThanOrEqual(6);
+      for (const p of e) {
+        expect(dist(p.c, g.lumen.c)).toBeGreaterThan(g.lumen.r + p.r * 0.5);
+        expect(dist(p.c, FIELD.c)).toBeLessThan(FIELD.r);
+      }
+      expect(e.filter(p => dist(p.c, g.lumen.c) < g.lumen.r * 4.2).length).toBeGreaterThanOrEqual(4);
+      // стенка и просвет — те же, что без гастрита; без него пятен нет
+      expect(JSON.stringify(g.folds)).toBe(JSON.stringify(egdGeometry({}, seed).folds));
+      expect(egdGeometry({}, seed).erythema).toBeUndefined();
+      // с язвой — и язва, и пятна; разрыв — вид из пищевода, гастрит там не рисуют
+      const both = egdGeometry({ ulcer: { base: 'clean', size: 0.5 }, gastritis: true }, seed);
+      expect(both.ulcer).toBeDefined();
+      expect(both.erythema).toBeDefined();
+      expect(egdGeometry({ tear: { bleeding: false, size: 0.5 }, gastritis: true }, seed).erythema).toBeUndefined();
+    }
+  });
+
   test('то же зерно — та же геометрия; стенка и просвет от находок не зависят; параметры вне пределов — ближайшие допустимые', () => {
     const f: EgdFindings = { ulcer: { base: 'vessel', size: 0.6 } };
     expect(JSON.stringify(egdGeometry(f, 11))).toBe(JSON.stringify(egdGeometry(f, 11)));
@@ -254,12 +275,28 @@ describe('ЭГДС: рисунок без экрана', () => {
     }
   });
 
+  test('гастрит: в пятнах слизистая краснее — зелёного меньше, чем у здоровой там же; у привратника — тоже', async () => {
+    for (const seed of few) {
+      const f: EgdFindings = { gastritis: true };
+      const g = egdGeometry(f, seed);
+      const sick = (await draw(f, seed)).rgba, well = (await draw({}, seed)).rgba;
+      const redness = (px: Uint8Array, pts: readonly Pt[]) => pts.reduce((a, p) => a + rgb(px, p)[0] / Math.max(1, rgb(px, p)[1]), 0) / pts.length;
+      const patches = g.erythema!.map(e => e.c);
+      expect(redness(sick, patches)).toBeGreaterThan(redness(well, patches) + 0.5);
+      const ring = Array.from({ length: 12 }, (_, i): Pt => {
+        const t = (i / 12) * 2 * Math.PI;
+        return [g.lumen.c[0] + 1.8 * g.lumen.r * Math.cos(t), g.lumen.c[1] + 1.8 * g.lumen.r * Math.sin(t)];
+      });
+      expect(redness(sick, ring)).toBeGreaterThan(redness(well, ring) + 0.25);
+    }
+  });
+
   test('то же зерно — те же байты; другое — другой снимок; все варианты «Проверок» рисуются', async () => {
     const f: EgdFindings = { ulcer: { base: 'spots', size: 0.5 } };
     const a = await draw(f, 4), b = await draw(f, 4), c = await draw(f, 5);
     expect(Buffer.from(a.png).equals(Buffer.from(b.png))).toBe(true);
     expect(Buffer.from(a.png).equals(Buffer.from(c.png))).toBe(false);
-    expect(EGD_CASES.map(k => k.key)).toEqual(['egd-normal', 'egd-clean', 'egd-spots', 'egd-vessel', 'egd-clot', 'egd-bleeding', 'egd-tear', 'egd-tear-bleeding', 'egd-blood']);
+    expect(EGD_CASES.map(k => k.key)).toEqual(['egd-normal', 'egd-clean', 'egd-spots', 'egd-vessel', 'egd-clot', 'egd-bleeding', 'egd-tear', 'egd-tear-bleeding', 'egd-blood', 'egd-gastritis']);
     for (const k of EGD_CASES) {
       expect((await draw(k.findings, k.seed)).png.length).toBeGreaterThan(1000);
       expect(k.label.length).toBeGreaterThan(0);
@@ -269,19 +306,28 @@ describe('ЭГДС: рисунок без экрана', () => {
 
 describe('ЭГДС: картинка в карте пациента', () => {
   const EGD = 'exam.egd';
-  const FINDINGS = ['img.egd_ulcer', 'img.egd_bleeding', 'img.egd_stigmata', 'img.egd_tear'];
+  const FINDINGS = ['img.egd_ulcer', 'img.egd_bleeding', 'img.egd_stigmata', 'img.egd_tear', 'img.egd_gastritis'];
+
+  const ASK = 'exam.ask_abdomen';
+  /** Карта с результатом ЭГДС; `bled` — расспрос показал рвоту кровью. */
+  const view = (primary: string, seed: number, bled: boolean) => {
+    const p = generatePatient(db, seed, { department: 'dept.surgery', departments: ['dept.therapy', 'dept.surgery'], season: 'autumn', primary, params: {} });
+    const input = (shown: readonly string[]): CaseInput => ({
+      version: 1, patient: p, clock: 600, minutesSpent: 0, money: 0, step: 1, pending: [], meanwhile: [], done: [ASK, EGD],
+      draft: { treatments: [], setting: 'home' },
+      arrived: [
+        { exam: ASK, step: 1, at: 590, obs: [{ f: 'sym.hematemesis', shown: bled, exam: ASK }] },
+        { exam: EGD, step: 1, at: 600, obs: FINDINGS.map((f): Observation => ({ f, shown: shown.includes(f), exam: EGD })) },
+      ],
+    });
+    const image = (shown: readonly string[]) => makeCaseView(input(shown)).groups.find(g => g.exam === EGD)!.image!;
+    return { p, image, ulcer: (shown: readonly string[]) => (image(shown) as { findings: EgdFindings }).findings.ulcer };
+  };
 
   test('по тому, что показала ЭГДС: язва и её дно, разрыв, кровь без источника; ничего — обычная слизистая', () => {
     for (const seed of [5301, 5302]) {
-      const p = generatePatient(db, seed, { department: 'dept.surgery', departments: ['dept.therapy', 'dept.surgery'], season: 'autumn', primary: 'cond.ulcer_bleeding', params: {} });
+      const { p, image, ulcer } = view('cond.ulcer_bleeding', seed, true);
       const odd = p.seed % 2 === 1;
-      const input = (shown: readonly string[]): CaseInput => ({
-        version: 1, patient: p, clock: 600, minutesSpent: 0, money: 0, step: 1, pending: [], meanwhile: [], done: [EGD],
-        draft: { treatments: [], setting: 'home' },
-        arrived: [{ exam: EGD, step: 1, at: 600, obs: FINDINGS.map((f): Observation => ({ f, shown: shown.includes(f), exam: EGD })) }],
-      });
-      const image = (shown: readonly string[]) => makeCaseView(input(shown)).groups.find(g => g.exam === EGD)!.image!;
-      const ulcer = (shown: readonly string[]) => (image(shown) as { findings: EgdFindings }).findings.ulcer;
       expect(image(['img.egd_ulcer', 'img.egd_bleeding'])).toMatchObject({ kind: 'egd', findings: { ulcer: { base: 'bleeding' } } });
       // сосуд или сгусток, пятна или чистое дно — одна находка на два класса Форреста: какой из двух, решает зерно пациента
       expect(ulcer(['img.egd_ulcer', 'img.egd_stigmata'])!.base).toBe(odd ? 'vessel' : 'clot');
@@ -294,5 +340,24 @@ describe('ЭГДС: картинка в карте пациента', () => {
       expect(image(['img.egd_bleeding'])).toMatchObject({ kind: 'egd', findings: { blood: true } });
       expect(image([])).toEqual({ kind: 'egd', seed: image(['img.egd_ulcer']).seed, findings: {} });
     }
+  });
+
+  test('плоские пятна в дне — след кровотечения: без рвоты кровью и чёрного стула дно у язвы чистое', () => {
+    for (const seed of [5301, 5302]) {
+      const { ulcer } = view('cond.dyspepsia_functional', seed, false);
+      expect(ulcer(['img.egd_ulcer'])!.base).toBe('clean');
+      // сосуд или сгусток в дне — по находке, как и при кровотечении
+      expect(['vessel', 'clot']).toContain(ulcer(['img.egd_ulcer', 'img.egd_stigmata'])!.base);
+    }
+  });
+
+  test('гастрит — на стенке желудка, с язвой и без неё; при разрыве — вид из пищевода, без гастрита', () => {
+    const { image } = view('cond.peptic_ulcer', 5303, false);
+    const findings = (shown: readonly string[]) => (image(shown) as { findings: EgdFindings }).findings;
+    expect(findings(['img.egd_gastritis'])).toEqual({ gastritis: true });
+    expect(findings(['img.egd_ulcer', 'img.egd_gastritis'])).toMatchObject({ ulcer: { base: 'clean' }, gastritis: true });
+    expect(findings(['img.egd_ulcer']).gastritis).toBeUndefined();
+    expect(findings(['img.egd_bleeding', 'img.egd_gastritis'])).toEqual({ blood: true, gastritis: true });
+    expect(findings(['img.egd_tear', 'img.egd_gastritis'])).toEqual({ tear: { bleeding: false, size: expect.any(Number) } });
   });
 });

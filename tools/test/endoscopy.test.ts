@@ -89,7 +89,8 @@ describe('эндоскопический кабинет', () => {
     expect(db.equipment['eq.videoendoscope']).toMatchObject({ rooms: [ROOM] });
     expect(db.roles['role.endoscopist']).toMatchObject({ reads: true });
     expect(db.exams[EGD]).toMatchObject({ kind: 'imaging', room: ROOM, equipment: ['eq.videoendoscope'], radiation: 'none', time: { procedure: 20, report: 5 } });
-    expect(db.exams[EGD].checks.map(c => c.f)).toEqual(['img.egd_ulcer', 'img.egd_bleeding', 'img.egd_stigmata', 'img.egd_tear']);
+    // с частью 53б — и гастрит, и быстрый уреазный тест на H. pylori
+    expect(db.exams[EGD].checks.map(c => c.f)).toEqual(['img.egd_ulcer', 'img.egd_bleeding', 'img.egd_stigmata', 'img.egd_tear', 'img.egd_gastritis', 'lab.h_pylori']);
     // что в дне язвы — только когда язва видна
     expect(db.exams[EGD].checks.find(c => c.f === 'img.egd_stigmata')!.given).toBe('img.egd_ulcer');
   });

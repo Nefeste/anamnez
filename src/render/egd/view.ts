@@ -15,6 +15,7 @@ const ESOPHAGUS = ['#f4cdc2', '#e3a99c', '#b77a6e', '#62322b'];
 const GASTRIC = ['#e88a79', '#cf6a5b'];
 const FIBRIN = '#f1e6c6';
 const RIM = '#d23f45';
+const HYPEREMIA = '#c42c2c';
 const VESSEL = '#7e1214';
 const CLOT = '#3d0a0a';
 const BLOOD = '#b0101a';
@@ -84,6 +85,16 @@ export function recordEgdView(width: number, findings: EgdFindings, seed: number
     const inner = radial(g.lumen.c, 0.26, ['#a8443a', GASTRIC[1], GASTRIC[0], rgba(GASTRIC[0], 0.85)], [0, 0.35, 0.8, 1]);
     inner.setMaskFilter(Skia.MaskFilter.MakeBlur(BlurStyle.Normal, 0.008 * W, true));
     c.drawPath(pathOf(g.zline), inner);
+  }
+
+  // 1а. Гастрит (часть 53б): антральный отдел краснее вокруг привратника, по стенке — размытые поля покраснения и отёка
+  if (g.erythema) {
+    c.drawRect(Skia.XYWHRect(0, 0, W, W), radial(g.lumen.c, 0.4, [rgba(HYPEREMIA, 0.42), rgba(HYPEREMIA, 0.24), rgba(HYPEREMIA, 0)], [0, 0.55, 1]));
+    for (const e of g.erythema) {
+      const patch = radial(e.c, e.r, [rgba(HYPEREMIA, 0.55), rgba(HYPEREMIA, 0.32), rgba(HYPEREMIA, 0)], [0, 0.5, 1]);
+      patch.setMaskFilter(Skia.MaskFilter.MakeBlur(BlurStyle.Normal, e.r * 0.4 * W, true));
+      c.drawCircle(X(e.c[0]), X(e.c[1]), e.r * W, patch);
+    }
   }
 
   // 2. Складки: тень от света, гребень светлее; в желудке — шире и мягче
