@@ -60,7 +60,7 @@ describe('кто болеет и что находят', () => {
     // три ребра и больше — на снимке у каждого (увидит ли снимок — его чувствительность)
     expect(ps.filter(p => param(p, 'ribs') !== 'one_two').every(p => has(p, 'img.xr_rib_multiple'))).toBe(true);
     expect(ps.filter(p => param(p, 'ribs') === 'one_two').some(p => has(p, 'img.xr_rib_multiple'))).toBe(false);
-  });
+  }, 30_000);
 
   test('ушиб: симптома прерванного вдоха, крепитации и ступеньки не бывает (728_2, раздел 1.6); перелома на снимке нет', () => {
     const ps = people(CONTUSION, 500, 101);

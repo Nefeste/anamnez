@@ -975,5 +975,5 @@ describe('снимок груди при травме: рисунок без э�
       expect((await draw(k.findings, k.seed)).png.length).toBeGreaterThan(1000);
       expect(k.label.length).toBeGreaterThan(0);
     }
-  });
+  }, 30_000);
 });

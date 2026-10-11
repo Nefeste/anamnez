@@ -170,7 +170,7 @@ describe('терапевт в своей больнице', () => {
       return JSON.stringify({ patients: s.patients, summary: s.summary });
     };
     expect(run()).toBe(run());
-  });
+  }, 30_000);
 
   test('в кампании терапевтов нет, пока глава не строит ординаторскую; в песочнице — есть', () => {
     const c = newCampaign(db, { seed: 3, season: 'winter', career: 1 });

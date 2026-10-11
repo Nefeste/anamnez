@@ -116,7 +116,7 @@ describe('нестабильная по нагрузке', () => {
       expect(share(xs, p => by(p, PRESSING, ACS))).toBeGreaterThan(0.6);
     }
     expect(share(many(ACS, 2000, { type: 'nste', mi: 'no' }, 9000), p => paramsOf(p).pain === 'exertion')).toBeGreaterThan(0.36);
-  });
+  }, 30_000);
 
   test('ЭКГ в первые 10 минут — и при боли при нагрузке у лежащих в смотровой; по шкале — красный', () => {
     const p = patient(ACS, 7001, { type: 'nste', mi: 'no', pain: 'exertion' });

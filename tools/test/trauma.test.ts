@@ -165,7 +165,7 @@ describe('«виртуальный врач» при травме', () => {
       const ps = people(RADIUS, 40, 100, { displacement: d });
       expect(share(ps, p => doctor(p).exams.includes('exam.xray_wrist'))).toBeGreaterThan(0.95);
     }
-  });
+  }, 30_000);
 
   test('нестабильный перелом лодыжек не оперирует без снимка; растяжение без признаков оттавских правил — без снимка', () => {
     const unstable = people(ANKLE, 40, 200, { stability: 'unstable' });

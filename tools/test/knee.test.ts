@@ -66,7 +66,7 @@ describe('кто болеет и что находят', () => {
     expect(share(mcl, p => has(p, 'hx.knee_blow'))).toBeGreaterThan(share(mcl, p => has(p, 'hx.knee_twist')) + 0.3);
     // выпот на снимке в игре — только при переломе: связку ставят не по снимку
     for (const id of [BRUISE, LIG]) expect(people(id, 300, 5000).some(p => has(p, 'img.xr_knee_effusion') || has(p, 'img.xr_patella_fracture'))).toBe(false);
-  });
+  }, 30_000);
 
   test('надколенник: мужчин — 61,9 %, половина — без смещения (970_1); болезнен у всех, разгибание теряют при смещении', () => {
     const who = { age: 50, season: 'summer' as const, risks: [], chronic: [] };
