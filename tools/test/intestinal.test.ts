@@ -150,8 +150,10 @@ describe('признаки', () => {
   test('о стуле спрашивают при расспросе о животе, об антибиотиках — каждого с поносом; тест на C. difficile — только при поносе', () => {
     expect(db.exams['exam.ask_abdomen'].checks.map(c => c.f)).toEqual(expect.arrayContaining(['sym.green_stool', 'sym.mucus_blood_stool', 'sym.tenesmus']));
     expect(db.exams['exam.ask_meds'].checks.map(c => c.f)).toEqual(expect.arrayContaining(['hx.antibiotics_recent', 'hx.antibiotic_now']));
-    expect(db.exams['exam.ask_meds'].routineFor).toEqual(['sym.nosebleed', 'sym.diarrhea']);
-    expect(db.exams[TEST]).toMatchObject({ kind: 'lab', room: 'room.lab', equipment: ['eq.immuno_analyzer'], complaints: ['sym.diarrhea'] });
+    // с частью 55а — и при стуле с кровью: атака язвенного колита, антибиотики и НПВП (193_2, раздел 2.1)
+    expect(db.exams['exam.ask_meds'].routineFor).toEqual(['sym.nosebleed', 'sym.diarrhea', 'sym.bloody_diarrhea']);
+    // с частью 55а — и при стуле с кровью: «пациентам с обострением ЯК» (193_2, раздел 2.3)
+    expect(db.exams[TEST]).toMatchObject({ kind: 'lab', room: 'room.lab', equipment: ['eq.immuno_analyzer'], complaints: ['sym.diarrhea', 'sym.bloody_diarrhea'] });
     expect(db.exams[TEST].checks.map(c => c.f)).toEqual(['lab.cdiff_gdh', 'lab.cdiff_toxin']);
     const flu = generatePatient(db, 7, { department: 'dept.therapy', season: 'winter', primary: 'cond.influenza' });
     expect([examFits(db.exams[TEST], patient(CDI, { severity: 'mild' })), examFits(db.exams[TEST], flu)]).toEqual([true, false]);
@@ -176,7 +178,8 @@ describe('лечение', () => {
     expect(evaluatePlan(db, mild, { treatments: [ORS], setting: 'home' }, []).effective).toBe(false);
     expect(evaluatePlan(db, mild, { treatments: [FQ, ORS], setting: 'home' }, []).effective).toBe(true);
     expect(txRole(db, SHIG, LOPER, { severity: 'mild' })).toBe('harmful');
-    expect(db.treatments[LOPER].effects.map(e => [e.on, e.kind])).toEqual([[SHIG, 'harm'], [CDI, 'harm']]);
+    // с частью 55а — и при тяжёлой атаке язвенного колита (193_2, раздел 3.2.2)
+    expect(db.treatments[LOPER].effects.map(e => [e.on, e.kind])).toEqual([[SHIG, 'harm'], [CDI, 'harm'], ['cond.uc_attack', 'harm']]);
   });
 
   test('C. difficile: ванкомицин внутрь; метронидазол — при лёгком; молниеносный — оба и растворы; идёт антибиотик — отменить', () => {
