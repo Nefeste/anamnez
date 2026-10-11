@@ -61,6 +61,36 @@ describe('workflow', () => {
     for (const job of ['checks', 'web', 'key']) expect({ job, needs: jobs[job].needs }).toEqual({ job, needs: 'version' });
   });
 
+  // Место под артефакты Actions общее на все закрытые репозитории аккаунта и считается за месяц:
+  // в октябре 2026 оно кончилось, и сборки встали (docs/08-process.md, «Место под артефакты»).
+  test('файлы сборки — «Релизу» кэшем, а не артефактом; артефакт — только снимки упавшего сценария', () => {
+    for (const f of readdirSync(join(root, '.github/workflows'))) {
+      const all = Object.values<any>(wf(f).jobs).flatMap(j => j.steps ?? []);
+      const uses = (a: string) => all.filter((s: any) => String(s.uses).startsWith(a));
+      expect({ f, download: uses('actions/download-artifact').length }).toEqual({ f, download: 0 });
+      for (const s of uses('actions/upload-artifact')) {
+        expect({ f, if: s.if, continueOnError: s['continue-on-error'], days: s.with['retention-days'] })
+          .toEqual({ f, if: 'failure()', continueOnError: true, days: 7 });
+      }
+    }
+    const jobs = wf('android.yml').jobs;
+    const steps = (job: string, uses: string) => jobs[job].steps.filter((s: any) => String(s.uses).startsWith(uses));
+    const [save] = steps('build', 'actions/cache/save');
+    expect(save.if).toBe("needs.key.outputs.ready == 'yes'");
+    const restored = steps('release', 'actions/cache/restore');
+    expect(restored.map((r: any) => r.with.key)).toEqual(['apk', 'aab'].map(t => save.with.key.replace('${{ matrix.target }}', t)));
+    for (const r of restored) {
+      expect(r.with.path).toBe(save.with.path);
+      expect(r.with['fail-on-cache-miss']).toBe(true);
+      // перезапуск одного «Релиза» берёт сборку прежней попытки
+      expect(r.with['restore-keys']).toBe(r.with.key.replace('${{ github.run_attempt }}', ''));
+    }
+    // APK есть всегда; AAB — если он в матрице задания «Ключ подписи» (строки там — JSON без пробелов)
+    expect(restored[0].if).toBeUndefined();
+    expect(restored[1].if).toBe(`contains(needs.key.outputs.matrix, '"target":"aab"')`);
+    expect(jobs.key.steps[0].run).toContain('{"target":"apk"');
+  });
+
   test('PR: база, типы, линтер и тесты без сборки, на каждом PR; имя проверки — то, что ждёт автослияние', () => {
     const pr = wf('pr.yml');
     expect(Object.keys(pr.on)).toEqual(['pull_request']);

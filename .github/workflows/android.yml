@@ -95,12 +95,18 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Сценарий
         run: bun tools/e2e/smoke.ts
+      # Снимки экранов — только когда сценарий упал, и на неделю: место под артефакты общее на все
+      # закрытые репозитории аккаунта и в октябре 2026 кончилось (docs/08-process.md, «Место под
+      # артефакты»). Не выгрузились — не беда: задание уже красное, а сценарий пишет те же снимки
+      # и локально (tools/e2e/out/).
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: failure()
+        continue-on-error: true
         with:
           name: screens-${{ github.run_number }}
           path: tools/e2e/out/
           if-no-files-found: ignore
+          retention-days: 7
 
   # Есть ли постоянный ключ — решается один раз, до сборок: от этого зависит, что собирать.
   key:
@@ -302,12 +308,13 @@ jobs:
           printf '%s\n%s\n' "$LABEL" "$SHA" > "dist/signature-$TARGET.txt"
           ls -la dist
 
-      - uses: actions/upload-artifact@v4
+      # Файлы — заданию «Релиз» через кэш Actions, а не артефактом (docs/08-process.md, «Место
+      # под артефакты»): кэш в это место не входит. Ключ — своя строка матрицы и прогон.
+      - uses: actions/cache/save@v4
         if: needs.key.outputs.ready == 'yes'
         with:
-          name: anamnez-${{ matrix.target }}-${{ github.run_number }}
-          path: dist/*
-          if-no-files-found: error
+          path: dist
+          key: dist-${{ matrix.target }}-${{ github.run_id }}-${{ github.run_attempt }}
 
   # Одна публикация на все сборки: тег vX.Y.Z — релиз «Latest» с разделом версии из README.
   release:
@@ -323,10 +330,22 @@ jobs:
             app.json
             README.md
           sparse-checkout-cone-mode: false
-      - uses: actions/download-artifact@v4
+      # Те файлы, что собраны и проверены выше, — по ключу на строку матрицы. Путь — тот же, что
+      # при сохранении (он входит в версию кэша); перезапуск одного «Релиза» берёт сборку прежней
+      # попытки. AAB — только если его вернули в матрицу (шапка файла); тогда без него релиза нет.
+      - uses: actions/cache/restore@v4
         with:
           path: dist
-          merge-multiple: true
+          key: dist-apk-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: dist-apk-${{ github.run_id }}-
+          fail-on-cache-miss: true
+      - uses: actions/cache/restore@v4
+        if: contains(needs.key.outputs.matrix, '"target":"aab"')
+        with:
+          path: dist
+          key: dist-aab-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: dist-aab-${{ github.run_id }}-
+          fail-on-cache-miss: true
       - name: Подпись
         id: sig
         run: |
