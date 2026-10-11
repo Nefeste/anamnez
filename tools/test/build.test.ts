@@ -196,11 +196,11 @@ describe('готовая амбулатория', () => {
     expect(working.size).toBe(plan.rooms.length);
     // кабинета УЗИ в амбулатории нет (spec 2026-09-chapter-2): практика — прежняя амбулатория; кровь на
     // тропонин берут в смотровой приёмного (spec 2026-10-chapter-3, часть 39в), там же — люмбальную пункцию
-    // (spec 2026-10-chapter-4, часть 50а): смотровой в амбулатории тоже нет
+    // (spec 2026-10-chapter-4, часть 50а) и диагностический парацентез (часть 54а): смотровой в амбулатории тоже нет
     const us = Object.keys(db.exams).filter(id => db.exams[id].room === 'room.ultrasound');
     expect(us).toEqual(['exam.echo', 'exam.us_abdomen', 'exam.us_kidney', 'exam.us_leg_arteries', 'exam.us_leg_veins']);
     const ed = Object.keys(db.exams).filter(id => db.exams[id].collect === 'room.emergency');
-    expect(ed).toEqual(['exam.lumbar_puncture', 'exam.troponin_hs']);
+    expect(ed).toEqual(['exam.lumbar_puncture', 'exam.paracentesis', 'exam.troponin_hs']);
     // кабинета КТ тоже нет (часть 40): при показаниях к КТ — перевод, как было; КТ-ангиография — с частью 41а,
     // груди — с частью 43а
     const ct = Object.keys(db.exams).filter(id => db.exams[id].room === 'room.ct');
