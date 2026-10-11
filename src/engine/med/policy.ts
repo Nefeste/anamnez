@@ -1,12 +1,12 @@
 // «Виртуальный врач» (`docs/05-content.md` §6, `docs/09-testing.md` §3): три стратегии,
 // которыми проверяется база. Шаг разумного врача (`nextStep`) — и нанятый врач своей больницы
 // (spec 2026-09-hired-doctors): тот делает шаги по одному, с порогами своего навыка.
-import { byValue, type ContentDb, type Exam, type Id, type Target } from '../../content/types';
+import { byParams, byValue, type ContentDb, type Exam, type Id, paramsOf, type Target } from '../../content/types';
 import { Rng } from '../core/rng';
 import { complaintObservations, examFits, runExam } from './exams';
 import { type Belief, contextOf, expectedGain, knownFacts, likelyParams, paramBeliefs, paramGain, posterior } from './infer';
 import { choiceFor, companionsOf, type Plan, possibleFor, settingOf, tacticsFor, txAvailable, type Venue, verdictOf, whenHolds } from './plan';
-import { checkRule, knownOf, openRuleExams, ruleExams, ruleFindings, type Who } from './rules';
+import { checkRule, harmCheck, knownOf, openRuleExams, ruleExams, ruleFindings, type Who } from './rules';
 import type { Observation, Patient } from './types';
 
 export type Strategy = 'rational' | 'lazy' | 'shotgun';
@@ -186,6 +186,33 @@ function clockQuestion(db: ContentDb, condId: Id | undefined, patient: Patient, 
   return asking.sort((a, b) => examCost(db, a) - examCost(db, b) || (a < b ? -1 : 1))[0];
 }
 
+const gatedCache = new WeakMap<ContentDb, ReadonlySet<Id>>();
+
+/**
+ * Обследования, которые выбирают по часам от начала болезни (spec 2026-10-chapter-4, часть 50б): у болезни есть
+ * производный параметр по параметрам вместе с часами (тромбэктомия — окклюзия, NIHSS и меньше 6 часов от начала), и
+ * обследование проверяет признак, который зависит от другого его параметра: окклюзию видит КТ-ангиография. КТ и МРТ — не
+ * такие: какую из них делать, часы не решают.
+ */
+function clockGated(db: ContentDb): ReadonlySet<Id> {
+  const cached = gatedCache.get(db);
+  if (cached) return cached;
+  const out = new Set<Id>();
+  for (const c of Object.values(db.conditions)) {
+    if (!c.derived) continue;
+    const clocks = new Set(Object.entries(c.derived).flatMap(([k, d]) => (byValue(d) && d.clock ? [k] : [])));
+    const gated = new Set(Object.values(c.derived).flatMap(d => {
+      if (!byParams(d)) return [];
+      const keys = Object.keys(paramsOf(d));
+      return keys.some(k => clocks.has(k)) ? keys.filter(k => !clocks.has(k)) : [];
+    }));
+    const shows = new Set(c.findings.filter(l => Object.keys(l.when ?? {}).some(k => gated.has(k))).map(l => l.f));
+    for (const e of Object.values(db.exams)) if (e.checks.some(k => shows.has(k.f))) out.add(e.id);
+  }
+  gatedCache.set(db, out);
+  return out;
+}
+
 /**
  * Правило срока сказало «да» по тому, что известно (spec 2026-10-chapter-4, часть 48а): qSOFA 2 и больше у больного с
  * признаками инфекции — сепсис можно предположить. С находками срока — и одна из них показана.
@@ -326,6 +353,8 @@ export function examMinutes(e: Exam): number {
  * то, что для него осталось, — тоже показано (часть 33а: шкала Уэллса меньше двух — D-димер).
  */
 export function indicated(db: ContentDb, patient: Patient, obs: readonly Observation[], candidates: Id[], examId: Id, minutes = 0): boolean {
+  // противопоказание известно (spec 2026-10-chapter-4, часть 50а): пункция при коме не показана никогда
+  if (harmCheck(db, examId, knownOf(obs)).verdict === 'yes') return false;
   // рекомендация велит его каждому с такой жалобой (часть 33а: снимок груди при травме груди, таза и
   // бедра — при боли в бедре) — показано
   const e = db.exams[examId];
@@ -455,6 +484,23 @@ function confirmBeforeInvasive(db: ContentDb, diagnosis: Id, obs: readonly Obser
  * спрашивают мужчину и женщину 64 лет), и план.
  */
 export function nextStep(db: ContentDb, patient: Patient, obs: readonly Observation[], done: readonly Id[], phase: DoctorPhase, options: StepOptions): { step: DoctorStep; phase: DoctorPhase } {
+  // обследование с вредом при противопоказании (spec 2026-10-chapter-4, часть 50а): пункт правила известен — его не
+  // делают; пока не всё проверено — сначала самое дешёвое из того, что проверит оставшийся пункт: сознание и очаговые
+  // признаки — осмотром невролога, давление — тонометром, тромбоциты — анализом крови. Проверить нечем — делают:
+  // остальное в этой больнице не узнать. Нанятый врач невысокого навыка проверку забывает (`skipAsk`)
+  const known = knownOf(obs);
+  const exams = options.exams.filter(id => harmCheck(db, id, known).verdict !== 'yes');
+  const r = nextStepFor(db, patient, obs, done, phase, { ...options, exams });
+  if (r.step.kind !== 'exam') return r;
+  const { verdict, left } = harmCheck(db, r.step.exam, known);
+  if (verdict !== 'unknown') return r;
+  const check = [...new Set(left.flatMap(f => db.revealedBy[f] ?? []))]
+    .filter(id => exams.includes(id) && !done.includes(id) && examFits(db.exams[id], patient) && !options.skipAsk?.(id))
+    .sort((a, b) => examCost(db, a) - examCost(db, b) || (a < b ? -1 : 1))[0];
+  return check ? { step: { kind: 'exam', exam: check }, phase } : r;
+}
+
+function nextStepFor(db: ContentDb, patient: Patient, obs: readonly Observation[], done: readonly Id[], phase: DoctorPhase, options: StepOptions): { step: DoctorStep; phase: DoctorPhase } {
   // о месячных и беременности мужчину не спрашивают: только то, что пациенту подходит; есть срок
   // решения (часть 39в) — то, что успеет до него. С частью 46а — за вычетом минут, что прошли после
   // находки (по обследованиям после того, что её показало), и с запасом на вопросы о противопоказаниях
@@ -500,10 +546,13 @@ export function nextStep(db: ContentDb, patient: Patient, obs: readonly Observat
     if (pressing) {
       // только сначала — когда началось (пара минут): без часов от начала не выбрать между КТ и КТ-ангиографией. С
       // частью 46б — если и после вопроса будет из чего выбрать: КТ-ангиография после него к концу срока уже не
-      // успеет — сразу КТ, а когда началось, спросят, пока она идёт
+      // успеет — сразу КТ, а когда началось, спросят, пока она идёт. С частью 50б выбор — между тем, что выбирают по
+      // часам, и остальным: успеют КТ и МРТ, а КТ-ангиография — нет, и спрашивать незачем
       const clock = clockQuestion(db, leadOf()?.id, patient, obs, opt.exams, done);
       const after = clock === undefined ? [] : inTime(db, pressing.target, opt.exams, elapsed + examMinutes(db.exams[clock]), opt.venue);
-      const exam = clock === undefined ? pressing.exam : after.length > 1 ? clock : (after[0] ?? fastest(db, pressing.target.exams.filter(e => opt.exams.includes(e)), opt.venue));
+      const byClock = after.filter(e => clockGated(db).has(e));
+      const choice = byClock.length > 0 && byClock.length < after.length;
+      const exam = clock === undefined ? pressing.exam : choice ? clock : (after[0] ?? fastest(db, pressing.target.exams.filter(e => opt.exams.includes(e)), opt.venue));
       return { step: { kind: 'exam', exam }, phase: now };
     }
     // вопросы всем и то, что делают каждому с такой жалобой (часть 32г-2: неврологический осмотр при ране головы)

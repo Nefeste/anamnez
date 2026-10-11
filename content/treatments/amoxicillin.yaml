@@ -8,12 +8,19 @@ effects:
   - { on: cond.strep_pharyngitis, kind: cure, band: usually, days: [1, 3] }
   - { on: cond.pneumonia_cap, kind: cure, band: usually, days: [2, 4] }
   - { on: cond.sinusitis_bacterial, kind: cure, band: usually, days: [2, 5] }
+  # болезнь Лайма (spec 2026-10-chapter-4, часть 51а; 566_2, раздел 3.2): внутрь при I стадии 10–14 дней, при поражении
+  # периферических нервов — 14–21; профилактика после клеща с боррелиями — 5 дней (раздел 5.1). Доли — игровая оценка, у
+  # профилактики — как у доксициклина
+  - { on: cond.lyme, kind: cure, band: usually, days: [10, 14], when: { form: [erythema] } }
+  - { on: cond.lyme, kind: cure, band: often, days: [14, 21], when: { form: [neuro] } }
+  - { on: cond.tick_bite, kind: cure, band: { pct: 87 }, days: [1, 5], when: { borrelia: [yes] } }
 contraindications:
   - { id: risk.allergy_penicillin, level: absolute, reaction: often }
 texts:
   hint:
-    ru: "Антибиотик пенициллинового ряда: препарат выбора при стрептококковой ангине, бактериальном синусите и нетяжёлой пневмонии. На вирусы не действует; при аллергии на пенициллины опасен."
+    ru: "Антибиотик пенициллинового ряда: препарат выбора при стрептококковой ангине, бактериальном синусите и нетяжёлой пневмонии; замена доксициклину при болезни Лайма. На вирусы не действует; при аллергии на пенициллины опасен."
 sources:
   - { kind: guideline, title: "Внебольничная пневмония у взрослых", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/654_2", note: "ID 654_2, опубликованы 23.12.2024, применяются; сверено с рубрикатором 28.09.2026" }
   - { kind: guideline, title: "Острый тонзиллит и фарингит (Острый тонзиллофарингит)", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/306_3", note: "ID 306_3, опубликованы 31.10.2024, применяются; сверено с рубрикатором 28.09.2026" }
+  - { kind: guideline, title: "Болезнь Лайма у взрослых", org: "Минздрав РФ", year: 2025, url: "https://cr.minzdrav.gov.ru/view-cr/566_2", note: "ID 566_2, опубликованы 19.12.2025, применяются; сверено с рубрикатором 11.10.2026; раздел 3.2: амоксициллин внутрь при I стадии 10–14 дней, при II — 14–21; раздел 5.1: экстренная профилактика амоксициллином — 5 дней" }
 review: draft

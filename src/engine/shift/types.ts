@@ -316,6 +316,9 @@ export interface WardDay {
   /** из поступивших — в реанимацию, и из лежащих вечером — в ней (spec 2026-10-chapter-4, часть 47) */
   ricu?: number;
   ricuLying?: number;
+  /** из поступивших — в бокс инфекционного отделения, и из лежащих вечером — в нём (spec 2026-10-chapter-4, часть 49а) */
+  box?: number;
+  boxLying?: number;
 }
 
 /** Приёмы нанятого врача за день (spec 2026-09-hired-doctors). */

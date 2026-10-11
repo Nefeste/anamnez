@@ -185,9 +185,25 @@ export function openRuleExams(db: ContentDb, patient: { complaints: readonly Id[
   const covers = new Map<Id, number>();
   for (const r of rulesFor(db, patient)) {
     if (r.exams.length > 0 && r.exams.every(e => done.has(e))) continue;
+    // правило о самом обследовании (часть 50а: «Можно ли пункцию») проверяют перед ним, а не каждому с жалобой
+    if (r.decides?.startsWith('exam.')) continue;
     const x = checkRule(r, patient, known);
     if (x.verdict !== 'unknown') continue;
     for (const f of x.left) for (const e of db.revealedBy[f] ?? []) covers.set(e, (covers.get(e) ?? 0) + 1);
   }
   return [...covers.keys()].sort((a, b) => covers.get(b)! - covers.get(a)! || cost(a) - cost(b) || (a < b ? -1 : 1));
+}
+
+/**
+ * Можно ли обследование с вредом (spec 2026-10-chapter-4, часть 50а): «да» — пункт его правила известен, делать нельзя;
+ * «нет» — все пункты проверены и их нет (или у обследования вреда нет); иначе «пока неизвестно», и `left` — что
+ * осталось проверить. Применимость правила здесь не важна: пункция при коме опасна и без менингеальных знаков.
+ */
+export function harmCheck(db: ContentDb, exam: Id, known: Known): { verdict: RuleVerdict; left: Id[] } {
+  const h = db.exams[exam]?.harm;
+  const rule = h ? db.rules[h.rule] : undefined;
+  if (!rule) return { verdict: 'no', left: [] };
+  if (rule.any.some(f => known(f) === true)) return { verdict: 'yes', left: [] };
+  const left = rule.any.filter(f => known(f) === undefined);
+  return left.length > 0 ? { verdict: 'unknown', left } : { verdict: 'no', left: [] };
 }

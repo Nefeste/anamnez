@@ -244,6 +244,9 @@ function whereLines(db: ContentDb, c: Condition, t: Tactics): string[] {
   const icu = [...Object.values(s.param?.map ?? {}), s.redFlag, ...(s.risks ?? []).map(r => r.setting), s.without?.setting];
   if (s.default !== 'icu' && icu.includes('icu')) lines.push(e.whereNoIcu(e.setting.ambulance));
   if (s.default === 'ricu' || icu.includes('ricu')) lines.push(e.whereNoRicu(e.setting.ambulance));
+  // заразная (spec 2026-10-chapter-4, часть 49а): путь передачи; в стационаре — бокс, нет его — перевод
+  if (c.isolation) lines.push(e.isolation[c.isolation]);
+  if (s.default === 'box' || icu.includes('box')) lines.push(e.whereNoBox);
   // операция и срок стационара (spec 2026-09-chapter-2, части 26 и 28), после осложнённой стадии — свой (28б)
   if (c.surgery) lines.push(e.whereSurgery(nameOf(db, c.surgery.tx), c.surgery.window, c.surgery.from === 'onset'));
   // операция по скрытому параметру (часть 32б): «Без смещения — остеосинтез шейки бедра винтами.»
@@ -416,6 +419,8 @@ function examArticle(db: ContentDb, x: Exam): Article {
   if (x.complaints) blocks.push({ key: 'forComplaints', title: e.examForComplaints, refs: x.complaints.map(id => ref(db, id)) });
   const confirms = Object.values(db.conditions).filter(c => c.confirm !== 'clinical' && c.confirm.includes(x.id)).map(c => ref(db, c.id)).sort(byTitle);
   if (confirms.length > 0) blocks.push({ key: 'confirms', title: e.confirms, refs: confirms });
+  // вред при противопоказании (spec 2026-10-chapter-4, часть 50а): пункция — по правилу «Можно ли пункцию»
+  if (x.harm && db.rules[x.harm.rule]) blocks.push({ key: 'harm', title: e.examHarm, refs: [ref(db, x.harm.rule)], text: [e.examHarmText(e.band[bandOf(x.harm.p)])] });
   // где делают: помещение, аппараты, где берут материал; без помещения — у врача в кабинете
   const room = x.room ?? (db.rooms['room.office'] ? 'room.office' : undefined);
   if (room && db.rooms[room]) {

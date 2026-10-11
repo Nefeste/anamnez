@@ -3,12 +3,12 @@
 // случая. Общий для прототипа П4 (visit.ts) и смены (session.ts): экраны карты пациента
 // работают с любым из них. Правда здесь появляется только в разборе закрытого случая.
 import { db } from '@/content';
-import { type BodySystem, type Id, type Setting, SYSTEMS } from '@/content/types';
+import { type BodySystem, type Id, type Rule, type Setting, SYSTEMS } from '@/content/types';
 import { fnv1a } from '@/engine/core/hash';
 import type { Outcome } from '@/engine/med/course';
 import { complaintObservations, examFits } from '@/engine/med/exams';
 import { type Belief, contextOf, knownFacts, posterior } from '@/engine/med/infer';
-import { bedsideLack, type PlanEval } from '@/engine/med/plan';
+import { bedsideLack, type PlanEval, STAYS } from '@/engine/med/plan';
 import type { ReviewData } from '@/engine/med/review';
 import { type CaseScore, type Grade, type ScoreNote, worstGrade } from '@/engine/med/score';
 import { ageBand, checkRule, knownOf, rulesFor } from '@/engine/med/rules';
@@ -54,20 +54,23 @@ export type ResultImage =
    * УЗИ брюшной полости: правая подвздошная область, `appendix` — виден воспалённый отросток (часть
    * 29); или желчный пузырь — `stones` камней, `wall` — утолщённая стенка (часть 30); или левая
    * подвздошная область — `diverticulum`, воспалённый дивертикул (часть 30д); УЗИ почек — почка,
-   * `pelvis` — расширенная лоханка (часть 30г); УЗИ вен ноги (часть 33а) — `deep`: тромб в
-   * глубокой вене, `superficial` — в подкожной, `tear` — гематома надрыва мышцы; УЗИ артерий ноги
-   * (часть 33б) — `arterial`: артерия закрыта тромбом или эмболом
+   * `pelvis` — расширенная лоханка (часть 30г), `edema` — отёк паренхимы (часть 52б); УЗИ вен ноги
+   * (часть 33а) — `deep`: тромб в глубокой вене, `superficial` — в подкожной, `tear` — гематома
+   * надрыва мышцы; УЗИ артерий ноги (часть 33б) — `arterial`: артерия закрыта тромбом или эмболом
    */
   | {
-    kind: 'us'; view: 'appendix' | 'gallbladder' | 'kidney' | 'colon' | 'vein'; appendix?: number; stones?: number; wall?: number; pelvis?: number;
+    kind: 'us'; view: 'appendix' | 'gallbladder' | 'kidney' | 'colon' | 'vein'; appendix?: number; stones?: number; wall?: number; pelvis?: number; edema?: number;
     diverticulum?: number; deep?: number; superficial?: number; tear?: number; arterial?: number; seed: number;
   }
   /** обзорный снимок живота стоя (часть 30б): серп свободного газа под куполом, раздутые петли с уровнями */
   | { kind: 'abdomen'; freeGas: boolean; levels: boolean; seed: number }
   /** снимок костей (часть 32): запястье или голеностоп в двух проекциях — линия перелома и смещение, что нашёл рентгенолог */
   | ({ kind: 'bone'; seed: number } & BoneFindings)
-  /** срез головы на КТ (spec 2026-10-chapter-3, часть 40): кровь внутри черепа — светлое пятно, если её показала КТ */
-  | { kind: 'head'; seed: number; findings: HeadFindings }
+  /**
+   * срез головы на КТ (spec 2026-10-chapter-3, часть 40): кровь внутри черепа — светлое пятно, если её показала КТ; с
+   * частью 50б (spec 2026-10-chapter-4) — и на МРТ (`mode`), там же свежий очаг ишемии и очаг в височной доле
+   */
+  | { kind: 'head'; seed: number; findings: HeadFindings; mode?: 'mri' }
   /** срез груди на КТ-ангиографии (часть 43а): расслоение аорты — тип A или B, если его показала КТ */
   | { kind: 'chestCt'; seed: number; findings: ChestCtFindings };
 
@@ -300,7 +303,8 @@ const TX_GROUPS: [string, string[]][] = [
   // допамин и наружная стимуляция при АВ-блокаде; с частью 43в — фуросемид в вену при сердечной недостаточности;
   // с частью 43д — колхицин при перикардите
   ['heart', ['antihypertensive', 'antiplatelet', 'antianginal', 'anticoagulant', 'vascular', 'adrenergic', 'thrombolytic', 'lipid', 'antiarrhythmic', 'anticholinergic', 'diuretic', 'cardiac']],
-  ['digestive', ['acid']],
+  // противодиарейные (spec 2026-10-chapter-4, часть 49б): лоперамид — при кишечных инфекциях не нужен или вреден
+  ['digestive', ['acid', 'antidiarrheal']],
   // растворы для питья и капельница (часть 32д-2): и при кишечной инфекции, и при обширном ожоге
   ['fluids', ['rehydration']],
   // с частью 41в — гемостатики: протромбиновый комплекс, витамин K1, транексамовая кислота; с частью 44а — декстроза и
@@ -477,8 +481,10 @@ function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observat
     if (shown('img.us_diverticulitis')) return { kind: 'us', view: 'colon', diverticulum: 0.8, seed };
     return { kind: 'us', view: 'gallbladder', stones: shown('img.us_gallstones') ? 3 : 0, wall: shown('img.us_cholecystitis') ? 0.8 : 0, seed };
   }
-  // почка (часть 30г): расширенная лоханка — если её показало УЗИ
-  if (exam === 'exam.us_kidney') return { kind: 'us', view: 'kidney', pelvis: shown('img.us_hydronephrosis') ? 0.8 : 0, seed };
+  // почка (часть 30г): расширенная лоханка — если её показало УЗИ; с частью 52б — и отёк паренхимы
+  if (exam === 'exam.us_kidney') {
+    return { kind: 'us', view: 'kidney', pelvis: shown('img.us_hydronephrosis') ? 0.8 : 0, edema: shown('img.us_kidney_edema') ? 0.8 : 0, seed };
+  }
   // вены ноги (часть 33а): тромб в глубокой вене — на любом уровне, в подкожной, гематома надрыва
   if (exam === 'exam.us_leg_veins') {
     const deep = shown('img.us_dvt_prox') || shown('img.us_dvt_calf') || shown('img.us_dvt_iliac');
@@ -490,7 +496,8 @@ function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observat
   // неё — обычный срез. С частью 41в — и КТ-ангиография (её первая серия — без контраста): гематома —
   // пятно по объёму, больше 30 см³ — со смещением срединных структур; кровь под паутинной оболочкой —
   // светлые борозды и щели
-  if (exam === 'exam.ct_head' || exam === 'exam.cta_head') {
+  if (exam === 'exam.ct_head' || exam === 'exam.cta_head' || exam === 'exam.mri_head') {
+    const mri = exam === 'exam.mri_head';
     const hematoma = shown('img.ct_hematoma_large') ?? shown('img.ct_hematoma');
     const sah = shown('img.ct_sah') !== undefined;
     const blood = shown('img.ct_blood') ? sideOf('img.ct_blood') : undefined;
@@ -498,13 +505,20 @@ function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observat
     // площадь пятна на срезе — как объём в степени 2/3; 80 см³ — наибольшее
     const size = hematoma?.value !== undefined ? Math.min(1, Math.max(0.15, (hematoma.value / 80) ** (2 / 3))) : 0.45;
     const shift = hematoma?.value !== undefined && hematoma.value >= 30 ? Math.min(1, (hematoma.value - 20) / 60) : 0;
+    // без крови — клин от коры (часть 50б): очаг в височной доле или свежий очаг ишемии — их ищет только МРТ, на её срезе
+    // они светлые; на срезе один очаг — кровь, потом воспаление, потом ишемия
+    const temporal = sideOf('img.temporal_lesion');
+    const ischemia = mri ? sideOf('img.mri_ischemia') : undefined;
+    const wedgeSide = side || sah ? undefined : temporal ?? ischemia;
+    const wedge = wedgeSide ? { density: mri ? 'high' as const : 'low' as const, shape: 'wedge' as const, side: wedgeSide, region: 'middle' as const, size: temporal ? 0.55 : 0.65 } : undefined;
     return {
       kind: 'head', seed,
       findings: {
-        ...(side ? { focus: { density: 'high' as const, shape: 'blob' as const, side, region: 'middle' as const, size } } : {}),
+        ...(side ? { focus: { density: 'high' as const, shape: 'blob' as const, side, region: 'middle' as const, size } } : wedge ? { focus: wedge } : {}),
         ...(side && shift > 0 ? { shift } : {}),
         ...(sah ? { sah: 0.7 } : {}),
       },
+      ...(mri ? { mode: 'mri' as const } : {}),
     };
   }
   // кости (часть 32): что нашёл рентгенолог — линия перелома, смещение, признаки нестабильности;
@@ -604,7 +618,10 @@ function rulesOf(p: Patient, obs: readonly Observation[]): VisitView['rules'] {
   const t = T.spikes.patient;
   const names = (ids: Id[]) => ids.map(f => lowerFirst(db.findings[f].name.ru));
   const known = knownOf(obs);
-  return rulesFor(db, p).map(r => {
+  // правило о самом обследовании (spec 2026-10-chapter-4, часть 50а: «Можно ли пункцию») — только когда применимо: при
+  // менингеальных знаках или геморрагической сыпи, а не у каждого с головной болью
+  const shown = (r: Rule) => !r.decides?.startsWith('exam.') || checkRule(r, p, known).applies === true;
+  return rulesFor(db, p).filter(shown).map(r => {
     const x = checkRule(r, p, known);
     const age = r.age?.main !== undefined ? t.ruleAgeOver(r.age.main) : r.age?.from !== undefined ? t.ruleAgeFrom(r.age.from) : undefined;
     const main = [...names(x.main), ...(x.ageMain && age ? [age] : [])];
@@ -738,6 +755,13 @@ function targetLineOf(r: TargetResult): string {
 
 export function outcomeText(outcome: Outcome, setting: Setting, female: boolean): string {
   const out = T.spikes.patient.outcome;
+  // осложнение обследования при противопоказании (spec 2026-10-chapter-4, часть 50а): что было и чем кончилось
+  if (outcome.examHarm) {
+    const what = out.examHarm(db.exams[outcome.examHarm.exam]?.name.ru ?? outcome.examHarm.exam);
+    if (outcome.kind === 'died') return `${what}. ${out.examHarmDied(outcome.day, female)}`;
+    if (outcome.kind === 'transferred') return `${what}. ${out.transferredSevere(female)}`;
+    return `${what}. ${outcomeText({ ...outcome, examHarm: undefined }, setting, female)}`;
+  }
   // переведённый в сосудистый центр с подъёмом ST (часть 39б): как открыли артерию, и чем кончилось
   if (outcome.rsc) {
     const r = out.rsc;
@@ -756,9 +780,9 @@ export function outcomeText(outcome: Outcome, setting: Setting, female: boolean)
     case 'reaction': return outcome.reaction ? out.reaction(db.treatments[outcome.reaction.tx].name.ru, riskName(outcome.reaction.by)) : out.unchanged;
     case 'transferred':
       if (outcome.severe) return out.transferredSevere(female);
-      return setting === 'ambulance' ? out.ambulance : setting === 'admit' || setting === 'surgery' || setting === 'icu' || setting === 'ricu' ? out.transferred(female) : out.ward(female);
+      return setting === 'ambulance' ? out.ambulance : STAYS.includes(setting) ? out.transferred(female) : out.ward(female);
     // своя палата интенсивной терапии (spec 2026-10-chapter-3, часть 38а) и реанимация (spec 2026-10-chapter-4, часть 47)
-    case 'admitted': return setting === 'surgery' ? out.operated : setting === 'icu' ? out.icu : setting === 'ricu' ? out.ricu : out.admitted;
+    case 'admitted': return setting === 'surgery' ? out.operated : setting === 'icu' ? out.icu : setting === 'ricu' ? out.ricu : setting === 'box' ? out.box : out.admitted;
     case 'died': return out.died(outcome.day, female);
   }
 }
@@ -800,9 +824,17 @@ export function noteText(n: ScoreNote): string {
     case 'tx.windowMissed': return t.windowMissed(tx(n.tx), n.at);
     case 'setting.under': return t.settingUnder(n.recommended);
     case 'setting.over': return t.settingOver(n.recommended);
+    case 'setting.contacts': return t.settingContacts;
     case 'safety.knownViolation': return t.knownViolation(tx(n.tx), riskName(n.by));
     case 'safety.unaskedViolation': return t.unaskedViolation(tx(n.tx), riskName(n.by));
     case 'safety.notAsked': return t.notAsked(riskName(n.by));
+    // обследование при противопоказании (spec 2026-10-chapter-4, часть 50а): пункция при коме
+    case 'safety.examHarmKnown':
+    case 'safety.examHarmUnchecked': {
+      const by = n.by.map(f => lowerFirst(db.findings[f]?.name.ru ?? f)).join(', ');
+      const exam = db.exams[n.exam]?.name.ru ?? n.exam;
+      return n.code === 'safety.examHarmKnown' ? t.examHarmKnown(exam, by) : t.examHarmUnchecked(exam, by);
+    }
     case 'safety.redFlagIgnored': return t.redFlagIgnored(db.findings[n.f].name.ru);
     case 'safety.redFlagUnchecked': return t.redFlagUnchecked(db.findings[n.f].name.ru);
     case 'thrift.over': return t.thriftOver(n.times);

@@ -18,6 +18,9 @@ const LIVER = '#707070';
 const FAT = '#9c9c9c';
 const PYRAMID = '#3a3a3a';
 const CORTEX = '#555555';
+// отёк паренхимы (часть 52б): кора светлее, пирамиды темнее — «выделенные пирамидки»
+const CORTEX_EDEMA = '#7a7a7a';
+const PYRAMID_EDEMA = '#1e1e1e';
 const SINUS = '#bdbdbd';
 const WALL = '#d8d8d8';
 const FLUID = '#060606';
@@ -26,6 +29,12 @@ const LOOP = '#666666';
 const MUSCULARIS = '#2c2c2c';
 const SUBMUCOSA = '#c9c9c9';
 const HALO = '#b3b3b3';
+
+/** Цвет между двумя серыми `#rrggbb` по доле `t` (0 — первый, 1 — второй). */
+function mix(a: string, b: string, t: number): string {
+  const ch = (s: string, i: number) => parseInt(s.slice(1 + 2 * i, 3 + 2 * i), 16);
+  return `#${[0, 1, 2].map(i => Math.round(ch(a, i) + (ch(b, i) - ch(a, i)) * t).toString(16).padStart(2, '0')).join('')}`;
+}
 
 export function recordUsSector(width: number, findings: UsImage, seed: number): SkPicture {
   // вены ноги (часть 33а) — линейный датчик, свой рисунок
@@ -83,9 +92,10 @@ export function recordUsSector(width: number, findings: UsImage, seed: number): 
     const lb = g.liverBottom;
     const below = pathOf([ray(-HALF - 0.1, polar(lb[0]).r), ...lb, ray(HALF + 0.1, polar(lb[lb.length - 1]).r), ray(HALF + 0.1, R1 + 0.05), ray(-HALF - 0.1, R1 + 0.05)]);
     c.drawPath(below, paint(FAT, { blur: 0.006 }));
-    c.drawPath(pathOf(g.kidney), paint(CORTEX, { blur: 0.005 }));
+    const e = Math.max(0, Math.min(1, findings.edema ?? 0));
+    c.drawPath(pathOf(g.kidney), paint(mix(CORTEX, CORTEX_EDEMA, e), { blur: 0.005 }));
     c.drawPath(pathOf(g.kidney), paint(WALL, { stroke: 0.005, blur: 0.002 }));
-    for (const py of g.pyramids ?? []) c.drawPath(pathOf(py), paint(PYRAMID, { blur: 0.006 }));
+    for (const py of g.pyramids ?? []) c.drawPath(pathOf(py), paint(mix(PYRAMID, PYRAMID_EDEMA, e), { blur: 0.006 }));
     if (g.sinus) c.drawPath(pathOf(g.sinus), paint(SINUS, { blur: 0.008 }));
     // край печени — яркая линия капсулы
     c.drawPath(pathOf(lb, false), paint(WALL, { stroke: 0.003, alpha: 0.7, blur: 0.002 }));

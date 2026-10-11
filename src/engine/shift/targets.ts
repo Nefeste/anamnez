@@ -5,6 +5,7 @@
 // антибиотик при сепсисе — от того, как qSOFA дал 2 балла.
 import type { ContentDb, Id, Setting, Target } from '../../content/types';
 import { complaintObservations } from '../med/exams';
+import { STAYS } from '../med/plan';
 import { checkRule, knownOf } from '../med/rules';
 import type { Grade } from '../med/score';
 import type { Observation } from '../med/types';
@@ -80,8 +81,8 @@ const excepted = (p: Pick<ShiftPatient, 'results'>, t: Target) =>
  * можно сделать у постели — монитор стоит и
  * смотровая работает: без него в срок не успеть не по вине игрока (смотровая из сохранений до 0.3.2
  * — без монитора, пока его не купят). У срока без помещения одно из его обследований можно сделать в
- * этой больнице (часть 43г): КТ при подозрении на инсульт — там, где есть КТ; в районной больнице его
- * нет, и срок не выполнить тоже не по вине игрока.
+ * этой больнице (часть 43г): КТ или МРТ при подозрении на инсульт — там, где есть КТ или МРТ (часть 50б); в районной
+ * больнице их нет, и срок не выполнить тоже не по вине игрока.
  */
 export function targetsFor(db: ContentDb, p: Seen, at: TargetPlace): Target[] {
   return Object.values(db.targets).filter(t => whose(db, p, t)
@@ -134,9 +135,6 @@ export function minutesTo(db: ContentDb, p: Timed, t: Target, decision?: TargetD
   const at = Math.min(exam, decision && decided(t, decision) ? decision.t : Infinity);
   return at === Infinity ? undefined : Math.round((at - start) / 60);
 }
-
-/** Остаётся у нас (часть 41а): в палате, ПИТ, реанимации (часть 47) или операционной; переведённому срок — там, куда везут. */
-const STAYS: readonly Setting[] = ['admit', 'icu', 'ricu', 'surgery'];
 
 /**
  * Сроки закрытого приёма. Срок на назначение или место — только тем, кому его сделали (часть 39б):

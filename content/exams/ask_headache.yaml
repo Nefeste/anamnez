@@ -8,6 +8,9 @@ checks:
   # внезапное начало, как удар (часть 41в): так начинается субарахноидальное кровоизлияние (523_3, раздел 1.6);
   # точность — игровая оценка
   - { f: sym.thunderclap, sens: 95, spec: 98 }
+  # сильная распирающая, нарастающая головная боль (spec 2026-10-chapter-4, часть 50а): менингит (1020_1, раздел 2.1);
+  # точность — игровая оценка
+  - { f: sym.headache_severe, sens: 95, spec: 98 }
   - { f: sym.headache_unilateral, sens: 88, spec: 95 }
   - { f: sym.headache_pressing, sens: 88, spec: 93 }
   - { f: sym.photophobia, sens: 85, spec: 94 }

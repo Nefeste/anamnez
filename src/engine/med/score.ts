@@ -2,7 +2,7 @@
 // замечаний; слова к ним — в src/i18n (на экране разбора).
 import type { Id, Setting } from '../../content/types';
 import type { Outcome } from './course';
-import { choiceFor, type PlanEval, settingFit } from './plan';
+import { choiceFor, type PlanEval, settingFit, STAYS } from './plan';
 
 export type Grade = 'A' | 'B' | 'C' | 'D';
 
@@ -25,8 +25,15 @@ export type ScoreNote =
   | { code: 'tx.windowMissed'; tx: Id; at: number }
   /** `recommended` — что надо было выбрать здесь: в амбулатории «вызвать скорую», со своей палатой — «в палату» */
   | { code: 'setting.under' | 'setting.over'; recommended: Setting }
+  /** заразного положили в общую палату (spec 2026-10-chapter-4, часть 49а): соседи по палате — контактные */
+  | { code: 'setting.contacts' }
   | { code: 'safety.knownViolation' | 'safety.unaskedViolation'; tx: Id; by: Id }
   | { code: 'safety.notAsked'; by: Id }
+  /**
+   * обследование при противопоказании (spec 2026-10-chapter-4, часть 50а): пункты его правила у больного были; врач о
+   * них знал или их не проверил
+   */
+  | { code: 'safety.examHarmKnown' | 'safety.examHarmUnchecked'; exam: Id; by: Id[] }
   | { code: 'safety.redFlagIgnored' | 'safety.redFlagUnchecked'; f: Id }
   | { code: 'thrift.over'; times: number }
   /**
@@ -109,8 +116,8 @@ export function scoreCase(x: CaseInput): CaseScore {
   if (x.plan.violations.length > 0) treatment = 'D';
   // направленного лечат дальше в другом стационаре: лечения причины здесь не ждут, а то, что
   // делают до приезда скорой (ОКС — ацетилсалициловая кислота), — ждут; в своей палате, своей ПИТ
-  // (часть 38а) и своей реанимации (spec 2026-10-chapter-4, часть 47) лечат сами
-  const referred = !['home', 'admit', 'surgery', 'icu', 'ricu'].includes(x.plan.setting.chosen);
+  // (часть 38а), своей реанимации (spec 2026-10-chapter-4, часть 47) и своём боксе (часть 49а) лечат сами
+  const referred = x.plan.setting.chosen !== 'home' && !STAYS.includes(x.plan.setting.chosen);
   // острый период проходит в стационаре (часть 41а): у лежащего у нас инсульта без тромболизиса — не
   // ошибка; дома он не пройдёт
   const settled = x.settles === true && x.plan.setting.chosen !== 'home';
@@ -173,6 +180,8 @@ export function scoreCase(x: CaseInput): CaseScore {
   let setting: Grade = 'A';
   if (fit === 'under') { setting = 'D'; notes.push({ code: 'setting.under', recommended: should }); }
   else if (fit === 'over') { setting = 'C'; notes.push({ code: 'setting.over', recommended: should }); }
+  // заразный в общей палате (spec 2026-10-chapter-4, часть 49а): кроме места — и соседи
+  if (recommended === 'box' && chosen === 'admit') notes.push({ code: 'setting.contacts' });
 
   // безопасность
   let safety: Grade = safety0;
@@ -182,6 +191,12 @@ export function scoreCase(x: CaseInput): CaseScore {
   }
   if (x.plan.violations.length === 0) {
     for (const by of x.plan.unaskedRisk) { safety = worst(safety, 'B'); notes.push({ code: 'safety.notAsked', by }); }
+  }
+  // обследование при противопоказании (часть 50а): знал — опасное решение, не проверил — опасная небрежность; случилось ли
+  // осложнение, скажет исход
+  for (const h of x.plan.examHarms) {
+    if (h.known) { safety = 'D'; notes.push({ code: 'safety.examHarmKnown', exam: h.exam, by: h.by }); }
+    else { safety = worst(safety, 'C'); notes.push({ code: 'safety.examHarmUnchecked', exam: h.exam, by: h.by }); }
   }
   if (roles.some(r => r.role === 'harmful')) safety = worst(safety, 'C'); // вред — не только плохое лечение
   if (setting === 'D') {

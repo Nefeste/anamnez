@@ -174,7 +174,8 @@ export function createVisit(first: number, opts: { season?: Season; onFinish?: (
       const obs = [...complaintObservations(p), ...resultsOf(s)];
       const confidence = beliefsOf(p, obs).find(x => x.id === dx)?.p ?? 0;
       const plan = { treatments: s.draft.treatments, setting: s.draft.setting };
-      const ev = evaluatePlan(db, p, plan, obs);
+      // сделанное, чей результат ещё не пришёл (spec 2026-10-chapter-4, часть 50а): пункция при противопоказании
+      const ev = evaluatePlan(db, p, plan, obs, { done: s.done });
       const outcome = observe(db, p, plan, ev, s.rng.fork('outcome'));
       const review = buildReview(db, p, s.arrived.map(a => ({ exam: a.exam, obs: a.obs })), dx, candidates(), Object.keys(db.exams).sort(), s.rng.fork('review'));
       const verdict = verdictOf(db, dx, p);

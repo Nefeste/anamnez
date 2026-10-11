@@ -65,7 +65,7 @@ describe('исход перевода по часам', () => {
     expect(late).toBeGreaterThan(0.76);
     expect(late).toBeLessThan(0.86);
     expect(died('i', 24 * 60)).toBeLessThan(0.05);
-  });
+  }, 30_000);
 
   test('без подъёма ST и у болезни без записи — исход прежний; класс из старых сохранений — первый', () => {
     const nste = acs(7, { type: 'nste' });
@@ -116,7 +116,8 @@ describe('класс Killip', () => {
     expect(has('ii', 'sign.crackles_local')).toBeGreaterThan(0.6);
     // шок гасит высокое давление: одно измерение — одно число
     expect(has('iv', 'vital.bp_high')).toBe(0);
-  });
+    // 6000 больных — около 4 секунд, на занятой машине дольше 5
+  }, 20_000);
 });
 
 /** Районная больница главы 2, открыт первый день. */

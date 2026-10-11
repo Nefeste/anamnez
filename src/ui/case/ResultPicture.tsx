@@ -18,7 +18,7 @@ const DENSITY = 0.75;
 function usImageOf(image: Extract<ResultImage, { kind: 'us' }>): UsImage {
   if (image.view === 'appendix') return { view: 'appendix', appendix: image.appendix ?? 0 };
   if (image.view === 'vein') return { view: 'vein', deep: image.deep ?? 0, superficial: image.superficial ?? 0, tear: image.tear ?? 0, arterial: image.arterial ?? 0 };
-  if (image.view === 'kidney') return { view: 'kidney', pelvis: image.pelvis ?? 0 };
+  if (image.view === 'kidney') return { view: 'kidney', pelvis: image.pelvis ?? 0, edema: image.edema ?? 0 };
   if (image.view === 'colon') return { view: 'colon', diverticulum: image.diverticulum ?? 0 };
   return { view: 'gallbladder', foci: { count: image.stones ?? 0, size: 0.5 }, wall: image.wall ?? 0, fluid: image.wall ? 0.4 : 0 };
 }
@@ -43,10 +43,11 @@ export function ResultPicture({ image }: { image: ResultImage }) {
     );
   }
   if (image.kind === 'head') {
-    // срез КТ (часть 40) — квадрат, не шире колонки сектора УЗИ: кровь у свода видна и на телефоне
+    // срез КТ (часть 40) — квадрат, не шире колонки сектора УЗИ: кровь у свода видна и на телефоне; МРТ (часть 50б) — тот
+    // же срез в своём режиме
     return (
-      <View testID="result-ct" style={{ borderRadius: 6, overflow: 'hidden', alignSelf: 'center' }}>
-        <HeadSlice width={Math.min(w, 360)} seed={image.seed} findings={image.findings} />
+      <View testID={image.mode === 'mri' ? 'result-mri' : 'result-ct'} style={{ borderRadius: 6, overflow: 'hidden', alignSelf: 'center' }}>
+        <HeadSlice width={Math.min(w, 360)} seed={image.seed} findings={image.findings} mode={image.mode ?? 'ct'} />
       </View>
     );
   }

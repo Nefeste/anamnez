@@ -8,7 +8,7 @@ import { db } from '@/content';
 import type { ContentDb, Exam, Id } from '@/content/types';
 import { fnv1a } from '@/engine/core/hash';
 import { type Cell, type ClinicLayout, clinicLayout, type StaffRole } from '@/engine/hospital/clinic';
-import { inIcu, inRicu } from '@/engine/shift/engine';
+import { inBox, inIcu, inRicu } from '@/engine/shift/engine';
 import type { ShiftPatient, ShiftState } from '@/engine/shift/types';
 import { lookOf } from '@/render/look';
 import { type Figure as Look, patientFigure, staffFigure, type Uniform } from '@/render/map/figures';
@@ -20,7 +20,7 @@ export type Figure = 'doctor' | 'nurse' | 'staff' | 'patient' | 'patientYellow' 
 export type Where = { cell: Cell } | { seat: true } | { bench: true };
 
 /** Помещение, где обследование делают с пациентом: анализы — забор в процедурной. */
-export type ExamRoom = 'xray' | 'ecg' | 'lab' | 'ultrasound' | 'ct';
+export type ExamRoom = 'xray' | 'ecg' | 'lab' | 'ultrasound' | 'ct' | 'mri';
 
 /** Что человек делает: карта по этому ведёт его, подпись под картой — рассказывает. */
 export type Doing =
@@ -36,7 +36,7 @@ export type Doing =
   | { kind: 'leaving' }
   | { kind: 'left' }
   /** лежит в палате своей больницы; `days` — сутки в стационаре (spec 2026-09-chapter-2, часть 26); `op` — ждёт этой операции (часть 28) */
-  | { kind: 'ward'; days: number; op?: Id; icu?: true; ricu?: true }
+  | { kind: 'ward'; days: number; op?: Id; icu?: true; ricu?: true; box?: true }
   /** на операционном столе: идёт операция `tx` до `end` — время смены (часть 28) */
   | { kind: 'surgery'; tx: Id; end: number }
   /** привезла скорая (часть 27): ждёт сортировки, ждёт врача, на каталке у входа — мест нет, у вас на осмотре */
@@ -82,6 +82,8 @@ const STAFF_FIGURE: Record<StaffRole, Figure> = {
   icuNurse: 'nurse',
   ctTech: 'staff',
   ctDoctor: 'staff',
+  mriTech: 'staff',
+  mriDoctor: 'staff',
   ricuDoctor: 'doctor',
   ricuNurse: 'nurse',
 };
@@ -98,7 +100,7 @@ function lookOfPatient(p: ShiftPatient): Look {
   return patientFigure(lookOf(fnv1a(`${seed}:portrait`), sex, age), p.triage === 'red' ? 2 : p.triage === 'yellow' ? 1 : 0);
 }
 
-const EXAM_ROOM: Record<string, ExamRoom> = { 'room.xray': 'xray', 'room.ecg': 'ecg', 'room.lab': 'lab', 'room.ultrasound': 'ultrasound', 'room.ct': 'ct' };
+const EXAM_ROOM: Record<string, ExamRoom> = { 'room.xray': 'xray', 'room.ecg': 'ecg', 'room.lab': 'lab', 'room.ultrasound': 'ultrasound', 'room.ct': 'ct', 'room.mri': 'mri' };
 
 /** Где обследование делают с пациентом; анализы — забор в процедурной. Нет помещения — в кабинете. */
 function examCell(layout: ClinicLayout, room: ExamRoom): Cell {
@@ -180,8 +182,9 @@ export function placements(db: ContentDb, layout: ClinicLayout, s: ShiftState): 
           id: p.id, figure, look, where: { cell: bed },
           doing: {
             kind: 'ward', days: Math.max(0, s.day - p.stay.since), ...(op && !op.done ? { op: op.tx } : {}), ...(inIcu(db, s, p) ? { icu: true as const } : {}),
-            // в реанимации — своя строка (spec 2026-10-chapter-4, часть 47)
+            // в реанимации — своя строка (spec 2026-10-chapter-4, часть 47), в боксе — тоже (часть 49а)
             ...(inRicu(db, s, p) ? { ricu: true as const } : {}),
+            ...(inBox(db, s, p) ? { box: true as const } : {}),
           },
         });
       }

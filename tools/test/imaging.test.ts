@@ -366,6 +366,17 @@ describe('сектор УЗИ: геометрия', () => {
     expect(usGeometry({ view: 'kidney' }, 3).pelvisParts).toBeUndefined();
   });
 
+  test('отёк почки (часть 52б): почка и пирамиды больше, пирамиды, синус и лоханка — внутри почки', () => {
+    const area = (pts: readonly [number, number][]) => Math.abs(pts.reduce((s, p, i) => s + p[0] * pts[(i + 1) % pts.length][1] - pts[(i + 1) % pts.length][0] * p[1], 0)) / 2;
+    for (const seed of [3, 13]) {
+      const plain = usGeometry({ view: 'kidney' }, seed);
+      const swollen = usGeometry({ view: 'kidney', edema: 0.8, pelvis: 1 }, seed);
+      expect(area(swollen.kidney!)).toBeGreaterThan(area(plain.kidney!) * 1.2);
+      plain.pyramids!.forEach((py, i) => expect(area(swollen.pyramids![i])).toBeGreaterThan(area(py) * 1.4));
+      for (const p of [...swollen.pyramids!.flat(), ...swollen.sinus!, ...swollen.pelvisParts!.flat()]) expect(inside(p, swollen.kidney!)).toBe(true);
+    }
+  });
+
   test('утолщённая стенка пузыря (часть 30): наружный контур и полоска отёка — снаружи полости, толще с параметром; без неё — нет', () => {
     const g = usGeometry({ view: 'gallbladder', wall: 0.8 }, 2);
     const [outer, middle] = g.gbWall!;
@@ -491,6 +502,19 @@ describe('сектор УЗИ: рисунок без экрана', () => {
     expect(at(wide, c)).toBeLessThan(30);
   });
 
+  test('отёк почки: кора светлее, пирамиды темнее, чем у здоровой почки', async () => {
+    const g = usGeometry({ view: 'kidney', edema: 0.8 }, 4);
+    const plain = (await draw({ view: 'kidney' }, 4)).rgba;
+    const swollen = (await draw({ view: 'kidney', edema: 0.8 }, 4)).rgba;
+    // кора — у полюса, между краем почки и крайней пирамидой; пирамида — её середина
+    const pole = g.kidney!.reduce((a, p) => (p[0] < a[0] ? p : a));
+    const cortex: [number, number] = [(pole[0] * 2 + centroid(g.pyramids![0])[0]) / 3, (pole[1] * 2 + centroid(g.pyramids![0])[1]) / 3];
+    const pyramid = centroid(g.pyramids![1]);
+    expect(at(swollen, cortex)).toBeGreaterThan(at(plain, cortex) + 15);
+    expect(at(swollen, pyramid)).toBeLessThan(at(plain, pyramid) - 10);
+    expect(at(swollen, cortex)).toBeGreaterThan(at(swollen, pyramid) + 40);
+  });
+
   test('отросток «мишенью»: тёмный просвет, светлый подслизистый слой, тёмный мышечный; вокруг — светлый жир', async () => {
     const f = { view: 'appendix' as const, appendix: 0.8 };
     const ring = usGeometry(f, 7).target![0];
@@ -539,7 +563,7 @@ describe('сектор УЗИ: рисунок без экрана', () => {
     const a = await draw({ view: 'kidney', fluid: 0.5 }, 9);
     const b = await draw({ view: 'kidney', fluid: 0.5 }, 9);
     expect(Buffer.from(a.png).equals(Buffer.from(b.png))).toBe(true);
-    expect(US_CASES.length).toBe(16);
+    expect(US_CASES.length).toBe(17);
     for (const k of US_CASES) expect((await draw(k.findings, k.seed)).png.length).toBeGreaterThan(1000);
   });
 

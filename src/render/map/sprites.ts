@@ -8,9 +8,9 @@ import type { ObjectKind } from '@/engine/hospital/grid';
 import { CLOTHES, HAIR, SKIN } from '@/render/look';
 import { BODIES, type Hair, HAIRS, HEADS, STYLES, UNIFORM } from './figures';
 
-export const OBJECT_KINDS: ObjectKind[] = ['bed', 'chair', 'desk', 'couch', 'cabinet', 'machine', 'plant', 'sink', 'bench', 'xray', 'table', 'ecg', 'analyzer', 'or_table', 'anesthesia', 'us', 'monitor', 'ct'];
-/** Аппараты, у которых есть рисунок «работает» — горит экран, трубка, лампа над столом или кольцо томографа (части 23, 28, 29, 38а, 40). */
-export const LIT_KINDS: ObjectKind[] = ['ecg', 'analyzer', 'xray', 'or_table', 'anesthesia', 'us', 'monitor', 'ct'];
+export const OBJECT_KINDS: ObjectKind[] = ['bed', 'chair', 'desk', 'couch', 'cabinet', 'machine', 'plant', 'sink', 'bench', 'xray', 'table', 'ecg', 'analyzer', 'or_table', 'anesthesia', 'us', 'monitor', 'ct', 'mri'];
+/** Аппараты, у которых есть рисунок «работает» — горит экран, трубка, лампа над столом, кольцо томографа или тоннель МРТ (части 23, 28, 29, 38а, 40, 50б). */
+export const LIT_KINDS: ObjectKind[] = ['ecg', 'analyzer', 'xray', 'or_table', 'anesthesia', 'us', 'monitor', 'ct', 'mri'];
 
 export interface SpriteAtlas {
   image: SkImage;
@@ -172,6 +172,8 @@ const US_FAN = '#C9D1D3';
 /** Томограф работает: проём кольца светится, полоса на кольце горит (часть 40). */
 const CT_BORE_ON = '#BFE6F2';
 const CT_RING_ON = '#4FB3D9';
+const MRI_BORE_ON = '#DCD3F7';
+const MRI_RING_ON = '#8E7BE0';
 
 /** Предметы и аппараты сверху: спинка, изголовье, экран — к северу, лицо — к югу; `lit` — аппарат работает. */
 function drawObject(u: Pen, k: ObjectKind, lit = false) {
@@ -329,6 +331,17 @@ function drawObject(u: Pen, k: ObjectKind, lit = false) {
       u.rr(0.28, 0.13, 0.72, 0.33, 0.08, lit ? CT_BORE_ON : '#56666B', '#3E4B4F', 0.02);
       u.rr(0.39, 0.2, 0.61, 0.33, 0.03, '#C2CCCF');
       u.rr(0.12, 0.36, 0.88, 0.4, 0.02, lit ? CT_RING_ON : '#B5C0C3');
+      break;
+    case 'mri':
+      // магнит МРТ (spec 2026-10-chapter-4, часть 50б): корпус глубже кольца КТ, во всю клетку к северу, с круглым
+      // тоннелем; из тоннеля к югу выходит стол с матрасом; работает — тоннель светится, горит полоса на корпусе
+      u.rr(0.36, 0.3, 0.64, 0.98, 0.05, '#D3DBDD', '#95A3A7');
+      u.rr(0.39, 0.56, 0.61, 0.95, 0.04, '#B9C9E8');
+      u.rr(0.02, 0.02, 0.98, 0.54, 0.16, '#F3F5F7', STEEL_EDGE);
+      u.circle(0.5, 0.27, 0.17, lit ? MRI_BORE_ON : '#56666B', '#3E4B4F', 0.02);
+      u.circle(0.5, 0.27, 0.09, lit ? '#F4F0FF' : '#46555A');
+      u.rr(0.39, 0.3, 0.61, 0.44, 0.03, '#C2CCCF');
+      u.rr(0.1, 0.47, 0.9, 0.51, 0.02, lit ? MRI_RING_ON : '#B5C0C3');
       break;
   }
 }

@@ -175,7 +175,8 @@ describe('сроки и правила', () => {
     const cands = candidatesOf(db, ED);
     const before = complaintObservations(p);
     const after = [...before, seen(PERIPHERAL, NEURO), seen(ONSET, ASK, true, 20)];
-    expect(targetExams(db, p)).toEqual(['exam.ct_head', 'exam.cta_head', 'exam.neuro_exam', 'exam.swallow_test']);
+    // с частью 50б срок закрывает и МРТ
+    expect(targetExams(db, p)).toEqual(['exam.ct_head', 'exam.cta_head', 'exam.mri_head', 'exam.neuro_exam', 'exam.swallow_test']);
     expect(targetExams(db, p, after)).toEqual(['exam.neuro_exam']);
     expect(urgentExam(db, p, [NEURO], exams, Infinity, undefined, before)).toBe(CT);
     expect(urgentExam(db, p, [NEURO], exams, Infinity, undefined, after)).toBeUndefined();
@@ -223,7 +224,7 @@ describe('тактика и разбор', () => {
 });
 
 describe('энциклопедия', () => {
-  test('где лечить, лечение по тяжести и глазу; с чем спутать — инсульт и ТИА, а у них — невропатия', () => {
+  test('где лечить, лечение по тяжести и глазу; с чем спутать — инсульт, ТИА и болезнь Лайма, а у них — невропатия', () => {
     const x = article(db, BELL)!;
     expect(x.blocks.find(b => b.key === 'where')!.text).toEqual(['Обычно — дома.', 'При тяжёлом течении в первые 72\u00a0часа — в стационаре.', 'При тяжёлом течении в первые 72\u00a0часа — можно и дома.', 'В стационаре обычно 1–2\u00a0дня.']);
     const rows = Object.fromEntries(x.blocks.find(b => b.key === 'treatment')!.rows!.map(r => [r.label, r.refs.map(y => y.id)]));
@@ -232,8 +233,9 @@ describe('энциклопедия', () => {
     expect(rows['Первая линия, при тяжёлом течении в первые 72 часа']).toEqual([IV]);
     expect(rows['Облегчить состояние, при тяжёлом течении в первые 72 часа']).toEqual([ANTIVIRAL]);
     expect(rows['Обязательная профилактика, если глаз не закрывается']).toEqual([DROPS]);
-    expect(x.blocks.find(b => b.key === 'similar')!.refs!.map(r => r.id)).toEqual(['cond.stroke_ischemic', 'cond.tia']);
-    for (const id of ['cond.stroke_ischemic', 'cond.tia']) expect(article(db, id)!.blocks.find(b => b.key === 'similar')!.refs!.map(r => r.id)).toContain(BELL);
+    // болезнь Лайма (часть 51а) называет невропатию в своём списке: неврит лицевого нерва при нейроборрелиозе
+    expect(x.blocks.find(b => b.key === 'similar')!.refs!.map(r => r.id)).toEqual(['cond.stroke_ischemic', 'cond.tia', 'cond.lyme']);
+    for (const id of ['cond.stroke_ischemic', 'cond.tia', 'cond.lyme']) expect(article(db, id)!.blocks.find(b => b.key === 'similar')!.refs!.map(r => r.id)).toContain(BELL);
   });
 });
 

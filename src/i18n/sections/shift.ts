@@ -120,6 +120,8 @@ export const shift = {
       icu: (admitted: number, lying: number) => `Из них в палате интенсивной терапии — поступили: ${admitted}, лежат: ${lying}.`,
       // реанимация (spec 2026-10-chapter-4, часть 47)
       ricu: (admitted: number, lying: number) => `Из них в реанимации — поступили: ${admitted}, лежат: ${lying}.`,
+      // боксы инфекционного отделения (часть 49а)
+      box: (admitted: number, lying: number) => `Из них в боксах — поступили: ${admitted}, лежат: ${lying}.`,
     },
     // операционная за день (часть 28)
     surgery: {
@@ -164,6 +166,10 @@ export const shift = {
       ct: 'КТ',
       // реанимация (spec 2026-10-chapter-4, часть 47)
       ricu: 'ОРИТ',
+      // бокс инфекционного отделения (часть 49а)
+      box: 'Бокс',
+      // кабинет МРТ (часть 50б)
+      mri: 'МРТ',
     } as Record<string, string>,
     // для чтения с экрана: что на карте, словами
     label: (waiting: number, away: number, inRoom: string | undefined) =>
@@ -198,6 +204,9 @@ export const shift = {
       // реанимация (spec 2026-10-chapter-4, часть 47)
       ricuDoctor: 'Анестезиолог-реаниматолог реанимации',
       ricuNurse: 'Медсестра реанимации',
+      // кабинет МРТ (часть 50б)
+      mriTech: 'Рентгенолаборант кабинета МРТ',
+      mriDoctor: 'Рентгенолог кабинета МРТ',
     } as Record<string, string>,
     // нанятый врач (spec 2026-09-hired-doctors): кто он и кого принимает
     therapist: (name: string, skill: number) => `${name}, терапевт · навык ${skill}`,
@@ -219,6 +228,8 @@ export const shift = {
       ctDoctor: 'Описывает срезы КТ: его заключение приходит вместе с ними',
       ricuDoctor: 'Ведёт больных на ИВЛ и под мониторами',
       ricuNurse: 'Следит за аппаратами ИВЛ и мониторами, ставит капельницы',
+      mriTech: 'Укладывает пациента в тоннель томографа и ведёт съёмку',
+      mriDoctor: 'Описывает серии МРТ: его заключение приходит вместе с ними',
     } as Record<string, string>,
     doing: {
       registration: 'В регистратуре: заводят карту',
@@ -227,8 +238,8 @@ export const shift = {
       waiting: (min: number) => `Ждёт приёма ${min}\u00a0мин`,
       office: 'У вас в кабинете',
       colleague: (doctor: string) => `На приёме у терапевта: ${doctor}`,
-      exam: { xray: 'На рентгене', ecg: 'На ЭКГ', lab: 'Сдаёт анализы', ultrasound: 'На УЗИ', ct: 'На КТ' } as Record<string, string>,
-      examQueue: { xray: 'Ждёт очереди на рентген', ecg: 'Ждёт очереди на ЭКГ', lab: 'Ждёт очереди на анализы', ultrasound: 'Ждёт очереди на УЗИ', ct: 'Ждёт очереди на КТ' } as Record<string, string>,
+      exam: { xray: 'На рентгене', ecg: 'На ЭКГ', lab: 'Сдаёт анализы', ultrasound: 'На УЗИ', ct: 'На КТ', mri: 'На МРТ' } as Record<string, string>,
+      examQueue: { xray: 'Ждёт очереди на рентген', ecg: 'Ждёт очереди на ЭКГ', lab: 'Ждёт очереди на анализы', ultrasound: 'Ждёт очереди на УЗИ', ct: 'Ждёт очереди на КТ', mri: 'Ждёт очереди на МРТ' } as Record<string, string>,
       results: (hh: string) => `Ждёт результатов — будут к ${hh}`,
       leaving: 'Приём окончен — уходит',
       left: (female: boolean) => ago(female, 'Не дождался приёма и уходит', 'Не дождалась приёма и уходит'),
@@ -238,6 +249,8 @@ export const shift = {
       icu: (days: number) => `В палате интенсивной терапии: ${days + 1}-е\u00a0сутки`,
       // реанимация (spec 2026-10-chapter-4, часть 47)
       ricu: (days: number) => `В реанимации: ${days + 1}-е\u00a0сутки`,
+      // бокс инфекционного отделения (часть 49а)
+      box: (days: number) => `В боксе: ${days + 1}-е\u00a0сутки`,
       // операционная (часть 28): на столе и ждёт операции в палате
       onTable: (op: string, until: string) => `Идёт операция: ${lowerFirst(op)}, до ${until}`,
       waitingOp: (op: string) => `В палате, ждёт операции: ${lowerFirst(op)}`,
@@ -264,6 +277,10 @@ export const shift = {
     freeRicuBeds: (free: number, all: number) => `реанимация · коек с ИВЛ свободно ${free} из ${all}`,
     inRicu: 'Реанимация, под монитором',
     onVent: 'Реанимация, на ИВЛ',
+    // бокс инфекционного отделения (spec 2026-10-chapter-4, часть 49а): заразного кладут отдельно
+    box: 'В бокс',
+    freeBoxBeds: (free: number, all: number) => `инфекционное отделение · боксов свободно ${free} из ${all}`,
+    inBox: 'Бокс инфекционного отделения',
     // фибрилляция желудочков в ПИТ (часть 39б): дежурные сняли её разрядом — строка обхода наутро
     shock: 'За сутки — фибрилляция желудочков: дежурные сняли её разрядом под монитором, ритм восстановлен',
     refer: 'Направить в другую больницу',

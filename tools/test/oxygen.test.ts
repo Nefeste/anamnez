@@ -27,8 +27,14 @@ const people = (primary: Id, n: number, from = 1) =>
   Array.from({ length: n }, (_, i) => generatePatient(db, from + i, { department: 'dept.therapy', season: 'winter', primary, params: {} }));
 const paramsOf = (p: Patient) => p.truth.conditions.find(c => c.role === 'primary')!.params;
 const spo2 = (p: Patient) => p.truth.values[SPO2];
-/** Первый пациент с этой болезнью, у кого сатурация подходит. */
-const someone = (primary: Id, ok: (value: number) => boolean) => people(primary, 4000).find(p => ok(spo2(p)))!;
+/** Первый пациент с этой болезнью, у кого сатурация подходит: перебор до первого, а не все 4000 сразу. */
+const someone = (primary: Id, ok: (value: number) => boolean) => {
+  for (let seed = 1; seed <= 4000; seed++) {
+    const p = generatePatient(db, seed, { department: 'dept.therapy', season: 'winter', primary, params: {} });
+    if (ok(spo2(p))) return p;
+  }
+  throw new Error(`${primary}: нет пациента с такой сатурацией`);
+};
 const measured = (value: number): Observation => ({ f: SPO2, shown: value < 95, value, exam: 'exam.vitals' });
 const scoreOf = (p: Patient, treatments: Id[], setting: Setting) => {
   const ev = evaluatePlan(db, p, { treatments, setting }, []);

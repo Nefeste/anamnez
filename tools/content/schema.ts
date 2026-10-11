@@ -72,9 +72,10 @@ const required = z.array(z.union([txId, z.array(txId).min(2)])).min(1);
  * Где лечить — что нужно пациенту; `admit` («в палату») — только выбор врача, в базе его нет;
  * `icu` — палата интенсивной терапии (spec 2026-10-chapter-3, часть 38а): своя — «В ПИТ», нет её —
  * перевод, из амбулатории — скорая; `ricu` — реанимация с ИВЛ (spec 2026-10-chapter-4, часть 47): своя —
- * «В ОРИТ», нет её — перевод.
+ * «В ОРИТ», нет её — перевод; `box` — бокс инфекционного отделения (часть 49а): заразного кладут отдельно, свой бокс —
+ * «В бокс», нет его — перевод в инфекционную больницу, общая палата — меньше нужного.
  */
-export const SETTINGS = ['home', 'ward', 'ambulance', 'surgery', 'transfer', 'icu', 'ricu'] as const;
+export const SETTINGS = ['home', 'ward', 'ambulance', 'surgery', 'transfer', 'icu', 'ricu', 'box'] as const;
 const setting = z.enum(SETTINGS);
 const season = z.strictObject({ winter: z.number(), spring: z.number(), summer: z.number(), autumn: z.number() });
 
@@ -109,6 +110,11 @@ export const conditionSchema = z.strictObject({
    * смотровую приёмного, к монитору, — пришедших самих с ним нет
    */
   arrival: z.literal('ambulance').optional(),
+  /**
+   * заразна (spec 2026-10-chapter-4, часть 49а): путь передачи — контактный (кишечные инфекции) или воздушно-капельный; в
+   * стационаре лежит в боксе (место `box`), в общей палате соседи — контактные
+   */
+  isolation: z.enum(['contact', 'airborne']).optional(),
   epidemiology: z.strictObject({
     prevalence: z.enum(Object.keys(PREVALENCE) as [keyof typeof PREVALENCE, ...(keyof typeof PREVALENCE)[]]),
     age: z.strictObject({ min: z.number().int(), max: z.number().int().optional(), peak: z.tuple([z.number(), z.number()]).optional() }),
@@ -454,6 +460,13 @@ export const examSchema = z.strictObject({
     checks: z.array(z.string()).min(1),
     name: text,
   }).optional(),
+  /**
+   * вред при противопоказании (spec 2026-10-chapter-4, часть 50а): обследование делают, а у больного есть пункт
+   * правила `rule` — с вероятностью `band` осложнение, от которого больной умирает в первые сутки (мягкий режим —
+   * перевод в тяжёлом состоянии). Люмбальная пункция при коме, очаговых признаках, судорогах, шоке, нарастающей
+   * геморрагической сыпи и нарушениях свёртывания — вклинение мозга или кровотечение
+   */
+  harm: z.strictObject({ rule: z.string().regex(/^rule\.[a-z0-9_]+$/), band: probability }).optional(),
   texts: z.strictObject({ summary: text, hint }),
   sources: z.array(source).min(1),
   review,
@@ -541,7 +554,7 @@ export const riskSchema = z.strictObject({
 // Помещения, аппараты и должности — игровые предметы: цены и размеры — баланс игры. Что
 // каким аппаратом делают — медицинский факт, он записан в записях обследований с источниками.
 
-export const OBJECT_KINDS = ['bed', 'chair', 'desk', 'couch', 'cabinet', 'machine', 'plant', 'sink', 'bench', 'xray', 'table', 'ecg', 'analyzer', 'or_table', 'anesthesia', 'us', 'monitor', 'ct'] as const;
+export const OBJECT_KINDS = ['bed', 'chair', 'desk', 'couch', 'cabinet', 'machine', 'plant', 'sink', 'bench', 'xray', 'table', 'ecg', 'analyzer', 'or_table', 'anesthesia', 'us', 'monitor', 'ct', 'mri'] as const;
 const cellSrc = z.tuple([z.number().int().min(0), z.number().int().min(0)]);
 /** «нет лаборатории», «нет лаборанта» — родительный падеж для причин «не работает» */
 const gen = text;
@@ -600,6 +613,11 @@ export const roomSchema = z.strictObject({
    * койка работает, если на её местах (`slotsOf`) стоят и монитор, и аппарат ИВЛ
    */
   vent: z.boolean().default(false),
+  /**
+   * бокс инфекционного отделения (spec 2026-10-chapter-4, часть 49а): койки — места лежащих с изоляцией, отдельно от
+   * палат; заразного больного кладут сюда
+   */
+  box: z.boolean().default(false),
   /** работает — в больницу приходят и больные этих отделений: приёмное — хирургию (часть 30) */
   admits: z.array(z.string().regex(/^dept\.[a-z0-9_]+$/)).min(1).optional(),
   sizes: z.array(roomSize).min(1),
@@ -613,7 +631,7 @@ export const equipmentSchema = z.strictObject({
   /** куда ставят: монитор с дефибриллятором — в смотровую приёмного и в палату интенсивной терапии (часть 38а) */
   rooms: z.array(roomId).min(1),
   /** как выглядит на карте: у каждого вида аппарата свой рисунок (spec 2026-09-living-map) */
-  sprite: z.enum(['ecg', 'analyzer', 'xray', 'or_table', 'anesthesia', 'us', 'monitor', 'ct']),
+  sprite: z.enum(['ecg', 'analyzer', 'xray', 'or_table', 'anesthesia', 'us', 'monitor', 'ct', 'mri']),
   /** улучшение другого аппарата: цифровой рентген — плёночного */
   upgradeOf: eqId.optional(),
   /** своё место в помещении — номер из `slots` (стол операционной — под пациентом); занято — первое свободное */
@@ -726,6 +744,8 @@ export const economySchema = z.strictObject({
     omsIcu: int,
     /** случай в реанимации с ИВЛ по показаниям — прибавка к тарифу, больше, чем за ПИТ (spec 2026-10-chapter-4, часть 47) */
     omsRicu: int,
+    /** случай в боксе инфекционного отделения по показаниям — прибавка к тарифу за изоляцию (spec 2026-10-chapter-4, часть 49а) */
+    omsBox: int,
     omsQuality: z.strictObject({ A: pct, B: pct, C: pct, D: pct }),
     omsUnconfirmed: pct,
     omsExam: int,
@@ -746,6 +766,8 @@ export const economySchema = z.strictObject({
   icu: z.strictObject({ bedDay: int }),
   /** реанимация (spec 2026-10-chapter-4, часть 47): койко-день с ИВЛ — дороже ПИТ, ₽ */
   ricu: z.strictObject({ bedDay: int }),
+  /** бокс инфекционного отделения (часть 49а): койко-день с изоляцией — дороже палатного, ₽ */
+  box: z.strictObject({ bedDay: int }),
   /** перевод в сосудистый центр (часть 39б): часов пути и часов от приезда до вмешательства */
   transfer: z.strictObject({ hours: z.number().int().min(1).max(12), pci: z.number().int().min(0).max(6) }),
   /**
@@ -969,8 +991,12 @@ export const ruleSchema = z.strictObject({
   excludes: z.array(z.string()).min(1).optional(),
   /** какое обследование правило назначает; пусто — его в игре нет (КТ, часть 32г), тогда `texts.exam` */
   exams: z.array(z.string().regex(/^exam\.[a-z0-9_]+$/)).default([]),
-  /** о каком лечении правило решает, а не об обследовании (часть 39а): «Можно ли тромболизис» */
-  decides: z.string().regex(/^tx\.[a-z0-9_]+$/).optional(),
+  /**
+   * о каком лечении правило решает, а не об обследовании (часть 39а): «Можно ли тромболизис»; с частью 50а (spec
+   * 2026-10-chapter-4) — и можно ли сделать само обследование: «Можно ли пункцию». Такое правило в карте пациента — только
+   * когда применимо (`requires`), а проверяет его разумный врач перед самим обследованием
+   */
+  decides: z.string().regex(/^(tx|exam)\.[a-z0-9_]+$/).optional(),
   /** решает, где лечить (spec 2026-10-chapter-3, часть 43б): sPESI — дома или в стационаре */
   place: z.literal(true).optional(),
   ageMin: z.number().int().min(0).max(120).optional(),

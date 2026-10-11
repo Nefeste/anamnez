@@ -17,6 +17,11 @@ export interface UsFindings {
   foci?: { count: number; size: number };
   /** 0–1: тёмная середина почки — лоханка с чашечками — расширена */
   pelvis?: number;
+  /**
+   * 0–1: паренхима почки отёчна (часть 52б): почка больше, кора светлее, пирамиды крупнее и темнее — «синдром
+   * выделенных пирамидок» при геморрагической лихорадке с почечным синдромом (347_2, раздел 2.4)
+   */
+  edema?: number;
   /** 0–1: тёмная полоса жидкости у органа — толщина */
   fluid?: number;
   /** 0–1: стенка желчного пузыря утолщена — яркая, с тёмной полоской отёка посередине («двойной контур», часть 30) */
@@ -253,10 +258,12 @@ export function usGeometry(f: UsFindings, seed: number): UsGeometry {
     return out;
   }
 
-  // почка под печенью: вытянутый боб, ворота снизу; нижний край печени — дуга над почкой
+  // почка под печенью: вытянутый боб, ворота снизу; нижний край печени — дуга над почкой. Отёк (часть 52б) — почка
+  // больше, пирамиды крупнее: растут к коре
   const kc = at(-0.03, 0.5);
   const kp = u() * 6.28;
-  const kidney = ellipse(kc, 0.22, 0.085, 0.1, 80, t => 1 + 0.03 * Math.sin(3 * t + kp) - 0.12 * Math.max(0, Math.sin(t)) ** 8);
+  const e = clamp01(f.edema);
+  const kidney = ellipse(kc, 0.22 * (1 + 0.1 * e), 0.085 * (1 + 0.2 * e), 0.1, 80, t => 1 + 0.03 * Math.sin(3 * t + kp) - 0.12 * Math.max(0, Math.sin(t)) ** 8);
   const sinus = ellipse(kc, 0.12, 0.028, 0.1, 48, t => 1 + 0.09 * Math.sin(5 * t + kp));
   const fluid = clamp01(f.fluid);
   const gap = 0.012 + 0.035 * fluid;
@@ -268,7 +275,7 @@ export function usGeometry(f: UsFindings, seed: number): UsGeometry {
   const local = (x: number, y: number): Pt => [kc[0] + x * cs - y * sn, kc[1] + x * sn + y * cs];
   const pyramids: Pt[][] = [];
   for (const [x, side] of [[-0.13, -1], [-0.05, -1], [0.04, -1], [0.12, -1], [-0.09, 1], [0.0, 1], [0.09, 1]] as const) {
-    const tipY = side * 0.03, baseY = side * 0.062, half = 0.022 * (1 - Math.abs(x) * 1.8);
+    const tipY = side * 0.03, baseY = side * (0.062 + 0.012 * e), half = 0.022 * (1 - Math.abs(x) * 1.8) * (1 + 0.35 * e);
     pyramids.push([local(x, tipY), local(x - half, baseY), local(x + half, baseY)]);
   }
   const out: UsGeometry = { ...base, liverBottom, kidney, sinus, pyramids };

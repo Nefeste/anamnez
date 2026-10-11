@@ -1,0 +1,24 @@
+id: tx.doxycycline
+name: { ru: "Доксициклин внутрь" }
+kind: drug
+class: antibiotic.tetracycline
+route: oral
+cost: 200
+# болезнь Лайма (spec 2026-10-chapter-4, часть 51а; 566_2, раздел 3.2): препарат выбора при I стадии — внутрь 10–14 дней, при II
+# стадии с поражением периферических нервов — 14–21; экстренная профилактика после присасывания — не позднее 5 суток (раздел
+# 5.1). Сроки излечения — по курсу; доли — игровая оценка; ₽ — игровое число
+effects:
+  - { on: cond.lyme, kind: cure, band: usually, days: [10, 14], when: { form: [erythema] } }
+  - { on: cond.lyme, kind: cure, band: often, days: [14, 21], when: { form: [neuro] } }
+  # кардит — цефалоспорин в вену (раздел 3.2, таблица); внутрь помогает реже — игровая оценка
+  - { on: cond.lyme, kind: cure, band: often, days: [14, 21], when: { form: [carditis] } }
+  # профилактика после клеща с боррелиями (раздел 5.1): действенность 87 % — у Nadelman 2001; «излечение» присасывания — болезнь
+  # Лайма не начнётся
+  - { on: cond.tick_bite, kind: cure, band: { pct: 87 }, days: [1, 5], when: { borrelia: [yes] } }
+texts:
+  hint:
+    ru: "Антибиотик против боррелий. При мигрирующей эритеме — препарат выбора, внутрь 10–14 дней; после укуса клеща, в котором нашли боррелии, — короткий курс для профилактики, не позже 5 суток."
+sources:
+  - { kind: guideline, title: "Болезнь Лайма у взрослых", org: "Минздрав РФ", year: 2025, url: "https://cr.minzdrav.gov.ru/view-cr/566_2", note: "ID 566_2, опубликованы 19.12.2025, применяются; сверено с рубрикатором 11.10.2026; раздел 3.2: препаратом выбора является доксициклин при I стадии, внутрь 10–14 дней, при II стадии с поражением периферической нервной системы — 14–21; раздел 5.1: экстренная антибиотикопрофилактика доксициклином — не позднее 5 суток от присасывания" }
+  - { kind: paper, title: "Nadelman RB, Nowakowski J, Fish D, Falco RC, Freeman K, McKenna D, Welch P, Marcus R, Agüero-Rosenfeld ME, Dennis DT, Wormser GP. Prophylaxis with single-dose doxycycline for the prevention of Lyme disease after an Ixodes scapularis tick bite. N Engl J Med 2001;345(2):79–84", url: "https://pubmed.ncbi.nlm.nih.gov/11450675/", note: "PMID 11450675, сверено 11.10.2026: доксициклин в первые 72 часа после присасывания — мигрирующая эритема у 0,4 % против 3,2 % с плацебо, действенность 87 %" }
+review: draft

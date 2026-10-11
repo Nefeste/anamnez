@@ -54,19 +54,21 @@ describe('каталог: кабинет КТ, томографы, обслед�
     expect(r).toMatchObject({ staff: ['role.radiographer', 'role.radiologist'], needsEquipment: true, equipment: ['eq.ct_16', 'eq.ct_64'], exams: [CT, 'exam.cta_chest', 'exam.cta_head'] });
     expect(r.sizes.map(z => [z.id, z.w, z.h])).toEqual([['M', 9, 7]]);
     expect(r.sizes[0].patient).toEqual(r.sizes[0].slots[0]);
-    // рентгенолог описывает срезы — точность от его навыка, как у снимков
-    expect(db.roles['role.radiologist'].rooms).toEqual(['room.ct', 'room.xray']);
-    expect(db.roles['role.radiographer'].rooms).toEqual(['room.ct', 'room.xray']);
+    // рентгенолог описывает срезы — точность от его навыка, как у снимков; с частью 50б оба — и в кабинете МРТ
+    expect(db.roles['role.radiologist'].rooms).toEqual(['room.ct', 'room.mri', 'room.xray']);
+    expect(db.roles['role.radiographer'].rooms).toEqual(['room.ct', 'room.mri', 'room.xray']);
   });
 
-  test('томограф на 64 среза — улучшение томографа на 16: быстрее и точнее, дороже в покупке и в обслуживании; дороже всех аппаратов больницы', () => {
+  test('томограф на 64 среза — улучшение томографа на 16: быстрее и точнее, дороже в покупке и в обслуживании; дороже всех аппаратов больницы, кроме МРТ', () => {
     const [a, b] = [db.equipment['eq.ct_16'], db.equipment['eq.ct_64']];
     expect(a).toMatchObject({ rooms: ['room.ct'], sprite: 'ct', speed: 1.3, quality: { sens: -3, spec: -1 }, exams: [CT, 'exam.cta_chest', 'exam.cta_head'] });
     expect(b).toMatchObject({ rooms: ['room.ct'], sprite: 'ct', upgradeOf: 'eq.ct_16', speed: 1, quality: { sens: 0, spec: 0 }, exams: [CT, 'exam.cta_chest', 'exam.cta_head'] });
     expect(b.price).toBeGreaterThan(a.price);
     expect(b.upkeep).toBeGreaterThan(a.upkeep);
-    const others = Object.values(db.equipment).filter(e => e.sprite !== 'ct');
+    // магнитно-резонансный томограф (часть 50б) — дороже обоих
+    const others = Object.values(db.equipment).filter(e => e.sprite !== 'ct' && e.sprite !== 'mri');
     expect(Math.min(a.price, b.price)).toBeGreaterThan(Math.max(...others.map(e => e.price)));
+    expect(db.equipment['eq.mri_15'].price).toBeGreaterThan(b.price);
   });
 
   test('КТ головного мозга: в кабинете КТ, облучение среднее, 10 минут и 15 на описание; ищет кровь внутри черепа, ложной не показывает; правило КТ ведёт на неё', () => {

@@ -12,7 +12,8 @@ export type Cell = [number, number];
 
 export type StaffRole =
   | 'registrar' | 'nurse' | 'doctor' | 'therapist' | 'procedureNurse' | 'labTech' | 'ecgNurse' | 'radiographer' | 'radiologist'
-  | 'surgeon' | 'anesthetist' | 'orNurse' | 'sonographer' | 'icuDoctor' | 'icuNurse' | 'ctTech' | 'ctDoctor' | 'ricuDoctor' | 'ricuNurse';
+  | 'surgeon' | 'anesthetist' | 'orNurse' | 'sonographer' | 'icuDoctor' | 'icuNurse' | 'ctTech' | 'ctDoctor' | 'ricuDoctor' | 'ricuNurse'
+  | 'mriTech' | 'mriDoctor';
 
 export interface ClinicLayout extends HospitalLayout {
   /** вход и выход — дверь на улицу */
@@ -20,7 +21,7 @@ export interface ClinicLayout extends HospitalLayout {
   /** персонал на местах; `id` — когда фигурок одной роли несколько (две медсестры ЭКГ) */
   staff: { role: StaffRole; cell: Cell; id?: string }[];
   /** куда встаёт или садится пациент; `office` — ваш кабинет */
-  spots: { registration: Cell; triage: Cell; office: Cell; procedure: Cell; ecg: Cell; xray: Cell; ultrasound: Cell; ct: Cell };
+  spots: { registration: Cell; triage: Cell; office: Cell; procedure: Cell; ecg: Cell; xray: Cell; ultrasound: Cell; ct: Cell; mri: Cell };
   /** куда садится пациент в каждом кабинете врача — у нанятых врачей свои (spec 2026-09-hired-doctors) */
   offices: Record<string, Cell>;
   /** ваш кабинет — первый кабинет врача, до которого можно дойти */
@@ -61,10 +62,14 @@ const FIGURE: Record<string, StaffRole> = {
   // реанимация (spec 2026-10-chapter-4, часть 47)
   'room.ricu|role.anesthetist': 'ricuDoctor',
   'room.ricu|role.nurse': 'ricuNurse',
+  // кабинет МРТ (часть 50б)
+  'room.mri|role.radiographer': 'mriTech',
+  'room.mri|role.radiologist': 'mriDoctor',
 };
 
 const SPOT: Record<keyof ClinicLayout['spots'], Id> = {
   registration: 'room.reception', triage: 'room.triage', office: 'room.office', procedure: 'room.procedure', ecg: 'room.ecg', xray: 'room.xray', ultrasound: 'room.ultrasound', ct: 'room.ct',
+  mri: 'room.mri',
 };
 
 /**
