@@ -66,7 +66,8 @@ describe('ботулизм: болезнь и признаки', () => {
   test('расспрос о еде, зрении и глотании — первым при двоении в глазах; птоз и зрачки — на неврологическом осмотре', () => {
     expect(db.exams['exam.ask_food'].routineFor).toContain('sym.diplopia');
     expect(db.exams['exam.ask_food'].checks.map(c => c.f)).toEqual(['hx.home_canned', 'sym.diplopia', 'sym.dry_mouth', 'sym.swallow_trouble', 'sym.choking_liquids']);
-    expect(db.exams['exam.neuro_exam'].checks.map(c => c.f).slice(-2)).toEqual(['sign.ptosis', 'sign.mydriasis']);
+    // с частью 54а за ними — хлопающий тремор печёночной энцефалопатии
+    expect(db.exams['exam.neuro_exam'].checks.map(c => c.f).slice(-3)).toEqual(['sign.ptosis', 'sign.mydriasis', 'sign.asterixis']);
     expect(db.exams['exam.neuro_exam'].routineFor).toContain('sym.diplopia');
   });
 });

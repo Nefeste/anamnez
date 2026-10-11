@@ -312,8 +312,8 @@ const TX_GROUPS: [string, string[]][] = [
   // с частью 43д — колхицин при перикардите
   ['heart', ['antihypertensive', 'antiplatelet', 'antianginal', 'anticoagulant', 'vascular', 'adrenergic', 'thrombolytic', 'lipid', 'antiarrhythmic', 'anticholinergic', 'diuretic', 'cardiac']],
   // противодиарейные (spec 2026-10-chapter-4, часть 49б): лоперамид — при кишечных инфекциях не нужен или вреден; с частью
-  // 54а — лактулоза при кровотечении из вен пищевода и печёночной энцефалопатии
-  ['digestive', ['acid', 'antidiarrheal', 'laxative']],
+  // 54а — лактулоза при кровотечении из вен пищевода и печёночной энцефалопатии, орнитин при ней (АТХ A05 — болезни печени)
+  ['digestive', ['acid', 'antidiarrheal', 'laxative', 'liver']],
   // растворы для питья и капельница (часть 32д-2): и при кишечной инфекции, и при обширном ожоге; с частью 54а — альбумин
   // при циррозе с асцитом и спонтанном бактериальном перитоните
   ['fluids', ['rehydration', 'plasma']],

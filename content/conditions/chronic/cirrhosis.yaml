@@ -30,6 +30,9 @@ findings:
   - { f: lab.platelets_low, band: usually }
   - { f: lab.bilirubin_high, band: sometimes }
   - { f: lab.pti_low, band: sometimes }
+  # аммиак растёт от потери гепатоцитов и портосистемного шунтирования (715_2, раздел 1.2) — и без явной энцефалопатии;
+  # полоса — игровая оценка
+  - { f: lab.ammonia_high, band: sometimes }
   - f: img.egd_varices
     band: { pct: 35 }
     note: "варикозные вены — у 30–40 % больных компенсированным циррозом (715_2, раздел 1.3): середина"

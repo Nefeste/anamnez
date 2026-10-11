@@ -3,7 +3,8 @@
 // группе с язвенным и разрывом Мэллори–Вейсса: источник различает ЭГДС; вазоактивный препарат и антибиотик — сразу, до
 // эндоскопии и до перевода, вены лигируют. Асцит и перитонит различает диагностический парацентез: нейтрофилов в
 // асцитической жидкости больше 250 — антибиотик и альбумин; без инфекции — спиронолактон и диета, при напряжённом асците —
-// лечебный парацентез с альбумином.
+// лечебный парацентез с альбумином. Печёночная энцефалопатия — по стадиям West Haven: лактулоза, рифаксимин или орнитин,
+// III стадия — в ПИТ, кома — в реанимацию; бензодиазепины и мочегонные — вред.
 import { describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { db } from '../../src/content';
 import type { Id } from '../../src/content/types';
@@ -37,6 +38,10 @@ const LVP = 'tx.paracentesis_large';
 const DIET = 'tx.low_salt_diet';
 const PMN = 'lab.ascites_pmn_250';
 const FLUID = 'lab.ascitic_fluid';
+const HE = 'cond.hepatic_encephalopathy';
+const LACT = 'tx.lactulose';
+const RIFAX = 'tx.rifaximin';
+const ORN = 'tx.ornithine';
 
 /** Больной, у которого болезнь обычна, — в своём возрасте и с тем, без чего она не бывает. */
 const patient = (primary: Id, seed: number, params: Record<string, string> = {}): Patient =>
@@ -234,6 +239,54 @@ describe('асцит и спонтанный бактериальный пери
   });
 });
 
+describe('печёночная энцефалопатия', () => {
+  const ps = therapy(HE, 300, 54_700);
+
+  test('запись: терапия, только при циррозе; стадии II–IV по West Haven, подтверждают клинически', () => {
+    expect(db.conditions[HE]).toMatchObject({ icd10: 'K72.9', department: 'dept.therapy', requires: [CIRR], confirm: 'clinical', params: { grade: { g2: 55, g3: 35, g4: 10 } } });
+    for (const p of ps) expect(p.truth.conditions.some(c => c.id === CIRR)).toBe(true);
+  });
+
+  test('по стадиям: сонлив днём и путает дни — со II, III — спутанность и оглушение, IV — кома; аммиак повышен почти у каждого', () => {
+    for (const p of ps) {
+      const g = params(p).grade;
+      // и у больного в коме: о сонливости и путанице в днях говорят родные — с ней и привозят
+      expect(has(p, 'sym.daytime_sleepiness')).toBe(true);
+      expect(p.complaints).toContain('sym.daytime_sleepiness');
+      if (g === 'g3') expect(has(p, 'sym.confusion')).toBe(true);
+      expect(has(p, 'sign.gcs_low')).toBe(g === 'g3');
+      expect(has(p, 'sign.gcs_coma')).toBe(g === 'g4');
+    }
+    near(share(ps, p => params(p).grade === 'g4'), 0.1, 0.05);
+    near(share(ps.filter(p => params(p).grade !== 'g4'), p => has(p, 'sign.asterixis')), 0.75, 0.1);
+    expect(share(ps, p => has(p, 'lab.ammonia_high'))).toBeGreaterThan(0.9);
+    // у больного циррозом без энцефалопатии аммиак повышен иногда: анализ её не доказывает
+    near(share(therapy(ASC, 200, 54_900), p => has(p, 'lab.ammonia_high')), 0.25, 0.1);
+  });
+
+  test('тактика по 715_2: лактулоза, рифаксимин или орнитин, обычно лактулоза; бензодиазепины и мочегонные — вред; при коме рифаксимин не нужен', () => {
+    const t = db.conditions[HE].treatment!;
+    expect(t.firstLine).toEqual([LACT, RIFAX, ORN]);
+    expect(t.plan).toEqual([LACT]);
+    for (const tx of ['tx.benzodiazepine', 'tx.furosemide_iv', SPIRO]) expect(txRole(db, HE, tx, { grade: 'g2', decomp: 'yes' })).toBe('harmful');
+    expect(txRole(db, HE, RIFAX, { grade: 'g4', decomp: 'no' })).toBe('notIndicated');
+    expect(txRole(db, HE, ORN, { grade: 'g4', decomp: 'no' })).toBe('firstLine');
+    expect(txRole(db, HE, 'tx.ventilation', { grade: 'g4', decomp: 'no' })).toBe('acceptable');
+    // лактулоза помогает обычно, рифаксимин и орнитин — часто; орнитин — в группе «Желудок и кишечник»
+    const cure = (tx: Id) => db.treatments[tx].effects.find(e => e.on === HE)!.p;
+    expect(cure(LACT)).toBeGreaterThan(cure(RIFAX));
+    expect(cure(RIFAX)).toBe(cure(ORN));
+    expect(db.treatments[ORN].class).toBe('liver.ornithine');
+  });
+
+  test('место: II стадия — палата, III — ПИТ, кома — реанимация', () => {
+    const by = (g: string) => ps.find(p => params(p).grade === g)!;
+    expect(recommendedSetting(db, by('g2'))).toBe('ward');
+    expect(recommendedSetting(db, by('g3'))).toBe('icu');
+    expect(recommendedSetting(db, by('g4'))).toBe('ricu');
+  });
+});
+
 /** Разумный врач по шагам — с местом больницы и тем, что в ней можно сделать. */
 function doctor(p: Patient, exams: readonly Id[], venue: Venue) {
   const obs: Observation[] = complaintObservations(p);
@@ -284,6 +337,22 @@ describe('разумный врач', () => {
     expect(share(rs, r => r.plan.treatments.includes(ABX))).toBeLessThan(0.05);
   });
 
+  test('энцефалопатия: распознаёт и лечит лактулозой, III стадию — в ПИТ, кому — в реанимацию; бензодиазепинов не даёт', () => {
+    const venue: Venue = { ward: true, icu: true, ricu: true, or: true };
+    const rs = therapy(HE, 60, 5700).map(p => doctor(p, all, venue));
+    expect(share(rs, r => r.diagnosis === HE)).toBeGreaterThan(0.9);
+    expect(share(rs, r => r.plan.treatments.includes(LACT))).toBeGreaterThan(0.9);
+    expect(share(rs, r => r.plan.treatments.includes('tx.benzodiazepine'))).toBe(0);
+    // стадию показывает осмотр невролога — его делают каждому, кто днём сонлив и путает дни: оглушение — III, кома —
+    // IV; оглушение он замечает у девяти из десяти, кому — почти у каждого, пропущенную принимают за оглушение
+    expect(share(rs, r => r.done.includes('exam.neuro_exam'))).toBeGreaterThan(0.95);
+    const g3 = therapy(HE, 40, 5800, { grade: 'g3' }).map(p => doctor(p, all, venue));
+    expect(share(g3, r => r.plan.setting === 'icu')).toBeGreaterThan(0.8);
+    const g4 = therapy(HE, 20, 5900, { grade: 'g4' }).map(p => doctor(p, all, venue));
+    expect(share(g4, r => r.plan.setting === 'ricu')).toBeGreaterThan(0.8);
+    expect(g4.every(r => r.diagnosis === HE && ['icu', 'ricu'].includes(r.plan.setting))).toBe(true);
+  });
+
   test('перитонит: по парацентезу — антибиотик и альбумин; без парацентеза его чаще принимают за асцит', () => {
     const ps = therapy(SBP, 60, 5600);
     const rs = ps.map(p => doctor(p, all, HOSPITAL));
@@ -307,5 +376,11 @@ describe('энциклопедия', () => {
     expect(rows(ASC)).toMatchObject({ 'Первая линия': [SPIRO], 'Обязательно, при напряжённом асците': [LVP, ALB] });
     expect(rows(SBP)).toMatchObject({ 'Обязательно': [ABX, ALB] });
     for (const id of [ASC, SBP, PARA, SPIRO, ALB, LVP, DIET, PMN, FLUID, 'sign.ascites_tense', 'sym.abdomen_enlarged']) expect(article(db, id)).toBeDefined();
+  });
+
+  test('энцефалопатия: первая линия из трёх, обычно — лактулоза; при коме — ИВЛ можно, рифаксимин не нужен', () => {
+    const rows = Object.fromEntries(article(db, HE)!.blocks.find(b => b.key === 'treatment')!.rows!.map(r => [r.label, r.refs.map(x => x.id)]));
+    expect(rows).toMatchObject({ 'Первая линия': [LACT, RIFAX, ORN], 'Обычно назначают': [LACT], 'Можно также, при коме — IV стадии': ['tx.ventilation'], 'Не нужно, при коме — IV стадии': [RIFAX] });
+    for (const id of [HE, RIFAX, ORN, 'exam.ammonia', 'lab.ammonia_high', 'sign.asterixis', 'sign.fetor_hepaticus', 'sym.daytime_sleepiness']) expect(article(db, id)).toBeDefined();
   });
 });
