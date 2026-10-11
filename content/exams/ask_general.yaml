@@ -17,6 +17,9 @@ checks:
   - { f: sym.weight_loss, sens: 90, spec: 97 }
   - { f: sym.cold_intolerance, sens: 80, spec: 94 }
   - { f: sym.constipation, sens: 88, spec: 95 }
+  # запоры месяцами (spec 2026-10-chapter-4, часть 55б): стул реже трёх раз в неделю, твёрдый (274_3, раздел 2); точность —
+  # игровая оценка
+  - { f: sym.constipation_long, sens: 92, spec: 99 }
   # с частью 44а: дрожь, пот, внезапный голод — гипогликемия; спутанность называют родные. Точность — игровая оценка
   - { f: sym.tremor, sens: 90, spec: 97 }
   - { f: sym.sweating, sens: 85, spec: 95 }

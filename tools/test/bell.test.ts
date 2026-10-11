@@ -86,7 +86,8 @@ describe('каталог', () => {
   test('осмотр невролога видит периферический парез, лагофтальм и тяжёлый парез без ложных; ОАК — каждому с периферическим парезом; расспрос — о боли за ухом', () => {
     const k = Object.fromEntries(db.exams[NEURO].checks.map(c => [c.f, [c.sens, c.spec]]));
     expect([k[PERIPHERAL], k[EYE], k[SEVERE]]).toEqual([[9500, 10000], [9500, 10000], [9200, 10000]]);
-    expect(db.exams['exam.cbc'].routineSeen).toEqual([PERIPHERAL]);
+    // с частью 55б (spec 2026-10-chapter-4) — и каждому, у кого боль в животе связана со стулом: подозрение на СРК (892_1)
+    expect(db.exams['exam.cbc'].routineSeen).toEqual([PERIPHERAL, 'sym.pain_with_stool']);
     expect(db.exams[ASK].checks.find(c => c.f === EAR)).toMatchObject({ sens: 9500, spec: 9800 });
     // глюкометр — и так каждому с перекошенным лицом (часть 44а)
     expect(db.exams['exam.glucometer'].routineFor).toContain(DROOP);

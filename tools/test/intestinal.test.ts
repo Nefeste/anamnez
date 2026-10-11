@@ -178,8 +178,8 @@ describe('лечение', () => {
     expect(evaluatePlan(db, mild, { treatments: [ORS], setting: 'home' }, []).effective).toBe(false);
     expect(evaluatePlan(db, mild, { treatments: [FQ, ORS], setting: 'home' }, []).effective).toBe(true);
     expect(txRole(db, SHIG, LOPER, { severity: 'mild' })).toBe('harmful');
-    // с частью 55а — и при тяжёлой атаке язвенного колита (193_2, раздел 3.2.2)
-    expect(db.treatments[LOPER].effects.map(e => [e.on, e.kind])).toEqual([[SHIG, 'harm'], [CDI, 'harm'], ['cond.uc_attack', 'harm']]);
+    // с частью 55а — и при тяжёлой атаке язвенного колита (193_2, раздел 3.2.2); с частью 55б — польза при СРК с диареей (892_1)
+    expect(db.treatments[LOPER].effects.map(e => [e.on, e.kind])).toEqual([[SHIG, 'harm'], [CDI, 'harm'], ['cond.uc_attack', 'harm'], ['cond.ibs', 'cure']]);
   });
 
   test('C. difficile: ванкомицин внутрь; метронидазол — при лёгком; молниеносный — оба и растворы; идёт антибиотик — отменить', () => {
