@@ -1,0 +1,141 @@
+id: cond.salmonellosis
+name: { ru: "Сальмонеллёз" }
+# острая кишечная инфекция, вызванная сальмонеллами (700_3, раздел 1.1; spec 2026-10-chapter-4, часть 49б). В игре —
+# гастроинтестинальная форма: её находят у 96–98 % обратившихся с подозрением на сальмонеллёз (приложение В); генерализованные
+# формы — позже. A02.0 — сальмонеллёзный энтерит
+icd10: A02.0
+department: dept.infectious
+# кишечная инфекция, как острый гастроэнтерит: поставили гастроэнтерит — диагноз частично верный, возбудитель не назван
+group: grp.intestinal_infection
+system: digestive
+kind: disease
+severity: moderate
+# фекально-оральный механизм: пищевой путь — птица и яйца, реже водный и контактно-бытовой (раздел 1.3); в стационаре —
+# бокс
+isolation: contact
+epidemiology:
+  # заболеваемость — 21,45 на 100 тыс. в 2023 году (раздел 1.3), в десятки раз реже кишечных инфекций в целом: полоса —
+  # игровая оценка
+  prevalence: rare
+  age: { min: 18 }
+  # «в течение всего года с подъёмом в летне-осеннее время» (раздел 1.3); множители — игровая оценка
+  season: { winter: 0.7, spring: 0.8, summer: 1.4, autumn: 1.1 }
+params:
+  # тяжесть по таблице приложения А3 — лёгкая, средней степени, тяжёлая. Долей в рекомендации нет — игровая оценка; скорая и
+  # вернувшийся хуже — тяжёлая
+  severity: { mild: 40, moderate: 45, severe: 15 }
+course:
+  stages:
+    - { id: active, days: [0, 4] }
+    - { id: resolution, days: [4, 10] }
+  # к врачу — в первые 2–3 дня болезни (приложение В)
+  presentation: [0, 2]
+  # лёгкая и средняя проходят с регидратацией — антибиотик при них не нужен (раздел 3.1.1); тяжёлая без антибиотика и
+  # растворов в вену — нет
+  selfLimiting: { when: { severity: [mild, moderate] } }
+  # без лечения при тяжёлой — обезвоживание II–III степени, судороги, цианоз (приложение В): хуже — обычно, игровая оценка
+  untreated:
+    - { band: rarely, days: [1, 3], when: { severity: [mild, moderate] } }
+    - { band: usually, days: [0, 2], when: { severity: [severe] } }
+  # выписка — нет жалоб, стул нормальный, посев кала отрицательный (раздел 6); сутки — игровая оценка
+  stay: [5, 8]
+findings:
+  - { f: sym.diarrhea, band: always }
+  # стул «обильный, водянистый, пенистый, зловонный, иногда с зеленоватым оттенком… „болотная тина“»; тенезмов и ложных
+  # позывов нет (раздел 1.6); при гастроэнтероколитическом варианте на 2–3 день — примесь слизи, иногда крови
+  - { f: sym.green_stool, band: usually }
+  - { f: sym.mucus_blood_stool, band: rarely }
+  - { f: sym.tenesmus, band: rarely }
+  # тошнота и рвота, «как правило предшествующие диарее»: при лёгкой — нет или однократная, при средней — повторная, при
+  # тяжёлой — многократная (приложение А3)
+  - { f: sym.nausea, band: usually }
+  - { f: sym.vomiting, band: sometimes, when: { severity: [mild] } }
+  - { f: sym.vomiting, band: usually, when: { severity: [moderate] } }
+  - { f: sym.vomiting, band: always, when: { severity: [severe] } }
+  # схваткообразная боль в эпигастрии и вокруг пупка (раздел 2); живот болезнен больше в эпигастрии и правой подвздошной
+  # области (раздел 1.6) — повод исключить аппендицит
+  - { f: sym.abdominal_pain, band: usually }
+  - { f: sym.epigastric_pain, band: often }
+  - { f: sign.epigastric_tenderness, band: often }
+  - { f: sign.rlq_tenderness, band: rarely }
+  # температура: при лёгкой — до 37,9, при средней — 38–39,5, при тяжёлой — 39,6 и выше (приложение А3); озноб, головная
+  # боль — с первых часов (раздел 1.6)
+  - { f: sym.fever_hx, band: often, when: { severity: [mild] } }
+  - { f: sym.fever_hx, band: usually, when: { severity: [moderate, severe] } }
+  - { f: vital.fever, band: rarely, when: { severity: [mild] } }
+  - { f: vital.fever, band: always, when: { severity: [moderate, severe] } }
+  - { f: sym.chills, band: often }
+  - { f: sym.headache, band: often }
+  - { f: sym.myalgia, band: sometimes }
+  - { f: sym.fatigue, band: usually }
+  # обезвоживание: при лёгкой — нет, при средней — I–II степени, при тяжёлой — II–III (приложение А3); признаки — как у
+  # острого гастроэнтерита (875_1, приложение А3.1). Полосы — игровая оценка
+  - { f: sym.thirst, band: rarely, when: { severity: [mild] } }
+  - { f: sym.thirst, band: usually, when: { severity: [moderate, severe] } }
+  - { f: sym.less_urine, band: sometimes, when: { severity: [moderate] } }
+  - { f: sym.less_urine, band: usually, when: { severity: [severe] } }
+  - { f: sign.dry_mucosa, band: often, when: { severity: [moderate] } }
+  - { f: sign.dry_mucosa, band: always, when: { severity: [severe] } }
+  - { f: sym.leg_cramps, band: sometimes, when: { severity: [severe] } }
+  - { f: sign.dehydration, band: usually, when: { severity: [severe] } }
+  # давление: при лёгкой — выше 110, при средней — 90–110, при тяжёлой — ниже 90 (приложение А3); тахикардия, бледность
+  # (раздел 1.6)
+  - { f: vital.bp_100, band: often, when: { severity: [moderate] } }
+  - { f: vital.bp_100, band: always, when: { severity: [severe] } }
+  - { f: vital.bp_low, band: usually, when: { severity: [severe] } }
+  - { f: vital.tachycardia, band: sometimes, when: { severity: [moderate] } }
+  - { f: vital.tachycardia, band: always, when: { severity: [severe] } }
+  - { f: sign.pallor, band: often, when: { severity: [moderate, severe] } }
+  # лейкоциты: при лёгкой — норма или до 10, при средней — до 20, при тяжёлой — больше 20; креатинин при тяжёлой повышен
+  # (приложение А3)
+  - { f: lab.wbc_high, band: rarely, when: { severity: [mild] } }
+  - { f: lab.wbc_high, band: usually, when: { severity: [moderate] } }
+  - { f: lab.wbc_high, band: always, when: { severity: [severe] } }
+  - { f: lab.creatinine_high, band: usually, when: { severity: [severe] } }
+  - { f: lab.crp_high, band: often }
+confirm: clinical
+redFlags: [vital.bp_low, sign.dehydration]
+differential: [cond.gastroenteritis, cond.shigellosis, cond.appendicitis]
+treatment:
+  # регидратация — пероральная, при обезвоживании II–III степени — в вену (раздел 3.1.2); антибиотик при лёгкой форме не
+  # рекомендован (раздел 3.1.1); посев кала — всем, до антибиотика (раздел 2.3; критерий качества 9). Противодиарейные,
+  # замедляющие кишку, при кишечных инфекциях не рекомендованы (875_1, раздел 3.1.2)
+  firstLine: [tx.ors]
+  supportive: [tx.stool_culture, tx.rest_fluids, tx.paracetamol]
+  notIndicated: [tx.loperamide, tx.amoxicillin, tx.amoxicillin_clavulanate, tx.macrolide, tx.nitrofurantoin, tx.cephalosporin_oral, tx.ppi, tx.norepinephrine]
+  byParam:
+    # лёгкая — без антибиотика: «не рекомендована антимикробная терапия… в легкой форме» (раздел 3.1.1)
+    - when: { severity: [mild] }
+      notIndicated: [tx.fluoroquinolone, tx.antibiotic_iv]
+    # средняя — антибиотик «у лиц с отягощенным преморбидным фоном», растворы в вену — при I–II степени с интоксикацией
+    # (разделы 3.1.1 и 3.1.2): не ошибка
+    - when: { severity: [moderate] }
+      acceptable: [tx.fluoroquinolone, tx.antibiotic_iv, tx.balanced_fluids, tx.iv_fluids]
+    # тяжёлая — растворы в вену и антибиотик обязательны (разделы 3.1.1 и 3.1.2); питьё — когда прекратится рвота
+    - when: { severity: [severe] }
+      acceptable: [tx.ors]
+      require: [[tx.balanced_fluids, tx.iv_fluids], [tx.antibiotic_iv, tx.fluoroquinolone]]
+  # где лечить (раздел 6): лёгкая — дома, средняя и тяжёлая — инфекционное отделение, в игре бокс; лёгкую в боксе — не
+  # ошибка (эпидемиологические показания); тяжёлую с давлением ниже 90 в ПИТ — тоже (раздел 2.5: при неотложных состояниях —
+  # реаниматолог и решение о переводе в ОРИТ)
+  setting:
+    default: home
+    param: { name: severity, map: { mild: home, moderate: box, severe: box } }
+    also:
+      - { when: { severity: [mild] }, settings: [box] }
+      - { when: { severity: [severe] }, settings: [icu] }
+texts:
+  summary:
+    ru: >-
+      Кишечная инфекция, которой заражаются чаще всего от курицы, яиц и мяса: через 12–24 часа — озноб, температура до
+      39, схваткообразная боль под ложечкой и вокруг пупка, рвота, потом обильный зловонный зеленоватый стул. Лёгкое
+      течение лечат дома питьём солевых растворов, антибиотик тогда не нужен. Среднетяжёлое и тяжёлое — бокс
+      инфекционного отделения; при тяжёлом — растворы в вену и антибиотик. Посев кала берут до антибиотика.
+pearls:
+  - ru: "Антибиотик при лёгком сальмонеллёзе не нужен: болезнь проходит сама, а носительство после него бывает дольше."
+  - ru: "Стул обильный и зеленоватый, без крови и ложных позывов — скорее сальмонеллёз; скудный со слизью и кровью — шигеллёз."
+  - ru: "Боль справа внизу живота и температура — исключите аппендицит, прежде чем лечить кишечную инфекцию."
+simplified: "В игре — только гастроинтестинальная форма; генерализованная (тифоподобная, септическая), носительство и сероварианты — нет. Тяжесть — три степени по таблице рекомендации без потери массы тела и баланса жидкости. Отягощённого фона как довода за антибиотик нет: при среднетяжёлом он не ошибка. Результата посева в смене нет — он приходит через 2–3 суток."
+sources:
+  - { kind: guideline, title: "Сальмонеллез у взрослых", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/700_3", note: "ID 700_3, опубликованы 17.09.2024, применяются; сверено с рубрикатором 06.10.2026; разделы 1.1–1.6: определение, пищевой путь, летне-осенний подъём, клиника гастроэнтеритического варианта; приложение А3: тяжесть по температуре, давлению, рвоте, стулу, обезвоживанию и лейкоцитам; раздел 2.3: посев кала всем, до антибиотика; раздел 3.1.1: антибиотик при тяжёлом течении, генерализации и среднетяжёлом с отягощённым фоном, при лёгкой форме — нет; раздел 3.1.2: регидратация; раздел 6: госпитализация средне-тяжёлых и тяжёлых, лёгкие — амбулаторно; доли тяжести и полосы без пояснений — игровая оценка" }
+review: draft

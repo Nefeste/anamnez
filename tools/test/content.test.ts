@@ -170,8 +170,8 @@ describe('каталог больницы', () => {
     expect(db.rooms['room.lab'].exams).toContain('exam.cbc');
     expect(db.rooms['room.procedure'].collects).toContain('exam.cbc');
     expect(db.rooms['room.lab'].equipment).toContain('eq.biochem_analyzer');
-    // NT-proBNP (часть 43в) — тоже на иммунохимическом
-    expect(db.equipment['eq.immuno_analyzer'].exams).toEqual(['exam.d_dimer', 'exam.nt_probnp', 'exam.troponin_hs', 'exam.tsh']);
+    // NT-proBNP (часть 43в) — тоже на иммунохимическом; с частью 49б — антиген и токсины C. difficile в кале
+    expect(db.equipment['eq.immuno_analyzer'].exams).toEqual(['exam.cdiff_stool', 'exam.d_dimer', 'exam.nt_probnp', 'exam.troponin_hs', 'exam.tsh']);
     expect(db.equipment['eq.xray_digital'].upgradeOf).toBe('eq.xray_analog');
     expect(db.roles['role.nurse'].rooms).toEqual(['room.box', 'room.ecg', 'room.emergency', 'room.icu', 'room.procedure', 'room.ricu', 'room.triage', 'room.ward']);
     // палата (spec 2026-09-chapter-2, часть 26): койки — места лежащих
@@ -442,6 +442,8 @@ describe('каталог больницы', () => {
       edit(d, 'exams/d_dimer.yaml', 'equipment: [eq.biochem_analyzer, eq.immuno_analyzer]', 'equipment: [eq.biochem_analyzer]');
       edit(d, 'exams/troponin_hs.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.biochem_analyzer]');
       edit(d, 'exams/nt_probnp.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.biochem_analyzer]');
+      // кал на C. difficile (часть 49б) — тоже
+      edit(d, 'exams/cdiff_stool.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.biochem_analyzer]');
     });
     expect(foreign.some(e => e.includes('exam.tsh: аппарат eq.ecg стоит в room.ecg'))).toBe(true);
     // и тогда иммунохимическим анализатором ничего не делают

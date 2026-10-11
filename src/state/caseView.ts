@@ -300,7 +300,8 @@ const TX_GROUPS: [string, string[]][] = [
   // допамин и наружная стимуляция при АВ-блокаде; с частью 43в — фуросемид в вену при сердечной недостаточности;
   // с частью 43д — колхицин при перикардите
   ['heart', ['antihypertensive', 'antiplatelet', 'antianginal', 'anticoagulant', 'vascular', 'adrenergic', 'thrombolytic', 'lipid', 'antiarrhythmic', 'anticholinergic', 'diuretic', 'cardiac']],
-  ['digestive', ['acid']],
+  // противодиарейные (spec 2026-10-chapter-4, часть 49б): лоперамид — при кишечных инфекциях не нужен или вреден
+  ['digestive', ['acid', 'antidiarrheal']],
   // растворы для питья и капельница (часть 32д-2): и при кишечной инфекции, и при обширном ожоге
   ['fluids', ['rehydration']],
   // с частью 41в — гемостатики: протромбиновый комплекс, витамин K1, транексамовая кислота; с частью 44а — декстроза и
