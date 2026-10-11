@@ -599,6 +599,14 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
         else if (!t.effects.some(e => e.on === id && e.kind !== 'harm')) errors.push(`${t.id}: спутники при ${id}, а при ней лечение не действует`);
       }
     }
+    // спутники тем, у кого (часть 54б): спутники есть; хроническая болезнь или фактор риска есть и не повторяются
+    if (t.companionsIf) {
+      if (companions.length === 0) errors.push(`${t.id}: спутники нужны тем, у кого ${t.companionsIf.join(', ')}, а спутников нет`);
+      if (new Set(t.companionsIf).size !== t.companionsIf.length) errors.push(`${t.id}: у кого нужны спутники — повторяется`);
+      for (const id of t.companionsIf) {
+        if (id.startsWith('risk.') ? !(id in risks) : !conditions[id]?.epidemiology.chronic) errors.push(`${t.id}: спутники тем, у кого ${id}, — нет такого фактора риска или хронической болезни`);
+      }
+    }
   }
   for (const r of Object.values(risks)) checkLinks(r.id, r.findings);
   const revealedBy: Record<string, string[]> = {};
@@ -936,6 +944,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (t.room) out.room = t.room;
     if (t.companions) out.companions = t.companions;
     if (t.companionsFor) out.companionsFor = t.companionsFor;
+    if (t.companionsIf) out.companionsIf = t.companionsIf;
     if (t.surgery) {
       const x = t.surgery;
       out.surgery = {

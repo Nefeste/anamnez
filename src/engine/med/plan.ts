@@ -132,11 +132,15 @@ export function settingRoomsOf(db: ContentDb, rooms: readonly Id[]): Id[] {
 
 /**
  * Спутники лечения при этой болезни (часть 39а): с частью 42б — у `companionsFor` только при названных
- * болезнях: антикоагулянт рядом с кардиоверсией — при фибрилляции предсердий, при тахикардиях — нет.
+ * болезнях: антикоагулянт рядом с кардиоверсией — при фибрилляции предсердий, при тахикардиях — нет. С частью 54б
+ * (spec 2026-10-chapter-4) — у `companionsIf` только тем, у кого это есть: о чём врач знает (`known` — факторы риска и
+ * хронические болезни) или без чего болезнь не бывает — глюкоза зависимому от алкоголя только с тиамином.
  */
-export function companionsOf(db: ContentDb, tx: Id, condition: Id): (Id | Id[])[] {
+export function companionsOf(db: ContentDb, tx: Id, condition: Id, known: readonly Id[] = []): (Id | Id[])[] {
   const t = db.treatments[tx];
-  return !t?.companions || (t.companionsFor && !t.companionsFor.includes(condition)) ? [] : t.companions;
+  if (!t?.companions || (t.companionsFor && !t.companionsFor.includes(condition))) return [];
+  const has = (id: Id) => known.includes(id) || id === condition || (db.conditions[condition]?.requires ?? []).includes(id);
+  return t.companionsIf && !t.companionsIf.some(has) ? [] : t.companions;
 }
 
 /** Можно ли назначить здесь: лечению у постели (часть 39а) нужны его аппараты у постели больного. */
@@ -640,7 +644,7 @@ export function evaluatePlan(db: ContentDb, patient: Patient, plan: Plan, observ
     // спутники (часть 39а): тромболизис без клопидогрела и антикоагулянта — неполное лечение; из группы
     // хватит одного, а противопоказанное тем, о чём врач знает, в вину не ставим
     // при болезни, где они нужны (часть 42б): кардиоверсия при тахикардии — без антикоагулянта
-    companionsMissing: plan.treatments.flatMap(of => companionsOf(db, of, primary).flatMap(g => {
+    companionsMissing: plan.treatments.flatMap(of => companionsOf(db, of, primary, [...knownIds]).flatMap(g => {
       const group = typeof g === 'string' ? [g] : g;
       const can = group.filter(tx => !db.treatments[tx]?.contraindications.some(k => knownIds.has(k.id)));
       return can.length > 0 && !group.some(tx => plan.treatments.includes(tx)) ? [{ tx: can[0], of }] : [];

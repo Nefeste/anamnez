@@ -1,6 +1,7 @@
 // Алкоголь (spec 2026-10-chapter-4, часть 54б). Синдром зависимости — фон, с ним не приходят. Синдром отмены — по 784_1:
 // тяжесть по CIWA-Ar, тиамин и нарколог — каждому, бензодиазепин и растворы в вену — при средней и тяжёлой, лёгкую лечат
-// дома.
+// дома. Алкогольный гепатит — по 711_2: желтуха, АСТ выше АЛТ, тяжесть по индексу Маддрея — при тяжёлом преднизолон; отказ
+// от алкоголя, еда с белком и нарколог — каждому, лечат в стационаре. Глюкоза зависимому от алкоголя — только с тиамином.
 import { describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { db } from '../../src/content';
 import type { Id } from '../../src/content/types';
@@ -8,8 +9,8 @@ import { Rng } from '../../src/engine/core/rng';
 import { complaintObservations, runExam } from '../../src/engine/med/exams';
 import { generatePatient, typicalPatient } from '../../src/engine/med/generate';
 import { knownFacts } from '../../src/engine/med/infer';
-import { alsoSettings, evaluatePlan, recommendedSetting, txRole, type Venue } from '../../src/engine/med/plan';
-import { type DoctorPhase, examMinutes, MIN_GAIN, nextStep } from '../../src/engine/med/policy';
+import { alsoSettings, curesOf, evaluatePlan, recommendedSetting, txRole, type Venue } from '../../src/engine/med/plan';
+import { choosePlan, type DoctorPhase, examMinutes, MIN_GAIN, nextStep } from '../../src/engine/med/policy';
 import type { Observation, Patient } from '../../src/engine/med/types';
 import { candidatesOf } from '../../src/engine/shift/engine';
 import { article } from '../../src/state/encyclopedia';
@@ -23,6 +24,11 @@ const BENZO = 'tx.benzodiazepine';
 const THIA = 'tx.thiamine';
 const NARC = 'tx.narcologist_consult';
 const FLUIDS = ['tx.balanced_fluids', 'tx.iv_fluids'];
+const AH = 'cond.alcoholic_hepatitis';
+const STEROID = 'tx.steroid_systemic_short';
+const DIET = 'tx.liver_diet';
+const DEX = 'tx.dextrose_iv';
+const HYPO = 'cond.hypoglycemia';
 const ED = ['dept.therapy', 'dept.surgery', 'dept.trauma'];
 
 const therapy = (primary: Id, n: number, from: number, params: Record<string, string> = {}) =>
@@ -115,6 +121,82 @@ describe('синдром отмены алкоголя', () => {
   });
 });
 
+describe('алкогольный гепатит', () => {
+  const hs = therapy(AH, 300, 54_200);
+  const one = (sev: string) => hs.find(p => params(p).severity === sev)!;
+
+  test('запись по 711_2: терапия, только при зависимости, K70.1; подтверждают печёночные пробы; тяжесть — лёгкий и тяжёлый', () => {
+    expect(db.conditions[AH]).toMatchObject({ icd10: 'K70.1', department: 'dept.therapy', requires: [DEP], confirm: ['exam.liver_panel'], params: { severity: { mild: 60, severe: 40 } } });
+    expect(db.conditions[AH].risks).toEqual([{ id: 'cond.cirrhosis', x: 24 }]);
+    for (const p of hs) expect(p.truth.conditions.some(c => c.id === DEP)).toBe(true);
+  });
+
+  test('признаки: желтуха — у каждого; билирубин выше 200 и сниженный протромбиновый индекс — при тяжёлом; АСТ выше АЛТ — у большинства', () => {
+    for (const p of hs) {
+      expect(has(p, 'sym.yellow_skin') && has(p, 'sign.jaundice') && has(p, 'lab.bilirubin_high')).toBe(true);
+      if (params(p).severity === 'severe') expect(has(p, 'lab.bilirubin_200') && has(p, 'lab.pti_low')).toBe(true);
+    }
+    expect(share(hs.filter(p => params(p).severity === 'mild'), p => has(p, 'lab.bilirubin_200'))).toBeLessThan(0.05);
+    near(share(hs, p => has(p, 'lab.ast_over_alt')), 0.75, 0.08);
+    // при остром вирусном гепатите выше АЛТ: АСТ выше АЛТ — только фон
+    const hav = therapy('cond.hepatitis_a', 100, 54_600);
+    expect(share(hav, p => has(p, 'lab.ast_over_alt'))).toBeLessThan(0.05);
+  });
+
+  test('тактика по 711_2: отказ от алкоголя и еда с белком, нарколог — каждому; при тяжёлом — преднизолон, при лёгком он не нужен; парацетамол и ибупрофен — вред', () => {
+    const t = db.conditions[AH].treatment!;
+    expect(t.firstLine).toEqual([DIET]);
+    expect(t.require).toEqual([NARC]);
+    expect(t.harmful).toEqual(['tx.ibuprofen', 'tx.paracetamol']);
+    expect(txRole(db, AH, STEROID, { severity: 'severe' })).toBe('require');
+    expect(txRole(db, AH, STEROID, { severity: 'mild' })).toBe('notIndicated');
+    expect(txRole(db, AH, 'tx.ademetionine', { severity: 'severe' })).toBe('supportive');
+    const venue: Venue = { ward: true, icu: true };
+    const severe = one('severe');
+    expect(evaluatePlan(db, severe, { treatments: [DIET, NARC], setting: 'admit' }, complaintObservations(severe), venue).requireMissing).toContain(STEROID);
+    expect(evaluatePlan(db, severe, { treatments: [DIET, NARC, STEROID], setting: 'admit' }, complaintObservations(severe), venue).requireMissing).toEqual([]);
+    // излечивает преднизолон — только тяжёлый: лёгкий без алкоголя проходит сам
+    expect(curesOf(db, { id: AH, params: { severity: 'severe' } }, [STEROID]).map(e => e.p)).toEqual([7500]);
+    expect(curesOf(db, { id: AH, params: { severity: 'mild' } }, [STEROID])).toEqual([]);
+  });
+
+  test('место: в стационаре — желтуха; при тяжёлом ПИТ не ошибка', () => {
+    expect(recommendedSetting(db, one('mild'))).toBe('ward');
+    expect(recommendedSetting(db, one('severe'))).toBe('ward');
+    expect(alsoSettings(db, one('severe'))).toEqual(['icu']);
+    expect(alsoSettings(db, one('mild'))).toEqual([]);
+  });
+});
+
+describe('глюкоза зависимому от алкоголя — только с тиамином', () => {
+  const who = { age: 55, sex: 'm' as const };
+  const seen = (f: Id, exam: Id, on = true, value?: number): Observation => ({ f, shown: on, exam, ...(value !== undefined ? { value } : {}) });
+  // тяжёлая гипогликемия на инсулине — декстроза в вену (часть 44а)
+  const severe = [seen('sym.confusion', 'complaint'), seen('sign.gcs_low', 'exam.neuro_exam', true, 14), seen('lab.glucose_low', 'exam.glucometer', true, 2.2), seen('hx.insulin', 'exam.ask_meds'), seen('hx.sulfonylurea', 'exam.ask_meds', false)];
+  const binge = seen('hx.binge', 'exam.ask_lifestyle');
+  const venue: Venue = { ward: true, icu: true, bedside: ['eq.monitor_defib'] };
+
+  test('запись: спутник декстрозы — тиамин, только у тех, у кого синдром зависимости от алкоголя', () => {
+    for (const tx of [DEX, 'tx.dextrose_infusion']) expect(db.treatments[tx]).toMatchObject({ companions: [THIA], companionsIf: [DEP] });
+  });
+
+  test('гипогликемия: о запоях знает — разумный врач добавляет тиамин, а без него лечение неполное; не знает — не требуем', () => {
+    expect(choosePlan(db, HYPO, [...severe, binge], who, venue)).toEqual({ treatments: [DEX, THIA], setting: 'admit' });
+    expect(choosePlan(db, HYPO, severe, who, venue)).toEqual({ treatments: [DEX], setting: 'admit' });
+    const p = generatePatient(db, 54_300, { department: 'dept.therapy', departments: ED, season: 'winter', primary: HYPO, params: { severity: 'severe' } });
+    const dexOnly = { treatments: [DEX], setting: 'admit' as const };
+    expect(evaluatePlan(db, p, dexOnly, [...severe, binge], venue).companionsMissing).toEqual([{ tx: THIA, of: DEX }]);
+    expect(evaluatePlan(db, p, dexOnly, severe, venue).companionsMissing).toEqual([]);
+  });
+
+  test('синдром отмены и гепатит бывают только при зависимости: декстроза без тиамина неполная и без расспроса', () => {
+    for (const id of [AWS, AH]) {
+      const p = therapy(id, 1, 54_400)[0];
+      expect(evaluatePlan(db, p, { treatments: [DEX], setting: 'admit' }, complaintObservations(p), { ward: true }).companionsMissing).toEqual([{ tx: THIA, of: DEX }]);
+    }
+  });
+});
+
 /** Разумный врач по шагам — с местом больницы. */
 function doctor(p: Patient, exams: readonly Id[], venue: Venue) {
   const obs: Observation[] = complaintObservations(p);
@@ -150,6 +232,19 @@ describe('разумный врач', () => {
     expect(share(heavy, r => ['admit', 'icu'].includes(r.plan.setting))).toBeGreaterThan(0.9);
     expect(share(heavy, r => r.plan.treatments.includes(BENZO) && FLUIDS.some(t => r.plan.treatments.includes(t)))).toBeGreaterThan(0.9);
   });
+
+  test('алкогольный гепатит: отказ от алкоголя и нарколог каждому, всех — в стационар; тяжесть — по свёртываемости или билирубину, при тяжёлом — преднизолон', () => {
+    const hs = therapy(AH, 60, 6200);
+    const rs = hs.map(p => doctor(p, all, HOSPITAL));
+    expect(share(rs, r => r.diagnosis === AH)).toBeGreaterThan(0.9);
+    expect(share(rs, r => r.plan.treatments.includes(DIET) && r.plan.treatments.includes(NARC))).toBeGreaterThan(0.9);
+    expect(share(rs, r => ['admit', 'icu'].includes(r.plan.setting))).toBeGreaterThan(0.9);
+    expect(share(rs, r => r.done.includes('exam.coagulation') || r.done.includes('exam.liver_panel'))).toBeGreaterThan(0.9);
+    const severe = rs.filter((_, i) => params(hs[i]).severity === 'severe');
+    expect(share(severe, r => r.plan.treatments.includes(STEROID))).toBeGreaterThan(0.85);
+    const mild = rs.filter((_, i) => params(hs[i]).severity === 'mild');
+    expect(share(mild, r => !r.plan.treatments.includes(STEROID))).toBeGreaterThan(0.85);
+  });
 });
 
 describe('энциклопедия', () => {
@@ -157,5 +252,13 @@ describe('энциклопедия', () => {
     const rows = Object.fromEntries(article(db, AWS)!.blocks.find(b => b.key === 'treatment')!.rows!.map(r => [r.label, r.refs.map(x => x.id)]));
     expect(rows).toMatchObject({ 'Первая линия': [BENZO], 'Обязательная профилактика': [THIA], 'Обязательно': [NARC], 'Обязательно, при среднетяжёлом и тяжёлом течении': [BENZO] });
     for (const id of [AWS, DEP, THIA, NARC, 'exam.ciwa', 'sign.ciwa', 'sign.ciwa_16', 'hx.binge', 'hx.stopped_drinking', 'sym.anxiety', 'sym.insomnia', 'sym.craving', 'sym.hallucinations']) expect(article(db, id)).toBeDefined();
+  });
+
+  test('алкогольный гепатит: преднизолон обязателен при тяжёлом и не нужен при лёгком; у декстрозы — «Только тем, у кого» зависимость', () => {
+    const rows = Object.fromEntries(article(db, AH)!.blocks.find(b => b.key === 'treatment')!.rows!.map(r => [r.label, r.refs.map(x => x.id)]));
+    expect(rows).toMatchObject({ 'Первая линия': [DIET], 'Обязательно': [NARC], 'Обязательно, при тяжёлом течении': [STEROID], 'Не нужно, при лёгком течении': [STEROID], 'Опасно': ['tx.ibuprofen', 'tx.paracetamol'] });
+    const dex = Object.fromEntries(article(db, DEX)!.blocks.find(b => b.key === 'companions')!.rows!.map(r => [r.label, r.refs.map(x => x.id)]));
+    expect(dex).toEqual({ 'Каждое': [THIA], 'Только тем, у кого': [DEP] });
+    for (const id of [AH, 'tx.ademetionine', 'lab.ast_over_alt']) expect(article(db, id)).toBeDefined();
   });
 });

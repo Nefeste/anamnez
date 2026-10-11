@@ -545,6 +545,7 @@ export const encyclopedia = {
   companionsEach: 'Каждое',
   companionsOneOf: 'Одно из',
   companionsFor: 'Только при',
+  companionsIf: 'Только тем, у кого',
 
   // фактор риска
   riskKind: 'Фактор риска',

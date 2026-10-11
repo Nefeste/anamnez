@@ -109,7 +109,7 @@ export function choosePlan(db: ContentDb, diagnosis: Id, observations: readonly 
   // спутники назначенного (часть 39а): тромболизис — с клопидогрелом и антикоагулянтом; из группы — первое,
   // что можно; с частью 42б — при болезни, где они нужны: кардиоверсия при тахикардии — без антикоагулянта
   for (const tx of [...treatments]) {
-    for (const g of companionsOf(db, tx, diagnosis)) {
+    for (const g of companionsOf(db, tx, diagnosis, [...known.risks, ...known.conditions])) {
       const group = typeof g === 'string' ? [g] : g;
       const pick = group.find(ok);
       if (pick && !group.some(c => treatments.includes(c))) treatments.push(pick);

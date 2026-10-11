@@ -466,6 +466,8 @@ function treatmentArticle(db: ContentDb, x: Treatment): Article {
       ...(each.length > 0 ? [{ label: e.companionsEach, refs: each.map(id => ref(db, id)) }] : []),
       ...x.companions.filter((g): g is Id[] => typeof g !== 'string').map(g => ({ label: e.companionsOneOf, refs: g.map(id => ref(db, id)) })),
       ...(x.companionsFor ? [{ label: e.companionsFor, refs: x.companionsFor.map(id => ref(db, id)) }] : []),
+      // только тем, у кого (часть 54б): глюкоза — с тиамином у зависимого от алкоголя
+      ...(x.companionsIf ? [{ label: e.companionsIf, refs: x.companionsIf.map(id => ref(db, id)) }] : []),
     ];
     blocks.push({ key: 'companions', title: e.companions, text: [e.companionsNote], rows });
   }
