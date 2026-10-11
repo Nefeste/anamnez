@@ -1101,9 +1101,9 @@ try {
   // срез груди на КТ-ангиографии (часть 43а): без расслоения, тип A и тип B; с частью 43б — тромбоэмболия
   const ctChest = await drawn('[data-testid^="cta-chest-"] canvas');
   const allImages = await drawn('canvas');
-  check(heads.length === 9 && heads.every(Boolean) && us.length === 16 && us.every(Boolean) && abd.length === 3 && abd.every(Boolean) && chest.length === 10 && chest.every(Boolean)
+  check(heads.length === 9 && heads.every(Boolean) && us.length === 17 && us.every(Boolean) && abd.length === 3 && abd.every(Boolean) && chest.length === 10 && chest.every(Boolean)
     && ctChest.length === 5 && ctChest.every(Boolean) && allImages.every(Boolean),
-    `П5: срезы головы нарисованы — ${heads.filter(Boolean).length} из 9, УЗИ — ${us.filter(Boolean).length} из 16 (с венами и артерией ног), снимки живота — ${abd.filter(Boolean).length} из 3, груди — ${chest.filter(Boolean).length} из 10, срезы груди на КТ — ${ctChest.filter(Boolean).length} из 5; все рисунки экрана — ${allImages.filter(Boolean).length} из ${allImages.length} (смотреть 06-head-*.png, 06-us.png, 06-abdomen.png, 06-chest.png, 06-cta-chest.png)`);
+    `П5: срезы головы нарисованы — ${heads.filter(Boolean).length} из 9, УЗИ — ${us.filter(Boolean).length} из 17 (с венами и артерией ног, отёком почки), снимки живота — ${abd.filter(Boolean).length} из 3, груди — ${chest.filter(Boolean).length} из 10, срезы груди на КТ — ${ctChest.filter(Boolean).length} из 5; все рисунки экрана — ${allImages.filter(Boolean).length} из ${allImages.length} (смотреть 06-head-*.png, 06-us.png, 06-abdomen.png, 06-chest.png, 06-cta-chest.png)`);
   // ЭКГ в двенадцати отведениях (spec 2026-10-chapter-3, часть 36): ритмы, проведение, стенки инфаркта
   const ecg = await drawn('[data-testid^="ecg-"] canvas');
   check(ecg.length === 20 && ecg.every(Boolean), `П5: листы ЭКГ в двенадцати отведениях нарисованы — ${ecg.filter(Boolean).length} из 20 (смотреть 06-ecg-*.png)`);
