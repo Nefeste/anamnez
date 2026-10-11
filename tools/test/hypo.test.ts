@@ -234,7 +234,7 @@ describe('тексты', () => {
 });
 
 describe('энциклопедия', () => {
-  test('где лечить, лечение по тяжести и сульфонилмочевине, с чем спутать — инсульт, ТИА и судорожный приступ, а у инсульта и ТИА — гипогликемия', () => {
+  test('где лечить, лечение по тяжести и сульфонилмочевине, с чем спутать — инсульт, ТИА и синдром отмены алкоголя, а у инсульта и ТИА — гипогликемия', () => {
     const x = article(db, HYPO)!;
     expect(x.blocks.find(b => b.key === 'where')!.text).toEqual(['Обычно — дома.', 'При тяжёлом течении — скорая, больница.', 'В стационаре обычно 1–3 дня.']);
     const rows = Object.fromEntries(x.blocks.find(b => b.key === 'treatment')!.rows!.map(r => [r.label, r.refs.map(y => y.id)]));
@@ -242,8 +242,9 @@ describe('энциклопедия', () => {
     expect(rows['Опасно, при тяжёлом течении']).toEqual([CARBS]);
     expect(rows['До приезда скорой, при тяжёлом течении']).toEqual([DEX, GLUCAGON]);
     expect(rows['Обязательно, при тяжёлом течении и если пьёт таблетки сульфонилмочевины']).toEqual([DRIP]);
-    // с частью 44в — и судорожный приступ: спутанность и оглушение
-    expect(x.blocks.find(b => b.key === 'similar')!.refs!.map(r => r.id)).toEqual(['cond.stroke_ischemic', 'cond.tia', 'cond.seizure']);
+    // с частью 44в — и судорожный приступ: спутанность и оглушение; с частью 54б на третьем месте — синдром отмены алкоголя
+    // (дрожь, пот, спутанность): из болезней, назвавших гипогликемию, — по алфавиту
+    expect(x.blocks.find(b => b.key === 'similar')!.refs!.map(r => r.id)).toEqual(['cond.stroke_ischemic', 'cond.tia', 'cond.alcohol_withdrawal']);
     for (const id of ['cond.stroke_ischemic', 'cond.tia']) expect(article(db, id)!.blocks.find(b => b.key === 'similar')!.refs!.map(r => r.id)).toContain(HYPO);
   });
 });

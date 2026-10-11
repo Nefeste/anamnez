@@ -195,7 +195,9 @@ describe('разумный врач', () => {
     const hpg = run(HPG, 5300, all, hospital);
     expect(share(hpg, x => x.r.diagnosis === HPG)).toBeGreaterThan(0.8);
     expect(eradicated(hpg)).toBeGreaterThan(0.8);
-    for (const x of [...pud, ...hpg]) expect(x.r.plan.setting).toBe('home');
+    // язву и гастрит лечат дома; кого врач принял за другое — например, с болью справа внизу живота за аппендицит, — того по
+    // тактике другого
+    for (const x of [...pud, ...hpg].filter(y => y.r.diagnosis === PUD || y.r.diagnosis === HPG)) expect(x.r.plan.setting).toBe('home');
   });
 
   test('без эндоскопии — «найди и лечи»: тест на H. pylori, при нём эрадикация; язву и гастрит путают — их различает ЭГДС', () => {

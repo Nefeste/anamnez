@@ -64,6 +64,9 @@ findings:
   - { f: img.us_ascites, band: { pct: 100 }, when: { decomp: [yes] }, note: "асцит на УЗИ — у каждого, у кого он заметен на осмотре (715_2, раздел 1.5)" }
   - { f: lab.ascitic_fluid, band: { pct: 100 }, when: { decomp: [yes] }, note: "асцитическая жидкость при парацентезе — у каждого с асцитом (715_2, раздел 2.3)" }
   - { f: sign.jaundice, band: often, when: { decomp: [yes] } }
+  - f: sym.insomnia
+    band: { pct: 100 }
+    note: "инверсия сна — бессонница ночью при сонливости днём (715_2, раздел 2.1): у каждого, у кого сонлив днём"
 confirm: clinical
 redFlags: [sign.gcs_coma, sym.confusion]
 treatment:

@@ -387,6 +387,8 @@ export const encyclopedia = {
     'grade:g4': 'при коме — IV стадии',
     'grade:g2|g3': 'при II–III стадии',
     'grade:g3|g4': 'при III–IV стадии',
+    // синдром отмены алкоголя (часть 54б): средняя и тяжёлая степень по CIWA-Ar — одной фразой
+    'severity:moderate|severe': 'при среднетяжёлом и тяжёлом течении',
   } as Record<string, string>,
   /** несколько условий одной фразой (часть 30д): «при» — один раз, последнее — через «и» */
   whenList: (words: string[]) => {
