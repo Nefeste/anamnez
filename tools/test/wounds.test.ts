@@ -241,9 +241,9 @@ describe('на экране и в энциклопедии', () => {
     const titles = treatmentGroupsFor([]).map(g => g.title);
     expect(titles).toEqual(expect.arrayContaining(['Раны и повязки', 'Прививки и сыворотки']));
     const groups = Object.fromEntries(treatmentGroupsFor([]).map(g => [g.key, g.items.map(x => x.id)]));
-    // и туалет ожоговой раны с повязкой (часть 32д-2)
-    expect(groups.wounds.sort()).toEqual([OPEN, DRESSING, SUTURE, 'tx.burn_dressing'].sort());
-    expect(groups.vaccines.sort()).toEqual([RIG, RABIES, TIG, TOXOID].sort());
+    // и туалет ожоговой раны с повязкой (часть 32д-2), удаление клеща и иммуноглобулин против клещевого энцефалита (часть 51а)
+    expect(groups.wounds.sort()).toEqual([OPEN, DRESSING, SUTURE, 'tx.burn_dressing', 'tx.tick_removal'].sort());
+    expect(groups.vaccines.sort()).toEqual([RIG, RABIES, TIG, TOXOID, 'tx.tbe_ig'].sort());
   });
 
   test('статья раны кисти: обязательная профилактика по условиям, где лечить — перевод при перерезанном сухожилии', () => {
