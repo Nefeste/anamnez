@@ -36,7 +36,7 @@ shots:
 card:
   text: Patients come to you with real illnesses and injuries, and almost every sign stays hidden until you ask, examine or order a test. Make a diagnosis, choose a treatment and see the outcome — and between shifts, build your own hospital.
   points:
-    - 68 conditions, 24 injuries; each patient’s own X-rays, scans and ECGs
+    - 70 conditions, 24 injuries; each patient’s own X-rays, scans and ECGs
     - Your own hospital with an emergency department, wards and an operating room
     - A review of every visit, a campaign with a mentor and a case of the day
     - Free, offline and ad-free
@@ -82,7 +82,7 @@ in Russian.
 
 ## What’s inside
 
-- 68 conditions and 24 injuries. At the clinic — 38 conditions a general practitioner sees: from
+- 70 conditions and 24 injuries. At the clinic — 38 conditions a general practitioner sees: from
   colds and flu to pneumonia, angina, heart attack, hypertensive crisis, pericarditis, acute heart failure, atrial fibrillation, tachycardias, heart block, pulmonary embolism, hypoglycaemia, nosebleeds and anaphylactic shock. In a hospital with an
   emergency department — 13 more surgical ones, from biliary colic to a perforated ulcer, bowel
   obstruction, deep vein thrombosis and acute ischaemia of the leg, and injuries: fractures, knee ligament tears, a torn calf muscle,
@@ -107,7 +107,9 @@ in Russian.
   week or two later is Lyme disease, while fever with a headache and a stiff neck is tick-borne
   encephalitis: interferon in the first week, and ventilation in intensive care for a coma. Double
   vision and a dry mouth after home-canned food is botulism: antitoxin at once, without waiting for
-  tests, and a patient who cannot swallow water goes to intensive care.
+  tests, and a patient who cannot swallow water goes to intensive care. Jaundice with dark urine and
+  pale stools is viral hepatitis: blood markers tell A from B; hepatitis A needs only rest and diet in an
+  isolation room, severe hepatitis B needs antiviral tablets, and liver coma needs intensive care.
 - Wounds and burns as in a real emergency department: stitch now or delay the stitches, check the
   finger tendons, measure a burn with the patient’s palms and its depth with a pinprick, tetanus
   shots by vaccination records, and after a dog bite, a rabies vaccine with immunoglobulin.

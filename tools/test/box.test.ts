@@ -80,10 +80,11 @@ describe('бокс: где лечить', () => {
 
   test('заразна только болезнь с путём передачи, и бокс есть в её правиле места', () => {
     // с частью 49б — сальмонеллёз, шигеллёз и энтероколит, вызванный C. difficile; с частью 50а — менингококковая инфекция,
-    // воздушно-капельным путём
+    // воздушно-капельным путём; с частью 52а — гепатит A, фекально-оральным
     const isolated = Object.values(db.conditions).filter(c => c.isolation).map(c => [c.id, c.isolation]).sort();
     expect(isolated).toEqual([
-      ['cond.cdiff', 'contact'], [GE, 'contact'], ['cond.meningococcal', 'airborne'], ['cond.salmonellosis', 'contact'], ['cond.shigellosis', 'contact'],
+      ['cond.cdiff', 'contact'], [GE, 'contact'], ['cond.hepatitis_a', 'contact'], ['cond.meningococcal', 'airborne'], ['cond.salmonellosis', 'contact'],
+      ['cond.shigellosis', 'contact'],
     ]);
   });
 });
