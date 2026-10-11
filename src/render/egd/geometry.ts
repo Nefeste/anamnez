@@ -3,8 +3,9 @@
 // привратника и складки к нему; кардия — переход пищевода в желудок сверху: посередине просвет, вокруг — зубчатая
 // линия, снаружи от неё бледная слизистая пищевода с продольными складками, внутри — красноватая слизистая желудка.
 //
-// Рисовальщик болезней не знает: язва и то, что в её дне, продольный разрыв и кровь заданы параметрами. Что они значат,
-// запишут признаки базы по источникам: дно язвы по Форресту — `277_2`, приложение Г5.
+// Рисовальщик болезней не знает: язва и то, что в её дне, продольный разрыв, кровь, гастрит и варикозные вены заданы
+// параметрами. Что они значат, запишут признаки базы по источникам: дно язвы по Форресту — `277_2`, приложение Г5; вены —
+// `715_2`, раздел 1.5.
 import { Rng } from '@/engine/core/rng';
 
 export type Pt = [number, number];
@@ -26,6 +27,8 @@ export interface EgdFindings {
   blood?: boolean;
   /** гастрит (часть 53б): диффузное покраснение и отёк слизистой — по Киотской характеристике, при H. pylori */
   gastritis?: boolean;
+  /** варикозные вены пищевода (часть 54а): идёт ли из них кровь; `size` — 0–1, от мелких до крупных */
+  varices?: { bleeding: boolean; size: number };
 }
 
 export interface EgdGeometry {
@@ -50,6 +53,12 @@ export interface EgdGeometry {
   blood?: { pool: Pt[]; streams: { path: Pt[]; width: number; tip: number }[] };
   /** гастрит: пятна покраснения по стенке, не в просвете */
   erythema?: Round[];
+  /**
+   * варикозные вены: извитые тяжи по стенке пищевода — от края поля к зубчатой линии, ближе к торцу эндоскопа шире
+   * (`path` — снаружи внутрь, `tip` — ширина у зубчатой линии, доля наружной); красные пятна на них; `source` — откуда
+   * идёт кровь
+   */
+  varices?: { cords: { path: Pt[]; width: number; tip: number }[]; spots: Round[]; source?: Pt };
 }
 
 export const FIELD: Round = { c: [0.5, 0.5], r: 0.47 };
@@ -107,8 +116,8 @@ function downTo(from: Pt, reach: number, dx: number): Pt {
 export function egdGeometry(findings: EgdFindings, seed: number): EgdGeometry {
   const rng = Rng.seeded(seed).fork('egd');
   const u = () => rng.int(1000) / 1000;
-  // разрыв — у перехода пищевода в желудок: смотрят на кардию; иначе — желудок
-  const view: EgdGeometry['view'] = findings.tear ? 'cardia' : 'stomach';
+  // разрыв и варикозные вены — у перехода пищевода в желудок: смотрят на кардию; иначе — желудок
+  const view: EgdGeometry['view'] = findings.tear || findings.varices ? 'cardia' : 'stomach';
   const field = FIELD;
 
   // просвет: в желудке — привратник вдали, выше середины; в кардии — посередине
@@ -211,8 +220,54 @@ export function egdGeometry(findings: EgdFindings, seed: number): EgdGeometry {
     tear = { outline, axis: [a, b], width, bleeding: findings.tear.bleeding };
   }
 
-  // кровь: из идущей кровью язвы — лужица в дне и струйки вниз по стенке; из разрыва — в просвет; источника не
-  // видно — озерцо внизу поля
+  // варикозные вены (часть 54а): три-четыре толстых тяжа по стенке пищевода — от края поля к зубчатой линии, где вены уходят
+  // в стенку желудка; у торца эндоскопа шире, извиты слегка, с перехватами. Не там, где разрыв
+  let varices: EgdGeometry['varices'];
+  if (findings.varices && view === 'cardia') {
+    const vrng = rng.fork('varices');
+    const vu = () => vrng.int(1000) / 1000;
+    const size = clamp01(findings.varices.size);
+    const n = size >= 0.5 ? 4 : 3;
+    const t0 = vu() * TAU;
+    const tearAt = tear ? Math.atan2(tear.axis[1][1] - lc[1], tear.axis[1][0] - lc[0]) : undefined;
+    const cords: { path: Pt[]; width: number; tip: number }[] = [];
+    for (let i = 0; i < n; i++) {
+      let t = t0 + (i / n) * TAU + (vu() - 0.5) * 0.35;
+      // разрыв виден целиком: тяж — в стороне от него
+      if (tearAt !== undefined && Math.abs(Math.atan2(Math.sin(t - tearAt), Math.cos(t - tearAt))) < 0.55) t += 0.9;
+      const width = 0.065 + 0.05 * size + vu() * 0.012;
+      const inner = zr * 0.95;
+      // наружный конец — у края поля зрения
+      const dir: Pt = [Math.cos(t), Math.sin(t)];
+      const off = (lc[0] - field.c[0]) * dir[0] + (lc[1] - field.c[1]) * dir[1];
+      const along = Math.sqrt(Math.max(0, field.r ** 2 - ((lc[0] - field.c[0]) ** 2 + (lc[1] - field.c[1]) ** 2 - off * off))) - off;
+      const outer = Math.max(inner + 0.1, along - width * 0.15);
+      const amp = width * (0.15 + vu() * 0.15), freq = 1.2 + vu(), phase = vu() * TAU;
+      const path: Pt[] = Array.from({ length: 25 }, (_, k) => {
+        const s = k / 24;
+        // снаружи внутрь: путь от края поля к зубчатой линии, извитость к ней меньше
+        const r = outer + (inner - outer) * s;
+        const side = amp * (1 - 0.4 * s) * Math.sin(freq * s * Math.PI + phase);
+        return [lc[0] + r * dir[0] - side * dir[1], lc[1] + r * dir[1] + side * dir[0]];
+      });
+      cords.push({ path, width, tip: 0.5 });
+    }
+    // красные пятна — пятна васкулопатии, «красные маркеры» угрозы кровотечения (715_2, разделы 1.5 и 5) — по тяжам, ближе к
+    // зубчатой линии
+    const spots: Round[] = [];
+    const nSpots = 2 + vrng.int(3);
+    for (let k = 0; k < nSpots; k++) {
+      const cord = cords[vrng.int(cords.length)];
+      const at = 11 + vrng.int(10);
+      const s = at / 24;
+      spots.push({ c: cord.path[at], r: cord.width * (1 - (1 - cord.tip) * s) * (0.1 + vu() * 0.06) });
+    }
+    const source = findings.varices.bleeding ? cords[0].path[18] : undefined;
+    varices = { cords, spots, ...(source ? { source } : {}) };
+  }
+
+  // кровь: из идущей кровью язвы — лужица в дне и струйки вниз по стенке; из разрыва — в просвет; из вены пищевода — тоже в
+  // просвет; источника не видно — озерцо внизу поля
   let blood: EgdGeometry['blood'];
   const brng = rng.fork('blood');
   const bu = () => brng.int(1000) / 1000;
@@ -230,6 +285,14 @@ export function egdGeometry(findings: EgdFindings, seed: number): EgdGeometry {
     const [a] = tear.axis;
     const pool = blob(brng.fork('pool'), [a[0] * 0.85 + lc[0] * 0.15, a[1] * 0.85 + lc[1] * 0.15], tear.width * 1.1, tear.width * 0.85, 0, 0.25, 22);
     const streams = [stream(brng.fork('s0'), [a[0], a[1]], [lc[0] + (bu() - 0.5) * lr * 0.6, lc[1] + (bu() - 0.5) * lr * 0.6], tear.width * 1.1, 0.5)];
+    blood = { pool, streams };
+  } else if (varices?.source) {
+    // кровь из вены — как из разрыва: у источника лужица, струйка стекает по стенке в просвет
+    const from = varices.source;
+    const w = 0.022 + 0.012 * clamp01(findings.varices!.size);
+    const to: Pt = [lc[0] + (bu() - 0.5) * lr * 0.5, lc[1] + (bu() - 0.5) * lr * 0.5];
+    const pool = blob(brng.fork('pool'), from, w * 1.3, w * 1.0, 0, 0.25, 22);
+    const streams = [stream(brng.fork('s0'), from, to, w * 1.1, 0.55)];
     blood = { pool, streams };
   } else if (findings.blood) {
     // кровь стекла в отлогую часть желудка: снизу озерцо — по краю поля, сверху ровная гладь с лёгкой рябью
@@ -288,5 +351,5 @@ export function egdGeometry(findings: EgdFindings, seed: number): EgdGeometry {
     glints.push({ c, rx, ry: rx * (0.35 + gu() * 0.3), angle: gu() * Math.PI });
   }
 
-  return { view, field, light, lumen, folds, ...(zline ? { zline } : {}), glints, ...(ulcer ? { ulcer } : {}), ...(tear ? { tear } : {}), ...(blood ? { blood } : {}), ...(erythema ? { erythema } : {}) };
+  return { view, field, light, lumen, folds, ...(zline ? { zline } : {}), glints, ...(ulcer ? { ulcer } : {}), ...(tear ? { tear } : {}), ...(blood ? { blood } : {}), ...(erythema ? { erythema } : {}), ...(varices ? { varices } : {}) };
 }

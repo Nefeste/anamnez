@@ -7,12 +7,12 @@ import { type EgdFindings, recordEgdView } from './egd/view';
 export type { EgdFindings };
 
 export function EgdView({ width, findings, seed = 1, still = false }: { width: number; findings: EgdFindings; seed?: number; still?: boolean }) {
-  const { ulcer, tear, blood, gastritis } = findings;
+  const { ulcer, tear, blood, gastritis, varices } = findings;
   const picture = useMemo(
     () => recordEgdView(width, findings, seed),
     // находки сравниваются по значению: новый объект с теми же полями не перерисовывает поле зрения
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [width, seed, ulcer?.base, ulcer?.size, tear?.bleeding, tear?.size, blood, gastritis],
+    [width, seed, ulcer?.base, ulcer?.size, tear?.bleeding, tear?.size, blood, gastritis, varices?.bleeding, varices?.size],
   );
   return (
     <Canvas style={{ width, height: width }} __destroyWebGLContextAfterRender={still}>

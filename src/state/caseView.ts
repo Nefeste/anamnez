@@ -311,8 +311,9 @@ const TX_GROUPS: [string, string[]][] = [
   // допамин и наружная стимуляция при АВ-блокаде; с частью 43в — фуросемид в вену при сердечной недостаточности;
   // с частью 43д — колхицин при перикардите
   ['heart', ['antihypertensive', 'antiplatelet', 'antianginal', 'anticoagulant', 'vascular', 'adrenergic', 'thrombolytic', 'lipid', 'antiarrhythmic', 'anticholinergic', 'diuretic', 'cardiac']],
-  // противодиарейные (spec 2026-10-chapter-4, часть 49б): лоперамид — при кишечных инфекциях не нужен или вреден
-  ['digestive', ['acid', 'antidiarrheal']],
+  // противодиарейные (spec 2026-10-chapter-4, часть 49б): лоперамид — при кишечных инфекциях не нужен или вреден; с частью
+  // 54а — лактулоза при кровотечении из вен пищевода и печёночной энцефалопатии
+  ['digestive', ['acid', 'antidiarrheal', 'laxative']],
   // растворы для питья и капельница (часть 32д-2): и при кишечной инфекции, и при обширном ожоге
   ['fluids', ['rehydration']],
   // с частью 41в — гемостатики: протромбиновый комплекс, витамин K1, транексамовая кислота; с частью 44а — декстроза и
@@ -463,9 +464,13 @@ function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observat
     const size = 0.35 + (patientSeed % 5) / 10;
     const base = bleeding ? 'bleeding' : stigmata ? (odd ? 'vessel' : 'clot') : bled && odd ? 'spots' : 'clean';
     // язва — её дно; разрыв без язвы — кардия; кровь без найденного источника — кровь в просвете. Гастрит (часть 53б) — на
-    // стенке желудка, с язвой или без неё
+    // стенке желудка, с язвой или без неё. Варикозные вены (часть 54а) — тоже в кардии, с разрывом или без него: кровь — из
+    // разрыва, если он есть, иначе из вены
     const gastritis = shown('img.egd_gastritis') !== undefined ? { gastritis: true } : {};
-    const findings: EgdFindings = ulcer ? { ulcer: { base, size }, ...gastritis } : shown('img.egd_tear') ? { tear: { bleeding, size } } : bleeding ? { blood: true, ...gastritis } : gastritis;
+    const tear = shown('img.egd_tear') !== undefined;
+    const varices = shown('img.egd_varices') !== undefined;
+    const cardia: EgdFindings = { ...(tear ? { tear: { bleeding, size } } : {}), ...(varices ? { varices: { bleeding: bleeding && !tear, size } } : {}) };
+    const findings: EgdFindings = ulcer ? { ulcer: { base, size }, ...gastritis } : tear || varices ? cardia : bleeding ? { blood: true, ...gastritis } : gastritis;
     return { kind: 'egd', seed, findings };
   }
   if (exam === 'exam.ecg') {

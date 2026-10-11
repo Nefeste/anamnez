@@ -1,7 +1,8 @@
 // ЭГДС кодом (ADR 0013, spec 2026-10-chapter-4, часть 53а-2): геометрия — geometry.ts, здесь — рисунок, одна запись в
 // SkPicture. Поле зрения — круг на чёрном. Слизистая желудка — розово-оранжевая, светлее у торца эндоскопа и темнее к
 // краю; пищевод — бледнее. Дно язвы — белёсое (фибрин), вокруг — красный отёчный валик; сосуд — тёмно-красный бугорок,
-// сгусток — почти чёрный комок, кровь — алая, с бликом. Влажная слизистая блестит.
+// сгусток — почти чёрный комок, кровь — алая, с бликом; варикозные вены (часть 54а) — синеватые извитые тяжи по пищеводу.
+// Влажная слизистая блестит.
 import { BlendMode, BlurStyle, ClipOp, PaintStyle, Skia, type SkPaint, type SkPath, type SkPicture, StrokeCap, StrokeJoin, TileMode } from '@shopify/react-native-skia';
 import { egdGeometry, type EgdFindings, type Pt } from './geometry';
 
@@ -17,6 +18,7 @@ const FIBRIN = '#f1e6c6';
 const RIM = '#d23f45';
 const HYPEREMIA = '#c42c2c';
 const VESSEL = '#7e1214';
+const VARIX = ['#b7a7d4', '#7f6ca6', '#54457a'];
 const CLOT = '#3d0a0a';
 const BLOOD = '#b0101a';
 
@@ -107,6 +109,28 @@ export function recordEgdView(width: number, findings: EgdFindings, seed: number
     });
     c.drawPath(pathOf(away, false), paint('#6a241e', { stroke: f.width * 0.8, blur: f.width * 0.4, alpha: 0.42 }));
     c.drawPath(pathOf(ridge, false), paint('#ffc6b0', { stroke: f.width * 0.5, blur: f.width * 0.35, alpha: 0.6 }));
+  }
+
+  // 2а. Варикозные вены (часть 54а): синеватые тяжи, выбухающие под бледной слизистой пищевода — тень на дальней от света
+  // стороне, тело темнее посередине, по ближней к свету стороне — влажный блеск; красные пятна на них
+  if (g.varices) {
+    const shift = (path: readonly Pt[], k: number): Pt[] => path.map(([x, y]): Pt => {
+      const dx = x - g.light[0], dy = y - g.light[1];
+      const d = Math.hypot(dx, dy) || 1;
+      return [x + (dx / d) * k, y + (dy / d) * k];
+    });
+    for (const v of g.varices.cords) {
+      c.drawPath(tapered(shift(v.path, v.width * 0.35), v.width * 1.15, v.tip), paint('#3b2230', { blur: v.width * 0.3, alpha: 0.5 }));
+      const body = tapered(v.path, v.width, v.tip);
+      c.drawPath(body, paint(VARIX[1], { blur: v.width * 0.06 }));
+      // выпуклость: дальняя от света половина темнее, ближняя — светлее
+      c.drawPath(tapered(shift(v.path, v.width * 0.16), v.width * 0.6, v.tip), paint(VARIX[2], { blur: v.width * 0.18, alpha: 0.7 }));
+      c.drawPath(tapered(shift(v.path, -v.width * 0.2), v.width * 0.45, v.tip), paint(VARIX[0], { blur: v.width * 0.16, alpha: 0.75 }));
+      c.drawPath(pathOf(shift(v.path, -v.width * 0.26), false), paint('#f5eef9', { stroke: v.width * 0.1, blur: v.width * 0.06, alpha: 0.6 }));
+      // край тяжа сливается со слизистой: розоватая кайма
+      c.drawPath(body, paint('#d9a3a0', { stroke: v.width * 0.1, blur: v.width * 0.1, alpha: 0.45 }));
+    }
+    for (const sp of g.varices.spots) c.drawCircle(X(sp.c[0]), X(sp.c[1]), sp.r * W, paint('#c42734', { blur: sp.r * 0.4, alpha: 0.9 }));
   }
 
   // 3. Просвет вдали — почти чёрный, к краю переходит в стенку

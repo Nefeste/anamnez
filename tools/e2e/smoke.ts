@@ -1109,7 +1109,7 @@ try {
   check(ecg.length === 20 && ecg.every(Boolean), `П5: листы ЭКГ в двенадцати отведениях нарисованы — ${ecg.filter(Boolean).length} из 20 (смотреть 06-ecg-*.png)`);
   // ЭГДС (spec 2026-10-chapter-4, часть 53а-2): слизистая, дно язвы по Форресту, разрыв кардии, кровь без источника
   const egd = await drawn('[data-testid^="egd-"] canvas');
-  check(egd.length === 10 && egd.every(Boolean), `П5: поле зрения ЭГДС нарисовано — ${egd.filter(Boolean).length} из 10 (смотреть 06-egd.png)`);
+  check(egd.length === 12 && egd.every(Boolean), `П5: поле зрения ЭГДС нарисовано — ${egd.filter(Boolean).length} из 12 (смотреть 06-egd.png)`);
   for (const id of ['head-ct', 'head-mri', 'us', 'abdomen', 'chest', 'cta-chest', 'egd']) {
     await page.getByTestId(id).scrollIntoViewIfNeeded();
     await page.waitForTimeout(300);

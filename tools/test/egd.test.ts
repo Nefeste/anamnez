@@ -1,5 +1,5 @@
 // ЭГДС кодом (spec 2026-10-chapter-4, часть 53а-2; ADR 0013): поле зрения эндоскопа — язва и что в её дне по Форресту,
-// разрыв слизистой кардии, кровь без видимого источника; с частью 53б — гастрит. Геометрия — в долях кадра; рисунок без экрана (Skia через
+// разрыв слизистой кардии, кровь без видимого источника; с частью 53б — гастрит, с 54а — варикозные вены. Геометрия — в долях кадра; рисунок без экрана (Skia через
 // CanvasKit, tools/imaging/headless.ts): где бело, где красно и где темно, то же зерно — те же байты. Картинка в карте
 // пациента — по тому, что показала ЭГДС.
 import { beforeAll, describe, expect, test } from 'bun:test';
@@ -164,6 +164,36 @@ describe('ЭГДС: геометрия', () => {
     }
   });
 
+  test('варикозные вены: кардия; три тяжа, при крупных — четыре — от края поля к зубчатой линии; красные пятна — на тяжах; идёт кровь — струйкой в просвет', () => {
+    for (const seed of SEEDS) {
+      for (const size of SIZES) {
+        for (const bleeding of [false, true]) {
+          const g = egdGeometry({ varices: { bleeding, size } }, seed);
+          expect(g.view).toBe('cardia');
+          const v = g.varices!;
+          expect(v.cords.length).toBe(size >= 0.5 ? 4 : 3);
+          const zr = g.zline!.reduce((a, p) => a + dist(p, g.lumen.c), 0) / g.zline!.length;
+          for (const c of v.cords) {
+            const [outer, inner] = [c.path[0], c.path[c.path.length - 1]];
+            // внутренний конец — у зубчатой линии: там вены уходят в стенку желудка
+            expect(dist(inner, g.lumen.c) / zr).toBeGreaterThan(0.8);
+            expect(dist(inner, g.lumen.c) / zr).toBeLessThan(1.05);
+            expect(dist(outer, g.lumen.c)).toBeGreaterThan(dist(inner, g.lumen.c) + 0.15);
+            expect(slack(c.path)).toBeGreaterThanOrEqual(0);
+          }
+          for (const sp of v.spots) expect(Math.min(...v.cords.flatMap(c => c.path.map(p => dist(p, sp.c))))).toBeLessThan(1e-9);
+          if (bleeding) {
+            const st = g.blood!.streams[0];
+            expect(dist(st.path[0], v.source!)).toBeLessThan(1e-9);
+            expect(inside(st.path[st.path.length - 1], g.lumen.outline)).toBe(true);
+          } else expect(g.blood ?? v.source).toBeUndefined();
+        }
+      }
+      // вены без находок желудка: в желудке их не рисуют, без них — нет
+      expect(egdGeometry({}, seed).varices).toBeUndefined();
+    }
+  });
+
   test('то же зерно — та же геометрия; стенка и просвет от находок не зависят; параметры вне пределов — ближайшие допустимые', () => {
     const f: EgdFindings = { ulcer: { base: 'vessel', size: 0.6 } };
     expect(JSON.stringify(egdGeometry(f, 11))).toBe(JSON.stringify(egdGeometry(f, 11)));
@@ -291,12 +321,27 @@ describe('ЭГДС: рисунок без экрана', () => {
     }
   });
 
+  test('варикозные вены — синеватые: синего на тяжах больше красного, на слизистой пищевода между ними — меньше', async () => {
+    for (const seed of few) {
+      const f: EgdFindings = { varices: { bleeding: false, size: 0.6 } };
+      const g = egdGeometry(f, seed);
+      const { rgba } = await draw(f, seed);
+      const ratio = (p: Pt) => rgb(rgba, p)[2] / Math.max(1, rgb(rgba, p)[0]);
+      for (const c of g.varices!.cords) expect(ratio(c.path[8])).toBeGreaterThan(1.05);
+      // между первыми двумя тяжами, на середине пути от зубчатой линии к краю
+      const [a, b] = g.varices!.cords.map(c => Math.atan2(c.path[8][1] - g.lumen.c[1], c.path[8][0] - g.lumen.c[0]));
+      const mid = Math.atan2(Math.sin(a) + Math.sin(b), Math.cos(a) + Math.cos(b));
+      const r = dist(g.varices!.cords[0].path[8], g.lumen.c);
+      expect(ratio([g.lumen.c[0] + r * Math.cos(mid), g.lumen.c[1] + r * Math.sin(mid)])).toBeLessThan(0.85);
+    }
+  });
+
   test('то же зерно — те же байты; другое — другой снимок; все варианты «Проверок» рисуются', async () => {
     const f: EgdFindings = { ulcer: { base: 'spots', size: 0.5 } };
     const a = await draw(f, 4), b = await draw(f, 4), c = await draw(f, 5);
     expect(Buffer.from(a.png).equals(Buffer.from(b.png))).toBe(true);
     expect(Buffer.from(a.png).equals(Buffer.from(c.png))).toBe(false);
-    expect(EGD_CASES.map(k => k.key)).toEqual(['egd-normal', 'egd-clean', 'egd-spots', 'egd-vessel', 'egd-clot', 'egd-bleeding', 'egd-tear', 'egd-tear-bleeding', 'egd-blood', 'egd-gastritis']);
+    expect(EGD_CASES.map(k => k.key)).toEqual(['egd-normal', 'egd-clean', 'egd-spots', 'egd-vessel', 'egd-clot', 'egd-bleeding', 'egd-tear', 'egd-tear-bleeding', 'egd-blood', 'egd-gastritis', 'egd-varices', 'egd-varices-bleeding']);
     for (const k of EGD_CASES) {
       expect((await draw(k.findings, k.seed)).png.length).toBeGreaterThan(1000);
       expect(k.label.length).toBeGreaterThan(0);
@@ -306,7 +351,7 @@ describe('ЭГДС: рисунок без экрана', () => {
 
 describe('ЭГДС: картинка в карте пациента', () => {
   const EGD = 'exam.egd';
-  const FINDINGS = ['img.egd_ulcer', 'img.egd_bleeding', 'img.egd_stigmata', 'img.egd_tear', 'img.egd_gastritis'];
+  const FINDINGS = ['img.egd_ulcer', 'img.egd_bleeding', 'img.egd_stigmata', 'img.egd_tear', 'img.egd_gastritis', 'img.egd_varices'];
 
   const ASK = 'exam.ask_abdomen';
   /** Карта с результатом ЭГДС; `bled` — расспрос показал рвоту кровью. */
@@ -359,5 +404,14 @@ describe('ЭГДС: картинка в карте пациента', () => {
     expect(findings(['img.egd_ulcer']).gastritis).toBeUndefined();
     expect(findings(['img.egd_bleeding', 'img.egd_gastritis'])).toEqual({ blood: true, gastritis: true });
     expect(findings(['img.egd_tear', 'img.egd_gastritis'])).toEqual({ tear: { bleeding: false, size: expect.any(Number) } });
+  });
+
+  test('варикозные вены — в кардии; кровь — из вены, а при разрыве — из разрыва; язва — важнее вен', () => {
+    const { image } = view('cond.variceal_bleeding', 5401, true);
+    const findings = (shown: readonly string[]) => (image(shown) as { findings: EgdFindings }).findings;
+    expect(findings(['img.egd_varices'])).toEqual({ varices: { bleeding: false, size: expect.any(Number) } });
+    expect(findings(['img.egd_varices', 'img.egd_bleeding'])).toMatchObject({ varices: { bleeding: true } });
+    expect(findings(['img.egd_varices', 'img.egd_tear', 'img.egd_bleeding'])).toMatchObject({ tear: { bleeding: true }, varices: { bleeding: false } });
+    expect(findings(['img.egd_varices', 'img.egd_ulcer'])).toEqual({ ulcer: { base: expect.any(String), size: expect.any(Number) } });
   });
 });

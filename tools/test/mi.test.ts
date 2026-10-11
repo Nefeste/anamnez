@@ -179,7 +179,7 @@ describe('тромболизис у постели', () => {
     expect(txAvailable(db, LYSIS)).toBe(false);
     expect(txAvailable(db, LYSIS, BAY)).toBe(true);
     expect(txAvailable(db, LYSIS, { bedside: ['eq.ecg'] })).toBe(false);
-    expect(Object.values(db.treatments).filter(t => !txAvailable(db, t.id)).map(t => t.id).sort()).toEqual(['tx.amiodarone_iv', 'tx.anesthetic_iv', 'tx.atropine', 'tx.beta_blocker_iv', 'tx.bp_iv', 'tx.cardioversion', 'tx.cholecystostomy', 'tx.cpap', 'tx.dopamine', 'tx.endoscopic_hemostasis', 'tx.morphine_iv', 'tx.nitroglycerin_iv', 'tx.norepinephrine', 'tx.pacing_tc', 'tx.pericardiocentesis', 'tx.procainamide', LYSIS, 'tx.thrombolysis_pe', 'tx.thrombolysis_stroke', 'tx.trifosadenine', 'tx.ventilation', 'tx.verapamil_iv'].sort());
+    expect(Object.values(db.treatments).filter(t => !txAvailable(db, t.id)).map(t => t.id).sort()).toEqual(['tx.amiodarone_iv', 'tx.anesthetic_iv', 'tx.atropine', 'tx.beta_blocker_iv', 'tx.bp_iv', 'tx.cardioversion', 'tx.cholecystostomy', 'tx.cpap', 'tx.dopamine', 'tx.endoscopic_hemostasis', 'tx.morphine_iv', 'tx.nitroglycerin_iv', 'tx.norepinephrine', 'tx.pacing_tc', 'tx.pericardiocentesis', 'tx.procainamide', LYSIS, 'tx.thrombolysis_pe', 'tx.thrombolysis_stroke', 'tx.trifosadenine', 'tx.variceal_ligation', 'tx.ventilation', 'tx.verapamil_iv'].sort());
   });
 
   test('в карте: без монитора у постели кнопка серая и сказано почему; под монитором — обычная', () => {

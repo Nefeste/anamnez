@@ -204,6 +204,8 @@ describe('каталог больницы', () => {
       { f: 'img.us_appendicitis', sens: 7600, spec: 9500 }, { f: 'img.us_gallstones', sens: 9500, spec: 9500 }, { f: 'img.us_cholecystitis', sens: 8100, spec: 8300 },
       // дивертикулит — 92 и 90 % (Laméris 2008, часть 30д)
       { f: 'img.us_diverticulitis', sens: 9200, spec: 9000 },
+      // цирроз с портальной гипертензией и асцит (часть 54а; 715_2, раздел 2.4) — точность игровая
+      { f: 'img.us_cirrhosis', sens: 8000, spec: 9200 }, { f: 'img.us_ascites', sens: 9600, spec: 9800 },
     ]);
     // эндоскопист (часть 53а) — как врач УЗД: сам проводит и сам описывает
     expect(Object.values(db.roles).filter(r => r.reads).map(r => r.id).sort()).toEqual(['role.endoscopist', 'role.radiologist', 'role.sonographer']);
@@ -762,7 +764,11 @@ describe('эндоскопия (spec 2026-10-chapter-4, часть 53а)', () =>
   test('место без кабинета — кабинет есть, и в нём делают лечение; лечение в кабинете — не у постели и не операция', () => {
     const noRoom = broken(d => edit(d, 'conditions/surgery/ulcer_bleeding.yaml', 'without: { rooms: [room.endoscopy]', 'without: { rooms: [room.endoscopia]'));
     expect(noRoom.some(e => e.includes('cond.ulcer_bleeding: место без кабинета room.endoscopia — такого помещения нет'))).toBe(true);
-    const noTx = broken(d => edit(d, 'treatments/endoscopic_hemostasis.yaml', 'room: room.endoscopy', 'room: room.ultrasound'));
+    // с частью 54а в эндоскопическом кабинете — и лигирование вен: уводят оба
+    const noTx = broken(d => {
+      edit(d, 'treatments/endoscopic_hemostasis.yaml', 'room: room.endoscopy', 'room: room.ultrasound');
+      edit(d, 'treatments/variceal_ligation.yaml', 'room: room.endoscopy', 'room: room.ultrasound');
+    });
     expect(noTx.some(e => e.includes('cond.mallory_weiss: место без кабинета room.endoscopy, а лечения в нём нет'))).toBe(true);
     const bad = broken(d => edit(d, 'treatments/endoscopic_hemostasis.yaml', 'room: room.endoscopy', 'room: room.endoscopia'));
     expect(bad.some(e => e.includes('tx.endoscopic_hemostasis: лечение в кабинете room.endoscopia — такого помещения нет'))).toBe(true);
