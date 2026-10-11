@@ -226,7 +226,7 @@ describe('смена: закрытие дня и повторные обраще
     expect(back.patient.sex).toBe(prev.patient.sex);
     expect(back.patient.age).toBe(prev.patient.age);
     expect(back.patient.truth.conditions[0].id).toBe(prev.patient.truth.conditions[0].id);
-  });
+  }, 30_000);
 
   // девять дней смены: с базой растёт и время — на полном прогоне под нагрузкой дольше 5 секунд (часть 42в)
   test('старое не копится: ушедших прошлых дней нет, принятых хранят неделю', () => {

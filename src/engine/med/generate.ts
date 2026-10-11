@@ -62,7 +62,28 @@ const AGE_BANDS: [number, number, number][] = [
 /** Доля мужчин среди обращающихся, доли 1/10 000. */
 const MALE_SHARE = 4600;
 
-const sortedKeys = <T>(r: Record<string, T>) => Object.keys(r).sort();
+/**
+ * Ключи таблицы по порядку — один раз на таблицу: генератор спрашивает их у каждого пациента, а
+ * сортировка четырёх с лишним сотен признаков на каждом была заметной долей его времени.
+ */
+const sortedCache = new WeakMap<object, readonly string[]>();
+function sortedKeys<T>(r: Record<string, T>): readonly string[] {
+  let keys = sortedCache.get(r);
+  if (!keys) sortedCache.set(r, (keys = Object.keys(r).sort()));
+  return keys;
+}
+
+/** Номера связей записи по признаку — по возрастанию: на каждый признак — только его связи. */
+const linkIndexCache = new WeakMap<readonly Link[], ReadonlyMap<Id, readonly number[]>>();
+function linksOf(links: readonly Link[], f: Id): readonly number[] {
+  let index = linkIndexCache.get(links);
+  if (!index) {
+    const out = new Map<Id, number[]>();
+    links.forEach((l, i) => out.set(l.f, [...(out.get(l.f) ?? []), i]));
+    linkIndexCache.set(links, (index = out));
+  }
+  return index.get(f) ?? [];
+}
 
 export function generatePatient(db: ContentDb, seed: number, ctx: GenContext): Patient {
   const root = Rng.seeded(seed);
@@ -326,7 +347,7 @@ function realizeFindings(db: ContentDb, rng: Rng, conditions: ActiveCondition[],
   ];
   const candidates = new Set<Id>();
   for (const c of causes) for (const l of c.links) candidates.add(l.f);
-  for (const id of Object.keys(db.findings)) if (db.findings[id].leak > 0) candidates.add(id);
+  for (const id of sortedKeys(db.findings)) if (db.findings[id].leak > 0) candidates.add(id);
 
   const out: TrueFinding[] = [];
   for (const f of [...candidates].sort()) {
@@ -334,15 +355,16 @@ function realizeFindings(db: ContentDb, rng: Rng, conditions: ActiveCondition[],
     let causeLink: Link | undefined;
     let causeCond: ActiveCondition | undefined;
     for (const c of causes) {
-      c.links.forEach((link, i) => {
-        if (link.f !== f || !linkApplies(link, c.cond)) return;
+      for (const i of linksOf(c.links, f)) {
+        const link = c.links[i];
+        if (!linkApplies(link, c.cond)) continue;
         const hit = rng.fork(`${c.id}>${f}#${i}`).chance(link.p);
         if (hit && cause === undefined) {
           cause = c.id;
           causeLink = link;
           causeCond = c.cond;
         }
-      });
+      }
     }
     const leakHit = rng.fork(`leak>${f}`).chance(db.findings[f]?.leak ?? 0);
     if (cause === undefined && leakHit) cause = 'leak';
@@ -429,9 +451,9 @@ function followers(db: ContentDb, findings: TrueFinding[]): TrueFinding[] {
   const added: TrueFinding[] = [];
   for (let grew = true; grew; ) {
     grew = false;
-    for (const id of Object.keys(db.findings).sort()) {
-      const leaders = db.findings[id].follows;
-      if (!leaders || present.has(id)) continue;
+    for (const id of followerIds(db)) {
+      const leaders = db.findings[id].follows!;
+      if (present.has(id)) continue;
       const lead = leaders.map(f => present.get(f)).find(x => x !== undefined);
       if (!lead) continue;
       const x = { f: id, cause: lead.cause };
@@ -441,6 +463,14 @@ function followers(db: ContentDb, findings: TrueFinding[]): TrueFinding[] {
     }
   }
   return added.length > 0 ? [...findings, ...added].sort((a, b) => (a.f < b.f ? -1 : 1)) : findings;
+}
+
+/** Признаки-последователи по порядку — один раз на базу. */
+const followerCache = new WeakMap<ContentDb['findings'], readonly Id[]>();
+function followerIds(db: ContentDb): readonly Id[] {
+  let ids = followerCache.get(db.findings);
+  if (!ids) followerCache.set(db.findings, (ids = sortedKeys(db.findings).filter(id => db.findings[id].follows)));
+  return ids;
 }
 
 /**
@@ -470,7 +500,7 @@ function realizeValues(db: ContentDb, rng: Rng, findings: TrueFinding[]): Record
   const present = new Set(findings.map(x => x.f));
   const values: Record<Id, number> = {};
   const shared: Id[] = [];
-  for (const id of Object.keys(db.findings).sort()) {
+  for (const id of sortedKeys(db.findings)) {
     const spec = db.findings[id].value;
     if (!spec) continue;
     if (spec.of) {
