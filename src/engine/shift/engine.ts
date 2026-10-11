@@ -16,7 +16,7 @@ import { bedsideIn, DOCTOR, doctorRoom, examWhere, openBlocks, type Problem, pro
 import { applicantsOf, doctorOf, grow, memberAt, presetStaff, readingOf, type StaffMember, speedOf, staffingOf } from '../hospital/staff';
 import { log2 } from '../core/math';
 import { P_ONE, RNG_VERSION, Rng } from '../core/rng';
-import { observe, type Outcome, rscOutcome } from '../med/course';
+import { examHarmOutcome, observe, type Outcome, rscOutcome } from '../med/course';
 import { complaintObservations, type ExamSkill, examFits, NORMAL_SKILL, runExam } from '../med/exams';
 import { freezeClock, generatePatient, patientAt, typicalPatient } from '../med/generate';
 import { contextOf, likelyParams, posterior } from '../med/infer';
@@ -1137,9 +1137,12 @@ function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
   // окна по часам — на минуту решения (часть 41а): тромболизис при инсульте — в первые 4,5 часа от начала
   const minutes = Math.round((s.t - p.arriveT) / 60);
   const before = freezeClock(db, patient, minutes);
-  const ev = evaluatePlan(db, patient, plan, obs, { bedside, minutes }, before);
-  // переведённый из больницы с приёмным (часть 39б): инфаркт с подъёмом ST — исход по часам до реперфузии
-  const outcome = rscFor(db, s, p, plan) ?? observe(db, patient, plan, ev, branch(s, `outcome:${p.id}`));
+  // и что сделано, хотя результат ещё не пришёл (spec 2026-10-chapter-4, часть 50а): пункция при противопоказании
+  const ev = evaluatePlan(db, patient, plan, obs, { bedside, minutes, done: p.done }, before);
+  // переведённый из больницы с приёмным (часть 39б): инфаркт с подъёмом ST — исход по часам до реперфузии; осложнение
+  // обследования (часть 50а) — раньше всего
+  const soft = s.meta.soft === true;
+  const outcome = examHarmOutcome(db, plan, ev, branch(s, `outcome:${p.id}`), soft) ?? rscFor(db, s, p, plan) ?? observe(db, patient, plan, ev, branch(s, `outcome:${p.id}`), soft);
   const review = reviewOf(db, s, p, dx);
   const present = new Set(patient.truth.findings.map(f => f.f));
   // та же группа — частично; с частью 48а — и источник сепсиса (пневмония вместо сепсиса из неё)
@@ -1423,6 +1426,9 @@ function admit(db: ContentDb, s: ShiftState, p: ShiftPatient) {
     ...bed, since: s.day, plan, planFrom: 0, replans: 0, ...wardCourse(db, p.patient, plan, ev, branch(s, `ward:${p.id}:0`)),
     ...(op ? { op: { tx: op, queued: s.t } } : {}),
   };
+  // осложнение обследования при противопоказании (spec 2026-10-chapter-4, часть 50а): пункция при коме — смерть в ночь этих
+  // суток, раньше любой другой
+  if (closed.outcome.examHarm) p.stay.dies = 0;
   // фибрилляция желудочков после поступления (часть 39б): в ПИТ под монитором её снимут разрядом —
   // строка обхода; в палате без монитора — смерть в ночь этих суток
   const vf = p.arrest === undefined ? arrestAfter(db, s, p) : undefined;
@@ -1736,13 +1742,15 @@ function nightDeaths(db: ContentDb, s: ShiftState) {
     const days = daysIn(stay, s.day);
     if (stay.dies === undefined || days < stay.dies || !p.closed) continue;
     const ward = wardDay(s);
+    // осложнение обследования (часть 50а) остаётся в исходе: разбор называет его
+    const harm = p.closed.outcome.examHarm ? { examHarm: p.closed.outcome.examHarm } : {};
     if (s.meta.soft) {
-      p.closed.outcome = { kind: 'transferred', day: days, cured: false, severe: true };
+      p.closed.outcome = { kind: 'transferred', day: days, cured: false, severe: true, ...harm };
       ward.transferred++;
       ward.severe = (ward.severe ?? 0) + 1;
       closeStay(db, s, p, 'transferred', days);
     } else {
-      p.closed.outcome = { kind: 'died', day: days, cured: false };
+      p.closed.outcome = { kind: 'died', day: days, cured: false, ...harm };
       ward.died = (ward.died ?? 0) + 1;
       closeStay(db, s, p, 'died', days);
     }
@@ -1772,7 +1780,11 @@ function replan(db: ContentDb, s: ShiftState, id: string, treatments: Id[]): Not
     const { reaction: _, ...kept } = stay;
     p.stay = { ...kept, plan, replans, ...(course.reaction ? { reaction: course.reaction } : {}) };
   } else {
-    p.stay = { room: stay.room, bed: stay.bed, since: stay.since, plan, planFrom: from, replans, ...course, ...(stay.op ? { op: stay.op } : {}) };
+    // смерть в ночь (фибрилляция без монитора, осложнение пункции — часть 50а) сменой лечения не отменить
+    p.stay = {
+      room: stay.room, bed: stay.bed, since: stay.since, plan, planFrom: from, replans, ...course, ...(stay.op ? { op: stay.op } : {}),
+      ...(stay.dies !== undefined ? { dies: stay.dies } : {}), ...(stay.shock !== undefined ? { shock: stay.shock } : {}),
+    };
   }
   return advanceBy(db, s, 2 * MIN);
 }

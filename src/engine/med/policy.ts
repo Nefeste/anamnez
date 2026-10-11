@@ -6,7 +6,7 @@ import { Rng } from '../core/rng';
 import { complaintObservations, examFits, runExam } from './exams';
 import { type Belief, contextOf, expectedGain, knownFacts, likelyParams, paramBeliefs, paramGain, posterior } from './infer';
 import { choiceFor, companionsOf, type Plan, possibleFor, settingOf, tacticsFor, txAvailable, type Venue, verdictOf, whenHolds } from './plan';
-import { checkRule, knownOf, openRuleExams, ruleExams, ruleFindings, type Who } from './rules';
+import { checkRule, harmCheck, knownOf, openRuleExams, ruleExams, ruleFindings, type Who } from './rules';
 import type { Observation, Patient } from './types';
 
 export type Strategy = 'rational' | 'lazy' | 'shotgun';
@@ -326,6 +326,8 @@ export function examMinutes(e: Exam): number {
  * то, что для него осталось, — тоже показано (часть 33а: шкала Уэллса меньше двух — D-димер).
  */
 export function indicated(db: ContentDb, patient: Patient, obs: readonly Observation[], candidates: Id[], examId: Id, minutes = 0): boolean {
+  // противопоказание известно (spec 2026-10-chapter-4, часть 50а): пункция при коме не показана никогда
+  if (harmCheck(db, examId, knownOf(obs)).verdict === 'yes') return false;
   // рекомендация велит его каждому с такой жалобой (часть 33а: снимок груди при травме груди, таза и
   // бедра — при боли в бедре) — показано
   const e = db.exams[examId];
@@ -455,6 +457,23 @@ function confirmBeforeInvasive(db: ContentDb, diagnosis: Id, obs: readonly Obser
  * спрашивают мужчину и женщину 64 лет), и план.
  */
 export function nextStep(db: ContentDb, patient: Patient, obs: readonly Observation[], done: readonly Id[], phase: DoctorPhase, options: StepOptions): { step: DoctorStep; phase: DoctorPhase } {
+  // обследование с вредом при противопоказании (spec 2026-10-chapter-4, часть 50а): пункт правила известен — его не
+  // делают; пока не всё проверено — сначала самое дешёвое из того, что проверит оставшийся пункт: сознание и очаговые
+  // признаки — осмотром невролога, давление — тонометром, тромбоциты — анализом крови. Проверить нечем — делают:
+  // остальное в этой больнице не узнать. Нанятый врач невысокого навыка проверку забывает (`skipAsk`)
+  const known = knownOf(obs);
+  const exams = options.exams.filter(id => harmCheck(db, id, known).verdict !== 'yes');
+  const r = nextStepFor(db, patient, obs, done, phase, { ...options, exams });
+  if (r.step.kind !== 'exam') return r;
+  const { verdict, left } = harmCheck(db, r.step.exam, known);
+  if (verdict !== 'unknown') return r;
+  const check = [...new Set(left.flatMap(f => db.revealedBy[f] ?? []))]
+    .filter(id => exams.includes(id) && !done.includes(id) && examFits(db.exams[id], patient) && !options.skipAsk?.(id))
+    .sort((a, b) => examCost(db, a) - examCost(db, b) || (a < b ? -1 : 1))[0];
+  return check ? { step: { kind: 'exam', exam: check }, phase } : r;
+}
+
+function nextStepFor(db: ContentDb, patient: Patient, obs: readonly Observation[], done: readonly Id[], phase: DoctorPhase, options: StepOptions): { step: DoctorStep; phase: DoctorPhase } {
   // о месячных и беременности мужчину не спрашивают: только то, что пациенту подходит; есть срок
   // решения (часть 39в) — то, что успеет до него. С частью 46а — за вычетом минут, что прошли после
   // находки (по обследованиям после того, что её показало), и с запасом на вопросы о противопоказаниях

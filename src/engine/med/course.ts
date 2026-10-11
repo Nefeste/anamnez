@@ -39,6 +39,11 @@ export interface Outcome {
    * `residual` — последствия остались, дальше реабилитация
    */
   settled?: 'clear' | 'residual';
+  /**
+   * осложнение обследования при противопоказании (spec 2026-10-chapter-4, часть 50а): какое обследование и какие пункты
+   * его правила у больного были — пункция при коме, вклинение мозга
+   */
+  examHarm?: { exam: Id; by: Id[] };
 }
 
 /**
@@ -66,7 +71,26 @@ function anyOf(ps: readonly number[]): number {
   return P_ONE - miss;
 }
 
-export function observe(db: ContentDb, patient: Patient, plan: Plan, ev: PlanEval, rng: Rng): Outcome {
+/**
+ * Осложнение обследования при противопоказании (spec 2026-10-chapter-4, часть 50а): пункция при коме или шоке — вклинение
+ * мозга или кровотечение, смерть в первые сутки; лежит у нас — умрёт в ночь этих суток (смена), в «мягком режиме» — перевод в
+ * тяжёлом состоянии. Своя ветвь на каждое обследование: остальной исход от неё не меняется. Осложнения нет — undefined.
+ */
+export function examHarmOutcome(db: ContentDb, plan: Plan, ev: PlanEval, rng: Rng, soft = false): Outcome | undefined {
+  for (const h of ev.examHarms) {
+    const harm = db.exams[h.exam]?.harm;
+    if (!harm || !rng.fork(`exam-harm:${h.exam}`).chance(harm.p)) continue;
+    const examHarm = { exam: h.exam, by: [...h.by] };
+    if (STAYS.includes(plan.setting)) return { kind: 'admitted', day: 0, cured: ev.effective, examHarm };
+    return soft ? { kind: 'transferred', day: 0, cured: false, severe: true, examHarm } : { kind: 'died', day: 0, cured: false, examHarm };
+  }
+  return undefined;
+}
+
+export function observe(db: ContentDb, patient: Patient, plan: Plan, ev: PlanEval, rng: Rng, soft = false): Outcome {
+  // 0. обследование при противопоказании (часть 50а)
+  const harmed = examHarmOutcome(db, plan, ev, rng, soft);
+  if (harmed) return harmed;
   // своя палата, операционная, ПИТ (часть 38а), реанимация (часть 47) и бокс (часть 49а) — лежит у нас; иначе — увезли или
   // направили
   if (STAYS.includes(plan.setting)) return { kind: 'admitted', day: 0, cured: ev.effective };

@@ -460,6 +460,13 @@ export const examSchema = z.strictObject({
     checks: z.array(z.string()).min(1),
     name: text,
   }).optional(),
+  /**
+   * вред при противопоказании (spec 2026-10-chapter-4, часть 50а): обследование делают, а у больного есть пункт
+   * правила `rule` — с вероятностью `band` осложнение, от которого больной умирает в первые сутки (мягкий режим —
+   * перевод в тяжёлом состоянии). Люмбальная пункция при коме, очаговых признаках, судорогах, шоке, нарастающей
+   * геморрагической сыпи и нарушениях свёртывания — вклинение мозга или кровотечение
+   */
+  harm: z.strictObject({ rule: z.string().regex(/^rule\.[a-z0-9_]+$/), band: probability }).optional(),
   texts: z.strictObject({ summary: text, hint }),
   sources: z.array(source).min(1),
   review,
@@ -984,8 +991,12 @@ export const ruleSchema = z.strictObject({
   excludes: z.array(z.string()).min(1).optional(),
   /** какое обследование правило назначает; пусто — его в игре нет (КТ, часть 32г), тогда `texts.exam` */
   exams: z.array(z.string().regex(/^exam\.[a-z0-9_]+$/)).default([]),
-  /** о каком лечении правило решает, а не об обследовании (часть 39а): «Можно ли тромболизис» */
-  decides: z.string().regex(/^tx\.[a-z0-9_]+$/).optional(),
+  /**
+   * о каком лечении правило решает, а не об обследовании (часть 39а): «Можно ли тромболизис»; с частью 50а (spec
+   * 2026-10-chapter-4) — и можно ли сделать само обследование: «Можно ли пункцию». Такое правило в карте пациента — только
+   * когда применимо (`requires`), а проверяет его разумный врач перед самим обследованием
+   */
+  decides: z.string().regex(/^(tx|exam)\.[a-z0-9_]+$/).optional(),
   /** решает, где лечить (spec 2026-10-chapter-3, часть 43б): sPESI — дома или в стационаре */
   place: z.literal(true).optional(),
   ageMin: z.number().int().min(0).max(120).optional(),

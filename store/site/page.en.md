@@ -36,7 +36,7 @@ shots:
 card:
   text: Patients come to you with real illnesses and injuries, and almost every sign stays hidden until you ask, examine or order a test. Make a diagnosis, choose a treatment and see the outcome — and between shifts, build your own hospital.
   points:
-    - 63 conditions, 23 injuries; each patient’s own X-rays, ultrasound, CT and ECGs
+    - 64 conditions, 23 injuries; each patient’s own X-rays, ultrasound, CT and ECGs
     - Your own hospital with an emergency department, wards and an operating room
     - A review of every visit, a campaign with a mentor and a case of the day
     - Free, offline and ad-free
@@ -82,7 +82,7 @@ in Russian.
 
 ## What’s inside
 
-- 63 conditions and 23 injuries. At the clinic — 38 conditions a general practitioner sees: from
+- 64 conditions and 23 injuries. At the clinic — 38 conditions a general practitioner sees: from
   colds and flu to pneumonia, angina, heart attack, hypertensive crisis, pericarditis, acute heart failure, atrial fibrillation, tachycardias, heart block, pulmonary embolism, hypoglycaemia, nosebleeds and anaphylactic shock. In a hospital with an
   emergency department — 13 more surgical ones, from biliary colic to a perforated ulcer, bowel
   obstruction, deep vein thrombosis and acute ischaemia of the leg, and injuries: fractures, knee ligament tears, a torn calf muscle,
@@ -97,8 +97,9 @@ in Russian.
   CT is needed, and a corticosteroid works best within 72 hours. After a seizure — blood glucose, and
   a first-ever seizure means a CT and admission; seizures that do not stop are status epilepticus: an
   anticonvulsant within 5 minutes and the intensive care unit. With the isolation rooms of an infectious
-  diseases ward — gut infections: salmonellosis, shigellosis and C. difficile colitis after antibiotics;
-  an infectious patient is never put in a shared ward.
+  diseases ward — gut infections: salmonellosis, shigellosis and C. difficile colitis after antibiotics —
+  and meningococcal disease: intravenous antibiotics within the first hour, and a lumbar puncture only
+  without contraindications; an infectious patient is never put in a shared ward.
 - Wounds and burns as in a real emergency department: stitch now or delay the stitches, check the
   finger tendons, measure a burn with the patient’s palms and its depth with a pinprick, tetanus
   shots by vaccination records, and after a dog bite, a rabies vaccine with immunoglobulin.

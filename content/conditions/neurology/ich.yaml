@@ -114,6 +114,11 @@ findings:
   - f: hx.onset_hours
     band: { pct: 100 }
     note: "когда началось, больной или родные называют при расспросе: время — у каждого (523_3, раздел 2.1)"
+  # кровь в ликворе (spec 2026-10-chapter-4, часть 50а) — когда кровь прорвалась в желудочки: у половины (523_3, раздел 1.6).
+  # В конце списка: прежние больные остались прежними
+  - f: lab.csf_blood
+    band: { pct: 50 }
+    note: "прорыв крови в желудочковую систему — у половины пациентов (523_3, раздел 1.6)"
 confirm: [exam.ct_head, exam.cta_head]
 redFlags: [sym.weakness_one_side, sym.speech_trouble, sym.face_droop]
 differential: [cond.stroke_ischemic]

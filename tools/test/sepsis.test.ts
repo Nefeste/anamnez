@@ -102,18 +102,21 @@ describe('qSOFA', () => {
   const known = (on: Id[], off: Id[] = []) => (f: Id) => (on.includes(f) ? true : off.includes(f) ? false : undefined);
   const ITEMS = ['vital.bp_low', 'vital.bp_100', 'vital.tachypnea', 'sign.gcs_low'];
 
-  test('по баллу: давление 100 и ниже (ниже 90 — тот же балл), дыхание чаще 20, оглушение; от двух — «да»', () => {
+  test('по баллу: давление 100 и ниже (ниже 90 — тот же балл), дыхание чаще 20, оглушение или кома; от двух — «да»', () => {
     const r = rule();
+    // кома (часть 50а) — тот же балл за сознание: на числе шкалы Глазго она снимает оглушение
     expect(r.points!.items.map(i => [i.f, i.w, i.unless ?? []])).toEqual([
       ['vital.bp_low', 1, []], ['vital.bp_100', 1, ['vital.bp_low']], ['vital.tachypnea', 1, []], ['sign.gcs_low', 1, []],
+      ['sign.gcs_coma', 1, ['sign.gcs_low']],
     ]);
     expect([r.points!.from, r.exams, r.about, r.ageMin]).toEqual([2, ['exam.lactate'], [SEPSIS], 18]);
     const verdict = (on: Id[], off: Id[]) => checkRule(r, who, known(['sym.fever_hx', ...on], off)).verdict;
     expect(verdict(['vital.bp_100', 'vital.tachypnea'], ['vital.bp_low', 'sign.gcs_low'])).toBe('yes');
     expect(verdict(['vital.bp_low', 'sign.gcs_low'], ['vital.bp_100', 'vital.tachypnea'])).toBe('yes');
     // давление ниже 90 и 100 и ниже — один балл, а не два
-    expect(verdict(['vital.bp_low', 'vital.bp_100'], ['vital.tachypnea', 'sign.gcs_low'])).toBe('no');
-    expect(verdict(['vital.tachypnea'], ['vital.bp_low', 'vital.bp_100', 'sign.gcs_low'])).toBe('no');
+    expect(verdict(['vital.bp_low', 'vital.bp_100'], ['vital.tachypnea', 'sign.gcs_low', 'sign.gcs_coma'])).toBe('no');
+    expect(verdict(['vital.tachypnea'], ['vital.bp_low', 'vital.bp_100', 'sign.gcs_low', 'sign.gcs_coma'])).toBe('no');
+    expect(verdict(['vital.tachypnea', 'sign.gcs_coma'], ['vital.bp_low', 'vital.bp_100', 'sign.gcs_low'])).toBe('yes');
   });
 
   test('кому: при жалобе на жар, озноб, кашель, боль в пояснице, при мочеиспускании или в животе — и при признаках инфекции', () => {
@@ -128,7 +131,7 @@ describe('qSOFA', () => {
     const open = checkRule(r, who, known(['sym.fever_hx']));
     expect(open.verdict).toBe('unknown');
     const one = checkRule(r, who, known(['sym.fever_hx', 'vital.tachypnea'], ['vital.bp_low', 'vital.bp_100']));
-    expect([one.verdict, one.left]).toEqual(['unknown', ['sign.gcs_low']]);
+    expect([one.verdict, one.left]).toEqual(['unknown', ['sign.gcs_low', 'sign.gcs_coma']]);
     for (const f of ITEMS) expect(db.revealedBy[f]?.length ?? 0).toBeGreaterThan(0);
   });
 

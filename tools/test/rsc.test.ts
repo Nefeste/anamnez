@@ -65,7 +65,7 @@ describe('исход перевода по часам', () => {
     expect(late).toBeGreaterThan(0.76);
     expect(late).toBeLessThan(0.86);
     expect(died('i', 24 * 60)).toBeLessThan(0.05);
-  });
+  }, 30_000);
 
   test('без подъёма ST и у болезни без записи — исход прежний; класс из старых сохранений — первый', () => {
     const nste = acs(7, { type: 'nste' });

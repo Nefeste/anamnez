@@ -29,6 +29,11 @@ export type ScoreNote =
   | { code: 'setting.contacts' }
   | { code: 'safety.knownViolation' | 'safety.unaskedViolation'; tx: Id; by: Id }
   | { code: 'safety.notAsked'; by: Id }
+  /**
+   * обследование при противопоказании (spec 2026-10-chapter-4, часть 50а): пункты его правила у больного были; врач о
+   * них знал или их не проверил
+   */
+  | { code: 'safety.examHarmKnown' | 'safety.examHarmUnchecked'; exam: Id; by: Id[] }
   | { code: 'safety.redFlagIgnored' | 'safety.redFlagUnchecked'; f: Id }
   | { code: 'thrift.over'; times: number }
   /**
@@ -186,6 +191,12 @@ export function scoreCase(x: CaseInput): CaseScore {
   }
   if (x.plan.violations.length === 0) {
     for (const by of x.plan.unaskedRisk) { safety = worst(safety, 'B'); notes.push({ code: 'safety.notAsked', by }); }
+  }
+  // обследование при противопоказании (часть 50а): знал — опасное решение, не проверил — опасная небрежность; случилось ли
+  // осложнение, скажет исход
+  for (const h of x.plan.examHarms) {
+    if (h.known) { safety = 'D'; notes.push({ code: 'safety.examHarmKnown', exam: h.exam, by: h.by }); }
+    else { safety = worst(safety, 'C'); notes.push({ code: 'safety.examHarmUnchecked', exam: h.exam, by: h.by }); }
   }
   if (roles.some(r => r.role === 'harmful')) safety = worst(safety, 'C'); // вред — не только плохое лечение
   if (setting === 'D') {

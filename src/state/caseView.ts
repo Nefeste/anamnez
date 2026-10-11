@@ -3,7 +3,7 @@
 // случая. Общий для прототипа П4 (visit.ts) и смены (session.ts): экраны карты пациента
 // работают с любым из них. Правда здесь появляется только в разборе закрытого случая.
 import { db } from '@/content';
-import { type BodySystem, type Id, type Setting, SYSTEMS } from '@/content/types';
+import { type BodySystem, type Id, type Rule, type Setting, SYSTEMS } from '@/content/types';
 import { fnv1a } from '@/engine/core/hash';
 import type { Outcome } from '@/engine/med/course';
 import { complaintObservations, examFits } from '@/engine/med/exams';
@@ -605,7 +605,10 @@ function rulesOf(p: Patient, obs: readonly Observation[]): VisitView['rules'] {
   const t = T.spikes.patient;
   const names = (ids: Id[]) => ids.map(f => lowerFirst(db.findings[f].name.ru));
   const known = knownOf(obs);
-  return rulesFor(db, p).map(r => {
+  // правило о самом обследовании (spec 2026-10-chapter-4, часть 50а: «Можно ли пункцию») — только когда применимо: при
+  // менингеальных знаках или геморрагической сыпи, а не у каждого с головной болью
+  const shown = (r: Rule) => !r.decides?.startsWith('exam.') || checkRule(r, p, known).applies === true;
+  return rulesFor(db, p).filter(shown).map(r => {
     const x = checkRule(r, p, known);
     const age = r.age?.main !== undefined ? t.ruleAgeOver(r.age.main) : r.age?.from !== undefined ? t.ruleAgeFrom(r.age.from) : undefined;
     const main = [...names(x.main), ...(x.ageMain && age ? [age] : [])];
@@ -739,6 +742,13 @@ function targetLineOf(r: TargetResult): string {
 
 export function outcomeText(outcome: Outcome, setting: Setting, female: boolean): string {
   const out = T.spikes.patient.outcome;
+  // осложнение обследования при противопоказании (spec 2026-10-chapter-4, часть 50а): что было и чем кончилось
+  if (outcome.examHarm) {
+    const what = out.examHarm(db.exams[outcome.examHarm.exam]?.name.ru ?? outcome.examHarm.exam);
+    if (outcome.kind === 'died') return `${what}. ${out.examHarmDied(outcome.day, female)}`;
+    if (outcome.kind === 'transferred') return `${what}. ${out.transferredSevere(female)}`;
+    return `${what}. ${outcomeText({ ...outcome, examHarm: undefined }, setting, female)}`;
+  }
   // переведённый в сосудистый центр с подъёмом ST (часть 39б): как открыли артерию, и чем кончилось
   if (outcome.rsc) {
     const r = out.rsc;
@@ -805,6 +815,13 @@ export function noteText(n: ScoreNote): string {
     case 'safety.knownViolation': return t.knownViolation(tx(n.tx), riskName(n.by));
     case 'safety.unaskedViolation': return t.unaskedViolation(tx(n.tx), riskName(n.by));
     case 'safety.notAsked': return t.notAsked(riskName(n.by));
+    // обследование при противопоказании (spec 2026-10-chapter-4, часть 50а): пункция при коме
+    case 'safety.examHarmKnown':
+    case 'safety.examHarmUnchecked': {
+      const by = n.by.map(f => lowerFirst(db.findings[f]?.name.ru ?? f)).join(', ');
+      const exam = db.exams[n.exam]?.name.ru ?? n.exam;
+      return n.code === 'safety.examHarmKnown' ? t.examHarmKnown(exam, by) : t.examHarmUnchecked(exam, by);
+    }
     case 'safety.redFlagIgnored': return t.redFlagIgnored(db.findings[n.f].name.ru);
     case 'safety.redFlagUnchecked': return t.redFlagUnchecked(db.findings[n.f].name.ru);
     case 'thrift.over': return t.thriftOver(n.times);

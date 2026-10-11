@@ -88,6 +88,11 @@ export interface Venue {
    * его скорость и люди этой больницы; нет — по записи в базе
    */
   ready?: (exam: Id) => number | undefined;
+  /**
+   * что этому больному уже сделали (spec 2026-10-chapter-4, часть 50а): пункцию сделали, а ликвор ещё не пришёл — вред
+   * при противопоказании уже есть; нет — по пришедшим результатам
+   */
+  done?: readonly Id[];
 }
 
 /**
@@ -183,6 +188,35 @@ export interface PlanEval {
    * окну и место; у хирургической болезни первая линия — её операция
    */
   noFirstLine: boolean;
+  /**
+   * обследования, сделанные при противопоказании (spec 2026-10-chapter-4, часть 50а): пункты правила вреда, которые у
+   * больного есть, и знал ли о них врач к решению — хоть один показан
+   */
+  examHarms: ExamHarm[];
+}
+
+/** Обследование при противопоказании (часть 50а): люмбальная пункция при коме — вклинение мозга. */
+export interface ExamHarm {
+  exam: Id;
+  /** пункты правила, которые у больного есть */
+  by: Id[];
+  /** хоть один из них врач видел к решению */
+  known: boolean;
+}
+
+/**
+ * Обследования при противопоказании (spec 2026-10-chapter-4, часть 50а): сделано обследование с вредом (`harm`), а у
+ * больного по правде есть пункт его правила — какой бы ни была применимость правила: пункция при коме опасна и без
+ * менингеальных знаков. `done` — сделанные обследования; известно — по наблюдениям.
+ */
+export function examHarmsOf(db: ContentDb, patient: Patient, done: readonly Id[], observations: readonly Observation[]): ExamHarm[] {
+  const has = new Set(patient.truth.findings.map(f => f.f));
+  const shown = new Set(observations.filter(o => o.shown).map(o => o.f));
+  return [...new Set(done)].sort().flatMap(exam => {
+    const rule = db.exams[exam]?.harm ? db.rules[db.exams[exam].harm!.rule] : undefined;
+    const by = (rule?.any ?? []).filter(f => has.has(f));
+    return by.length > 0 ? [{ exam, by, known: by.some(f => shown.has(f)) }] : [];
+  });
 }
 
 export function primaryOf(patient: Patient) {
@@ -582,5 +616,7 @@ export function evaluatePlan(db: ContentDb, patient: Patient, plan: Plan, observ
     windowMissed,
     // первая линия хирургической болезни — операция (часть 28): её выбирают местом, в тактике её нет
     noFirstLine: (tactics?.firstLine.length ?? 0) === 0 && surgeryFor(db, primary, params) === undefined,
+    // пункция при противопоказании (часть 50а): и по сделанному, чей результат ещё не пришёл
+    examHarms: examHarmsOf(db, patient, [...done, ...(venue.done ?? [])], observations),
   };
 }

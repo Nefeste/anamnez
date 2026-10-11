@@ -685,6 +685,16 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     else if (x.checks.some(c => c.f === f)) errors.push(`${x.id}: обязательно, если видно ${f}, а его открывает само это обследование`);
     else if (!Object.values(exams).some(e => e.checks.some(c => c.f === f))) errors.push(`${x.id}: обязательно, если видно ${f}, а его не открывает ни одно обследование`);
   }
+  // вред при противопоказании (spec 2026-10-chapter-4, часть 50а): правило есть, решает именно это обследование, и его
+  // пункты открывает хоть одно другое обследование — иначе проверить их перед ним нечем
+  for (const x of Object.values(exams)) {
+    if (!x.harm) continue;
+    const r = rules[x.harm.rule];
+    if (!r) { errors.push(`${x.id}: правило вреда ${x.harm.rule} не найдено`); continue; }
+    if (r.decides !== x.id) errors.push(`${x.id}: правило вреда ${r.id} решает не это обследование (decides)`);
+    if (r.any.length === 0) errors.push(`${x.id}: у правила вреда ${r.id} нет пунктов (any)`);
+    for (const f of r.any) if (!Object.values(exams).some(e => e.id !== x.id && e.checks.some(c => c.f === f)) && !findings[f]?.texts.complaint) errors.push(`${x.id}: пункт ${f} правила вреда не проверить ни расспросом, ни другим обследованием`);
+  }
   // правила решения (часть 32): жалобы — признаки с жалобой, признаки и обследования есть, и
   // обследование правила открывает хоть один признак болезней, о которых оно
   for (const x of Object.values(rules)) {
@@ -729,8 +739,10 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     // правило о месте (часть 43б) — без обследования и лечения; место решает производный параметр болезни
     if (x.place && (x.exams.length > 0 || x.texts.exam || x.decides)) errors.push(`${x.id}: правило о месте лечения — без обследования и лечения`);
     if (x.place && !Object.values(conditions).some(c => Object.values(c.derived ?? {}).some(d => (typeof d === 'string' ? d : 'rule' in d ? d.rule : undefined) === x.id))) errors.push(`${x.id}: правило о месте лечения, а производного параметра по нему нет ни у одной болезни`);
-    // правило о лечении (часть 39а): лечение есть, обследования и текста о нём нет
-    if (x.decides && !(x.decides in treatments)) errors.push(`${x.id}: лечение ${x.decides} не найдено`);
+    // правило о лечении (часть 39а): лечение есть, обследования и текста о нём нет; о самом обследовании (часть 50а) —
+    // обследование есть, и его вред при противопоказании — по этому правилу
+    if (x.decides?.startsWith('tx.') && !(x.decides in treatments)) errors.push(`${x.id}: лечение ${x.decides} не найдено`);
+    if (x.decides?.startsWith('exam.') && exams[x.decides]?.harm?.rule !== x.id) errors.push(`${x.id}: обследование ${x.decides} не найдено или его вред (harm) — не по этому правилу`);
     if (x.decides && (x.exams.length > 0 || x.texts.exam)) errors.push(`${x.id}: правило о лечении ${x.decides} — без обследования`);
     if (x.exams.length > 0 && x.texts.exam) errors.push(`${x.id}: текст об обследовании (texts.exam) — только если его в игре нет`);
     for (const id of x.about) if (!conditions[id]?.presenting) errors.push(`${x.id}: болезнь ${id} не найдена или с ней не приходят`);
@@ -887,6 +899,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (e.routineSeen) out.routineSeen = e.routineSeen;
     if (e.bedside) out.bedside = e.bedside;
     if (e.repeat) out.repeat = e.repeat;
+    if (e.harm) out.harm = { rule: e.harm.rule, p: prob(e.harm.band) };
     if (e.sex) out.sex = e.sex;
     if (e.ageMin !== undefined) out.ageMin = e.ageMin;
     if (e.ageMax !== undefined) out.ageMax = e.ageMax;
