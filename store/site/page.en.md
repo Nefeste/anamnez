@@ -61,8 +61,8 @@ in Russian.
   temperature, pulse, blood pressure and oxygen saturation and sees urgent patients in first. The
   map shows who is where: at reception, in the waiting room, at the X-ray, in your office.
 - **Examination.** Questions about complaints and history, a physical exam, lab tests, X-rays,
-  ECGs, ultrasound and CT — each with its own cost and time. While a test is running, you can send the
-  patient to wait and see the next one; those who wait too long leave.
+  ECGs, ultrasound, CT, MRI and endoscopy — each with its own cost and time. While a test is
+  running, you can send the patient to wait and see the next one; those who wait too long leave.
 - **Decision.** A diagnosis, a treatment and where to treat: at home, on a ward or in the operating
   room — or, if needed, a referral to another hospital or an ambulance.
 - **Review.** What it really was, a score for accuracy, justification, thrift and safety, and how
@@ -72,9 +72,10 @@ in Russian.
   emergency department, wards and an operating room, where a vascular unit with a CT room and an
   intensive care ward opens. The first shift is with a mentor; after that come letters and tasks
   without deadlines.
-- **Your own hospital.** Offices, a lab, X-ray, ultrasound, CT and MRI rooms, an emergency department, wards
-  and an operating room, hiring, the cash desk. Doctors you hire see patients on their own. Insurance
-  pays for a justified diagnosis and for tests that were indicated.
+- **Your own hospital.** Offices, a lab, X-ray, ultrasound, CT, MRI and endoscopy rooms, an
+  emergency department, wards, isolation boxes and an operating room, hiring, the cash desk. Doctors
+  you hire see patients on their own. Insurance pays for a justified diagnosis and for tests that
+  were indicated.
 - **Emergency department.** The ambulance brings in the seriously ill, and urgency is checked
   against the NEWS2 score. You do a ward round every morning and discharge patients when they are
   better; a surgical team works in the operating room — and the longer an appendicitis or a
@@ -160,6 +161,6 @@ see a doctor; in an emergency, call your local emergency number (112 in Russia a
 
 ## What’s next
 
-Coming up: new campaign chapters and MRI. The game is
+Coming up: new campaign chapters. The game is
 being prepared for release in RuStore for Android, in Russian first. Questions:
 support@gornitsa.games.
