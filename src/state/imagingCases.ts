@@ -3,6 +3,7 @@
 import { T } from '@/i18n';
 import type { ChestCtFindings } from '@/render/ct/chestGeometry';
 import type { HeadFindings } from '@/render/ct/geometry';
+import type { EgdFindings } from '@/render/egd/geometry';
 import type { EcgFindings } from '@/render/ecg/model';
 import type { UsImage } from '@/render/us/sector';
 import type { AbdomenFindings } from '@/render/xray/abdomenGeometry';
@@ -190,4 +191,26 @@ export const ECG_CASES: EcgCase[] = [
   { key: 'ecg-lvh', findings: { lvh: true }, seed: 17, label: e.lvh },
   { key: 'ecg-rv', findings: { rvStrain: true, rate: 110 }, seed: 18, label: e.rv },
   { key: 'ecg-low', findings: { lowVoltage: true, rate: 105 }, seed: 19, label: e.lowVoltage },
+];
+
+export interface EgdCase {
+  key: string;
+  findings: EgdFindings;
+  seed: number;
+  label: string;
+}
+
+const g = T.spikes.imaging.egd;
+
+/** ЭГДС (spec 2026-10-chapter-4, часть 53а-2): слизистая желудка, дно язвы по Форресту, разрыв кардии, кровь без источника. */
+export const EGD_CASES: EgdCase[] = [
+  { key: 'egd-normal', findings: {}, seed: 1, label: g.normal },
+  { key: 'egd-clean', findings: { ulcer: { base: 'clean', size: 0.6 } }, seed: 2, label: g.clean },
+  { key: 'egd-spots', findings: { ulcer: { base: 'spots', size: 0.6 } }, seed: 3, label: g.spots },
+  { key: 'egd-vessel', findings: { ulcer: { base: 'vessel', size: 0.7 } }, seed: 4, label: g.vessel },
+  { key: 'egd-clot', findings: { ulcer: { base: 'clot', size: 0.7 } }, seed: 5, label: g.clot },
+  { key: 'egd-bleeding', findings: { ulcer: { base: 'bleeding', size: 0.7 } }, seed: 6, label: g.bleeding },
+  { key: 'egd-tear', findings: { tear: { bleeding: false, size: 0.6 } }, seed: 7, label: g.tear },
+  { key: 'egd-tear-bleeding', findings: { tear: { bleeding: true, size: 0.7 } }, seed: 8, label: g.tearBleeding },
+  { key: 'egd-blood', findings: { blood: true }, seed: 9, label: g.blood },
 ];

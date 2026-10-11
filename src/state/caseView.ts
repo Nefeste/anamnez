@@ -19,6 +19,7 @@ import type { Difficulty } from '@/engine/shift/types';
 import type { EcgFindings, Wall } from '@/render/ecg/model';
 import type { ChestCtFindings } from '@/render/ct/chestGeometry';
 import type { HeadFindings } from '@/render/ct/geometry';
+import type { EgdFindings } from '@/render/egd/geometry';
 import type { BoneFindings, BoneFracture } from '@/render/xray/boneGeometry';
 import { fracturedRibs, type XrayFindings } from '@/render/xray/chestGeometry';
 import { T } from '@/i18n';
@@ -72,7 +73,12 @@ export type ResultImage =
    */
   | { kind: 'head'; seed: number; findings: HeadFindings; mode?: 'mri' }
   /** срез груди на КТ-ангиографии (часть 43а): расслоение аорты — тип A или B, если его показала КТ */
-  | { kind: 'chestCt'; seed: number; findings: ChestCtFindings };
+  | { kind: 'chestCt'; seed: number; findings: ChestCtFindings }
+  /**
+   * ЭГДС (spec 2026-10-chapter-4, часть 53а-2): поле зрения эндоскопа — язва и что в её дне, разрыв кардии, кровь без
+   * видимого источника; ничего — обычная слизистая желудка
+   */
+  | { kind: 'egd'; seed: number; findings: EgdFindings };
 
 /** Результаты одного обследования. `fresh` — пришли за последнее действие игрока. */
 export interface ResultGroup {
@@ -444,6 +450,19 @@ function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observat
         ...(pe !== undefined ? { pe: pe === 'right' || pe === 'left' ? pe : 'both' } : {}),
       },
     };
+  }
+  // ЭГДС (часть 53а-2): что показала — язва и что в её дне, разрыв кардии, кровь. Сосуд или сгусток, плоские пятна или
+  // чистое дно — одна строка находки на двоих классов Форреста: какой из двух, решает зерно пациента
+  if (exam === 'exam.egd') {
+    const ulcer = shown('img.egd_ulcer') !== undefined;
+    const bleeding = shown('img.egd_bleeding') !== undefined;
+    const stigmata = shown('img.egd_stigmata') !== undefined;
+    const odd = patientSeed % 2 === 1;
+    const size = 0.35 + (patientSeed % 5) / 10;
+    const base = bleeding ? 'bleeding' : stigmata ? (odd ? 'vessel' : 'clot') : odd ? 'spots' : 'clean';
+    // язва — её дно; разрыв без язвы — кардия; кровь без найденного источника — кровь в просвете
+    const findings: EgdFindings = ulcer ? { ulcer: { base, size } } : shown('img.egd_tear') ? { tear: { bleeding, size } } : bleeding ? { blood: true } : {};
+    return { kind: 'egd', seed, findings };
   }
   if (exam === 'exam.ecg') {
     const pulse = known.find(o => o.f === 'vital.tachycardia' && o.value !== undefined)?.value;
