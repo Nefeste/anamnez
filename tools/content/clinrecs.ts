@@ -29,18 +29,22 @@ const norm = (s: string) => s.normalize('NFC').replace(/\s+/g, ' ').replace(/ё/
 type Source = { org?: string; title: string; url?: string; year?: number; note?: string };
 export type Cited = { title: string; url?: string; year?: number; note?: string; files: string[] };
 
-/** Источники из файлов базы — всех разделов, и тех, что в собранную базу не входят (факторы риска). */
+/** Каждая ссылка на рекомендацию в файлах базы — всех разделов, и тех, что в собранную базу не входят (факторы риска). */
+export function minzdravCitations(dir = CONTENT_DIR): (Source & { file: string })[] {
+  const walk = (d: string): string[] => readdirSync(d).flatMap(n => (statSync(join(d, n)).isDirectory() ? walk(join(d, n)) : n.endsWith('.yaml') ? [join(d, n)] : []));
+  return walk(dir).flatMap(file => {
+    const doc = parse(readFileSync(file, 'utf8')) as { sources?: Source[] } | null;
+    return (doc?.sources ?? []).filter(s => s.org === 'Минздрав РФ').map(s => ({ ...s, file: relative(dir, file) }));
+  });
+}
+
+/** Те же ссылки, по одной на рекомендацию: у повторов — список файлов, текст — из последнего прочитанного. */
 export function minzdravSources(dir = CONTENT_DIR): Map<string, Cited> {
   const out = new Map<string, Cited>();
-  const walk = (d: string): string[] => readdirSync(d).flatMap(n => (statSync(join(d, n)).isDirectory() ? walk(join(d, n)) : n.endsWith('.yaml') ? [join(d, n)] : []));
-  for (const file of walk(dir)) {
-    const doc = parse(readFileSync(file, 'utf8')) as { sources?: Source[] } | null;
-    for (const s of doc?.sources ?? []) {
-      if (s.org !== 'Минздрав РФ') continue;
-      const key = `${s.url ?? ''}|${s.title}`;
-      const had = out.get(key);
-      out.set(key, { title: s.title, url: s.url, year: s.year, note: s.note, files: [...(had?.files ?? []), relative(dir, file)] });
-    }
+  for (const { file, ...s } of minzdravCitations(dir)) {
+    const key = `${s.url ?? ''}|${s.title}`;
+    const had = out.get(key);
+    out.set(key, { title: s.title, url: s.url, year: s.year, note: s.note, files: [...(had?.files ?? []), file] });
   }
   return out;
 }

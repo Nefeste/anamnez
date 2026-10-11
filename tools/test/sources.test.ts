@@ -2,23 +2,26 @@
 // рубрикатором cr.minzdrav.gov.ru — у каждой ссылки ссылка на карточку «код_версия», год
 // публикации и отметка о сверке. Сама сверка по сети — tools/content/clinrecs.ts.
 import { describe, expect, test } from 'bun:test';
-import { minzdravSources } from '../content/clinrecs';
+import { minzdravCitations, minzdravSources } from '../content/clinrecs';
 
 const CARD = /^https:\/\/cr\.minzdrav\.gov\.ru\/view-cr\/(\d+_\d+)$/;
 
 describe('источники: рекомендации Минздрава', () => {
   const cited = [...minzdravSources().values()];
+  // каждая ссылка, а не склеенный список: в нём текст из последнего прочитанного файла, а порядок файлов в разных системах свой
+  const all = minzdravCitations();
 
   test('их два десятка с лишним — сверять есть что', () => {
     expect(cited.length).toBeGreaterThanOrEqual(20);
   });
 
-  test('у каждой — карточка рубрикатора, год публикации и отметка о сверке с тем же ID', () => {
-    for (const s of cited) {
+  test('у каждой ссылки — карточка рубрикатора, год публикации и отметка о сверке с тем же ID', () => {
+    for (const s of all) {
       const id = CARD.exec(s.url ?? '')?.[1];
-      expect({ title: s.title, card: !!id }).toEqual({ title: s.title, card: true });
-      expect({ title: s.title, year: Number.isInteger(s.year) && (s.year ?? 0) >= 2015 }).toEqual({ title: s.title, year: true });
-      expect({ title: s.title, note: !!s.note?.startsWith(`ID ${id}, опубликованы `) && s.note.includes('сверено с рубрикатором') }).toEqual({ title: s.title, note: true });
+      const at = `${s.file}: ${s.title}`;
+      expect({ at, card: !!id }).toEqual({ at, card: true });
+      expect({ at, year: Number.isInteger(s.year) && (s.year ?? 0) >= 2015 }).toEqual({ at, year: true });
+      expect({ at, note: !!s.note?.startsWith(`ID ${id}, опубликованы `) && s.note.includes('сверено с рубрикатором') }).toEqual({ at, note: true });
     }
   });
 
@@ -34,6 +37,6 @@ describe('источники: рекомендации Минздрава', () =
   });
 
   test('пометок «сверить название и редакцию» не осталось', () => {
-    for (const s of cited) expect({ title: s.title, left: /редакци|сверить (действующ|на cr\.minzdrav)/.test(s.note ?? '') }).toEqual({ title: s.title, left: false });
+    for (const s of all) expect({ at: `${s.file}: ${s.title}`, left: /редакци|сверить (действующ|на cr\.minzdrav)/.test(s.note ?? '') }).toEqual({ at: `${s.file}: ${s.title}`, left: false });
   });
 });

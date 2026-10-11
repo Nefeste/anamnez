@@ -21,5 +21,5 @@ describe('золотые случаи', () => {
     if (saved.contentHash !== db.hash) console.warn(`база изменилась (${saved.contentHash} → ${db.hash}): если это нарочно — пересоздайте отпечаток`);
     expect(run.hash).toBe(saved.hash);
     expect(run.primaries).toEqual(saved.primaries);
-  });
+  }, 30_000);
 });

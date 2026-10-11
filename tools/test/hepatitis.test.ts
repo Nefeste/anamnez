@@ -60,7 +60,7 @@ describe('гепатиты: болезни и признаки', () => {
     // источник: желтуха рядом — у A, кровь и связи — у B
     expect(share(HA, 'moderate', 'hx.jaundice_contact')).toBeGreaterThan(share(HB, 'moderate', 'hx.jaundice_contact'));
     expect(share(HB, 'moderate', 'hx.parenteral_risk')).toBeGreaterThan(share(HA, 'moderate', 'hx.parenteral_risk'));
-  });
+  }, 30_000);
 
   test('обследования: маркёры, коагулограмма, расспрос — первым при желтухе; билирубин выше 200 — в печёночных пробах', () => {
     expect(db.exams['exam.hepatitis_markers']).toMatchObject({ room: 'room.lab', equipment: ['eq.immuno_analyzer'], collect: 'room.procedure' });

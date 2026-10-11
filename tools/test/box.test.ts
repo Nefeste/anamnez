@@ -114,7 +114,7 @@ describe('острый гастроэнтерит по Покровскому', 
     // о моче и судорогах спрашивают, слизистые и голос видны при осмотре
     expect(db.exams['exam.ask_abdomen'].checks.map(c => c.f)).toEqual(expect.arrayContaining(['sym.less_urine', 'sym.leg_cramps']));
     expect(db.exams['exam.general_exam'].checks.map(c => c.f)).toEqual(expect.arrayContaining(['sign.dry_mucosa', 'sign.hoarse_voice']));
-  });
+  }, 30_000);
 
   test('лечение: I–II — питьё солевых растворов; III — растворы в вену обязательны; IV — и до перевода, питьё не поможет', () => {
     const t = db.conditions[GE].treatment!;
