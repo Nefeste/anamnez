@@ -9,12 +9,14 @@ name: { ru: "Можно ли пункцию" }
 # тромбоциты ниже 100 и антикоагулянты; дыхательная недостаточность — сатурация ниже 90. Относительной брадикардии с
 # гипертензией, зрачков и инфекции кожи в месте пункции в игре нет. Судороги — только те, что идут сейчас (часть 50б): в
 # 1020_1 они противопоказание, а 492_2 пункцию при судорогах назначает (раздел 2.4) — прошедший приступ её не запрещает,
-# идущие судороги сначала останавливают; при менингококковой инфекции судороги бывают при отёке мозга, а его видно комой
+# идущие судороги сначала останавливают; при менингококковой инфекции судороги бывают при отёке мозга, а его видно комой.
+# С частью 51б — и о клещевом энцефалите: пункция в первые сутки от вероятного диагноза, при угрозе дислокации — после
+# стабилизации (567_2, раздел 2.4)
 complaints: [sym.fever_hx, sym.headache, sym.vomiting, sym.confusion, sym.seizure, sym.seizure_ongoing]
 requires: [sign.neck_stiffness, sign.petechial_rash]
 any: [sign.gcs_coma, sign.hemiparesis, sym.seizure_ongoing, vital.bp_low, sign.rash_spreading, lab.platelets_low, hx.anticoagulants, vital.spo2_low]
 decides: exam.lumbar_puncture
-about: [cond.meningococcal, cond.hsv_encephalitis, cond.sah, cond.ich]
+about: [cond.meningococcal, cond.hsv_encephalitis, cond.sah, cond.ich, cond.tbe]
 texts:
   summary:
     ru: >-
