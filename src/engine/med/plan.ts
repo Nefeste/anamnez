@@ -93,6 +93,11 @@ export interface Venue {
    * при противопоказании уже есть; нет — по пришедшим результатам
    */
   done?: readonly Id[];
+  /**
+   * работающие кабинеты этой больницы — виды помещений (spec 2026-10-chapter-4, часть 53а): где работает эндоскопический
+   * кабинет, гемостаз делают у себя; нет — места из `without.rooms`
+   */
+  rooms?: readonly Id[];
 }
 
 /**
@@ -102,7 +107,27 @@ export interface Venue {
 export function bedsideLack(db: ContentDb, tx: Id, venue: Venue = {}): Id | undefined {
   const t = db.treatments[tx];
   if (t?.place === 'ricu' && venue.ricu) return undefined;
+  // лечение в кабинете (часть 53а): нет работающего кабинета — не хватает его
+  if (t?.room && venue.rooms?.includes(t.room) !== true) return t.room;
   return t?.bedside?.equipment.find(e => venue.bedside?.includes(e) !== true);
+}
+
+/** Кабинеты, от которых зависит лечение или место (часть 53а), — один раз на базу. */
+const settingRoomCache = new WeakMap<ContentDb, ReadonlySet<Id>>();
+
+/**
+ * Из работающих кабинетов больницы — те, от которых зависит место или лечение (spec 2026-10-chapter-4, часть 53а):
+ * закрытый случай помнит только их — эндоскопический кабинет, а не каждую работающую лабораторию.
+ */
+export function settingRoomsOf(db: ContentDb, rooms: readonly Id[]): Id[] {
+  let matter = settingRoomCache.get(db);
+  if (!matter) {
+    const out = new Set<Id>();
+    for (const c of Object.values(db.conditions)) for (const r of c.treatment?.setting.without?.rooms ?? []) out.add(r);
+    for (const t of Object.values(db.treatments)) if (t.room) out.add(t.room);
+    settingRoomCache.set(db, (matter = out));
+  }
+  return rooms.filter(r => matter.has(r));
 }
 
 /**
@@ -396,7 +421,7 @@ function afterOf(rule: SettingRule, done: (exam: Id) => boolean): SettingRule['a
  * решает тот, кто спрашивает. `bedside` — аппараты у постели больного (часть 42б): без монитора
  * приступ наджелудочковой тахикардии не снять — место из `without`.
  */
-export function settingOf(rule: SettingRule, redFlags: readonly Id[], o: { params: Record<string, string>; has: (f: Id) => boolean; risk: (id: Id) => boolean; done: (exam: Id) => boolean; bedside?: readonly Id[] }): Setting {
+export function settingOf(rule: SettingRule, redFlags: readonly Id[], o: { params: Record<string, string>; has: (f: Id) => boolean; risk: (id: Id) => boolean; done: (exam: Id) => boolean; bedside?: readonly Id[]; rooms?: readonly Id[] }): Setting {
   let best: Setting = rule.default;
   const raise = (s: Setting | undefined) => {
     if (s && SETTING_ORDER[s] > SETTING_ORDER[best]) best = s;
@@ -410,8 +435,13 @@ export function settingOf(rule: SettingRule, redFlags: readonly Id[], o: { param
     if (rule.redFlag && redFlags.some(o.has)) raise(rule.redFlag);
   }
   for (const r of rule.risks ?? []) if (o.risk(r.id)) raise(r.setting);
-  if (rule.without && !rule.without.equipment.every(e => o.bedside?.includes(e) === true)) raise(rule.without.setting);
+  if (rule.without && lacksFor(rule, o.bedside, o.rooms)) raise(rule.without.setting);
   return best;
+}
+
+/** Не хватает того, без чего место — из `without`: аппарата у постели (часть 42б) или работающего кабинета в больнице (часть 53а). */
+function lacksFor(rule: SettingRule, bedside: readonly Id[] = [], rooms: readonly Id[] = []): boolean {
+  return (rule.without?.equipment ?? []).some(e => !bedside.includes(e)) || (rule.without?.rooms ?? []).some(r => !rooms.includes(r));
 }
 
 /**
@@ -419,9 +449,10 @@ export function settingOf(rule: SettingRule, redFlags: readonly Id[], o: { param
  * Послабление — только к месту по параметру: красный флаг или фактор риска из правила места его
  * отменяют (кожа натянута над отломком ключицы — только операция, `853_1`, раздел 6). После
  * обследования из `after` (часть 40) отменяют его признаки: судороги после КТ без крови — не довод.
- * `done` — обследования, результат которых пришёл.
+ * `done` — обследования, результат которых пришёл. Нет того, без чего место — из `without` (spec 2026-10-chapter-4,
+ * часть 53а), — послабления нет: без эндоскопии ПИТ кровотечение из язвы не остановит, нужен перевод.
  */
-export function alsoSettings(db: ContentDb, patient: Patient, done: readonly Id[] = []): Setting[] {
+export function alsoSettings(db: ContentDb, patient: Patient, done: readonly Id[] = [], bedside: readonly Id[] = [], rooms: readonly Id[] = []): Setting[] {
   const primary = primaryOf(patient);
   const cond = db.conditions[primary.id];
   const rule = cond?.treatment?.setting;
@@ -430,6 +461,7 @@ export function alsoSettings(db: ContentDb, patient: Patient, done: readonly Id[
   const after = afterOf(rule, e => done.includes(e));
   if (after ? after.flags?.any.some(f => has.has(f)) : rule.redFlag && (cond.redFlags ?? []).some(f => has.has(f))) return [];
   if ((rule.risks ?? []).some(r => patient.truth.risks.includes(r.id))) return [];
+  if (rule.without && lacksFor(rule, bedside, rooms)) return [];
   return [...new Set(rule.also.filter(a => whenHolds(a.when, primary.params)).flatMap(a => a.settings))];
 }
 
@@ -459,13 +491,13 @@ export function tacticsFor(t: Tactics, params: Record<string, string> = {}): Tac
  * обследования из `after` (часть 40) — его место. `done` — обследования, результат которых пришёл;
  * `bedside` — аппараты у постели в момент решения (часть 42б): без монитора приступ не снять.
  */
-export function recommendedSetting(db: ContentDb, patient: Patient, done: readonly Id[] = [], bedside: readonly Id[] = []): Setting {
+export function recommendedSetting(db: ContentDb, patient: Patient, done: readonly Id[] = [], bedside: readonly Id[] = [], rooms: readonly Id[] = []): Setting {
   const primary = primaryOf(patient);
   const cond = db.conditions[primary.id];
   const rule = cond.treatment?.setting;
   if (!rule) return 'home';
   const has = new Set(patient.truth.findings.map(f => f.f));
-  return settingOf(rule, cond.redFlags ?? [], { params: primary.params, has: f => has.has(f), risk: id => patient.truth.risks.includes(id), done: e => done.includes(e), bedside });
+  return settingOf(rule, cond.redFlags ?? [], { params: primary.params, has: f => has.has(f), risk: id => patient.truth.risks.includes(id), done: e => done.includes(e), bedside, rooms });
 }
 
 /**
@@ -549,7 +581,7 @@ export function evaluatePlan(db: ContentDb, patient: Patient, plan: Plan, observ
   const tactics = base && tacticsFor(base, params);
   // место — по пришедшим результатам (часть 40): после КТ без крови сотрясение лечат дома
   const done = [...new Set(observations.map(o => o.exam))];
-  const also = alsoSettings(db, patient, done);
+  const also = alsoSettings(db, patient, done, venue.bedside, venue.rooms);
   const firstLineBlocked = (tactics?.firstLine ?? [])
     .some(tx => db.treatments[tx]?.contraindications.some(k => knownIds.has(k.id)));
   // противопоказано тем, о чём врач знает, — в вину не ставим; у постели нет аппарата — здесь не сделать
@@ -580,7 +612,7 @@ export function evaluatePlan(db: ContentDb, patient: Patient, plan: Plan, observ
     primary,
     // роли — по тому, что показали обследования (части 41б и 41в): давление снижают по тонометру
     roles: plan.treatments.map(tx => ({ tx, role: txRole(db, primary, tx, seenParams) })),
-    setting: { chosen: plan.setting, recommended: recommendedSetting(db, patient, done, venue.bedside), ...(also.length > 0 ? { also } : {}) },
+    setting: { chosen: plan.setting, recommended: recommendedSetting(db, patient, done, venue.bedside, venue.rooms), ...(also.length > 0 ? { also } : {}) },
     violations,
     effective,
     unaskedRisk: unaskedRisk.sort(),

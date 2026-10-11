@@ -162,8 +162,8 @@ describe('каталог больницы', () => {
   test('собран: у помещений — что открывают, у аппаратов — какие обследования, у должностей — где работают', () => {
     const { db } = buildDb();
     // с частью 47 (spec 2026-10-chapter-4) — и реанимация, с частью 49а — бокс инфекционного отделения, с частью 50б —
-    // кабинет МРТ
-    expect(Object.keys(db.rooms)).toHaveLength(19);
+    // кабинет МРТ, с частью 53а — эндоскопический кабинет
+    expect(Object.keys(db.rooms)).toHaveLength(20);
     // нанятый врач (spec 2026-09-hired-doctors): встаёт на место врача, нужна ординаторская с местами
     expect(db.roles['role.therapist']).toMatchObject({ hire: true, stands: 'role.doctor', needs: 'room.staff', rooms: ['room.office'] });
     expect(db.rooms['room.staff'].sizes.map(z => z.places)).toEqual([2, 4]);
@@ -177,7 +177,7 @@ describe('каталог больницы', () => {
       'exam.borrelia_elisa', 'exam.cdiff_stool', 'exam.d_dimer', 'exam.hantavirus_elisa', 'exam.hepatitis_markers', 'exam.nt_probnp', 'exam.tbe_elisa', 'exam.troponin_hs', 'exam.tsh',
     ]);
     expect(db.equipment['eq.xray_digital'].upgradeOf).toBe('eq.xray_analog');
-    expect(db.roles['role.nurse'].rooms).toEqual(['room.box', 'room.ecg', 'room.emergency', 'room.icu', 'room.procedure', 'room.ricu', 'room.triage', 'room.ward']);
+    expect(db.roles['role.nurse'].rooms).toEqual(['room.box', 'room.ecg', 'room.emergency', 'room.endoscopy', 'room.icu', 'room.procedure', 'room.ricu', 'room.triage', 'room.ward']);
     // палата (spec 2026-09-chapter-2, часть 26): койки — места лежащих
     expect(db.rooms['room.ward'].sizes.map(z => z.beds)).toEqual([2, 4]);
     expect(db.rooms['room.office'].sizes.every(z => z.beds === 0)).toBe(true);
@@ -205,7 +205,8 @@ describe('каталог больницы', () => {
       // дивертикулит — 92 и 90 % (Laméris 2008, часть 30д)
       { f: 'img.us_diverticulitis', sens: 9200, spec: 9000 },
     ]);
-    expect(Object.values(db.roles).filter(r => r.reads).map(r => r.id).sort()).toEqual(['role.radiologist', 'role.sonographer']);
+    // эндоскопист (часть 53а) — как врач УЗД: сам проводит и сам описывает
+    expect(Object.values(db.roles).filter(r => r.reads).map(r => r.id).sort()).toEqual(['role.endoscopist', 'role.radiologist', 'role.sonographer']);
     expect(db.roles['role.sonographer'].rooms).toEqual(['room.ultrasound']);
     expect(db.conditions['cond.appendicitis'].findings).toContainEqual(expect.objectContaining({ f: 'img.us_appendicitis' }));
     expect(db.roles['role.doctor'].hire).toBe(false);
@@ -753,5 +754,20 @@ describe('достижения', () => {
     expect(order.some(e => e.includes('порядок 4 уже у другого достижения'))).toBe(true);
     const kind = broken(d => edit(d, 'achievements/month.yaml', 'kind: days', 'kind: streakDays'));
     expect(kind.some(e => e.startsWith('achievements/month.yaml:'))).toBe(true);
+  });
+});
+
+describe('эндоскопия (spec 2026-10-chapter-4, часть 53а)', () => {
+  test('место без кабинета — кабинет есть, и в нём делают лечение; лечение в кабинете — не у постели и не операция', () => {
+    const noRoom = broken(d => edit(d, 'conditions/surgery/ulcer_bleeding.yaml', 'without: { rooms: [room.endoscopy]', 'without: { rooms: [room.endoscopia]'));
+    expect(noRoom.some(e => e.includes('cond.ulcer_bleeding: место без кабинета room.endoscopia — такого помещения нет'))).toBe(true);
+    const noTx = broken(d => edit(d, 'treatments/endoscopic_hemostasis.yaml', 'room: room.endoscopy', 'room: room.ultrasound'));
+    expect(noTx.some(e => e.includes('cond.mallory_weiss: место без кабинета room.endoscopy, а лечения в нём нет'))).toBe(true);
+    const bad = broken(d => edit(d, 'treatments/endoscopic_hemostasis.yaml', 'room: room.endoscopy', 'room: room.endoscopia'));
+    expect(bad.some(e => e.includes('tx.endoscopic_hemostasis: лечение в кабинете room.endoscopia — такого помещения нет'))).toBe(true);
+    const bedside = broken(d => edit(d, 'treatments/endoscopic_hemostasis.yaml', 'room: room.endoscopy', 'room: room.endoscopy\nbedside: { equipment: [eq.monitor_defib] }'));
+    expect(bedside.some(e => e.includes('tx.endoscopic_hemostasis: лечение в кабинете — не у постели, не лечение реанимации и не операция'))).toBe(true);
+    const neither = broken(d => edit(d, 'conditions/surgery/mallory_weiss.yaml', 'without: { rooms: [room.endoscopy], setting: transfer }', 'without: { setting: transfer }'));
+    expect(neither.some(e => e.includes('без чего это место'))).toBe(true);
   });
 });

@@ -23,6 +23,9 @@ checks:
   - { f: sym.back_radiation, sens: 85, spec: 96 }
   - { f: sym.dagger_pain, sens: 92, spec: 97 }
   - { f: sym.hematemesis, sens: 92, spec: 99 }
+  # рвало ли до крови (spec 2026-10-chapter-4, часть 53а): кровь после многократной рвоты — разрыв Мэллори–Вейсса (1026_1,
+  # приложение В; 277_2, раздел 2.5); точность — игровая оценка
+  - { f: hx.vomiting_before_blood, sens: 90, spec: 97 }
   - { f: sym.no_stool_gas, sens: 88, spec: 95 }
   - { f: sym.groin_bulge, sens: 90, spec: 99 }
   - { f: sym.colicky_pain, sens: 88, spec: 95 }

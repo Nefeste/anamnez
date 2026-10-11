@@ -119,7 +119,7 @@ export function choosePlan(db: ContentDb, diagnosis: Id, observations: readonly 
   const seen = new Set(observations.filter(o => o.shown).map(o => o.f));
   const did = new Set(observations.map(o => o.exam));
   // и по аппаратам у постели (часть 42б): без монитора приступ наджелудочковой тахикардии не снять
-  const setting = settingOf(t.setting, db.conditions[diagnosis].redFlags ?? [], { params, has: f => seen.has(f), risk: id => known.risks.includes(id), done: e => did.has(e), bedside: venue.bedside ?? [] });
+  const setting = settingOf(t.setting, db.conditions[diagnosis].redFlags ?? [], { params, has: f => seen.has(f), risk: id => known.risks.includes(id), done: e => did.has(e), bedside: venue.bedside ?? [], rooms: venue.rooms ?? [] });
   return { treatments: [...new Set(treatments)].sort(), setting: choiceFor(setting, venue) };
 }
 

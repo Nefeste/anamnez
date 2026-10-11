@@ -21,7 +21,7 @@ import { complaintObservations, type ExamSkill, examFits, NORMAL_SKILL, runExam 
 import { freezeClock, generatePatient, patientAt, typicalPatient } from '../med/generate';
 import { contextOf, likelyParams, posterior } from '../med/infer';
 import { scaleTriage } from '../med/news2';
-import { alsoSettings, choiceFor, evaluatePlan, primaryOf, recommendedSetting, selfLimits, settingFit, STAYS, surgeriesOf, treatable, txAvailable, type Venue, verdictOf, whenHolds } from '../med/plan';
+import { alsoSettings, choiceFor, evaluatePlan, primaryOf, recommendedSetting, selfLimits, settingFit, settingRoomsOf, STAYS, surgeriesOf, treatable, txAvailable, type Venue, verdictOf, whenHolds } from '../med/plan';
 import { examCost, indicated, nextStep, ORDER_MINUTES } from '../med/policy';
 import { buildReview, type ReviewData } from '../med/review';
 import { scoreCase } from '../med/score';
@@ -62,6 +62,8 @@ export interface HospitalCtx {
   staff: StaffMember[];
   staffed: Staffing;
   working: Set<string>;
+  /** работающие кабинеты — виды помещений, по порядку (spec 2026-10-chapter-4, часть 53а): где можно лечить в кабинете */
+  rooms: readonly Id[];
   seats: number;
   triage: boolean;
 }
@@ -98,7 +100,8 @@ export function hospitalCtx(db: ContentDb, s: ShiftState): HospitalCtx {
     const staffed = staffingOf(db, plan, staff);
     const working = workingRooms(db, plan, staffed);
     const live = plan.rooms.filter(r => working.has(r.id));
-    c = { plan, staff, staffed, working, seats: live.reduce((n, r) => n + r.seats.length, 0), triage: live.some(r => r.type === 'room.triage') };
+    const rooms = [...new Set(live.map(r => r.type))].sort();
+    c = { plan, staff, staffed, working, rooms, seats: live.reduce((n, r) => n + r.seats.length, 0), triage: live.some(r => r.type === 'room.triage') };
     byStaff.set(staff, c);
   }
   return c;
@@ -401,7 +404,8 @@ export function apply(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
       // лечение у постели (часть 39а): тромболизис — только лежащему под монитором; лечение реанимации (spec
       // 2026-10-chapter-4, часть 47) — ИВЛ — если в ней есть свободная койка
       const ricu = freeRicuBeds(db, s).length > 0;
-      if (!has && !txAvailable(db, cmd.id, { bedside: bedsideEquipment(db, s, p), ...(ricu ? { ricu } : {}) })) return [];
+      // лечение в кабинете (часть 53а) — гемостаз — если эндоскопический кабинет больницы работает
+      if (!has && !txAvailable(db, cmd.id, { bedside: bedsideEquipment(db, s, p), rooms: hospitalCtx(db, s).rooms, ...(ricu ? { ricu } : {}) })) return [];
       p.draft.treatments = has ? p.draft.treatments.filter(x => x !== cmd.id) : [...p.draft.treatments, cmd.id].sort();
       // назначил лечение реанимации — и место «В ОРИТ»: ИВЛ делают там
       const place = db.treatments[cmd.id].place;
@@ -1138,7 +1142,9 @@ function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
   const minutes = Math.round((s.t - p.arriveT) / 60);
   const before = freezeClock(db, patient, minutes);
   // и что сделано, хотя результат ещё не пришёл (spec 2026-10-chapter-4, часть 50а): пункция при противопоказании
-  const ev = evaluatePlan(db, patient, plan, obs, { bedside, minutes, done: p.done }, before);
+  // и работающие кабинеты (часть 53а): с эндоскопическим кабинетом кровотечение из язвы останавливают у себя
+  const rooms = settingRoomsOf(db, hospitalCtx(db, s).rooms);
+  const ev = evaluatePlan(db, patient, plan, obs, { bedside, minutes, done: p.done, rooms }, before);
   // переведённый из больницы с приёмным (часть 39б): инфаркт с подъёмом ST — исход по часам до реперфузии; осложнение
   // обследования (часть 50а) — раньше всего
   const soft = s.meta.soft === true;
@@ -1155,13 +1161,13 @@ function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
     plan: ev, outcome, selfLimiting: selfLimits(db, primaryOf(patient)), ...(cond.settles ? { settles: true } : {}),
     redFlags: (cond.redFlags ?? []).filter(f => present.has(f)).map(f => ({ f, seen: obs.some(o => o.f === f && o.shown) })),
     // что было правильно выбрать здесь: со своей палатой — положить в неё, со своей операционной — оперировать
-    should: choiceFor(recommendedSetting(db, patient, p.results.map(r => r.exam), bedside), venueOf(db, s, operationFor(db, truth, primaryOf(patient).params) ?? null, plan.setting)),
+    should: choiceFor(recommendedSetting(db, patient, p.results.map(r => r.exam), bedside, rooms), venueOf(db, s, operationFor(db, truth, primaryOf(patient).params) ?? null, plan.setting)),
     ...(targets.length > 0 ? { targets: targets.map(t => t.grade) } : {}),
   });
   const { notes, targets: _worst, ...grades } = score;
   return {
     at: s.t, diagnosis: dx, verdict, confidence, plan, outcome, grades, notes, rationalCost: review.rational.cost, rationalMoney: review.rational.money,
-    ...(targets.length > 0 ? { targets } : {}), ...(bedside.length > 0 ? { bedside } : {}),
+    ...(targets.length > 0 ? { targets } : {}), ...(bedside.length > 0 ? { bedside } : {}), ...(rooms.length > 0 ? { rooms: [...rooms] } : {}),
     ...(p.arrest !== undefined ? { arrest: true as const } : {}),
   };
 }
@@ -1335,7 +1341,8 @@ function venueOf(db: ContentDb, s: ShiftState, op?: Id | null, chosen?: Setting)
   const icu = chosen === 'icu' || freeIcuBeds(db, s).length > 0;
   const ricu = chosen === 'ricu' || freeRicuBeds(db, s).length > 0;
   const box = chosen === 'box' || freeBoxBeds(db, s).length > 0;
-  return { ...(bed ? { ward: true } : {}), ...(or ? { or: true } : {}), ...(icu ? { icu: true } : {}), ...(ricu ? { ricu: true } : {}), ...(box ? { box: true } : {}) };
+  const rooms = hospitalCtx(db, s).rooms;
+  return { ...(bed ? { ward: true } : {}), ...(or ? { or: true } : {}), ...(icu ? { icu: true } : {}), ...(ricu ? { ricu: true } : {}), ...(box ? { box: true } : {}), ...(rooms.length > 0 ? { rooms } : {}) };
 }
 
 /** Лежащие сейчас. */
@@ -1703,8 +1710,8 @@ function closeStay(db: ContentDb, s: ShiftState, p: ShiftPatient, end: StayEnd, 
     // место — по пришедшим результатам (часть 40): после КТ без крови палата при сотрясении — не ошибка
     const done = p.results.map(r => r.exam);
     // и по аппаратам у постели в момент решения (часть 42б)
-    const recommended = recommendedSetting(db, p.patient, done, closed.bedside);
-    const over = settingFit(recommended, chosen, alsoSettings(db, p.patient, done)) === 'over';
+    const recommended = recommendedSetting(db, p.patient, done, closed.bedside, closed.rooms);
+    const over = settingFit(recommended, chosen, alsoSettings(db, p.patient, done, closed.bedside, closed.rooms)) === 'over';
     const close: WardClose = over ? 'unindicated' : p.afterEarly ? 'repeat' : end === 'discharged' || end === 'died' ? 'full' : 'interrupted';
     const ledger = ledgerOf(s);
     ledger.ward ??= { cases: 0, income: 0, interrupted: 0, unindicated: 0 };
@@ -1765,7 +1772,7 @@ function replan(db: ContentDb, s: ShiftState, id: string, treatments: Id[]): Not
   // лечение у постели (часть 39а) добавить можно только у койки с его аппаратом; назначенное — остаётся
   const bed = stayEquipment(db, s, p);
   const known = treatments.filter(tx => db.treatments[tx] && db.treatments[tx].kind !== 'surgery'
-    && (stay.plan.treatments.includes(tx) || txAvailable(db, tx, { bedside: bed })));
+    && (stay.plan.treatments.includes(tx) || txAvailable(db, tx, { bedside: bed, rooms: hospitalCtx(db, s).rooms })));
   const from = daysIn(stay, s.day);
   // операция остаётся в плане: её меняют «В операционную», а не сменой лечения (часть 28)
   const plan = { treatments: [...new Set([...known, ...(stay.op ? [stay.op.tx] : [])])].sort(), setting: stay.plan.setting };

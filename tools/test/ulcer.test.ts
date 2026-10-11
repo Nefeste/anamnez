@@ -96,7 +96,7 @@ describe('кто болеет и что находят', () => {
 });
 
 describe('где лечить', () => {
-  test('прободная язва и ущемлённая грыжа — операция, кровотечение — перевод: эндоскопии нет', () => {
+  test('прободная язва и ущемлённая грыжа — операция, кровотечение без эндоскопического кабинета — перевод (часть 53а)', () => {
     expect(recommendedSetting(db, people(1, 'cond.perforated_ulcer')[0])).toBe('surgery');
     expect(recommendedSetting(db, people(1, 'cond.strangulated_hernia')[0])).toBe('surgery');
     expect(recommendedSetting(db, people(1, 'cond.ulcer_bleeding')[0])).toBe('transfer');
@@ -104,9 +104,10 @@ describe('где лечить', () => {
     expect(db.conditions['cond.strangulated_hernia'].surgery).toEqual({ tx: 'tx.hernia_repair', window: 2 });
   });
 
-  test('при кровотечении НПВП — вред (277_2, раздел 3.3), ИПН — допустимо; консервативно прободную язву не лечат', () => {
+  test('при кровотечении НПВП и антитромботические — вред (277_2, разделы 3.3 и 3.5), ИПН в вену — первая линия, таблетки — допустимо (часть 53а); консервативно прободную язву не лечат', () => {
     const bleeding = db.conditions['cond.ulcer_bleeding'].treatment!;
-    expect(bleeding.harmful).toEqual(['tx.ibuprofen']);
+    expect(bleeding.harmful).toEqual(['tx.ibuprofen', 'tx.aspirin_acs', 'tx.clopidogrel', 'tx.doac', 'tx.lmwh', 'tx.enoxaparin_acs', 'tx.heparin_iv', 'tx.fondaparinux']);
+    expect(bleeding.firstLine).toEqual(['tx.ppi_iv']);
     expect(bleeding.acceptable).toEqual(['tx.ppi']);
     expect(db.conditions['cond.perforated_ulcer'].treatment!.notIndicated).toContain('tx.ppi');
   });

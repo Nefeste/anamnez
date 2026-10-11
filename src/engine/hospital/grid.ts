@@ -28,7 +28,7 @@ export interface Room {
 
 export type RoomType =
   | 'reception' | 'waiting' | 'office' | 'triage' | 'procedure' | 'lab' | 'ecg' | 'xray'
-  | 'ultrasound' | 'ward' | 'surgery' | 'staff' | 'toilet' | 'emergency' | 'or' | 'icu' | 'ct' | 'ricu' | 'box' | 'mri';
+  | 'ultrasound' | 'ward' | 'surgery' | 'staff' | 'toilet' | 'emergency' | 'or' | 'icu' | 'ct' | 'ricu' | 'box' | 'mri' | 'endoscopy';
 
 /** Что стоит в помещении: вид предмета и клетка. */
 export interface Placed {

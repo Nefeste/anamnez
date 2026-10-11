@@ -1734,7 +1734,7 @@ export function useRounds(): RoundCard[] {
 export function replanChoices(id: string): ReturnType<typeof treatmentGroupsFor> {
   const s = session?.s;
   const p = s?.patients[id];
-  return s && p ? treatmentGroupsFor(observationsOf(p), stayEquipment(db, s, p)) : [];
+  return s && p ? treatmentGroupsFor(observationsOf(p), stayEquipment(db, s, p), hospitalCtx(db, s).rooms) : [];
 }
 
 function wardAct(cmd: Command) {
@@ -1985,6 +1985,8 @@ function buildCaseView(): VisitView | undefined {
     ...(Object.keys(bedside).length > 0 ? { bedside } : {}),
     // лечение у постели (часть 39а): тромболизис — лежащему под монитором
     bedsideEquipment: bedsideEquipment(db, s, p),
+    // лечение в кабинете (spec 2026-10-chapter-4, часть 53а): гемостаз — где работает эндоскопический кабинет
+    rooms: hospitalCtx(db, s).rooms,
     // лечение реанимации (spec 2026-10-chapter-4, часть 47): ИВЛ — если в ней есть свободная койка
     ...(ricuBeds(db, s).length > 0 ? { ricu: freeRicuBeds(db, s).length > 0 ? 'free' as const : 'full' as const } : {}),
     ...(p.by ? {} : { targets: targetLines(s, p) }),
