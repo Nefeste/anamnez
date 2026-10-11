@@ -299,6 +299,8 @@ describe('разумный врач', () => {
       expect(r.plan.treatments).toContain(FUROSEMIDE);
     }
     expect(right / xs.length).toBeGreaterThan(0.9);
-    expect(tested / xs.length).toBeGreaterThan(0.75);
+    // с частью 51в у одного из 60 — жалоба фона «трудно глотать»: расспрос о еде и неврологический осмотр вместо снимка,
+    // диагноз тот же
+    expect(tested / xs.length).toBeGreaterThanOrEqual(0.75);
   }, 60_000);
 });

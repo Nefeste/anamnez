@@ -185,8 +185,9 @@ describe('обследования ран', () => {
     expect(['exam.wound_exam', 'exam.ask_tetanus', 'exam.hand_function', 'exam.ask_head_injury'].map(id => fits(id, head))).toEqual([true, true, false, true]);
     expect(['exam.wound_exam', 'exam.ask_tetanus', 'exam.hand_function', 'exam.ask_head_injury'].map(id => fits(id, flu))).toEqual([false, false, false, false]);
     // с частью 44в — и при судорожном приступе (741_1, раздел 2.2); с частью 50а — при сильной распирающей головной боли
-    // (1020_1, раздел 2.1); с частью 51б — когда голова не держится (567_2, раздел 2.2)
-    expect(db.exams['exam.neuro_exam'].routineFor).toEqual(['sym.head_injury', 'sym.head_wound', 'sym.seizure', 'sym.headache_severe', 'sym.neck_weakness']);
+    // (1020_1, раздел 2.1); с частью 51б — когда голова не держится (567_2, раздел 2.2); с частью 51в — при двоении в глазах (911_1,
+    // критерий качества 2)
+    expect(db.exams['exam.neuro_exam'].routineFor).toEqual(['sym.head_injury', 'sym.head_wound', 'sym.seizure', 'sym.headache_severe', 'sym.neck_weakness', 'sym.diplopia']);
   });
 
   test('обязательные при жалобе: рана головы — расспрос о травме головы, неврологический осмотр и осмотр раны первыми; у больного гриппом их нет', () => {
@@ -241,9 +242,10 @@ describe('на экране и в энциклопедии', () => {
     const titles = treatmentGroupsFor([]).map(g => g.title);
     expect(titles).toEqual(expect.arrayContaining(['Раны и повязки', 'Прививки и сыворотки']));
     const groups = Object.fromEntries(treatmentGroupsFor([]).map(g => [g.key, g.items.map(x => x.id)]));
-    // и туалет ожоговой раны с повязкой (часть 32д-2), удаление клеща и иммуноглобулин против клещевого энцефалита (часть 51а)
+    // и туалет ожоговой раны с повязкой (часть 32д-2), удаление клеща и иммуноглобулин против клещевого энцефалита (часть 51а),
+    // антитоксин ботулинический (часть 51в)
     expect(groups.wounds.sort()).toEqual([OPEN, DRESSING, SUTURE, 'tx.burn_dressing', 'tx.tick_removal'].sort());
-    expect(groups.vaccines.sort()).toEqual([RIG, RABIES, TIG, TOXOID, 'tx.tbe_ig'].sort());
+    expect(groups.vaccines.sort()).toEqual([RIG, RABIES, TIG, TOXOID, 'tx.tbe_ig', 'tx.botulism_antitoxin'].sort());
   });
 
   test('статья раны кисти: обязательная профилактика по условиям, где лечить — перевод при перерезанном сухожилии', () => {
