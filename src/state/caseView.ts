@@ -54,12 +54,12 @@ export type ResultImage =
    * УЗИ брюшной полости: правая подвздошная область, `appendix` — виден воспалённый отросток (часть
    * 29); или желчный пузырь — `stones` камней, `wall` — утолщённая стенка (часть 30); или левая
    * подвздошная область — `diverticulum`, воспалённый дивертикул (часть 30д); УЗИ почек — почка,
-   * `pelvis` — расширенная лоханка (часть 30г); УЗИ вен ноги (часть 33а) — `deep`: тромб в
-   * глубокой вене, `superficial` — в подкожной, `tear` — гематома надрыва мышцы; УЗИ артерий ноги
-   * (часть 33б) — `arterial`: артерия закрыта тромбом или эмболом
+   * `pelvis` — расширенная лоханка (часть 30г), `edema` — отёк паренхимы (часть 52б); УЗИ вен ноги
+   * (часть 33а) — `deep`: тромб в глубокой вене, `superficial` — в подкожной, `tear` — гематома
+   * надрыва мышцы; УЗИ артерий ноги (часть 33б) — `arterial`: артерия закрыта тромбом или эмболом
    */
   | {
-    kind: 'us'; view: 'appendix' | 'gallbladder' | 'kidney' | 'colon' | 'vein'; appendix?: number; stones?: number; wall?: number; pelvis?: number;
+    kind: 'us'; view: 'appendix' | 'gallbladder' | 'kidney' | 'colon' | 'vein'; appendix?: number; stones?: number; wall?: number; pelvis?: number; edema?: number;
     diverticulum?: number; deep?: number; superficial?: number; tear?: number; arterial?: number; seed: number;
   }
   /** обзорный снимок живота стоя (часть 30б): серп свободного газа под куполом, раздутые петли с уровнями */
@@ -481,8 +481,10 @@ function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observat
     if (shown('img.us_diverticulitis')) return { kind: 'us', view: 'colon', diverticulum: 0.8, seed };
     return { kind: 'us', view: 'gallbladder', stones: shown('img.us_gallstones') ? 3 : 0, wall: shown('img.us_cholecystitis') ? 0.8 : 0, seed };
   }
-  // почка (часть 30г): расширенная лоханка — если её показало УЗИ
-  if (exam === 'exam.us_kidney') return { kind: 'us', view: 'kidney', pelvis: shown('img.us_hydronephrosis') ? 0.8 : 0, seed };
+  // почка (часть 30г): расширенная лоханка — если её показало УЗИ; с частью 52б — и отёк паренхимы
+  if (exam === 'exam.us_kidney') {
+    return { kind: 'us', view: 'kidney', pelvis: shown('img.us_hydronephrosis') ? 0.8 : 0, edema: shown('img.us_kidney_edema') ? 0.8 : 0, seed };
+  }
   // вены ноги (часть 33а): тромб в глубокой вене — на любом уровне, в подкожной, гематома надрыва
   if (exam === 'exam.us_leg_veins') {
     const deep = shown('img.us_dvt_prox') || shown('img.us_dvt_calf') || shown('img.us_dvt_iliac');

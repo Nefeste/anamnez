@@ -166,7 +166,8 @@ describe('почечная колика: где лечить и чем', () => {
   test('УЗИ почек: в кабинете УЗИ, без облучения; расширенную лоханку находит у 93 % при специфичности 81 % (Herbst 2014)', () => {
     const x = db.exams['exam.us_kidney'];
     expect(x).toMatchObject({ kind: 'imaging', room: 'room.ultrasound', equipment: ['eq.us_basic', 'eq.us_expert'], radiation: 'none' });
-    expect(x.checks).toEqual([{ f: 'img.us_hydronephrosis', sens: 9300, spec: 8100 }]);
+    // с частью 52б — и отёк паренхимы при ГЛПС
+    expect(x.checks).toEqual([{ f: 'img.us_hydronephrosis', sens: 9300, spec: 8100 }, { f: 'img.us_kidney_edema', sens: 8500, spec: 9500 }]);
     // расспрос: иррадиация в пах и камни в прошлом
     expect(db.exams['exam.ask_urinary'].checks).toContainEqual({ f: 'sym.groin_radiation', sens: 8800, spec: 9700 });
     expect(db.exams['exam.ask_chronic'].checks).toContainEqual({ f: 'hx.kidney_stones', sens: 9500, spec: 9900 });
@@ -180,8 +181,11 @@ describe('почечная колика: где лечить и чем', () => {
       draft: { treatments: [], setting: 'home' }, departments: BOTH,
     }).groups.find(g => g.exam === 'exam.us_kidney')!.image;
     const us = (shown: boolean): Observation => ({ f: 'img.us_hydronephrosis', shown, exam: 'exam.us_kidney' });
-    expect(view([us(true)])).toMatchObject({ kind: 'us', view: 'kidney', pelvis: 0.8 });
+    expect(view([us(true)])).toMatchObject({ kind: 'us', view: 'kidney', pelvis: 0.8, edema: 0 });
     expect(view([us(false)])).toMatchObject({ kind: 'us', view: 'kidney', pelvis: 0 });
+    // с частью 52б — отёк паренхимы при ГЛПС: почка больше, кора светлее
+    const edema: Observation = { f: 'img.us_kidney_edema', shown: true, exam: 'exam.us_kidney' };
+    expect(view([us(false), edema])).toMatchObject({ kind: 'us', view: 'kidney', pelvis: 0, edema: 0.8 });
   });
 });
 

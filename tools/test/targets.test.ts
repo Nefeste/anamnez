@@ -31,17 +31,24 @@ function finish(s: ShiftState, p: ShiftPatient) {
   apply(db, s, { kind: 'finish' });
 }
 
+/** Зерно, на котором такой больной нашёлся в первый раз: следующие тесты начинают с него и не перебирают зёрна заново. */
+let baySeed = 51;
+
 /**
  * Первый привезённый скорой с давящей болью в груди, лежащий в смотровой, — ещё не сортированный.
- * Прочих привезённых врач сразу переводит: иначе они займут оба места в смотровой.
+ * Прочих привезённых врач сразу переводит: иначе они займут оба места в смотровой. Перебор зёрен — с базой
+ * дольше: на базе 72 — 14 зёрен, около 5 секунд (часть 52б), поэтому у тестов с ним срок 30 секунд.
  */
 function chestPainBay(): { s: ShiftState; p: ShiftPatient } {
-  for (let seed = 51; seed < 251; seed++) {
+  for (let seed = baySeed; seed < 251; seed++) {
     const s = district(seed);
     for (let i = 0; i < 6 * 60; i++) {
       const waiting = Object.values(s.patients).filter(q => q.kind === 'ambulance' && q.status === 'waiting' && !q.sorted && q.scale);
       const p = waiting.find(q => q.bay && q.patient.complaints.includes(CHEST));
-      if (p) return { s, p };
+      if (p) {
+        baySeed = seed;
+        return { s, p };
+      }
       const other = waiting.find(q => !q.patient.complaints.includes(CHEST));
       if (other && !s.current) {
         apply(db, s, { kind: 'sort', id: other.id, triage: other.scale!.triage });
@@ -113,7 +120,7 @@ describe('ЭКГ у постели в смотровой приёмного', ()
     // строки разбора и итогов дня
     expect(T.spikes.patient.targetLine(db.targets[TARGET].name.ru, r.minutes, 10)).toBe(`ЭКГ при боли в груди: через ${r.minutes} мин после прихода — в срок`);
     expect(T.shift.summary.targets.line(db.targets[TARGET].name.ru, 1, 1)).toBe('ЭКГ при боли в груди в срок: 1 из 1.');
-  });
+  }, 30_000);
 
   test('без монитора в смотровой у постели не снять — и срока нет: в 10 минут не успеть не по вине игрока', () => {
     const { s, p } = chestPainBay();
@@ -122,7 +129,7 @@ describe('ЭКГ у постели в смотровой приёмного', ()
     s.hospital = { ...h, rooms: h.rooms.map(r => (r.id === p.bay!.room ? { ...r, equipment: r.equipment.map(x => (x === 'eq.monitor_defib' ? null : x)) } : r)) };
     expect(bedsideOf(db, s, p, 'exam.ecg')).toBeUndefined();
     expect(targetsFor(db, p, targetPlace(db, s, p))).toEqual([]);
-  });
+  }, 30_000);
 
   test('не сделали ЭКГ — срок не выполнен, D, и в итогах дня — 0 из 1', () => {
     const { s, p } = chestPainBay();
@@ -132,14 +139,14 @@ describe('ЭКГ у постели в смотровой приёмного', ()
     expect(p.closed?.targets?.map(t => [t.id, t.grade, t.minutes])).toEqual([[TARGET, 'D', undefined]]);
     expect(s.summary.targets?.[TARGET]).toEqual({ onTime: 0, total: 1 });
     expect(T.spikes.patient.targetLine(db.targets[TARGET].name.ru, undefined, 10)).toBe('ЭКГ при боли в груди: не сделано, срок — 10 мин от прихода');
-  });
+  }, 30_000);
 
   test('срок — только у лежащих в смотровой: у пришедшего самого с болью в груди срока нет', () => {
     const { s, p } = chestPainBay();
     const at = targetPlace(db, s, p);
     expect(targetsFor(db, { ...p, bay: undefined }, at)).toEqual([]);
     expect(targetsFor(db, { ...p, patient: { ...p.patient, complaints: p.patient.complaints.filter(f => f !== CHEST) } }, at)).toEqual([]);
-  });
+  }, 30_000);
 });
 
 describe('попросить подождать', () => {
@@ -203,7 +210,7 @@ describe('попросить подождать', () => {
     v.results = [{ exam: 'exam.ecg', obs: [], at: s.t, step: 1 }];
     expect(dueIn(db, v, targetPlace(db, s, v), s.t)).toBeUndefined();
     expect(moreUrgent(db, s, v)).toBe(true);
-  });
+  }, 30_000);
 });
 
 describe('срок там, где его можно выполнить', () => {
@@ -233,6 +240,6 @@ describe('разумный врач и сроки', () => {
     expect(step).toEqual({ kind: 'exam', exam: 'exam.ecg' });
     const calm = { ...p.patient, complaints: p.patient.complaints.filter(f => f !== CHEST) };
     expect(targetExams(db, calm)).toEqual([]);
-  });
+  }, 30_000);
 
 });

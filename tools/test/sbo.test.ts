@@ -128,8 +128,8 @@ describe('где лечить и чем', () => {
     expect(evaluatePlan(db, yes, { treatments: ['tx.iv_fluids'], setting: 'admit' }, []).effective).toBe(false);
     expect(evaluatePlan(db, yes, { treatments: ['tx.iv_fluids', OP], setting: 'surgery' }, []).effective).toBe(true);
     // у панкреатита и холецистита капельница — как была, без условий; у кишечных инфекций — по степени (части 49а и 49б), у
-    // менингококковой инфекции — при шоке (часть 50а)
-    const byParam = ['cond.gastroenteritis', 'cond.salmonellosis', 'cond.shigellosis', 'cond.cdiff', 'cond.meningococcal'];
+    // менингококковой инфекции — при шоке (часть 50а), у ГЛПС — при тяжёлой и осложнённой (часть 52б)
+    const byParam = ['cond.gastroenteritis', 'cond.salmonellosis', 'cond.shigellosis', 'cond.cdiff', 'cond.meningococcal', 'cond.hfrs'];
     expect(db.treatments['tx.iv_fluids'].effects.filter(e => e.on !== SBO && !byParam.includes(e.on)).every(e => e.when === undefined)).toBe(true);
   });
 });

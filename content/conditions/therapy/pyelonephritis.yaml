@@ -44,6 +44,9 @@ findings:
   - { f: lab.urine_blood, band: often }
   - { f: lab.wbc_high, band: usually }
   - { f: lab.crp_high, band: usually }
+  # умеренная протеинурия (spec 2026-10-chapter-4, часть 52б; 347_2, приложение А3: дифференциальная диагностика с ГЛПС); доля —
+  # игровая оценка. В конце списка — прежние больные остались прежними
+  - { f: lab.urine_protein, band: often }
 confirm: [exam.urinalysis]
 redFlags: [sym.vomiting]
 treatment:
@@ -70,4 +73,5 @@ sources:
   - { kind: guideline, title: "EAU Guidelines on Urological Infections", org: "European Association of Urology", year: 2024, note: "частоты — черновик" }
   - { kind: guideline, title: "Pyelonephritis (acute): antimicrobial prescribing. NICE guideline NG111", org: "NICE", year: 2018 }
   - { kind: guideline, title: "Острый пиелонефрит", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/9_3", note: "ID 9_3, опубликованы 28.12.2024, применяются; сверено с рубрикатором 28.09.2026" }
+  - { kind: guideline, title: "Геморрагическая лихорадка с почечным синдромом", org: "Минздрав РФ", year: 2025, url: "https://cr.minzdrav.gov.ru/view-cr/347_2", note: "ID 347_2, опубликованы 18.08.2025, применяются; сверено с рубрикатором 11.10.2026; приложение А3: при остром пиелонефрите — связь с переохлаждением, односторонняя боль в пояснице, быстрое снижение температуры на антибиотике, выраженная лейкоцитурия, умеренная протеинурия, лейкоцитоз со сдвигом влево; доля протеинурии — игровая оценка" }
 review: draft

@@ -35,6 +35,10 @@ findings:
   - { f: lab.wbc_high, band: rarely }
   - { f: lab.crp_high, band: sometimes }
   - { f: img.cxr_infiltrate, band: never }
+  # красное лицо и инъекция склер — общие признаки гриппа и ГЛПС (spec 2026-10-chapter-4, часть 52б; 347_2, приложение А3,
+  # дифференциальная диагностика); доли — игровая оценка. В конце списка — прежние больные остались прежними
+  - { f: sign.face_flushing, band: often }
+  - { f: sign.scleral_injection, band: sometimes }
 confirm: [exam.flu_rapid]
 treatment:
   firstLine: [tx.rest_fluids]
@@ -55,4 +59,5 @@ sources:
   - { kind: guideline, title: "Грипп у взрослых", org: "Минздрав РФ", year: 2025, url: "https://cr.minzdrav.gov.ru/view-cr/749_2", note: "ID 749_2, опубликованы 20.10.2025, применяются; сверено с рубрикатором 28.09.2026; частоты — черновик прототипа" }
   - { kind: paper, title: "Call SA et al. Does this patient have influenza? JAMA 2005;293(8):987–997" }
   - { kind: paper, title: "Chartrand C et al. Accuracy of rapid influenza diagnostic tests: a meta-analysis. Ann Intern Med 2012;156(7):500–511" }
+  - { kind: guideline, title: "Геморрагическая лихорадка с почечным синдромом", org: "Минздрав РФ", year: 2025, url: "https://cr.minzdrav.gov.ru/view-cr/347_2", note: "ID 347_2, опубликованы 18.08.2025, применяются; сверено с рубрикатором 11.10.2026; приложение А3: общие с ГЛПС признаки гриппа — острое начало, интоксикация, высокая лихорадка, головные и мышечные боли, гиперемия лица, слизистой ротоглотки, инъецированность склер; при ГЛПС — эпиданамнез, рвота, боли в пояснице, нет катарального синдрома, тромбоцитопения; доли — игровая оценка" }
 review: draft
