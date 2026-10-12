@@ -11,11 +11,12 @@ const { recordHeadSlice } = await import('../../src/render/ct/head');
 const { recordChestSlice } = await import('../../src/render/ct/chest');
 const { recordUsSector } = await import('../../src/render/us/sector');
 const { recordEgdView } = await import('../../src/render/egd/view');
+const { recordSpineSlice } = await import('../../src/render/mri/spine');
 const { recordAbdomenXray, ABDOMEN_ASPECT } = await import('../../src/render/xray/abdomen');
 const { recordBoneXray } = await import('../../src/render/xray/bones');
 const { BONE_ASPECT } = await import('../../src/render/xray/boneGeometry');
 const { recordChestXray, XRAY_ASPECT } = await import('../../src/render/xray/chest');
-const { ABDOMEN_CASES, BONE_CASES, CHEST_CASES, CHEST_CT_CASES, ECG_CASES, EGD_CASES, HEAD_CASES, US_CASES } = await import('../../src/state/imagingCases');
+const { ABDOMEN_CASES, BONE_CASES, CHEST_CASES, CHEST_CT_CASES, ECG_CASES, EGD_CASES, HEAD_CASES, SPINE_CASES, US_CASES } = await import('../../src/state/imagingCases');
 const { synthEcg12 } = await import('../../src/render/ecg/model');
 const { ecgSheetLayout, recordEcgSheet } = await import('../../src/render/ecg/sheet');
 
@@ -27,6 +28,15 @@ for (const k of HEAD_CASES) {
   const { png } = await rasterize(picture, SIZE, SIZE);
   await Bun.write(join(OUT, `head-${k.key}.png`), png);
   console.log(`head-${k.key}.png — ${k.label}, запись ${ms.toFixed(1)} мс`);
+}
+// МРТ поясничного отдела (часть 58а): без грыж, грыжи разного размера, перекрытый канал
+for (const k of SPINE_CASES) {
+  const t0 = performance.now();
+  const picture = recordSpineSlice(SIZE, k.findings, k.seed);
+  const ms = performance.now() - t0;
+  const { png } = await rasterize(picture, SIZE, SIZE);
+  await Bun.write(join(OUT, `${k.key}.png`), png);
+  console.log(`${k.key}.png — ${k.label}, запись ${ms.toFixed(1)} мс`);
 }
 // КТ-ангиография груди (часть 43а): без расслоения, тип A и тип B; с частью 43б — тромбоэмболия
 for (const k of CHEST_CT_CASES) {

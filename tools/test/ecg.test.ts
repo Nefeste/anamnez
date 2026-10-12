@@ -185,6 +185,27 @@ describe('ЭКГ: вектор сердца и двенадцать отведе
     });
     for (let i = 1; i < peaks.length; i++) expect(Math.abs(peaks[i] - peaks[i - 1]) / Math.max(peaks[i], peaks[i - 1])).toBeGreaterThan(0.2);
   });
+
+  test('удлинённый QT (spec 2026-10-chapter-4, часть 56в): вершина T во II позже на 70 мс и больше при той же частоте, комплекс тот же', () => {
+    /** От начала комплекса до вершины T во II отведении — в среднем по комплексам середины ленты. */
+    const tPeak = (tr: EcgTrace) => {
+      const s = tr.leads.II;
+      const beats = tr.beats.filter(b => b.qrs > 0.5 && b.j + 0.6 < tr.seconds);
+      let sum = 0;
+      for (const b of beats) {
+        const base = baseline(s, b.qrs);
+        let at = b.j, hi = -Infinity;
+        for (let i = Math.round((b.j + 0.08) * ECG_HZ); i < Math.round((b.j + 0.5) * ECG_HZ); i++) if (s[i] - base > hi) [hi, at] = [s[i] - base, i / ECG_HZ];
+        sum += at - b.qrs;
+      }
+      return sum / beats.length;
+    };
+    for (const seed of SEEDS) {
+      const usual = trace({ rate: 72 }, seed), long = trace({ rate: 72, longQt: true }, seed);
+      expect(tPeak(long) - tPeak(usual)).toBeGreaterThan(0.07);
+      expect(measure(long, 'II').area).toBeCloseTo(measure(usual, 'II').area, 1);
+    }
+  });
 });
 
 describe('ЭКГ: ритм и проведение', () => {
@@ -338,6 +359,11 @@ describe('ЭКГ в карте пациента: лента и строки на
     const none = card(3, { 'ecg.st_elevation': false, 'ecg.st_depression': false }).image.ecg;
     expect(none).not.toHaveProperty('stemi');
     expect(none).not.toHaveProperty('stDepression');
+  });
+
+  test('удлинённый QT в строке — и на ленте (часть 56в); QT обычный — лента обычная', () => {
+    expect(card(3, { 'ecg.qt_long': true }).image.ecg).toMatchObject({ longQt: true });
+    expect(card(3, { 'ecg.qt_long': false }).image.ecg).not.toHaveProperty('longQt');
   });
 });
 

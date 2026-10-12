@@ -4,6 +4,7 @@ import { T } from '@/i18n';
 import type { ChestCtFindings } from '@/render/ct/chestGeometry';
 import type { HeadFindings } from '@/render/ct/geometry';
 import type { EgdFindings } from '@/render/egd/geometry';
+import type { SpineFindings } from '@/render/mri/spineGeometry';
 import type { EcgFindings } from '@/render/ecg/model';
 import type { UsImage } from '@/render/us/sector';
 import type { AbdomenFindings } from '@/render/xray/abdomenGeometry';
@@ -191,6 +192,7 @@ export const ECG_CASES: EcgCase[] = [
   { key: 'ecg-lvh', findings: { lvh: true }, seed: 17, label: e.lvh },
   { key: 'ecg-rv', findings: { rvStrain: true, rate: 110 }, seed: 18, label: e.rv },
   { key: 'ecg-low', findings: { lowVoltage: true, rate: 105 }, seed: 19, label: e.lowVoltage },
+  { key: 'ecg-long-qt', findings: { longQt: true }, seed: 21, label: e.longQt },
 ];
 
 export interface EgdCase {
@@ -218,4 +220,22 @@ export const EGD_CASES: EgdCase[] = [
   // варикозные вены пищевода при циррозе (часть 54а)
   { key: 'egd-varices', findings: { varices: { bleeding: false, size: 0.6 } }, seed: 11, label: g.varices },
   { key: 'egd-varices-bleeding', findings: { varices: { bleeding: true, size: 0.7 } }, seed: 12, label: g.varicesBleeding },
+];
+
+export interface SpineCase {
+  key: string;
+  findings: SpineFindings;
+  seed: number;
+  label: string;
+}
+
+const sp = T.spikes.imaging.spine;
+
+/** МРТ поясничного отдела (spec 2026-10-chapter-4, часть 58а): без грыж, грыжи разного размера, перекрытый канал. */
+export const SPINE_CASES: SpineCase[] = [
+  { key: 'spine-normal', findings: {}, seed: 1, label: sp.normal },
+  { key: 'spine-bulge', findings: { hernia: { level: 'L4-L5', size: 0.4 } }, seed: 2, label: sp.bulge },
+  { key: 'spine-half', findings: { hernia: { level: 'L5-S1', size: 0.55 } }, seed: 3, label: sp.half },
+  { key: 'spine-block', findings: { hernia: { level: 'L4-L5', size: 0.9 }, bladder: 0.85 }, seed: 4, label: sp.block },
+  { key: 'spine-block-high', findings: { hernia: { level: 'L3-L4', size: 0.85 } }, seed: 5, label: sp.blockHigh },
 ];

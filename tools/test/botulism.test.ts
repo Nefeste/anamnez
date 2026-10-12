@@ -66,8 +66,10 @@ describe('ботулизм: болезнь и признаки', () => {
   test('расспрос о еде, зрении и глотании — первым при двоении в глазах; птоз и зрачки — на неврологическом осмотре', () => {
     expect(db.exams['exam.ask_food'].routineFor).toContain('sym.diplopia');
     expect(db.exams['exam.ask_food'].checks.map(c => c.f)).toEqual(['hx.home_canned', 'sym.diplopia', 'sym.dry_mouth', 'sym.swallow_trouble', 'sym.choking_liquids']);
-    // с частью 54а за ними — хлопающий тремор печёночной энцефалопатии
-    expect(db.exams['exam.neuro_exam'].checks.map(c => c.f).slice(-3)).toEqual(['sign.ptosis', 'sign.mydriasis', 'sign.asterixis']);
+    // с частью 54а за ними — хлопающий тремор печёночной энцефалопатии, с частью 57а — узкие зрачки отравления опиоидами, с частью
+    // 58б — пятки и носки, ахиллов рефлекс, чувствительность на голени и в промежности, сила обеих ног
+    // 58в — гнусавая речь при миастении
+    expect(db.exams['exam.neuro_exam'].checks.map(c => c.f).slice(-11)).toEqual(['sign.ptosis', 'sign.mydriasis', 'sign.asterixis', 'sign.miosis', 'sign.heel_walk_weak', 'sign.toe_walk_weak', 'sign.ankle_reflex_low', 'sign.leg_hypoesthesia', 'sign.saddle_anesthesia', 'sign.legs_paresis', 'sign.nasal_speech']);
     expect(db.exams['exam.neuro_exam'].routineFor).toContain('sym.diplopia');
   });
 });
@@ -103,11 +105,13 @@ describe('ботулизм: лечение и место', () => {
     expect(outs.filter(o => o.kind === 'worse').length / outs.length).toBeGreaterThan(0.6);
   });
 
-  test('энциклопедия: тяжесть и глотание словами; «С чем спутать» — инсульт, сальмонеллёз, гастроэнтерит', () => {
+  test('энциклопедия: тяжесть и глотание словами; «С чем спутать» — инсульт, сальмонеллёз, миастенический криз', () => {
     for (const s of SEVERITY) expect(whenText({ severity: [s] })).toEqual(expect.any(String));
     for (const v of ['yes', 'no']) expect(whenText({ liquids: [v] })).toEqual(expect.any(String));
     expect(whenText({ severity: ['moderate', 'severe', 'odn'] })).toBe('при среднетяжёлом течении и тяжелее');
-    expect(db.conditions[BOT].differential).toEqual(['cond.stroke_ischemic', 'cond.salmonellosis', 'cond.gastroenteritis']);
+    // с частью 58в — миастенический криз вместо гастроэнтерита: сальмонеллёз и пищевые токсикоинфекции (911_1, раздел 2.6) — в статье
+    // один сальмонеллёз, а в «С чем спутать» — не больше трёх
+    expect(db.conditions[BOT].differential).toEqual(['cond.stroke_ischemic', 'cond.salmonellosis', 'cond.myasthenic_crisis']);
     for (const id of [BOT, 'exam.ask_food', ATX, 'tx.gastric_lavage', 'tx.chloramphenicol', 'sym.diplopia', 'sign.mydriasis']) expect(article(db, id)).toBeDefined();
   });
 });

@@ -9,8 +9,8 @@ import { findBrand } from '../content/brands';
 import { buildDb, CONTENT_DIR } from '../content/load';
 
 // Каждая испорченная копия собирается целиком (около 0,5 с), а в тесте их бывает до девяти:
-// пяти секунд по умолчанию на медленной машине не хватает.
-setDefaultTimeout(30_000);
+// пяти секунд по умолчанию на медленной машине не хватает, а рядом с симуляторами релиза — и тридцати.
+setDefaultTimeout(60_000);
 
 function broken(mutate: (dir: string) => void): string[] {
   const dir = mkdtempSync(join(tmpdir(), 'anamnez-content-'));
@@ -172,9 +172,9 @@ describe('каталог больницы', () => {
     expect(db.rooms['room.procedure'].collects).toContain('exam.cbc');
     expect(db.rooms['room.lab'].equipment).toContain('eq.biochem_analyzer');
     // NT-proBNP (часть 43в) — тоже на иммунохимическом; с частью 49б — антиген и токсины C. difficile в кале, с частью 51 —
-    // антитела к боррелиям и к вирусу клещевого энцефалита, с частью 53б — антиген H. pylori в кале
+    // антитела к боррелиям и к вирусу клещевого энцефалита, с частью 53б — антиген H. pylori в кале, с частью 56б — свободный Т4
     expect(db.equipment['eq.immuno_analyzer'].exams).toEqual([
-      'exam.borrelia_elisa', 'exam.cdiff_stool', 'exam.d_dimer', 'exam.hantavirus_elisa', 'exam.hepatitis_markers', 'exam.hp_stool', 'exam.nt_probnp', 'exam.tbe_elisa', 'exam.troponin_hs', 'exam.tsh',
+      'exam.borrelia_elisa', 'exam.cdiff_stool', 'exam.d_dimer', 'exam.ft4', 'exam.hantavirus_elisa', 'exam.hepatitis_markers', 'exam.hp_stool', 'exam.nt_probnp', 'exam.tbe_elisa', 'exam.troponin_hs', 'exam.tsh',
     ]);
     expect(db.equipment['eq.xray_digital'].upgradeOf).toBe('eq.xray_analog');
     expect(db.roles['role.nurse'].rooms).toEqual(['room.box', 'room.ecg', 'room.emergency', 'room.endoscopy', 'room.icu', 'room.procedure', 'room.ricu', 'room.triage', 'room.ward']);
@@ -457,6 +457,8 @@ describe('каталог больницы', () => {
       edit(d, 'exams/tbe_elisa.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.biochem_analyzer]');
       edit(d, 'exams/hepatitis_markers.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.biochem_analyzer]');
       edit(d, 'exams/hantavirus_elisa.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.biochem_analyzer]');
+      // свободный Т4 (часть 56б) — тоже
+      edit(d, 'exams/ft4.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.biochem_analyzer]');
     });
     expect(foreign.some(e => e.includes('exam.tsh: аппарат eq.ecg стоит в room.ecg'))).toBe(true);
     // и тогда иммунохимическим анализатором ничего не делают
@@ -776,5 +778,18 @@ describe('эндоскопия (spec 2026-10-chapter-4, часть 53а)', () =>
     expect(bedside.some(e => e.includes('tx.endoscopic_hemostasis: лечение в кабинете — не у постели, не лечение реанимации и не операция'))).toBe(true);
     const neither = broken(d => edit(d, 'conditions/surgery/mallory_weiss.yaml', 'without: { rooms: [room.endoscopy], setting: transfer }', 'without: { setting: transfer }'));
     expect(neither.some(e => e.includes('без чего это место'))).toBe(true);
+  });
+});
+
+describe('врачи-специалисты (spec 2026-10-chapter-4, часть 59)', () => {
+  test('профиль — у нанятого врача, из болезней, с которыми приходят, без повторов; хоть с одной приходят сами; дательный падеж есть', () => {
+    const roles = 'hospital/roles/gastroenterologist.yaml';
+    const has = (errors: string[], text: string) => expect({ text, found: errors.some(e => e.includes(text)) }).toEqual({ text, found: true });
+    has(broken(d => edit(d, roles, 'stands: role.doctor\n', '')), 'role.gastroenterologist: профиль бывает только у нанятого врача');
+    has(broken(d => edit(d, roles, 'cond.gerd,', 'cond.gerdd,')), 'role.gastroenterologist: в профиле cond.gerdd — такой болезни нет');
+    has(broken(d => edit(d, roles, 'cond.gerd,', 'cond.hypertension,')), 'role.gastroenterologist: в профиле cond.hypertension — с ней не приходят');
+    has(broken(d => edit(d, roles, 'cond.constipation,', 'cond.ibs,')), 'role.gastroenterologist: болезни профиля повторяются');
+    has(broken(d => edit(d, roles, /profile: \[[^\]]*\]/.exec(readFileSync(join(CONTENT_DIR, roles), 'utf8'))![0], 'profile: [cond.stroke_ischemic]')), 'role.gastroenterologist: к нему некому записаться — все болезни профиля привозит скорая');
+    has(broken(d => edit(d, roles, 'dat: { ru: "гастроэнтерологу" }\n', '')), 'role.gastroenterologist: у специалиста нужен дательный падеж');
   });
 });

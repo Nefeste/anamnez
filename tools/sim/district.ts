@@ -431,8 +431,9 @@ function run(seed: number, player: Player, chapter: Id): Run {
         const end = p.closed.stay.end;
         const chosen = ['surgery', 'icu', 'ricu', 'box'].includes(p.stay.plan.setting) ? p.stay.plan.setting : 'admit';
         const done = p.results.map(r => r.exam);
-        const recommended = recommendedSetting(db, p.patient, done, p.closed.bedside);
-        const over = settingFit(recommended, chosen, alsoSettings(db, p.patient, done)) === 'over';
+        // и по аппаратам у постели и работающим кабинетам в момент решения — как в closeStay (части 42б и 53а)
+        const recommended = recommendedSetting(db, p.patient, done, p.closed.bedside, p.closed.rooms);
+        const over = settingFit(recommended, chosen, alsoSettings(db, p.patient, done, p.closed.bedside, p.closed.rooms)) === 'over';
         const close: WardClose = over ? 'unindicated' : p.afterEarly ? 'repeat' : end === 'discharged' || end === 'died' ? 'full' : 'interrupted';
         const paid = wardIncome(db, p.closed.diagnosis, p.closed.grades.defensibility, close, op?.done ? op.tx : undefined, careUnit(chosen, recommended));
         out.money.stays += paid;

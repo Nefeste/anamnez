@@ -99,8 +99,9 @@ describe('каталог', () => {
     // 62_3, разделы 3.7 и 2.1: перемерить при резком подъёме; головные боли и расстройство зрения — симптомы АГ
     expect(db.exams['exam.vitals'].routineFor).toEqual(expect.arrayContaining([SURGE, 'sym.headache', BLURRED]));
     const fundus = db.exams['exam.fundoscopy'];
-    expect(fundus).toMatchObject({ kind: 'physical', cost: 0, routineFor: [BLURRED] });
-    expect(fundus.checks).toEqual([expect.objectContaining({ f: RETINA, sens: 8500, spec: 9800 })]);
+    // с частью 57в — и при падении зрения, и пившему метанол: диск зрительного нерва при отравлении метанолом
+    expect(fundus).toMatchObject({ kind: 'physical', cost: 0, routineFor: [BLURRED, 'sym.vision_loss', 'sym.methanol_drink'] });
+    expect(fundus.checks).toEqual([expect.objectContaining({ f: RETINA, sens: 8500, spec: 9800 }), expect.objectContaining({ f: 'sign.optic_disc_blurred' })]);
     for (const f of [SURGE, BLURRED]) expect(db.exams['exam.ask_complaints'].checks.some(k => k.f === f)).toBe(true);
   });
 

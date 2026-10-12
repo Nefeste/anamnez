@@ -1104,13 +1104,17 @@ try {
   check(heads.length === 9 && heads.every(Boolean) && us.length === 17 && us.every(Boolean) && abd.length === 3 && abd.every(Boolean) && chest.length === 10 && chest.every(Boolean)
     && ctChest.length === 5 && ctChest.every(Boolean) && allImages.every(Boolean),
     `П5: срезы головы нарисованы — ${heads.filter(Boolean).length} из 9, УЗИ — ${us.filter(Boolean).length} из 17 (с венами и артерией ног, отёком почки), снимки живота — ${abd.filter(Boolean).length} из 3, груди — ${chest.filter(Boolean).length} из 10, срезы груди на КТ — ${ctChest.filter(Boolean).length} из 5; все рисунки экрана — ${allImages.filter(Boolean).length} из ${allImages.length} (смотреть 06-head-*.png, 06-us.png, 06-abdomen.png, 06-chest.png, 06-cta-chest.png)`);
-  // ЭКГ в двенадцати отведениях (spec 2026-10-chapter-3, часть 36): ритмы, проведение, стенки инфаркта
+  // ЭКГ в двенадцати отведениях (spec 2026-10-chapter-3, часть 36): ритмы, проведение, стенки инфаркта; с частью 56в
+  // (spec 2026-10-chapter-4) — и удлинённый QT
   const ecg = await drawn('[data-testid^="ecg-"] canvas');
-  check(ecg.length === 20 && ecg.every(Boolean), `П5: листы ЭКГ в двенадцати отведениях нарисованы — ${ecg.filter(Boolean).length} из 20 (смотреть 06-ecg-*.png)`);
+  check(ecg.length === 21 && ecg.every(Boolean), `П5: листы ЭКГ в двенадцати отведениях нарисованы — ${ecg.filter(Boolean).length} из 21 (смотреть 06-ecg-*.png)`);
   // ЭГДС (spec 2026-10-chapter-4, часть 53а-2): слизистая, дно язвы по Форресту, разрыв кардии, кровь без источника
   const egd = await drawn('[data-testid^="egd-"] canvas');
   check(egd.length === 12 && egd.every(Boolean), `П5: поле зрения ЭГДС нарисовано — ${egd.filter(Boolean).length} из 12 (смотреть 06-egd.png)`);
-  for (const id of ['head-ct', 'head-mri', 'us', 'abdomen', 'chest', 'cta-chest', 'egd']) {
+  // МРТ поясничного отдела (spec 2026-10-chapter-4, часть 58а): без грыж, грыжи разного размера, перекрытый канал
+  const spine = await drawn('[data-testid^="spine-"] canvas');
+  check(spine.length === 5 && spine.every(Boolean), `П5: срезы позвоночника на МРТ нарисованы — ${spine.filter(Boolean).length} из 5 (смотреть 06-spine.png)`);
+  for (const id of ['head-ct', 'head-mri', 'us', 'abdomen', 'chest', 'cta-chest', 'egd', 'spine']) {
     await page.getByTestId(id).scrollIntoViewIfNeeded();
     await page.waitForTimeout(300);
     await page.getByTestId(id).screenshot({ path: join(OUT, `06-${id}.png`) });

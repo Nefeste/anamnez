@@ -86,8 +86,8 @@ describe('каталог', () => {
     expect(vitals.find(k => k.f === FAST)).toMatchObject({ sens: vitals.find(k => k.f === TACHY)!.spec, spec: P_ONE });
     expect(db.exams['exam.ecg'].checks.map(k => k.f)).toEqual(expect.arrayContaining([ECG_SVT, ECG_VT]));
     // после обморока — ЭКГ, пульс и давление каждому, как при сердцебиении; с частью 43в ЭКГ — и при одышке лёжа, с
-    // частью 43д — при боли, которая легче сидя с наклоном вперёд
-    expect(db.exams['exam.ecg'].routineFor).toEqual([PALP, SYNC, 'sym.orthopnea', 'sym.pericardial_pain', 'sym.seizure']);
+    // частью 43д — при боли, которая легче сидя с наклоном вперёд, с частью 57б — при отравлении угарным газом
+    expect(db.exams['exam.ecg'].routineFor).toEqual([PALP, SYNC, 'sym.orthopnea', 'sym.pericardial_pain', 'sym.seizure', 'sym.smoke_inhaled', 'sym.co_home', 'sym.methanol_drink', 'sym.antifreeze_drink']);
     expect(db.exams['exam.vitals'].routineFor).toEqual(expect.arrayContaining([PALP, SYNC]));
     expect(db.exams['exam.ask_general'].checks.map(k => k.f)).toEqual(expect.arrayContaining([PALP, SYNC]));
   });
@@ -305,7 +305,9 @@ describe('разумный врач', () => {
     const done: Id[] = [];
     let phase: DoctorPhase = {};
     const rng = Rng.seeded(p.seed).fork('doctor');
-    for (let k = 0; k < 40; k++) {
+    // предел шагов — от зацикливания: у больной 7100054 с ложными хрипами врач перебирает почти все обследования поликлиники
+    // (39 шагов до части 58б, 41 — после неё: в расспросе о спине больше вопросов), у остальных — 3–4
+    for (let k = 0; k < 60; k++) {
       const minutes = done.reduce((a, id) => a + examMinutes(db.exams[id]), 0);
       const r = nextStep(db, p, obs, done, phase, { candidates: cands, exams, threshold: 0.9, minGain: 0.02, venue: { ...venue, minutes } });
       phase = r.phase;

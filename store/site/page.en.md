@@ -36,7 +36,7 @@ shots:
 card:
   text: Patients come to you with real illnesses and injuries, and almost every sign stays hidden until you ask, examine or order a test. Make a diagnosis, choose a treatment and see the outcome — and between shifts, build your own hospital.
   points:
-    - 83 conditions, 24 injuries; each patient’s own X-rays, scans and ECGs
+    - 90 conditions, 24 injuries; each patient’s own X-rays, scans and ECGs
     - Your own hospital with an emergency department, wards and an operating room
     - A review of every visit, a campaign with a mentor and a case of the day
     - Free, offline and ad-free
@@ -74,8 +74,8 @@ in Russian.
   without deadlines.
 - **Your own hospital.** Offices, a lab, X-ray, ultrasound, CT, MRI and endoscopy rooms, an
   emergency department, wards, isolation boxes and an operating room, hiring, the cash desk. Doctors
-  you hire see patients on their own. Insurance pays for a justified diagnosis and for tests that
-  were indicated.
+  you hire see patients on their own, and specialists have their own appointments. Insurance pays
+  for a justified diagnosis and for tests that were indicated.
 - **Emergency department.** The ambulance brings in the seriously ill, and urgency is checked
   against the NEWS2 score. You do a ward round every morning and discharge patients when they are
   better; a surgical team works in the operating room — and the longer an appendicitis or a
@@ -83,7 +83,7 @@ in Russian.
 
 ## What’s inside
 
-- 83 conditions and 24 injuries. At the clinic — 48 conditions a general practitioner sees: from
+- 90 conditions and 24 injuries. At the clinic — 54 conditions a general practitioner sees: from
   colds and flu to pneumonia, angina, heart attack, hypertensive crisis, pericarditis, acute heart failure, atrial fibrillation, tachycardias, heart block, pulmonary embolism, hypoglycaemia, nosebleeds and anaphylactic shock. In a hospital with an
   emergency department — 15 more surgical ones, from biliary colic to a perforated ulcer, bowel
   obstruction, deep vein thrombosis and acute ischaemia of the leg, and injuries: fractures, knee ligament tears, a torn calf muscle,
@@ -122,7 +122,7 @@ in Russian.
   congestion and pulmonary oedema,
   abdominal, leg vein and leg artery ultrasound — a vein with a clot won’t compress under the probe,
   a blocked artery looks grey inside — 12-lead ECGs with ST elevation in the leads of the
-  affected wall and atrial fibrillation, and a CT or MRI slice of the head.
+  affected wall and atrial fibrillation, a CT or MRI slice of the head and a spine MRI with a herniated disc.
 - Decision rules from clinical guidelines: whether an ankle, foot or knee X-ray is needed, whether a
   CT scan is needed after a blow to the head, whether a leg vein ultrasound is needed for leg pain —
   by the Wells score and D-dimer.

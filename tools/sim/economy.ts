@@ -7,8 +7,12 @@
 //   и разумный в той же амбулатории без лаборатории и рентгена (снесены, их люди уволены), и —
 //   для сведения — в самой простой: регистратура, ожидание, кабинет врача, санузел;
 //   разумный и нанятый терапевт навыка 3 или 1 во втором кабинете, с ординаторской
-//   (spec 2026-09-hired-doctors, критерий 2).
-// Флаги: --days 30, --runs 8 (зёрна), --budget modest|normal|generous, --season winter, --json.
+//   (spec 2026-09-hired-doctors, критерий 2); для сведения — вместо терапевта гастроэнтеролог или
+//   эндокринолог навыка 3 (spec 2026-10-chapter-4, часть 59): записанных к нему разумный оставляет ему.
+// Флаги: --days 30, --runs 8 (зёрна), --budget modest|normal|generous, --season winter, --json;
+// --only gastro3,endo3 — только эти сценарии и разумный, без критериев; --jobs 4 — сколько процессов считают
+// прогоны (по умолчанию — по ядрам, не больше четырёх; итог тот же, что в одном).
+import { availableParallelism } from 'node:os';
 import type { Id } from '../../src/content/types';
 import { Rng } from '../../src/engine/core/rng';
 import { confirmed, expensesOf, incomeOf, type Ledger, PAYERS, type Payer } from '../../src/engine/economy/economy';
@@ -31,6 +35,8 @@ const RUNS = Number(arg('runs', '8'));
 const budgetKey = arg('budget', 'normal') as 'modest' | 'normal' | 'generous';
 const season = arg('season', 'winter') as 'winter' | 'spring' | 'summer' | 'autumn';
 const asJson = process.argv.includes('--json');
+/** только эти сценарии и разумный (ключи через запятую) — прикидка; критерии — у полного прогона */
+const ONLY = arg('only', '').split(',').filter(Boolean);
 
 const { db, errors } = buildDb();
 if (errors.length) {
@@ -47,6 +53,8 @@ interface Scenario {
   key: string; title: string; strategy: Strategy; without?: Id[]; /** назначает всё платное сразу, до расспроса */ prefetch?: boolean;
   /** нанятый терапевт этого навыка во втором кабинете (с ординаторской) */
   therapist?: number;
+  /** вместо терапевта — специалист этой должности (spec 2026-10-chapter-4, часть 59) */
+  role?: Id;
 }
 const SCENARIOS: Scenario[] = [
   { key: 'rational', title: 'Разумный', strategy: 'rational' },
@@ -60,6 +68,9 @@ const SCENARIOS: Scenario[] = [
   // нанятые врачи: второй кабинет и ординаторская справа от амбулатории, коридор продлён к ним
   { key: 'therapist3', title: 'Разумный и терапевт навыка 3 во втором кабинете', strategy: 'rational', therapist: 3 },
   { key: 'therapist1', title: 'Разумный и терапевт навыка 1 во втором кабинете', strategy: 'rational', therapist: 1 },
+  // специалисты (spec 2026-10-chapter-4, часть 59): принимают только записанных к ним — для сведения
+  { key: 'gastro3', title: 'Разумный и гастроэнтеролог навыка 3 во втором кабинете', strategy: 'rational', therapist: 3, role: 'role.gastroenterologist' },
+  { key: 'endo3', title: 'Разумный и эндокринолог навыка 3 во втором кабинете', strategy: 'rational', therapist: 3, role: 'role.endocrinologist' },
 ];
 
 interface Run {
@@ -100,7 +111,7 @@ function start(seed: number, sc: Scenario): ShiftState {
     apply(db, s, { kind: 'buildEnd' });
     const office = s.hospital!.rooms[s.hospital!.rooms.length - 1];
     if (office.type !== 'room.office') throw new Error('второй кабинет не построен');
-    const role = 'role.therapist';
+    const role = sc.role ?? 'role.therapist';
     s.staff = [...(s.staff ?? []), { id: 'h1', role, sex: 'f', seed: 1, skill: sc.therapist, salary: salaryOf(db, role, sc.therapist), room: office.id, days: 0 }];
   }
   return s;
@@ -166,7 +177,8 @@ function playDay(s: ShiftState, strategy: Strategy, prefetch = false) {
     const end = s.t % DAY >= SHIFT_END && s.queue.length === 0 && !s.current
       && !Object.values(s.patients).some(p => p.status === 'away' || p.status === 'coming' || (p.by !== undefined && (p.status === 'inRoom' || p.status === 'waiting')));
     if (end) break;
-    if (!s.current && s.queue.length > 0) step({ kind: 'call', id: s.queue[0] });
+    // записанных к специалисту (часть 59) оставляет ему, пока ждут другие
+    if (!s.current && s.queue.length > 0) step({ kind: 'call', id: s.queue.find(id => s.patients[id].to === undefined) ?? s.queue[0] });
     const p = current(s);
     if (!p) {
       step({ kind: 'advance', seconds: 60 });
@@ -257,11 +269,41 @@ const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / Math.max(1, xs.le
 
 const t0 = performance.now();
 const results: Record<string, Run[]> = {};
-for (const sc of SCENARIOS) results[sc.key] = Array.from({ length: RUNS }, (_, i) => run(7000 + i, sc));
+const RUNNING = ONLY.length > 0 ? SCENARIOS.filter(sc => sc.key === 'rational' || ONLY.includes(sc.key)) : SCENARIOS;
+/**
+ * Прогон зависит только от сценария и зерна, поэтому прогоны делят между процессами: с 0.4.5 сценариев десять, и
+ * 80 прогонов в одном процессе шли больше двух часов. Помощник (`--worker k/n`) считает каждый n-й прогон с k-го и
+ * печатает их строками JSON; итог тот же, что в одном процессе. С ECON_DEBUG — в одном: разбивка в нём.
+ */
+const TASKS = RUNNING.flatMap(sc => Array.from({ length: RUNS }, (_, i) => ({ sc, i })));
+const WORKER = arg('worker', '');
+const JOBS = WORKER || process.env.ECON_DEBUG ? 1 : Math.max(1, Math.min(TASKS.length, Number(arg('jobs', String(Math.min(4, availableParallelism()))))));
+if (WORKER) {
+  const [k, n] = WORKER.split('/').map(Number);
+  TASKS.forEach((t, j) => {
+    if (j % n === k) console.log(JSON.stringify({ key: t.sc.key, i: t.i, run: run(7000 + t.i, t.sc) }));
+  });
+  process.exit(0);
+}
+for (const sc of RUNNING) results[sc.key] = [];
+if (JOBS === 1) for (const t of TASKS) results[t.sc.key][t.i] = run(7000 + t.i, t.sc);
+else {
+  const args = process.argv.slice(2).filter((a, j, all) => a !== '--jobs' && all[j - 1] !== '--jobs');
+  const workers = Array.from({ length: JOBS }, (_, k) => Bun.spawn([process.execPath, import.meta.path, ...args, '--worker', `${k}/${JOBS}`], { stdout: 'pipe', stderr: 'inherit' }));
+  const outs = await Promise.all(workers.map(async w => ({ text: await new Response(w.stdout).text(), code: await w.exited })));
+  for (const { text, code } of outs) {
+    if (code !== 0) throw new Error(`экономика: помощник вышел с кодом ${code}`);
+    for (const line of text.split('\n').filter(Boolean)) {
+      const x = JSON.parse(line) as { key: string; i: number; run: Run };
+      results[x.key][x.i] = x.run;
+    }
+  }
+  for (const t of TASKS) if (!results[t.sc.key][t.i]) throw new Error(`экономика: нет прогона ${t.sc.key} на зерне ${7000 + t.i}`);
+}
 
 const value = results.rational[0].value;
 const startCash = Math.floor((db.economy.sandbox.budgets[budgetKey] * db.economy.sandbox.clinicShare) / 100);
-const summary = Object.fromEntries(SCENARIOS.map(sc => {
+const summary = Object.fromEntries(RUNNING.map(sc => {
   const rs = results[sc.key];
   return [sc.key, {
     profit: Math.round(mean(rs.map(r => r.profit))), profitMin: Math.min(...rs.map(r => r.profit)), profitMax: Math.max(...rs.map(r => r.profit)),
@@ -270,7 +312,7 @@ const summary = Object.fromEntries(SCENARIOS.map(sc => {
   }];
 }));
 const seenShare = (key: string) => results[key].reduce((a, r) => a + r.seen, 0) / Math.max(1, results[key].reduce((a, r) => a + r.arrived, 0));
-const criteria = {
+const criteria = ONLY.length > 0 ? undefined : {
   rationalNeverNegative: summary.rational.minCash >= 0,
   rationalProfitShare: Math.round((100 * summary.rational.profit) / value),
   rationalProfitInRange: summary.rational.profit >= value / 4 && summary.rational.profit <= value,
@@ -285,12 +327,12 @@ const criteria = {
 
 if (asJson) {
   console.log(JSON.stringify({ days: DAYS, runs: RUNS, budget: budgetKey, season, value, startCash, summary, criteria }, null, 2));
-  process.exit(Object.entries(criteria).every(([k, v]) => k === 'rationalProfitShare' || v) ? 0 : 1);
+  process.exit(!criteria || Object.entries(criteria).every(([k, v]) => k === 'rationalProfitShare' || v) ? 0 : 1);
 }
 
-console.log(`Песочница с готовой амбулатории: ${DAYS} дней × ${RUNS} зёрен, бюджет ${budgetKey}, сезон ${season}, ${Math.round((performance.now() - t0) / 1000)} с`);
+console.log(`Песочница с готовой амбулатории: ${DAYS} дней × ${RUNS} зёрен, бюджет ${budgetKey}, сезон ${season}, ${Math.round((performance.now() - t0) / 1000)} с${JOBS > 1 ? `, процессов: ${JOBS}` : ''}`);
 console.log(`Цена готовой амбулатории: ${rub(value)}; в кассе на старте: ${rub(startCash)}`);
-for (const sc of SCENARIOS) {
+for (const sc of RUNNING) {
   const rs = results[sc.key];
   const n = rs.length * DAYS;
   const sum = <K extends keyof Run>(k: K) => rs.reduce((a, r) => a + (r[k] as number), 0);
@@ -301,7 +343,7 @@ for (const sc of SCENARIOS) {
   const oms = sum('oms');
   const x = summary[sc.key];
   console.log(`\n${sc.title}${sc.without ? ` (цена ${rub(rs[0].value)})` : ''}`);
-  console.log(`  в день: пришли ${(sum('arrived') / n).toFixed(1)}, приняты ${pct(sum('seen'), sum('arrived'))}${sc.therapist ? ` (из них терапевтом ${pct(sum('byColleague'), sum('seen'))})` : ''}, ушли ${pct(sum('left'), sum('arrived'))}, не приняты ${pct(sum('unseen'), sum('arrived'))}; верно ${pct(sum('correct'), sum('seen'))}, ошибок ${pct(sum('wrong'), sum('seen'))}`);
+  console.log(`  в день: пришли ${(sum('arrived') / n).toFixed(1)}, приняты ${pct(sum('seen'), sum('arrived'))}${sc.therapist ? ` (из них ${sc.role ? 'специалистом' : 'терапевтом'} ${pct(sum('byColleague'), sum('seen'))})` : ''}, ушли ${pct(sum('left'), sum('arrived'))}, не приняты ${pct(sum('unseen'), sum('arrived'))}; верно ${pct(sum('correct'), sum('seen'))}, ошибок ${pct(sum('wrong'), sum('seen'))}`);
   console.log(`  плательщики: ОМС ${pct(payers('oms'), sum('seen'))}, ДМС ${pct(payers('dms'), sum('seen'))}, платно ${pct(payers('self'), sum('seen'))}; ОМС: обоснованность A/B/C/D ${(['A', 'B', 'C', 'D'] as const).map(g => pct(grades(g), oms)).join(' / ')}, не подтверждено ${pct(sum('unconfirmed'), oms)}`);
   console.log(`  доход в день: ОМС ${rub(inc('oms'))}, ДМС ${rub(inc('dms'))}, платно ${rub(inc('self'))}; экспертиза сняла ${rub(sum('cut') / n)}, обследований без показаний ${(sum('unindicated') / n).toFixed(1)}`);
   console.log(`  расход в день: зарплаты ${rub(exp('salaries'))}, аппараты ${rub(exp('equipment'))}, помещения ${rub(exp('rooms'))}, расходники ${rub(exp('consumables'))}, проценты ${rub(exp('interest'))}`);
@@ -311,6 +353,7 @@ for (const sc of SCENARIOS) {
   console.log(`  репутация: день 5 — ${at(4)}, 10 — ${at(9)}, 20 — ${at(19)}, ${DAYS} — ${x.reputation} (${x.reputationMin} … ${x.reputationMax})`);
 }
 if (process.env.ECON_DEBUG) console.log(Object.entries(unconfirmedBy).sort((a, b) => b[1] - a[1]).slice(0, 30));
+if (!criteria) process.exit(0);
 console.log('\nКритерии (spec 2026-09-own-hospital, приёмка 4):');
 const yes = (ok: boolean) => (ok ? 'да ' : 'НЕТ');
 console.log(`  ${yes(criteria.rationalNeverNegative)} у разумного касса ни разу не в минусе`);

@@ -104,8 +104,8 @@ describe('каталог', () => {
 
   test('при сердцебиении ЭКГ, пульс и давление — каждому; пункты шкалы — в расспросе о хронических болезнях', () => {
     // после обморока (часть 42б), при одышке лёжа (часть 43в) и при боли, которая легче сидя с наклоном вперёд
-    // (часть 43д), — тоже
-    expect(db.exams['exam.ecg'].routineFor).toEqual([PALP, 'sym.syncope', 'sym.orthopnea', 'sym.pericardial_pain', 'sym.seizure']);
+    // (часть 43д), — тоже; с частью 57б — с пожара и угоревшему у печи или мотора (885_1, раздел 2.4)
+    expect(db.exams['exam.ecg'].routineFor).toEqual([PALP, 'sym.syncope', 'sym.orthopnea', 'sym.pericardial_pain', 'sym.seizure', 'sym.smoke_inhaled', 'sym.co_home', 'sym.methanol_drink', 'sym.antifreeze_drink']);
     expect(db.exams['exam.vitals'].routineFor).toContain(PALP);
     expect(db.exams['exam.vitals'].checks.map(k => k.f)).toContain('sign.pulse_irregular');
     const chronic = db.exams['exam.ask_chronic'].checks.map(k => k.f);

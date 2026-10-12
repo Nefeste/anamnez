@@ -280,6 +280,7 @@ function Queue({ v }: { v: ShiftView }) {
         onArrive={enter}
         room={v.rooms && room ? room : undefined}
         onRoom={v.rooms ? setRoom : undefined}
+        offices={v.offices}
       />
       </View>
       {who && selected !== undefined ? (

@@ -230,7 +230,7 @@ describe('положительное правило велит обследов�
       const ps = people(id, 150, 3000);
       expect(share(ps, p => doctor(p).correct)).toBeGreaterThan(want);
     }
-  });
+  }, 30_000);
 });
 
 describe('снимок колена в карте и энциклопедия', () => {

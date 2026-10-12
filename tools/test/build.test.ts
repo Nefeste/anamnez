@@ -205,9 +205,9 @@ describe('готовая амбулатория', () => {
     // груди — с частью 43а
     const ct = Object.keys(db.exams).filter(id => db.exams[id].room === 'room.ct');
     expect(ct).toEqual(['exam.ct_head', 'exam.cta_chest', 'exam.cta_head']);
-    // и кабинета МРТ (spec 2026-10-chapter-4, часть 50б)
+    // и кабинета МРТ (spec 2026-10-chapter-4, часть 50б): с частью 58б в нём и МРТ позвоночника
     const mri = Object.keys(db.exams).filter(id => db.exams[id].room === 'room.mri');
-    expect(mri).toEqual(['exam.mri_head']);
+    expect(mri).toEqual(['exam.mri_head', 'exam.mri_spine']);
     // и эндоскопического кабинета (часть 53а): с частью 55а в нём и сигмоидоскопия с колоноскопией
     const egd = Object.keys(db.exams).filter(id => db.exams[id].room === 'room.endoscopy');
     expect(egd).toEqual(['exam.colonoscopy', 'exam.egd', 'exam.sigmoidoscopy']);

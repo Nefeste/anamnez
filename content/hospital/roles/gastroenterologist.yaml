@@ -1,0 +1,12 @@
+id: role.gastroenterologist
+name: { ru: "Гастроэнтеролог" }
+gen: { ru: "гастроэнтеролога" }
+dat: { ru: "гастроэнтерологу" }
+# нанятый врач со специальностью (spec 2026-10-chapter-4, часть 59): встаёт на место врача в кабинете, как терапевт; у
+# кабинета своя запись — с болезнями профиля, и принимает он только записанных к нему. Зарплата — игровой баланс (вопрос 11)
+salary: [4000, 7000]
+stands: role.doctor
+needs: room.staff
+profile: [cond.gerd, cond.dyspepsia_functional, cond.gastritis_hp, cond.peptic_ulcer, cond.ibs, cond.constipation, cond.cirrhosis_ascites, cond.alcoholic_hepatitis, cond.hepatic_encephalopathy, cond.sbp, cond.uc_attack]
+texts:
+  hint: { ru: "Нанятый врач со специальностью: у его кабинета своя запись — к нему записываются с болью под ложечкой, изжогой, расстройством кишечника, болезнями печени. Принимает только своих, ведёт приём сам, как терапевт. Нужно место в ординаторской." }

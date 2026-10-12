@@ -25,9 +25,17 @@ export type Problem =
  */
 export type Staffing = ((room: string, role: Id) => boolean) & { unplaced?: (room: string) => boolean };
 
-/** Кто встаёт на место этой должности — терапевт на место врача; нет — никто. */
+/**
+ * Кто встаёт на место этой должности — терапевт на место врача; нет — никто. Специалисты (spec 2026-10-chapter-4,
+ * часть 59) встают туда же, но место называется по терапевту: «нет терапевта».
+ */
 export function standInOf(db: ContentDb, role: Id): Id | undefined {
-  return Object.values(db.roles).find(r => r.stands === role && r.hire)?.id;
+  return Object.values(db.roles).find(r => r.stands === role && r.hire && !r.profile)?.id;
+}
+
+/** Все, кто встаёт на место этой должности: терапевт и специалисты — на место врача (часть 59). */
+export function standInsOf(db: ContentDb, role: Id): Id[] {
+  return Object.values(db.roles).filter(r => r.stands === role && r.hire).map(r => r.id).sort();
 }
 
 /** Ваш кабинет — первый кабинет врача, до которого можно дойти; в других — нанятые врачи. */

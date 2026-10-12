@@ -120,6 +120,8 @@ export const sandbox = {
   fireTitle: (name: string) => `Уволить: ${name}?`,
   fireText: 'Человек уйдёт сразу. Найти другого можно среди кандидатов — они новые каждый вечер.',
   post: (room: string, role: string) => `${room} — ${lowerFirst(role)}`,
+  // место врача в кабинете (spec 2026-10-chapter-4, часть 59): встанет и терапевт, и специалист
+  doctorPost: (therapist: string) => `${therapist} или специалист`,
   postFree: 'место свободно',
   postWho: (role: string, name: string, skill: number, trait?: string) => `${role}: ${name} · навык ${skill}${trait ? ` · ${trait}` : ''}`,
   traits: { careful: 'аккуратный', fast: 'быстрый', novice: 'новичок', experienced: 'опытный' },

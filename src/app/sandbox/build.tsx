@@ -237,7 +237,7 @@ function RoomCard({ b, id, onClose, onDemolish, act }: {
           <P>{t.staffTitle}</P>
           {staff.posts.filter(x => x.room === id).map(x => {
             const who = staff.staff.find(m => m.id === x.who);
-            return <P key={x.role} muted testID={`post-${x.role}`}>{who ? t.postWho(x.roleName, who.name, who.skill, who.trait) : `${x.roleName}: ${t.postFree}`}</P>;
+            return <P key={x.role} muted testID={`post-${x.role}`}>{who ? t.postWho(who.roleName, who.name, who.skill, who.trait) : `${x.roleName}: ${t.postFree}`}</P>;
           })}
           <Button testID="room-staff" kind="plain" title={t.staffTitle} hint={t.staffHint} onPress={() => { onClose(); router.push('/sandbox/staff'); }} />
         </>

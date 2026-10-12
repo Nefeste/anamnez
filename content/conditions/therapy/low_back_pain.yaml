@@ -2,6 +2,8 @@ id: cond.low_back_pain
 name: { ru: "Неспецифическая боль в нижней части спины" }
 icd10: M54.5
 department: dept.therapy
+# одна группа с радикулопатией (spec 2026-10-chapter-4, часть 58б): лечат одинаково
+group: grp.back_pain
 system: nerves
 kind: syndrome
 severity: minor
@@ -25,6 +27,8 @@ findings:
   - { f: sign.slr_positive, band: rarely }
   - { f: sign.cva_tenderness, band: rarely }
 confirm: clinical
+# с чем спутать (spec 2026-10-chapter-4, часть 58б): боль ниже колена с Ласегом и выпадениями — корешок (777_1, раздел 1.6)
+differential: [cond.radiculopathy]
 treatment:
   firstLine: [tx.stay_active, tx.ibuprofen]
   notIndicated: [tx.bed_rest, tx.paracetamol, tx.steroid_systemic_short, tx.amoxicillin, tx.fluoroquinolone]
@@ -39,7 +43,7 @@ texts:
 pearls:
   - ru: "Большинству с болью в спине не нужны ни снимки, ни постель: лучше двигаться, при сильной боли — НПВС."
   - ru: "Боль в пояснице с температурой, жжением при мочеиспускании и положительным поколачиванием — это почка, а не спина."
-simplified: "Тревожные признаки (травма, онемение в промежности, похудание, онкология в анамнезе) и корешковый синдром — позже, с неврологией."
+simplified: "Корешковый синдром и онемение промежности — отдельные диагнозы: радикулопатия и синдром конского хвоста (с 0.4.5). Других тревожных признаков — травмы, похудания, онкологии в анамнезе — нет."
 sources:
   - { kind: guideline, title: "Low back pain and sciatica in over 16s: assessment and management. NICE guideline NG59", org: "NICE", year: 2016, note: "частоты — черновик" }
   - { kind: guideline, title: "Скелетно-мышечные (неспецифические) боли в нижней части спины", org: "Минздрав РФ", year: 2023, url: "https://cr.minzdrav.gov.ru/view-cr/778_1", note: "ID 778_1, опубликованы 07.12.2023, применяются; сверено с рубрикатором 28.09.2026" }
