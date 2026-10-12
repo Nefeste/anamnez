@@ -658,6 +658,7 @@ function planDay(db: ContentDb, s: ShiftState) {
       results: [], pending: [], done: [], step: 0, spent: { seconds: 0, money: 0 }, draft: { treatments: [], setting: 'home' },
       ...(a.ret ? { returnOf: a.ret.of, returnReason: a.ret.reason } : {}),
       ...(a.to ? { to: a.to } : {}),
+      ...(teach ? { taught: true as const } : {}),
       // выписали из палаты недолеченным — вернулся хуже: новый случай стационара не оплатят (часть 35)
       ...(a.ret && s.patients[a.ret.of]?.closed?.stay?.end === 'early' ? { afterEarly: true as const } : {}),
       ...(own.length > 1 ? { departments: own } : {}),
@@ -2063,10 +2064,12 @@ function profileHere(db: ContentDb, m: StaffMember, admits: readonly Id[]): Id[]
  * Кого берёт нанятый врач: нового пациента, которого ещё никто не смотрел, — не «красного» по
  * сортировке, не повторное обращение и не того, кого вы отпустили ждать результатов. Без
  * доврачебного кабинета срочность никто не определил — берёт по очереди прихода. Специалист (часть 59) —
- * только записанных к нему; терапевт — кроме записанных к специалисту, который сегодня принимает.
+ * только записанных к нему; терапевт — кроме записанных к специалисту, который сегодня принимает. Заданного пациента
+ * первой смены главы (часть 61в) — никто: он для вас.
  */
 function colleagueTakes(db: ContentDb, p: ShiftPatient, m: StaffMember, list: readonly StaffMember[]): boolean {
   if (!(p.status === 'waiting' && p.by === undefined && p.calledT === undefined && p.kind !== 'return' && p.kind !== 'ambulance' && !(p.triaged !== false && p.triage === 'red'))) return false;
+  if (p.taught) return false;
   if (db.roles[m.role]?.profile) return p.to === m.id;
   return p.to === undefined || !list.some(x => x.id === p.to);
 }

@@ -446,6 +446,17 @@ describe('первая смена с заведующей реанимацией
     }
   });
 
+  test('заданных нанятые врачи не берут (часть 61в): в больнице с терапевтом и специалистами все трое — для вас', () => {
+    const s = firstShift(131);
+    const taught = byArrival(s).filter(p => p.taught);
+    expect(taught.map(p => primaryOf(p.patient).id)).toEqual(['cond.sepsis', 'cond.mallory_weiss', 'cond.gastroenteritis']);
+    // смена идёт без вас: нанятые зовут из очереди, вы — нет
+    const last = Math.max(...taught.map(p => p.arriveT));
+    while (s.t < last + 30 * 60) apply(db, s, { kind: 'advance', seconds: 5 * 60 });
+    expect(taught.map(p => p.by)).toEqual([undefined, undefined, undefined]);
+    expect(Object.values(s.patients).some(p => p.by !== undefined)).toBe(true);
+  });
+
   test('после перехода — без эндоскопии и бокса обычные дни, с одной эндоскопией — тоже; первая смена с заведующей — в первый день, когда работают оба', () => {
     const s = doneChapter3(135);
     apply(db, s, { kind: 'nextChapter' });

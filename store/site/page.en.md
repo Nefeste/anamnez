@@ -21,9 +21,9 @@ shots:
   - file: screenshots/phone/04-ecg.png
     caption: ECG
     alt: "A visit: a 12-lead ECG with ST elevation in II, III and aVF, the findings listed under the sheet"
-  - file: screenshots/phone/05-diagnosis.png
-    caption: Diagnosis
-    alt: "Decision: choosing a diagnosis from the list of conditions"
+  - file: screenshots/phone/05-egd.png
+    caption: Endoscopy
+    alt: "A visit in the city hospital: upper GI endoscopy — a linear tear at the entrance to the stomach, still bleeding; the findings listed under the picture"
   - file: screenshots/phone/06-plan.png
     caption: Treatment
     alt: "Decision: treatment and where to treat — at home, in hospital or by ambulance"

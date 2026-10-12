@@ -21,9 +21,9 @@ shots:
   - file: screenshots/phone/04-ecg.png
     caption: ЭКГ
     alt: "Приём: ЭКГ в двенадцати отведениях — подъём сегмента ST в II, III и aVF, под листом — строки находок"
-  - file: screenshots/phone/05-diagnosis.png
-    caption: Диагноз
-    alt: "Решение: выбор диагноза из списка болезней"
+  - file: screenshots/phone/05-egd.png
+    caption: ЭГДС
+    alt: "Приём в городской больнице: ЭГДС — линейный разрыв слизистой у входа в желудок, кровотечение продолжается; под картинкой — строки находок"
   - file: screenshots/phone/06-plan.png
     caption: Лечение
     alt: "Решение: лечение и место лечения — дома, в стационаре или скорая"

@@ -3,7 +3,9 @@
 import { mkdirSync, readFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import { chromium, type Page } from 'playwright';
+import { presetHospital } from '../../src/engine/hospital/build';
 import { clinicLayout } from '../../src/engine/hospital/clinic';
+import { presetStaff } from '../../src/engine/hospital/staff';
 import { generatePatient } from '../../src/engine/med/generate';
 import { apply, newCampaign, newSandbox, newShift, newSingle } from '../../src/engine/shift/engine';
 import { DAY, SHIFT_END, SHIFT_SCHEMA_VERSION } from '../../src/engine/shift/types';
@@ -802,6 +804,57 @@ function chapter3StartSave(): { save: string; palsy: string; stroke: string } {
   const stroke = Object.values(day.patients).find(p => p.kind === 'ambulance' && p.arriveT > palsy.arriveT && p.patient.truth.conditions[0].id === 'cond.stroke_ischemic');
   if (!stroke) throw new Error('глава 3: инсульт по скорой не пришёл');
   return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: '2026-10-06T00:00:00.000Z', data: s }), palsy: palsy.id, stroke: stroke.id };
+}
+
+/**
+ * Карьера 3 — снова (spec 2026-10-chapter-4, часть 61в; карьер три, сценарий главы 3 в ней уже прошёл): глава 3 выполнена в
+ * первый же свой день; первый пришедший сам лежит в палате — переход в городскую больницу его не ждёт: лежащих долечат
+ * врачи районной больницы (часть 61б).
+ */
+function chapter3DoneSave(): string {
+  const { db } = buildDb();
+  const s = newCampaign(db, { seed: 11, season: 'winter', difficulty: 'student', career: 3, chapter: 'chapter.vascular' });
+  apply(db, s, { kind: 'nextDay' });
+  const walkIn = () => Object.values(s.patients).find(p => p.status === 'waiting' && p.kind !== 'ambulance' && !p.bay);
+  for (let i = 0; i < 6 * 60 && !walkIn(); i++) apply(db, s, { kind: 'advance', seconds: 60 });
+  const p = walkIn();
+  if (!p) throw new Error('глава 3: никто не пришёл сам');
+  apply(db, s, { kind: 'call', id: p.id });
+  apply(db, s, { kind: 'diagnose', id: p.patient.truth.conditions[0].id });
+  apply(db, s, { kind: 'setting', setting: 'admit' });
+  apply(db, s, { kind: 'finish' });
+  if (p.status !== 'admitted') throw new Error('глава 3: пришедший сам не лёг в палату');
+  apply(db, s, { kind: 'closeDay' });
+  const ch = db.chapters['chapter.vascular'];
+  for (const m of ch.missions) if (m.main) s.campaign!.done[m.id] = s.day;
+  s.campaign!.letters = [...s.campaign!.letters, { id: 'end', day: s.day }].map(l => ({ ...l, read: true }));
+  s.campaign!.complete = s.day;
+  s.campaign!.tips = { shown: Object.values(db.tips).filter(t => t.chapter !== 'chapter.city').map(t => t.id) };
+  return JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: '2026-10-12T00:00:00.000Z', data: s });
+}
+
+/**
+ * Карьера 3 с начала главы 4 (spec 2026-10-chapter-4, часть 60б): городская больница — вся, как в «Смене» (реанимация,
+ * боксы, эндоскопия и специалисты — на местах), первая смена с заведующей реанимацией; подсказки прежних глав показаны,
+ * письма прочитаны. Кто из заданных — по плану дня (он по зерну) на копии.
+ */
+function chapter4StartSave(): { save: string; sepsis: string; tear: string; dry: string } {
+  const { db } = buildDb();
+  const s = newCampaign(db, { seed: 12, season: 'winter', difficulty: 'student', career: 3, chapter: 'chapter.city' });
+  const city = db.presets[db.chapters['chapter.city'].preset];
+  s.hospital = presetHospital(db, city, [s.hospital!.w, s.hospital!.h]).hospital;
+  s.staff = presetStaff(db, city);
+  s.campaign!.letters = s.campaign!.letters.map(l => ({ ...l, read: true }));
+  s.campaign!.tips = { shown: Object.values(db.tips).filter(t => t.chapter !== 'chapter.city').map(t => t.id) };
+  const day = structuredClone(s);
+  apply(db, day, { kind: 'nextDay' });
+  const ps = Object.values(day.patients).sort((a, b) => a.arriveT - b.arriveT);
+  const primary = (p: (typeof ps)[number]) => p.patient.truth.conditions[0];
+  const sepsis = ps.find(p => p.kind === 'ambulance' && primary(p).id === 'cond.sepsis');
+  const tear = ps.find(p => p.kind !== 'ambulance' && primary(p).id === 'cond.mallory_weiss');
+  const dry = ps.find(p => p.kind !== 'ambulance' && primary(p).id === 'cond.gastroenteritis' && primary(p).params.severity === 'severe');
+  if (!sepsis || !tear || !dry) throw new Error('глава 4: заданные первой смены не пришли');
+  return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: '2026-10-12T00:00:00.000Z', data: s }), sepsis: sepsis.id, tear: tear.id, dry: dry.id };
 }
 
 function sandboxFreshSave(): string {
@@ -3200,6 +3253,170 @@ try {
   check((await text(page, `round-icu-${c3.stroke}`)) === 'Палата интенсивной терапии, под монитором', `глава 3: инсульт на обходе — ${await text(page, `round-icu-${c3.stroke}`)}`);
   await page.waitForTimeout(500);
   await page.screenshot({ path: join(OUT, '15-chapter3-rounds.png'), fullPage: true });
+  await page.goBack();
+
+  // глава 4 (spec 2026-10-chapter-4, часть 61в, сценарий chapter4): карьера 3 с выполненной главой 3 и лежащим в палате —
+  // «Перейти в городскую больницу» сразу: лежащих долечат врачи районной больницы (часть 61б); лист перехода — новая
+  // больница, штат и касса; глава 4 — письма главврача, заведующей реанимацией и наставника, девять заданий; на стройке —
+  // реанимация, боксы, эндоскопия и МРТ
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/campaign-3.json', chapter3DoneSave()]);
+  await page.goto(base);
+  await page.getByTestId('menu-campaign').click();
+  await page.getByTestId('career-3').waitFor({ timeout: 10_000 });
+  check((await text(page, 'career-3')).includes('Глава 3. Сердце и мозг'), `глава 4: карьера 3 — ${(await text(page, 'career-3')).replace(/\n/g, ' · ')}`);
+  await page.getByTestId('career-3').click();
+  await page.getByTestId('career-continue').click();
+  await page.getByTestId('chapter-next').waitFor({ timeout: 10_000 });
+  check((await text(page, 'chapter-next')).startsWith('Перейти в городскую больницу') && !(await page.getByTestId('chapter-next').isDisabled()),
+    `глава 3 выполнена, лежащий в палате переход не держит: ${(await text(page, 'chapter-next')).replace(/\n/g, ' · ')}`);
+  await page.getByTestId('chapter-next').click();
+  await page.getByTestId('chapter-next-text').waitFor({ timeout: 5000 });
+  check((await text(page, 'chapter-next-text')).includes('Больница, штат и касса будут новыми') && (await text(page, 'chapter-next-text')).includes('Лежащих в ней — 1 — долечат её врачи.'),
+    `глава 4: лист перехода — ${(await text(page, 'chapter-next-text')).replace(/\n/g, ' · ')}`);
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(OUT, '16-chapter4-move.png') });
+  await page.getByTestId('chapter-next-yes').click();
+  await page.getByTestId('chapter-next-sheet').waitFor({ state: 'detached', timeout: 5000 });
+  await page.waitForTimeout(500);
+  check((await text(page, 'chapter')).startsWith('Глава 4. Большая больница') && (await text(page, 'chapter-day')).startsWith('городская больница в Верхнеборске · перед первой сменой')
+    && (await page.locator('[data-testid^="mission-"]').count()) === 9 && (await page.getByTestId('chapter-next').count()) === 0,
+    `глава 4: ${(await text(page, 'chapter-day'))}, заданий ${await page.locator('[data-testid^="mission-"]').count()}`);
+  check((await text(page, 'mission-ricu')).includes('пока нет') && (await text(page, 'mission-sepsis')).includes('0 из 3'), 'глава 4: ход заданий — реанимация, серия сепсиса');
+  await page.getByTestId('letter-hello').click();
+  await page.getByTestId('letter-text').waitFor({ timeout: 5000 });
+  check((await text(page, 'letter-text')).startsWith('Коллега, добро пожаловать в Верхнеборск') && (await text(page, 'letter-sheet')).includes('Б. А. Ветров'),
+    'глава 4: письмо главного врача городской больницы');
+  await page.screenshot({ path: join(OUT, '16-chapter4-letter.png') });
+  await page.getByTestId('letter-sheet-close').click();
+  await page.getByTestId('letter-sheet').waitFor({ state: 'detached', timeout: 5000 });
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(OUT, '16-chapter4.png'), fullPage: true });
+  await page.getByTestId('sandbox-build').click();
+  await page.getByTestId('build-map').waitFor({ timeout: 10_000 });
+  await page.getByTestId('build-tool-room').click();
+  for (const type of ['room.ricu', 'room.box', 'room.endoscopy', 'room.mri']) check(await page.getByTestId(`room-type-${type}`).isVisible(), `глава 4: на стройке — ${type}`);
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(OUT, '16-chapter4-build.png') });
+  await page.getByTestId('room-picker-close').click();
+  await page.getByTestId('build-done').click();
+
+  // первая смена с заведующей реанимацией (часть 60б): больница — вся, эндоскопия и боксы работают. Скорая — септический
+  // шок: сортировка, неврологический осмотр — подсказка «Сепсис: час на антибиотик», кровь на посев, антибиотик, раствор, норэпинефрин —
+  // в ПИТ (при шоке без дыхательной недостаточности ИВЛ не нужна: «В ОРИТ» был бы больше нужного); потом пришедший сам —
+  // рвота кровью: расспрос — подсказка «Кровь после рвоты», ЭГДС в первые 2 часа, гемостаз через эндоскоп — в палату; потом
+  // пришедшая сама — понос и обезвоживание: расспрос — подсказка «Понос и бокс», растворы в вену — в бокс. Обход — ПИТ под
+  // монитором
+  const c4 = chapter4StartSave();
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/campaign-3.json', c4.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-campaign').click();
+  await page.getByTestId('career-3').waitFor({ timeout: 10_000 });
+  await page.getByTestId('career-3').click();
+  await page.getByTestId('career-continue').click();
+  await page.getByTestId('sandbox-open').waitFor({ timeout: 10_000 });
+  await page.getByTestId('sandbox-open').click();
+  await page.getByTestId('clinic-map').waitFor({ timeout: 10_000 });
+  await fastClock(page);
+  check(await runClockUntil(page, async () => (await page.getByTestId(`ambulance-${c4.sepsis}`).count()) > 0), 'глава 4: первая скорая — септический шок');
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId(`ambulance-${c4.sepsis}`).click();
+  await page.getByTestId('handover-reason').waitFor({ timeout: 5000 });
+  await page.getByTestId('sort-red').click();
+  await page.getByTestId('handover-sheet').waitFor({ state: 'detached', timeout: 5000 });
+  await page.getByTestId(`queue-${c4.sepsis}`).waitFor({ timeout: 10_000 });
+  await page.getByTestId(`queue-${c4.sepsis}`).click();
+  await visible(page, 'visit-decide').waitFor({ timeout: 30_000 });
+  // давление, пульс и дыхание — с листа передачи; для qSOFA осталось сознание — осмотр со шкалой комы Глазго
+  await visible(page, 'tab-examine').click();
+  await visible(page, 'exam-exam.neuro_exam').click();
+  await page.getByTestId('tip-text').waitFor({ timeout: 10_000 });
+  check((await text(page, 'tip-text')).startsWith('Давление 100 и ниже, дыхание 22 в минуту и чаще') && (await text(page, 'tip-sheet')).includes('И. О. Крылова'),
+    `глава 4: у сепсиса после неврологического осмотра — подсказка заведующей реанимацией (${(await text(page, 'tip-text')).slice(0, 60)})`);
+  await page.waitForTimeout(700);
+  await page.screenshot({ path: join(OUT, '16-chapter4-tip.png') });
+  await page.getByTestId('tip-sheet-close').click();
+  await page.getByTestId('tip-sheet').waitFor({ state: 'detached', timeout: 5000 });
+  await visible(page, 'visit-decide').click();
+  await visible(page, 'dx-cond.sepsis').click();
+  await visible(page, 'decision-to-plan').click();
+  await page.getByTestId('tx-tx.antibiotic_iv').waitFor({ timeout: 5000 });
+  for (const tx of ['tx.blood_culture', 'tx.antibiotic_iv', 'tx.balanced_fluids', 'tx.norepinephrine']) await page.getByTestId(`tx-${tx}`).click();
+  await page.getByTestId('setting-icu').click();
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
+  const sepsisOut = await page.locator('body').innerText();
+  check(sepsisOut.includes('Сепсис') && sepsisOut.includes('Лежит в палате интенсивной терапии') && !/Не назначено|не показано|позже срока/.test(sepsisOut),
+    `глава 4: септический шок — посевы, антибиотик в срок, норэпинефрин и ПИТ («${sepsisOut.replace(/\n/g, ' · ').slice(0, 240)}»)`);
+  await page.screenshot({ path: join(OUT, '16-chapter4-sepsis.png'), fullPage: true });
+  await page.getByTestId('shift-to-queue').click();
+  // потом пришедший сам — рвота кровью: не раньше чем через 40 минут после скорой
+  await fastClock(page);
+  check(await runClockUntil(page, async () => (await page.getByTestId(`queue-${c4.tear}`).count()) > 0, 120_000), 'глава 4: рвота кровью — в очереди после скорой');
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId(`queue-${c4.tear}`).click();
+  await visible(page, 'visit-decide').waitFor({ timeout: 30_000 });
+  await visible(page, 'tab-ask').click();
+  await visible(page, 'exam-exam.ask_abdomen').click();
+  await page.getByTestId('tip-text').waitFor({ timeout: 10_000 });
+  check((await text(page, 'tip-text')).startsWith('Рвота кровью после многократной рвоты') && (await text(page, 'tip-sheet')).includes('И. О. Крылова'),
+    `глава 4: у рвоты кровью после первого вопроса — подсказка «Кровь после рвоты» (${(await text(page, 'tip-text')).slice(0, 60)})`);
+  await page.getByTestId('tip-sheet-close').click();
+  await page.getByTestId('tip-sheet').waitFor({ state: 'detached', timeout: 5000 });
+  await visible(page, 'tab-order').click();
+  await visible(page, 'exam-exam.egd').click();
+  await page.getByTestId('done-exam.egd').waitFor({ timeout: 10_000 });
+  for (let i = 0; i < 8 && (await page.getByTestId('visit-wait').count()) > 0; i++) await page.getByTestId('visit-wait').click();
+  await visible(page, 'result-egd').waitFor({ timeout: 10_000 });
+  await visible(page, 'visit-fresh').first().evaluate(el => el.scrollIntoView({ block: 'start' }));
+  await page.waitForTimeout(700);
+  await page.screenshot({ path: join(OUT, '16-chapter4-egd.png') });
+  await visible(page, 'visit-decide').click();
+  await visible(page, 'dx-cond.mallory_weiss').click();
+  await visible(page, 'decision-to-plan').click();
+  await page.getByTestId('tx-tx.endoscopic_hemostasis').waitFor({ timeout: 5000 });
+  check(!(await page.getByTestId('tx-tx.endoscopic_hemostasis').isDisabled()), 'глава 4: гемостаз через эндоскоп — можно');
+  for (const tx of ['tx.endoscopic_hemostasis', 'tx.ppi_iv']) await page.getByTestId(`tx-${tx}`).click();
+  await page.getByTestId('setting-admit').click();
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
+  const tearOut = await page.locator('body').innerText();
+  check(tearOut.includes('Мэллори') && tearOut.includes('Лежит в палате') && !/Не назначено|не показано|позже срока/.test(tearOut),
+    `глава 4: разрыв Мэллори–Вейсса — ЭГДС в срок, гемостаз и палата («${tearOut.replace(/\n/g, ' · ').slice(0, 240)}»)`);
+  await page.getByTestId('shift-to-queue').click();
+  // потом пришедшая сама — понос и обезвоживание III степени: в бокс
+  await fastClock(page);
+  check(await runClockUntil(page, async () => (await page.getByTestId(`queue-${c4.dry}`).count()) > 0, 180_000), 'глава 4: обезвоживание — в очереди после рвоты кровью');
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId(`queue-${c4.dry}`).click();
+  await visible(page, 'visit-decide').waitFor({ timeout: 30_000 });
+  await visible(page, 'tab-ask').click();
+  await visible(page, 'exam-exam.ask_abdomen').click();
+  await page.getByTestId('tip-text').waitFor({ timeout: 10_000 });
+  check((await text(page, 'tip-text')).startsWith('Понос и рвота с жаждой') && (await text(page, 'tip-sheet')).includes('И. О. Крылова'),
+    `глава 4: у обезвоживания после первого вопроса — подсказка «Понос и бокс» (${(await text(page, 'tip-text')).slice(0, 60)})`);
+  await page.getByTestId('tip-sheet-close').click();
+  await page.getByTestId('tip-sheet').waitFor({ state: 'detached', timeout: 5000 });
+  await visible(page, 'visit-decide').click();
+  await visible(page, 'dx-cond.gastroenteritis').click();
+  await visible(page, 'decision-to-plan').click();
+  await page.getByTestId('tx-tx.balanced_fluids').waitFor({ timeout: 5000 });
+  await page.getByTestId('tx-tx.balanced_fluids').click();
+  await page.getByTestId('setting-box').click();
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
+  const dryOut = await page.locator('body').innerText();
+  check(dryOut.includes('Острый гастроэнтерит') && dryOut.includes('Лежит в боксе инфекционного отделения') && !/Не назначено|не показано/.test(dryOut),
+    `глава 4: обезвоживание — растворы в вену и бокс («${dryOut.replace(/\n/g, ' · ').slice(0, 240)}»)`);
+  await page.screenshot({ path: join(OUT, '16-chapter4-box.png'), fullPage: true });
+  await page.getByTestId('shift-to-queue').click();
+  await page.getByTestId('rounds-open').waitFor({ timeout: 10_000 });
+  await page.getByTestId('rounds-open').click();
+  await page.getByTestId(`round-icu-${c4.sepsis}`).waitFor({ timeout: 10_000 });
+  check((await text(page, `round-icu-${c4.sepsis}`)) === 'Палата интенсивной терапии, под монитором', `глава 4: септический шок на обходе — ${await text(page, `round-icu-${c4.sepsis}`)}`);
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(OUT, '16-chapter4-rounds.png'), fullPage: true });
   await page.goBack();
 
   // «Случай дня»: последние 30 дней, приём, разбор, отметка в списке (spec 2026-09-campaign, часть 14)
