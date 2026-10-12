@@ -61,7 +61,9 @@ describe('острая гипокальциемия', () => {
   });
 
   test('кальций и пробы Труссо и Хвостека — каждому с покалыванием или судорогами кистей; точность проб — по 627_3', () => {
-    for (const id of [CALCIUM, SIGNS]) expect(db.exams[id].routineFor).toEqual([PAR, SPASM]);
+    expect(db.exams[SIGNS].routineFor).toEqual([PAR, SPASM]);
+    // с частью 57в — и кальций каждому, кто пил антифриз (873_1, раздел 3.2)
+    expect(db.exams[CALCIUM].routineFor).toEqual([PAR, SPASM, 'sym.antifreeze_drink']);
     expect(db.exams[CALCIUM]).toMatchObject({ kind: 'lab', room: 'room.lab', equipment: ['eq.biochem_analyzer'] });
     expect(db.exams[CALCIUM].checks.map(c => c.f)).toEqual([CA]);
     expect(db.exams[SIGNS].checks.map(c => [c.f, c.sens, c.spec])).toEqual([['sign.trousseau', 9400, 9900], ['sign.chvostek', 7000, 9000]]);

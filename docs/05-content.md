@@ -135,7 +135,7 @@ department: therapy
 kind: disease                 # disease | injury | syndrome | state
 severity: serious             # minor | moderate | serious | critical
 epidemiology:
-  prevalence: common          # very_common | common | uncommon | rare | very_rare | extremely_rare | ultra_rare | exceptionally_rare
+  prevalence: common          # very_common | common | uncommon | rare | very_rare | extremely_rare | ultra_rare | exceptionally_rare | vanishingly_rare
   age: { min: 18, peak: [65, 95] }
   season: { winter: 1.5, spring: 1.1, summer: 0.6, autumn: 1.0 }
   risks:

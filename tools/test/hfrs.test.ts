@@ -80,7 +80,7 @@ describe('ГЛПС: болезнь и признаки', () => {
   test('обследования: антитела к хантавирусам; белок — в анализе мочи и полоске; отёк почек на УЗИ; лицо и склеры — на осмотре; дача — в расспросе', () => {
     expect(db.exams['exam.hantavirus_elisa']).toMatchObject({ room: 'room.lab', equipment: ['eq.immuno_analyzer'], collect: 'room.procedure' });
     expect(db.exams['exam.hantavirus_elisa'].checks.map(c => c.f)).toEqual(['lab.hantavirus_igm']);
-    expect(db.exams['exam.urinalysis'].checks.map(c => c.f).at(-1)).toBe('lab.urine_protein');
+    expect(db.exams['exam.urinalysis'].checks.map(c => c.f)).toContain('lab.urine_protein');
     expect(db.exams['exam.urine_dipstick'].checks.map(c => c.f).at(-1)).toBe('lab.urine_protein');
     expect(db.exams['exam.us_kidney'].checks.map(c => c.f).at(-1)).toBe('img.us_kidney_edema');
     // с частью 54а за ними — звёздочки и ладони при циррозе

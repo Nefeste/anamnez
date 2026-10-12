@@ -89,7 +89,7 @@ describe('отравление опиоидами', () => {
     expect(examMinutes(db.exams[URINE])).toBe(15);
     expect(db.exams[WITNESSES]).toMatchObject({ kind: 'ask', complaints: [FOUND], routineFor: [FOUND] });
     // с частью 57б — и печь или мотор в закрытом помещении, и пожар
-    expect(db.exams[WITNESSES].checks.map(c => c.f)).toEqual([FOUND, 'hx.drug_use', 'sym.co_home', 'sym.smoke_inhaled']);
+    expect(db.exams[WITNESSES].checks.map(c => c.f)).toEqual([FOUND, 'hx.drug_use', 'sym.co_home', 'sym.smoke_inhaled', 'sym.methanol_drink', 'sym.antifreeze_drink']);
     for (const id of ['exam.glucometer', 'exam.neuro_exam']) expect(db.exams[id].routineFor).toContain(FOUND);
     expect(db.exams['exam.glucometer'].routineSeen).toContain('sign.gcs_coma');
     // где что видно: зрачки — на неврологическом осмотре, дыхание — в показателях, синева и уколы — на общем осмотре
@@ -154,12 +154,12 @@ describe('отравление опиоидами', () => {
     }
   });
 
-  test('без сознания привозят и с печёночной комой и угарным газом: жалоба та же', () => {
+  test('без сознания привозят и с печёночной комой, угарным газом, метанолом и этиленгликолем: жалоба та же', () => {
     const he = db.conditions['cond.hepatic_encephalopathy'].findings.filter(l => l.f === FOUND);
     expect(he.map(l => [l.p, l.when])).toEqual([[10000, { grade: ['g4'] }]]);
     const users = Object.values(db.conditions).filter(c => c.findings.some(l => l.f === FOUND)).map(c => c.id).sort();
-    // с частью 57б — и тяжёлое отравление угарным газом
-    expect(users).toEqual(['cond.co_poisoning', 'cond.hepatic_encephalopathy', OP]);
+    // с частью 57б — и тяжёлое отравление угарным газом, с частью 57в — метанолом и этиленгликолем
+    expect(users).toEqual(['cond.co_poisoning', 'cond.ethylene_glycol_poisoning', 'cond.hepatic_encephalopathy', 'cond.methanol_poisoning', OP]);
   });
 });
 
