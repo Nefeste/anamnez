@@ -10,7 +10,9 @@
 //   (spec 2026-09-hired-doctors, критерий 2); для сведения — вместо терапевта гастроэнтеролог или
 //   эндокринолог навыка 3 (spec 2026-10-chapter-4, часть 59): записанных к нему разумный оставляет ему.
 // Флаги: --days 30, --runs 8 (зёрна), --budget modest|normal|generous, --season winter, --json;
-// --only gastro3,endo3 — только эти сценарии и разумный, без критериев.
+// --only gastro3,endo3 — только эти сценарии и разумный, без критериев; --jobs 4 — сколько процессов считают
+// прогоны (по умолчанию — по ядрам, не больше четырёх; итог тот же, что в одном).
+import { availableParallelism } from 'node:os';
 import type { Id } from '../../src/content/types';
 import { Rng } from '../../src/engine/core/rng';
 import { confirmed, expensesOf, incomeOf, type Ledger, PAYERS, type Payer } from '../../src/engine/economy/economy';
@@ -268,7 +270,36 @@ const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / Math.max(1, xs.le
 const t0 = performance.now();
 const results: Record<string, Run[]> = {};
 const RUNNING = ONLY.length > 0 ? SCENARIOS.filter(sc => sc.key === 'rational' || ONLY.includes(sc.key)) : SCENARIOS;
-for (const sc of RUNNING) results[sc.key] = Array.from({ length: RUNS }, (_, i) => run(7000 + i, sc));
+/**
+ * Прогон зависит только от сценария и зерна, поэтому прогоны делят между процессами: с 0.4.5 сценариев десять, и
+ * 80 прогонов в одном процессе шли больше двух часов. Помощник (`--worker k/n`) считает каждый n-й прогон с k-го и
+ * печатает их строками JSON; итог тот же, что в одном процессе. С ECON_DEBUG — в одном: разбивка в нём.
+ */
+const TASKS = RUNNING.flatMap(sc => Array.from({ length: RUNS }, (_, i) => ({ sc, i })));
+const WORKER = arg('worker', '');
+const JOBS = WORKER || process.env.ECON_DEBUG ? 1 : Math.max(1, Math.min(TASKS.length, Number(arg('jobs', String(Math.min(4, availableParallelism()))))));
+if (WORKER) {
+  const [k, n] = WORKER.split('/').map(Number);
+  TASKS.forEach((t, j) => {
+    if (j % n === k) console.log(JSON.stringify({ key: t.sc.key, i: t.i, run: run(7000 + t.i, t.sc) }));
+  });
+  process.exit(0);
+}
+for (const sc of RUNNING) results[sc.key] = [];
+if (JOBS === 1) for (const t of TASKS) results[t.sc.key][t.i] = run(7000 + t.i, t.sc);
+else {
+  const args = process.argv.slice(2).filter((a, j, all) => a !== '--jobs' && all[j - 1] !== '--jobs');
+  const workers = Array.from({ length: JOBS }, (_, k) => Bun.spawn([process.execPath, import.meta.path, ...args, '--worker', `${k}/${JOBS}`], { stdout: 'pipe', stderr: 'inherit' }));
+  const outs = await Promise.all(workers.map(async w => ({ text: await new Response(w.stdout).text(), code: await w.exited })));
+  for (const { text, code } of outs) {
+    if (code !== 0) throw new Error(`экономика: помощник вышел с кодом ${code}`);
+    for (const line of text.split('\n').filter(Boolean)) {
+      const x = JSON.parse(line) as { key: string; i: number; run: Run };
+      results[x.key][x.i] = x.run;
+    }
+  }
+  for (const t of TASKS) if (!results[t.sc.key][t.i]) throw new Error(`экономика: нет прогона ${t.sc.key} на зерне ${7000 + t.i}`);
+}
 
 const value = results.rational[0].value;
 const startCash = Math.floor((db.economy.sandbox.budgets[budgetKey] * db.economy.sandbox.clinicShare) / 100);
@@ -299,7 +330,7 @@ if (asJson) {
   process.exit(!criteria || Object.entries(criteria).every(([k, v]) => k === 'rationalProfitShare' || v) ? 0 : 1);
 }
 
-console.log(`Песочница с готовой амбулатории: ${DAYS} дней × ${RUNS} зёрен, бюджет ${budgetKey}, сезон ${season}, ${Math.round((performance.now() - t0) / 1000)} с`);
+console.log(`Песочница с готовой амбулатории: ${DAYS} дней × ${RUNS} зёрен, бюджет ${budgetKey}, сезон ${season}, ${Math.round((performance.now() - t0) / 1000)} с${JOBS > 1 ? `, процессов: ${JOBS}` : ''}`);
 console.log(`Цена готовой амбулатории: ${rub(value)}; в кассе на старте: ${rub(startCash)}`);
 for (const sc of RUNNING) {
   const rs = results[sc.key];

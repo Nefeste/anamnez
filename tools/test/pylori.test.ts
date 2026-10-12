@@ -14,8 +14,8 @@ import type { Observation, Patient } from '../../src/engine/med/types';
 import { candidatesOf } from '../../src/engine/shift/engine';
 import { article } from '../../src/state/encyclopedia';
 
-// разумный врач по сотне больных — дольше 5 секунд
-setDefaultTimeout(60_000);
+// разумный врач по сотне больных — дольше 5 секунд, а рядом с симуляторами релиза — и минуты
+setDefaultTimeout(120_000);
 
 const PUD = 'cond.peptic_ulcer';
 const HPG = 'cond.gastritis_hp';

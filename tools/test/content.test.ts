@@ -9,8 +9,8 @@ import { findBrand } from '../content/brands';
 import { buildDb, CONTENT_DIR } from '../content/load';
 
 // Каждая испорченная копия собирается целиком (около 0,5 с), а в тесте их бывает до девяти:
-// пяти секунд по умолчанию на медленной машине не хватает.
-setDefaultTimeout(30_000);
+// пяти секунд по умолчанию на медленной машине не хватает, а рядом с симуляторами релиза — и тридцати.
+setDefaultTimeout(60_000);
 
 function broken(mutate: (dir: string) => void): string[] {
   const dir = mkdtempSync(join(tmpdir(), 'anamnez-content-'));
