@@ -340,6 +340,34 @@ export function entropy(beliefs: readonly Belief[]): number {
 }
 
 /**
+ * P(признак есть | кандидат) по каждому кандидату — один раз на шаг врача: польза всех обследований
+ * шага (`bestExam`) спрашивает одни и те же признаки у одних и тех же кандидатов при той же
+ * уверенности. Числа — те же, что без запоминания.
+ */
+interface StepCache {
+  db: ContentDb;
+  ctx: InferContext;
+  sets: Id[][];
+  shares: ReadonlyMap<Id, number>[];
+  byFinding: Map<Id, readonly number[]>;
+}
+const stepCache = new WeakMap<readonly Belief[], StepCache>();
+
+function candidateP(db: ContentDb, beliefs: readonly Belief[], ctx: InferContext, f: Id): readonly number[] {
+  let c = stepCache.get(beliefs);
+  if (!c || c.db !== db || c.ctx !== ctx) {
+    const sets = beliefs.map(b => [b.id, ...(db.conditions[b.id].requires ?? []), ...ctx.knownConditions]);
+    stepCache.set(beliefs, (c = { db, ctx, sets, shares: beliefs.map(b => sharesFor(db, b.id, ctx)), byFinding: new Map() }));
+  }
+  let ps = c.byFinding.get(f);
+  if (!ps) {
+    const { sets, shares } = c;
+    c.byFinding.set(f, (ps = sets.map((set, i) => findingProbability(db, f, set, ctx.knownRisks, unknownMiss(ctx, f, shares[i])))));
+  }
+  return ps;
+}
+
+/**
  * Ожидаемая польза обследования в битах. Приближение среза: сумма пользы каждого
  * проверяемого признака по отдельности при текущей уверенности — точный перебор всех
  * сочетаний исходов стоит 2^k и для «виртуального врача» на тысячах пациентов дорог.
@@ -347,23 +375,24 @@ export function entropy(beliefs: readonly Belief[]): number {
 export function expectedGain(db: ContentDb, examId: Id, beliefs: readonly Belief[], ctx: InferContext, observed: ReadonlySet<Id>): number {
   const exam = db.exams[examId];
   const h0 = entropy(beliefs);
-  const shares = beliefs.map(b => sharesFor(db, b.id, ctx));
   // P(«есть» | кандидат) для каждого кандидата
-  const yesOf = (check: ExamCheck) => beliefs.map((b, i) => {
-    const set = [b.id, ...(db.conditions[b.id].requires ?? []), ...ctx.knownConditions];
-    const p = findingProbability(db, check.f, set, ctx.knownRisks, unknownMiss(ctx, check.f, shares[i]));
-    return (check.sens / P_ONE) * p + (1 - check.spec / P_ONE) * (1 - p);
-  });
+  const yesOf = (check: ExamCheck) => candidateP(db, beliefs, ctx, check.f).map(p => (check.sens / P_ONE) * p + (1 - check.spec / P_ONE) * (1 - p));
   const shownP = (yes: readonly number[]) => beliefs.reduce((a, b, i) => a + b.p * yes[i], 0);
   let gain = 0;
   for (const check of exam.checks) {
     if (observed.has(check.f) || db.findings[check.f]?.evidence === false) continue;
     const yes = yesOf(check);
     const pYes = shownP(yes);
+    // энтропия после исхода — как `entropy`, без промежуточного списка
     const hGiven = (shown: boolean) => {
       const norm = shown ? pYes : 1 - pYes;
       if (norm <= 0) return 0;
-      return entropy(beliefs.map((b, i) => ({ id: b.id, p: (b.p * (shown ? yes[i] : 1 - yes[i])) / norm })));
+      let h = 0;
+      for (let i = 0; i < beliefs.length; i++) {
+        const p = (beliefs[i].p * (shown ? yes[i] : 1 - yes[i])) / norm;
+        if (p > 0) h -= p * log2(p);
+      }
+      return h;
     };
     // уточнение (часть 41в) скажет что-то, только если покажут признак, после которого его проверяют
     const base = check.given !== undefined ? exam.checks.find(c => c.f === check.given) : undefined;

@@ -27,7 +27,9 @@ confirm: clinical
 treatment:
   firstLine: [tx.ppi]
   supportive: [tx.lifestyle, tx.antacid]
-  notIndicated: [tx.amoxicillin, tx.amoxicillin_clavulanate, tx.macrolide, tx.fluoroquinolone]
+  # H. pylori-позитивная диспепсия — уже гастрит (spec 2026-10-chapter-4, часть 53б; 708_2, разделы 1.6 и 3.1.4, Киотский
+  # консенсус): в игре у функциональной диспепсии инфекции нет, эрадикация не нужна
+  notIndicated: [tx.amoxicillin, tx.amoxicillin_clavulanate, tx.macrolide, tx.fluoroquinolone, tx.hp_eradication]
   setting: { default: home }
 texts:
   summary:
@@ -38,7 +40,8 @@ texts:
 pearls:
   - ru: "Диспепсия — это боль под ложечкой и тяжесть после еды; изжога и отрыжка кислым больше говорят о рефлюксе, но тактика почти одинаковая."
   - ru: "Регулярный приём обезболивающих — частая причина болей в желудке: спросите о лекарствах."
-simplified: "Тест на хеликобактер и эрадикационная терапия — позже; в игре диспепсия без тревожных признаков лечится ИПП."
+simplified: "Диспепсия с H. pylori в игре — гастрит, ассоциированный с H. pylori: функциональную ставят, когда инфекции нет (708_2: и когда жалобы остались после успешной эрадикации). Прокинетиков и ребамипида нет; диспепсия без тревожных признаков лечится ИПН."
 sources:
   - { kind: guideline, title: "Moayyedi P et al. ACG and CAG Clinical Guideline: Management of Dyspepsia. Am J Gastroenterol 2017;112(7):988–1013", url: "https://pubmed.ncbi.nlm.nih.gov/28631728/" }
+  - { kind: guideline, title: "Гастрит и дуоденит", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/708_2", note: "ID 708_2, опубликованы 10.07.2024, применяются; сверено с рубрикатором 11.10.2026; раздел 1.6: диспепсия, ассоциированная с H. pylori, — самостоятельная форма; жалобы, сохранившиеся после успешной эрадикации, — функциональная диспепсия; раздел 3.1.4: ИПН — симптоматическое лечение (УУР A, УДД 1)" }
 review: draft

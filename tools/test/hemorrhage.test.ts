@@ -485,7 +485,9 @@ describe('энциклопедия', () => {
   test('консультация нейрохирурга — в группе «Консультации»; САК: перевод, внезапная боль — тревожный признак', () => {
     const groups = sectionView(db, 'treatments').groups;
     expect(groups.find(g => g.key === 'consult')).toMatchObject({ title: 'Консультации' });
-    expect(groups.find(g => g.key === 'consult')!.items.map(r => r.id)).toEqual([NSG]);
+    // с частью 54б (spec 2026-10-chapter-4) — и психиатр-нарколог при синдроме отмены алкоголя, с частью 55а — колопроктолог
+    // при сверхтяжёлой атаке язвенного колита
+    expect(groups.find(g => g.key === 'consult')!.items.map(r => r.id)).toEqual(['tx.coloproctologist_consult', NSG, 'tx.narcologist_consult']);
     const sah = article(db, SAH)!;
     expect(JSON.stringify(sah)).toContain('sym.thunderclap');
     expect(sah.blocks.find(b => b.key === 'where')!.text!.some(t => t.includes('перевод'))).toBe(true);

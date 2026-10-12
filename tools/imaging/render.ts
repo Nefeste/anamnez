@@ -10,11 +10,12 @@ await loadSkia();
 const { recordHeadSlice } = await import('../../src/render/ct/head');
 const { recordChestSlice } = await import('../../src/render/ct/chest');
 const { recordUsSector } = await import('../../src/render/us/sector');
+const { recordEgdView } = await import('../../src/render/egd/view');
 const { recordAbdomenXray, ABDOMEN_ASPECT } = await import('../../src/render/xray/abdomen');
 const { recordBoneXray } = await import('../../src/render/xray/bones');
 const { BONE_ASPECT } = await import('../../src/render/xray/boneGeometry');
 const { recordChestXray, XRAY_ASPECT } = await import('../../src/render/xray/chest');
-const { ABDOMEN_CASES, BONE_CASES, CHEST_CASES, CHEST_CT_CASES, ECG_CASES, HEAD_CASES, US_CASES } = await import('../../src/state/imagingCases');
+const { ABDOMEN_CASES, BONE_CASES, CHEST_CASES, CHEST_CT_CASES, ECG_CASES, EGD_CASES, HEAD_CASES, US_CASES } = await import('../../src/state/imagingCases');
 const { synthEcg12 } = await import('../../src/render/ecg/model');
 const { ecgSheetLayout, recordEcgSheet } = await import('../../src/render/ecg/sheet');
 
@@ -39,6 +40,15 @@ for (const k of CHEST_CT_CASES) {
 for (const k of US_CASES) {
   const t0 = performance.now();
   const picture = recordUsSector(SIZE, k.findings, k.seed);
+  const ms = performance.now() - t0;
+  const { png } = await rasterize(picture, SIZE, SIZE);
+  await Bun.write(join(OUT, `${k.key}.png`), png);
+  console.log(`${k.key}.png — ${k.label}, запись ${ms.toFixed(1)} мс`);
+}
+// ЭГДС (spec 2026-10-chapter-4, часть 53а-2): дно язвы по Форресту, разрыв кардии, кровь без источника
+for (const k of EGD_CASES) {
+  const t0 = performance.now();
+  const picture = recordEgdView(SIZE, k.findings, k.seed);
   const ms = performance.now() - t0;
   const { png } = await rasterize(picture, SIZE, SIZE);
   await Bun.write(join(OUT, `${k.key}.png`), png);

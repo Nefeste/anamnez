@@ -33,7 +33,8 @@ confirm: clinical
 treatment:
   firstLine: [tx.ppi]
   supportive: [tx.antacid, tx.lifestyle]
-  notIndicated: [tx.amoxicillin, tx.amoxicillin_clavulanate, tx.macrolide, tx.fluoroquinolone]
+  # без H. pylori эрадикация не нужна (spec 2026-10-chapter-4, часть 53б): в игре инфекция — у гастрита и язвы
+  notIndicated: [tx.amoxicillin, tx.amoxicillin_clavulanate, tx.macrolide, tx.fluoroquinolone, tx.hp_eradication]
   plan: [tx.ppi, tx.lifestyle]
   setting: { default: home }
 texts:

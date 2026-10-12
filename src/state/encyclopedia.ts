@@ -238,8 +238,10 @@ function whereLines(db: ContentDb, c: Condition, t: Tactics): string[] {
   for (const [value, set] of Object.entries(s.param?.map ?? {})) if (set !== s.default) lines.push(e.whereIf(whenText({ [s.param!.name]: [value] }) ?? value, e.setting[set]));
   if (s.redFlag && s.redFlag !== s.default) lines.push(e.whereRedFlag(e.setting[s.redFlag]));
   for (const r of s.risks ?? []) if (r.setting !== s.default) lines.push(e.whereRisk(nameOf(db, r.id), e.setting[r.setting]));
-  // без аппарата у постели (часть 42б): приступ наджелудочковой тахикардии снимают под монитором
-  if (s.without && s.without.setting !== s.default) lines.push(e.whereWithout(s.without.equipment.map(id => db.equipment[id]?.gen.ru ?? id), e.setting[s.without.setting]));
+  // без аппарата у постели (часть 42б): приступ наджелудочковой тахикардии снимают под монитором; без работающего
+  // кабинета (spec 2026-10-chapter-4, часть 53а): кровотечение из язвы без эндоскопии — перевод
+  if (s.without && s.without.setting !== s.default && s.without.equipment?.length) lines.push(e.whereWithout(s.without.equipment.map(id => db.equipment[id]?.gen.ru ?? id), e.setting[s.without.setting]));
+  if (s.without && s.without.setting !== s.default && s.without.rooms?.length) lines.push(e.whereNoRoom(s.without.rooms.map(id => db.rooms[id]?.gen.ru ?? id), e.setting[s.without.setting]));
   // ПИТ не обычное место, но бывает нужна — без своей та же скорая; реанимация с ИВЛ (часть 47) — так же
   const icu = [...Object.values(s.param?.map ?? {}), s.redFlag, ...(s.risks ?? []).map(r => r.setting), s.without?.setting];
   if (s.default !== 'icu' && icu.includes('icu')) lines.push(e.whereNoIcu(e.setting.ambulance));
@@ -464,6 +466,8 @@ function treatmentArticle(db: ContentDb, x: Treatment): Article {
       ...(each.length > 0 ? [{ label: e.companionsEach, refs: each.map(id => ref(db, id)) }] : []),
       ...x.companions.filter((g): g is Id[] => typeof g !== 'string').map(g => ({ label: e.companionsOneOf, refs: g.map(id => ref(db, id)) })),
       ...(x.companionsFor ? [{ label: e.companionsFor, refs: x.companionsFor.map(id => ref(db, id)) }] : []),
+      // только тем, у кого (часть 54б): глюкоза — с тиамином у зависимого от алкоголя
+      ...(x.companionsIf ? [{ label: e.companionsIf, refs: x.companionsIf.map(id => ref(db, id)) }] : []),
     ];
     blocks.push({ key: 'companions', title: e.companions, text: [e.companionsNote], rows });
   }

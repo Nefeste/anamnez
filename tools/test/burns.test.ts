@@ -219,9 +219,9 @@ describe('на экране и в энциклопедии', () => {
     const groups = Object.fromEntries(treatmentGroupsFor([]).map(g => [g.key, { title: g.title, ids: g.items.map(x => x.id) }]));
     expect(groups.wounds.ids).toContain(DRESSING);
     expect(groups.fluids).toEqual({ title: 'Растворы и капельницы', ids: expect.arrayContaining([IV, ORS]) });
-    // с частью 48а — и сбалансированный солевой раствор в вену
-    expect(groups.fluids.ids).toEqual(expect.arrayContaining(['tx.balanced_fluids']));
-    expect(groups.fluids.ids).toHaveLength(3);
+    // с частью 48а — и сбалансированный солевой раствор в вену, с частью 54а — альбумин
+    expect(groups.fluids.ids).toEqual(expect.arrayContaining(['tx.balanced_fluids', 'tx.albumin']));
+    expect(groups.fluids.ids).toHaveLength(4);
     expect(groups.digestive.ids).not.toContain(IV);
   });
 

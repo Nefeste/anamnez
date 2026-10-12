@@ -18,9 +18,9 @@ export interface RoomSign {
 }
 
 /** У каких помещений лампа над дверью: туда входят к врачу или медсестре на приём и процедуру. */
-export const LAMP_ROOMS: ReadonlySet<string> = new Set(['office', 'triage', 'procedure', 'ecg', 'xray', 'ultrasound', 'ct', 'mri']);
+export const LAMP_ROOMS: ReadonlySet<string> = new Set(['office', 'triage', 'procedure', 'ecg', 'xray', 'ultrasound', 'ct', 'mri', 'endoscopy']);
 /** К аппаратам этих помещений ждут на скамье. */
-const EXAM_ROOMS: ReadonlySet<string> = new Set(['ecg', 'xray', 'ultrasound', 'ct', 'mri']);
+const EXAM_ROOMS: ReadonlySet<string> = new Set(['ecg', 'xray', 'ultrasound', 'ct', 'mri', 'endoscopy']);
 
 /**
  * Знаки помещений на сейчас:

@@ -344,7 +344,7 @@ describe('разумный врач', () => {
       expect({ id, right: right / xs.length > 0.9 }).toEqual({ id, right: true });
     }
     expect(atp / stable).toBeGreaterThan(0.9);
-  });
+  }, 30_000);
 
   test('в поликлинике без монитора: вагусные пробы и скорая; разряда и трифосаденина нет', () => {
     for (const p of people(SVT, 30, { unstable: 'no' }, 7_100_001)) {

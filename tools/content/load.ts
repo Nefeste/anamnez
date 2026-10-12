@@ -411,7 +411,12 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       // без аппаратов у постели (часть 42б): аппараты есть в каталоге, место — выше обычного
       const without = t.setting.without;
       if (without) {
-        for (const id of without.equipment) if (!equipment[id]) errors.push(`${owner}: место без аппарата ${id} у постели — такого аппарата нет`);
+        for (const id of without.equipment ?? []) if (!equipment[id]) errors.push(`${owner}: место без аппарата ${id} у постели — такого аппарата нет`);
+        // без работающего кабинета (spec 2026-10-chapter-4, часть 53а): кабинет есть в каталоге, и лечение в нём есть
+        for (const id of without.rooms ?? []) {
+          if (!rooms[id]) errors.push(`${owner}: место без кабинета ${id} — такого помещения нет`);
+          else if (!Object.values(treatments).some(x => x.room === id)) errors.push(`${owner}: место без кабинета ${id}, а лечения в нём нет`);
+        }
         if (SETTING_ORDER[without.setting] <= SETTING_ORDER[t.setting.default]) errors.push(`${owner}: место без аппаратов у постели — ${without.setting}, не выше обычного ${t.setting.default}`);
       }
       if (t.setting.default === 'home' && t.firstLine.length === 0) errors.push(`${owner}: лечат дома, а первой линии нет`);
@@ -572,6 +577,11 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       if (!t.bedside) errors.push(`${t.id}: лечение реанимации — у постели, а аппарата у постели не названо`);
       for (const id of t.bedside?.equipment ?? []) if (equipment[id] && !vent.some(r => equipment[id].rooms.includes(r.id))) errors.push(`${t.id}: аппарат у постели ${id} в реанимацию не ставят`);
     }
+    // лечение в кабинете (часть 53а): кабинет есть в каталоге и работает только с аппаратом — лечение не у постели и не операция
+    if (t.room) {
+      if (!rooms[t.room]) errors.push(`${t.id}: лечение в кабинете ${t.room} — такого помещения нет`);
+      if (t.bedside || t.place || t.kind === 'surgery') errors.push(`${t.id}: лечение в кабинете — не у постели, не лечение реанимации и не операция`);
+    }
     // спутники (часть 39а): есть, не операции, не само лечение и без повторов
     const companions = (t.companions ?? []).flat();
     for (const id of companions) {
@@ -587,6 +597,14 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       for (const id of t.companionsFor) {
         if (!(id in conditions)) errors.push(`${t.id}: спутники при ${id} — такой болезни нет`);
         else if (!t.effects.some(e => e.on === id && e.kind !== 'harm')) errors.push(`${t.id}: спутники при ${id}, а при ней лечение не действует`);
+      }
+    }
+    // спутники тем, у кого (часть 54б): спутники есть; хроническая болезнь или фактор риска есть и не повторяются
+    if (t.companionsIf) {
+      if (companions.length === 0) errors.push(`${t.id}: спутники нужны тем, у кого ${t.companionsIf.join(', ')}, а спутников нет`);
+      if (new Set(t.companionsIf).size !== t.companionsIf.length) errors.push(`${t.id}: у кого нужны спутники — повторяется`);
+      for (const id of t.companionsIf) {
+        if (id.startsWith('risk.') ? !(id in risks) : !conditions[id]?.epidemiology.chronic) errors.push(`${t.id}: спутники тем, у кого ${id}, — нет такого фактора риска или хронической болезни`);
       }
     }
   }
@@ -923,8 +941,10 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (t.route) out.route = t.route;
     if (t.bedside) out.bedside = t.bedside;
     if (t.place) out.place = t.place;
+    if (t.room) out.room = t.room;
     if (t.companions) out.companions = t.companions;
     if (t.companionsFor) out.companionsFor = t.companionsFor;
+    if (t.companionsIf) out.companionsIf = t.companionsIf;
     if (t.surgery) {
       const x = t.surgery;
       out.surgery = {

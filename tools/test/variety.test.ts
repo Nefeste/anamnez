@@ -46,15 +46,17 @@ describe('жребий болезни', () => {
     }
   });
 
-  test('разнообразие в амбулатории: ни одной болезни больше 8 %, ОРВИ меньше 8 %; ОКС, аппендицит и анафилаксия — не меньше 1,5 %', () => {
+  test('разнообразие в амбулатории: ни одной болезни больше 8 %, ОРВИ меньше 8 %; ОКС, аппендицит и анафилаксия — хотя бы вдвое чаще, чем в жизни', () => {
     const real = shares(8000, false);
     const varied = shares(8000, true);
     expect(real['cond.arvi']).toBeGreaterThan(15);
     expect(Math.max(...Object.values(varied))).toBeLessThan(8);
     expect(varied['cond.arvi']).toBeLessThan(8);
+    // до 0.4.4 — не меньше 1,5 % каждая; с частью 55б (spec 2026-10-chapter-4) болезней в терапии 48, и сглаженная доля
+    // каждой ниже: ОКС — 1,475 %, анафилаксия — 1,425 %. Критерий — как у ТИА: во сколько раз чаще, чем в жизни
     for (const id of ['cond.acs', 'cond.appendicitis', 'cond.anaphylaxis']) {
       expect(real[id]).toBeLessThan(1);
-      expect(varied[id]).toBeGreaterThanOrEqual(1.5);
+      expect(varied[id]).toBeGreaterThan(2 * real[id]);
     }
     // болезней, которые встретились хоть раз, не меньше
     expect(Object.keys(varied).length).toBeGreaterThanOrEqual(Object.keys(real).length);

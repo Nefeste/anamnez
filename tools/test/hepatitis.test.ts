@@ -67,8 +67,10 @@ describe('гепатиты: болезни и признаки', () => {
     expect(db.exams['exam.hepatitis_markers'].checks.map(c => c.f)).toEqual(['lab.hav_igm', 'lab.hbv_markers']);
     expect(db.exams['exam.coagulation'].checks.map(c => c.f)).toEqual(['lab.pti_low']);
     expect(db.exams['exam.ask_hepatitis'].routineFor).toEqual(['sym.yellow_skin', 'sym.dark_urine']);
-    expect(db.exams['exam.liver_panel'].checks.map(c => c.f).at(-1)).toBe('lab.bilirubin_200');
-    expect(db.exams['exam.abdomen_palpation'].checks.map(c => c.f).at(-1)).toBe('sign.hepatomegaly');
+    // с частью 54б за ним — «АСТ выше АЛТ»
+    expect(db.exams['exam.liver_panel'].checks.map(c => c.f).slice(-2)).toEqual(['lab.bilirubin_200', 'lab.ast_over_alt']);
+    // с частью 54а за печенью — селезёнка и асцит
+    expect(db.exams['exam.abdomen_palpation'].checks.map(c => c.f)).toContain('sign.hepatomegaly');
   });
 });
 

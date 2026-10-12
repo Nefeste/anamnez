@@ -19,8 +19,8 @@ export const ROOM_TINT: Record<RoomType, string> = {
   // как рентген (часть 40); реанимация — как ПИТ (spec 2026-10-chapter-4, часть 47); бокс инфекционного отделения — тёплый
   // жёлтый, как знак изоляции на двери (часть 49а)
   icu: '#E6EEF6', ct: '#E9ECED', ricu: '#E6EEF6', box: '#F7F1DC',
-  // кабинет МРТ — как КТ (spec 2026-10-chapter-4, часть 50б)
-  mri: '#E9ECED',
+  // кабинет МРТ — как КТ (spec 2026-10-chapter-4, часть 50б); эндоскопический — как УЗИ (часть 53а)
+  mri: '#E9ECED', endoscopy: '#EEF5E6',
 };
 export const OUTSIDE = '#DDE4E3';
 export const CORRIDOR = '#F6F3ED';

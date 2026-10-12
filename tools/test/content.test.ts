@@ -162,8 +162,8 @@ describe('каталог больницы', () => {
   test('собран: у помещений — что открывают, у аппаратов — какие обследования, у должностей — где работают', () => {
     const { db } = buildDb();
     // с частью 47 (spec 2026-10-chapter-4) — и реанимация, с частью 49а — бокс инфекционного отделения, с частью 50б —
-    // кабинет МРТ
-    expect(Object.keys(db.rooms)).toHaveLength(19);
+    // кабинет МРТ, с частью 53а — эндоскопический кабинет
+    expect(Object.keys(db.rooms)).toHaveLength(20);
     // нанятый врач (spec 2026-09-hired-doctors): встаёт на место врача, нужна ординаторская с местами
     expect(db.roles['role.therapist']).toMatchObject({ hire: true, stands: 'role.doctor', needs: 'room.staff', rooms: ['room.office'] });
     expect(db.rooms['room.staff'].sizes.map(z => z.places)).toEqual([2, 4]);
@@ -172,12 +172,12 @@ describe('каталог больницы', () => {
     expect(db.rooms['room.procedure'].collects).toContain('exam.cbc');
     expect(db.rooms['room.lab'].equipment).toContain('eq.biochem_analyzer');
     // NT-proBNP (часть 43в) — тоже на иммунохимическом; с частью 49б — антиген и токсины C. difficile в кале, с частью 51 —
-    // антитела к боррелиям и к вирусу клещевого энцефалита
+    // антитела к боррелиям и к вирусу клещевого энцефалита, с частью 53б — антиген H. pylori в кале
     expect(db.equipment['eq.immuno_analyzer'].exams).toEqual([
-      'exam.borrelia_elisa', 'exam.cdiff_stool', 'exam.d_dimer', 'exam.hantavirus_elisa', 'exam.hepatitis_markers', 'exam.nt_probnp', 'exam.tbe_elisa', 'exam.troponin_hs', 'exam.tsh',
+      'exam.borrelia_elisa', 'exam.cdiff_stool', 'exam.d_dimer', 'exam.hantavirus_elisa', 'exam.hepatitis_markers', 'exam.hp_stool', 'exam.nt_probnp', 'exam.tbe_elisa', 'exam.troponin_hs', 'exam.tsh',
     ]);
     expect(db.equipment['eq.xray_digital'].upgradeOf).toBe('eq.xray_analog');
-    expect(db.roles['role.nurse'].rooms).toEqual(['room.box', 'room.ecg', 'room.emergency', 'room.icu', 'room.procedure', 'room.ricu', 'room.triage', 'room.ward']);
+    expect(db.roles['role.nurse'].rooms).toEqual(['room.box', 'room.ecg', 'room.emergency', 'room.endoscopy', 'room.icu', 'room.procedure', 'room.ricu', 'room.triage', 'room.ward']);
     // палата (spec 2026-09-chapter-2, часть 26): койки — места лежащих
     expect(db.rooms['room.ward'].sizes.map(z => z.beds)).toEqual([2, 4]);
     expect(db.rooms['room.office'].sizes.every(z => z.beds === 0)).toBe(true);
@@ -204,8 +204,11 @@ describe('каталог больницы', () => {
       { f: 'img.us_appendicitis', sens: 7600, spec: 9500 }, { f: 'img.us_gallstones', sens: 9500, spec: 9500 }, { f: 'img.us_cholecystitis', sens: 8100, spec: 8300 },
       // дивертикулит — 92 и 90 % (Laméris 2008, часть 30д)
       { f: 'img.us_diverticulitis', sens: 9200, spec: 9000 },
+      // цирроз с портальной гипертензией и асцит (часть 54а; 715_2, раздел 2.4) — точность игровая
+      { f: 'img.us_cirrhosis', sens: 8000, spec: 9200 }, { f: 'img.us_ascites', sens: 9600, spec: 9800 },
     ]);
-    expect(Object.values(db.roles).filter(r => r.reads).map(r => r.id).sort()).toEqual(['role.radiologist', 'role.sonographer']);
+    // эндоскопист (часть 53а) — как врач УЗД: сам проводит и сам описывает
+    expect(Object.values(db.roles).filter(r => r.reads).map(r => r.id).sort()).toEqual(['role.endoscopist', 'role.radiologist', 'role.sonographer']);
     expect(db.roles['role.sonographer'].rooms).toEqual(['room.ultrasound']);
     expect(db.conditions['cond.appendicitis'].findings).toContainEqual(expect.objectContaining({ f: 'img.us_appendicitis' }));
     expect(db.roles['role.doctor'].hire).toBe(false);
@@ -447,8 +450,9 @@ describe('каталог больницы', () => {
       edit(d, 'exams/troponin_hs.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.biochem_analyzer]');
       edit(d, 'exams/nt_probnp.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.biochem_analyzer]');
       // кал на C. difficile (часть 49б), антитела к боррелиям и к вирусу клещевого энцефалита (часть 51), маркёры гепатитов
-      // (часть 52а) и антитела к хантавирусам (часть 52б) — тоже
+      // (часть 52а), антитела к хантавирусам (часть 52б) и антиген H. pylori в кале (часть 53б) — тоже
       edit(d, 'exams/cdiff_stool.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.biochem_analyzer]');
+      edit(d, 'exams/hp_stool.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.biochem_analyzer]');
       edit(d, 'exams/borrelia_elisa.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.biochem_analyzer]');
       edit(d, 'exams/tbe_elisa.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.biochem_analyzer]');
       edit(d, 'exams/hepatitis_markers.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.biochem_analyzer]');
@@ -753,5 +757,24 @@ describe('достижения', () => {
     expect(order.some(e => e.includes('порядок 4 уже у другого достижения'))).toBe(true);
     const kind = broken(d => edit(d, 'achievements/month.yaml', 'kind: days', 'kind: streakDays'));
     expect(kind.some(e => e.startsWith('achievements/month.yaml:'))).toBe(true);
+  });
+});
+
+describe('эндоскопия (spec 2026-10-chapter-4, часть 53а)', () => {
+  test('место без кабинета — кабинет есть, и в нём делают лечение; лечение в кабинете — не у постели и не операция', () => {
+    const noRoom = broken(d => edit(d, 'conditions/surgery/ulcer_bleeding.yaml', 'without: { rooms: [room.endoscopy]', 'without: { rooms: [room.endoscopia]'));
+    expect(noRoom.some(e => e.includes('cond.ulcer_bleeding: место без кабинета room.endoscopia — такого помещения нет'))).toBe(true);
+    // с частью 54а в эндоскопическом кабинете — и лигирование вен: уводят оба
+    const noTx = broken(d => {
+      edit(d, 'treatments/endoscopic_hemostasis.yaml', 'room: room.endoscopy', 'room: room.ultrasound');
+      edit(d, 'treatments/variceal_ligation.yaml', 'room: room.endoscopy', 'room: room.ultrasound');
+    });
+    expect(noTx.some(e => e.includes('cond.mallory_weiss: место без кабинета room.endoscopy, а лечения в нём нет'))).toBe(true);
+    const bad = broken(d => edit(d, 'treatments/endoscopic_hemostasis.yaml', 'room: room.endoscopy', 'room: room.endoscopia'));
+    expect(bad.some(e => e.includes('tx.endoscopic_hemostasis: лечение в кабинете room.endoscopia — такого помещения нет'))).toBe(true);
+    const bedside = broken(d => edit(d, 'treatments/endoscopic_hemostasis.yaml', 'room: room.endoscopy', 'room: room.endoscopy\nbedside: { equipment: [eq.monitor_defib] }'));
+    expect(bedside.some(e => e.includes('tx.endoscopic_hemostasis: лечение в кабинете — не у постели, не лечение реанимации и не операция'))).toBe(true);
+    const neither = broken(d => edit(d, 'conditions/surgery/mallory_weiss.yaml', 'without: { rooms: [room.endoscopy], setting: transfer }', 'without: { setting: transfer }'));
+    expect(neither.some(e => e.includes('без чего это место'))).toBe(true);
   });
 });

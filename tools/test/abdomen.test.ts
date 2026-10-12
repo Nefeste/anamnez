@@ -26,7 +26,7 @@ const BOTH = ['dept.therapy', 'dept.surgery'];
 /** смотровая приёмного принимает и хирургию, и травму (часть 32) */
 const ED = [...BOTH, 'dept.trauma'];
 // с частью 33а — и вены ног: тромбоз глубоких вен и тромбофлебит лечит хирург
-const SURGICAL = ['cond.adhesive_sbo', 'cond.biliary_colic', 'cond.cholecystitis', 'cond.diverticulitis', 'cond.dvt', 'cond.limb_ischemia', 'cond.pancreatitis', 'cond.paraproctitis', 'cond.perforated_ulcer', 'cond.renal_colic', 'cond.strangulated_hernia', 'cond.superficial_thrombophlebitis', 'cond.ulcer_bleeding'];
+const SURGICAL = ['cond.adhesive_sbo', 'cond.biliary_colic', 'cond.cholecystitis', 'cond.diverticulitis', 'cond.dvt', 'cond.limb_ischemia', 'cond.mallory_weiss', 'cond.pancreatitis', 'cond.paraproctitis', 'cond.perforated_ulcer', 'cond.renal_colic', 'cond.strangulated_hernia', 'cond.superficial_thrombophlebitis', 'cond.ulcer_bleeding'];
 const OP = 'tx.cholecystectomy';
 
 /** Песочница с готовой амбулаторией и смотровой приёмного справа; медсестра ЭКГ — в смотровую. */

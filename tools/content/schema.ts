@@ -277,7 +277,12 @@ export const conditionSchema = z.strictObject({
        * где у постели нет этих аппаратов — это место (spec 2026-10-chapter-3, часть 42б): приступ
        * наджелудочковой тахикардии снимают под монитором; в кабинете — вагусные пробы, и в ПИТ
        */
-      without: z.strictObject({ equipment: z.array(z.string().regex(/^eq\.[a-z0-9_]+$/)).min(1), setting }).optional(),
+      // с частью 53а (spec 2026-10-chapter-4) — и где в больнице не работает такой кабинет: без эндоскопии — перевод
+      without: z.strictObject({
+        equipment: z.array(z.string().regex(/^eq\.[a-z0-9_]+$/)).min(1).optional(),
+        rooms: z.array(z.string().regex(/^room\.[a-z0-9_]+$/)).min(1).optional(),
+        setting,
+      }).refine(w => w.equipment !== undefined || w.rooms !== undefined, 'без чего это место: аппаратов у постели или кабинетов').optional(),
     }),
   }).optional(),
   /**
@@ -513,10 +518,14 @@ export const treatmentSchema = z.strictObject({
    * назначил — место становится «В ОРИТ», выбрал другое — лечение снимается
    */
   place: z.literal('ricu').optional(),
+  /** лечение в кабинете (spec 2026-10-chapter-4, часть 53а): эндоскопический гемостаз — в эндоскопическом кабинете */
+  room: roomId.optional(),
   /** назначают только вместе с этим (часть 39а); группа — хоть одно из неё, первое — выбора */
   companions: z.array(z.union([txId, z.array(txId).min(2)])).min(1).optional(),
   /** спутники — только при этих болезнях (часть 42б): антикоагулянт рядом с кардиоверсией — при фибрилляции предсердий */
   companionsFor: z.array(z.string().regex(/^cond\.[a-z0-9_]+$/)).min(1).optional(),
+  /** спутники — только тем, у кого эти хронические болезни или факторы риска (часть 54б): глюкоза зависимому — с тиамином */
+  companionsIf: z.array(z.string().regex(/^(cond|risk)\.[a-z0-9_]+$/)).min(1).optional(),
   /**
    * операция (часть 28): в каком помещении, какая бригада — по человеку на должность, какие
    * аппараты — все сразу, сколько минут идёт; осложнений после неё при среднем навыке хирурга

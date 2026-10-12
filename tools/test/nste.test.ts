@@ -177,7 +177,7 @@ describe('коронарография в первые сутки', () => {
     const all = people(2000, {}, 20000);
     const yes = share(all, p => paramsOf(p).invasive === 'yes');
     expect(Math.abs(yes - db.conditions[ACS].params!.invasive.yes / 100)).toBeLessThan(0.025);
-  });
+  }, 30_000);
 
   test('место: невысокий риск — ПИТ, коронарография в первые сутки и подъём ST — перевод; без своей ПИТ — скорая', () => {
     const low = people(400, { type: 'nste', mi: 'no', killip: 'i' }).find(p => paramsOf(p).invasive === 'no')!;

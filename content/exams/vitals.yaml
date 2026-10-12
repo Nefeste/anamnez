@@ -11,8 +11,10 @@ discomfort: 0
 # 1.6; симптомная гипотензия и обморок или предобморок — признаки нестабильности, раздел 3.1.2); при резком подъёме
 # давления — перемерить (часть 43г; 62_3, раздел 3.7: трёхкратное измерение для верификации стойкого подъёма АД); при
 # головной боли и пелене перед глазами — тоже (62_3, раздел 2.1: головные боли и расстройство зрения — симптомы АГ;
-# без давления разумный врач принимал криз с головной болью и тошнотой за пиелонефрит)
-routineFor: [sym.hives, sym.nosebleed, sym.palpitations, sym.syncope, sym.dizziness, sym.bp_surge, sym.headache, sym.vision_blurred]
+# без давления разумный врач принимал криз с головной болью и тошнотой за пиелонефрит); при рвоте кровью и чёрном стуле —
+# пульс и давление (spec 2026-10-chapter-4, часть 53а; 277_2 и 1026_1, раздел 2.2: частый пульс и снижение давления —
+# признаки кровопотери): от них зависят растворы и место
+routineFor: [sym.hives, sym.nosebleed, sym.palpitations, sym.syncope, sym.dizziness, sym.bp_surge, sym.headache, sym.vision_blurred, sym.hematemesis, sym.melena]
 checks:
   - { f: vital.fever, sens: 98, spec: 98 }
   - { f: vital.tachycardia, sens: 98, spec: 98 }

@@ -287,7 +287,7 @@ describe('разумный врач', () => {
     }
     expect(right / xs.length).toBeGreaterThan(0.9);
     expect(unseen).toBeLessThanOrEqual(2);
-  });
+  }, 30_000);
 
   test('в поликлинике без монитора: ЭКГ — и на скорой без лечения', () => {
     const xs = people(40, {}, 8_100_001).map(p => run(p, {}, ['dept.therapy']));

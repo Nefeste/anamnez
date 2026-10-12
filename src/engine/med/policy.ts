@@ -109,7 +109,7 @@ export function choosePlan(db: ContentDb, diagnosis: Id, observations: readonly 
   // спутники назначенного (часть 39а): тромболизис — с клопидогрелом и антикоагулянтом; из группы — первое,
   // что можно; с частью 42б — при болезни, где они нужны: кардиоверсия при тахикардии — без антикоагулянта
   for (const tx of [...treatments]) {
-    for (const g of companionsOf(db, tx, diagnosis)) {
+    for (const g of companionsOf(db, tx, diagnosis, [...known.risks, ...known.conditions])) {
       const group = typeof g === 'string' ? [g] : g;
       const pick = group.find(ok);
       if (pick && !group.some(c => treatments.includes(c))) treatments.push(pick);
@@ -119,7 +119,7 @@ export function choosePlan(db: ContentDb, diagnosis: Id, observations: readonly 
   const seen = new Set(observations.filter(o => o.shown).map(o => o.f));
   const did = new Set(observations.map(o => o.exam));
   // и по аппаратам у постели (часть 42б): без монитора приступ наджелудочковой тахикардии не снять
-  const setting = settingOf(t.setting, db.conditions[diagnosis].redFlags ?? [], { params, has: f => seen.has(f), risk: id => known.risks.includes(id), done: e => did.has(e), bedside: venue.bedside ?? [] });
+  const setting = settingOf(t.setting, db.conditions[diagnosis].redFlags ?? [], { params, has: f => seen.has(f), risk: id => known.risks.includes(id), done: e => did.has(e), bedside: venue.bedside ?? [], rooms: venue.rooms ?? [] });
   return { treatments: [...new Set(treatments)].sort(), setting: choiceFor(setting, venue) };
 }
 
@@ -127,13 +127,20 @@ export function choosePlan(db: ContentDb, diagnosis: Id, observations: readonly 
 const lifted = (t: Target, obs: readonly Observation[]) => t.except !== undefined && obs.some(o => o.shown && t.except!.includes(o.f));
 
 /**
+ * Срок на обследование идёт: по жалобе при поступлении или, у срока от находки (spec 2026-10-chapter-4, часть 54а), по
+ * показанной находке — диагностический парацентез после асцита на осмотре или УЗИ: жалоба «живот вырос» бывает и без него.
+ */
+const examTargetRuns = (t: Target, patient: Patient, obs: readonly Observation[]) =>
+  t.complaints.some(f => patient.complaints.includes(f)) || (t.from === 'finding' && obs.some(o => o.shown && t.findings.includes(o.f)));
+
+/**
  * Обследования сроков по жалобам пациента (spec 2026-10-chapter-3, часть 37): ЭКГ при давящей боли
  * в груди — в первые 10 минут от первого контакта с медиком, где бы он ни был (`157_5`, раздел 2.4).
  * Срок оценивается только у лежащих в смотровой приёмного (`shift/targets.ts`), а делают первым везде.
- * Срок, снятый находкой (часть 44б), — не в счёт.
+ * Срок, снятый находкой (часть 44б), — не в счёт; срок от находки (часть 54а) — когда её показали.
  */
 export function targetExams(db: ContentDb, patient: Patient, obs: readonly Observation[] = []): Id[] {
-  return [...new Set(Object.values(db.targets).filter(t => t.complaints.some(f => patient.complaints.includes(f)) && !lifted(t, obs)).flatMap(t => t.exams))].sort();
+  return [...new Set(Object.values(db.targets).filter(t => examTargetRuns(t, patient, obs) && !lifted(t, obs)).flatMap(t => t.exams))].sort();
 }
 
 /** Срок первого контакта (часть 41а): что делают ещё до расспроса — ЭКГ при боли в груди, осмотр при инсульте. */
@@ -273,7 +280,8 @@ function safetyExams(db: ContentDb, obs: readonly Observation[], patient: Patien
  * первые 6 часов вместо КТ), иначе дешевле. Снятый находкой срок (часть 44б: периферический парез лица) не
  * торопит. С частью 46а — и срок дольше `within`, который иначе не успеть (`tight`): с прихода прошло
  * `elapsed` минут, и до его конца остаётся не больше времени самого быстрого его обследования и `slack`. С
- * частью 46б из его обследований — только те, что успеют к его концу; не успеет ни одно — самое быстрое.
+ * частью 46б из его обследований — только те, что успеют к его концу; не успеет ни одно — самое быстрое. С частью 54а
+ * (spec 2026-10-chapter-4) — и срок от находки, когда её показали: диагностический парацентез после асцита.
  */
 export function urgentExam(
   db: ContentDb, patient: Patient, done: readonly Id[], exams: readonly Id[], within = Infinity, prefer: (exam: Id) => number = () => 0, obs: readonly Observation[] = [],
@@ -295,7 +303,7 @@ function dueTarget(
 ): { target: Target; exam: Id } | undefined {
   const pressing = (t: Target) => tight !== undefined && t.minutes - tight.elapsed <= tight.slack + Math.min(...t.exams.map(e => (db.exams[e] ? examMinutes(db.exams[e]) : Infinity)));
   const due = Object.values(db.targets)
-    .filter(t => (tight?.beyond ? t.minutes > within && pressing(t) : t.minutes <= within || pressing(t)) && t.exams.length > 0 && t.complaints.some(f => patient.complaints.includes(f)) && !t.exams.some(e => done.includes(e)) && !lifted(t, obs))
+    .filter(t => (tight?.beyond ? t.minutes > within && pressing(t) : t.minutes <= within || pressing(t)) && t.exams.length > 0 && examTargetRuns(t, patient, obs) && !t.exams.some(e => done.includes(e)) && !lifted(t, obs))
     .sort((a, b) => a.minutes - b.minutes || (a.id < b.id ? -1 : 1));
   for (const t of due) {
     const own = t.exams.filter(e => exams.includes(e));

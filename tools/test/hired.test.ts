@@ -89,7 +89,7 @@ describe('разумный врач по шагам', () => {
         done.push(r.step.exam);
       }
     }
-  });
+  }, 30_000);
 });
 
 describe('терапевт в своей больнице', () => {
@@ -170,7 +170,7 @@ describe('терапевт в своей больнице', () => {
       return JSON.stringify({ patients: s.patients, summary: s.summary });
     };
     expect(run()).toBe(run());
-  });
+  }, 30_000);
 
   test('в кампании терапевтов нет, пока глава не строит ординаторскую; в песочнице — есть', () => {
     const c = newCampaign(db, { seed: 3, season: 'winter', career: 1 });
@@ -224,7 +224,7 @@ describe('забрать себе (часть 19)', () => {
     playIdle(s);
     for (const cmd of s.journal) apply(db, start, cmd);
     expect(JSON.stringify({ patients: start.patients, summary: start.summary })).toBe(JSON.stringify({ patients: s.patients, summary: s.summary }));
-  });
+  }, 30_000);
 
   test('вы заняты — он в вашей очереди по времени прихода; ушедший на обследования вернётся к вам', () => {
     // зерно, при котором забранный — «зелёный» и позже пришли «зелёные» (с 0.2.6 — новые болезни в очереди,

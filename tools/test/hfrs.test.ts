@@ -83,7 +83,8 @@ describe('ГЛПС: болезнь и признаки', () => {
     expect(db.exams['exam.urinalysis'].checks.map(c => c.f).at(-1)).toBe('lab.urine_protein');
     expect(db.exams['exam.urine_dipstick'].checks.map(c => c.f).at(-1)).toBe('lab.urine_protein');
     expect(db.exams['exam.us_kidney'].checks.map(c => c.f).at(-1)).toBe('img.us_kidney_edema');
-    expect(db.exams['exam.general_exam'].checks.map(c => c.f).slice(-2)).toEqual(['sign.face_flushing', 'sign.scleral_injection']);
+    // с частью 54а за ними — звёздочки и ладони при циррозе
+    expect(db.exams['exam.general_exam'].checks.map(c => c.f)).toEqual(expect.arrayContaining(['sign.face_flushing', 'sign.scleral_injection']));
     expect(db.exams['exam.ask_contacts'].checks.map(c => c.f).at(-1)).toBe('hx.rodent_contact');
     expect(db.exams['exam.creatinine'].checks.map(c => c.f)).toEqual(['lab.creatinine_high', 'lab.creatinine_300']);
   });

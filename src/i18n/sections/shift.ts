@@ -170,6 +170,8 @@ export const shift = {
       box: 'Бокс',
       // кабинет МРТ (часть 50б)
       mri: 'МРТ',
+      // эндоскопический кабинет (часть 53а)
+      endoscopy: 'Эндоскопия',
     } as Record<string, string>,
     // для чтения с экрана: что на карте, словами
     label: (waiting: number, away: number, inRoom: string | undefined) =>
@@ -207,6 +209,9 @@ export const shift = {
       // кабинет МРТ (часть 50б)
       mriTech: 'Рентгенолаборант кабинета МРТ',
       mriDoctor: 'Рентгенолог кабинета МРТ',
+      // эндоскопический кабинет (часть 53а)
+      endoscopist: 'Врач-эндоскопист',
+      endoscopyNurse: 'Медсестра эндоскопического кабинета',
     } as Record<string, string>,
     // нанятый врач (spec 2026-09-hired-doctors): кто он и кого принимает
     therapist: (name: string, skill: number) => `${name}, терапевт · навык ${skill}`,
@@ -230,6 +235,8 @@ export const shift = {
       ricuNurse: 'Следит за аппаратами ИВЛ и мониторами, ставит капельницы',
       mriTech: 'Укладывает пациента в тоннель томографа и ведёт съёмку',
       mriDoctor: 'Описывает серии МРТ: его заключение приходит вместе с ними',
+      endoscopist: 'Проводит эндоскоп, описывает увиденное и останавливает кровотечение',
+      endoscopyNurse: 'Готовит пациента и эндоскоп, помогает при гемостазе',
     } as Record<string, string>,
     doing: {
       registration: 'В регистратуре: заводят карту',
@@ -238,8 +245,8 @@ export const shift = {
       waiting: (min: number) => `Ждёт приёма ${min}\u00a0мин`,
       office: 'У вас в кабинете',
       colleague: (doctor: string) => `На приёме у терапевта: ${doctor}`,
-      exam: { xray: 'На рентгене', ecg: 'На ЭКГ', lab: 'Сдаёт анализы', ultrasound: 'На УЗИ', ct: 'На КТ', mri: 'На МРТ' } as Record<string, string>,
-      examQueue: { xray: 'Ждёт очереди на рентген', ecg: 'Ждёт очереди на ЭКГ', lab: 'Ждёт очереди на анализы', ultrasound: 'Ждёт очереди на УЗИ', ct: 'Ждёт очереди на КТ', mri: 'Ждёт очереди на МРТ' } as Record<string, string>,
+      exam: { xray: 'На рентгене', ecg: 'На ЭКГ', lab: 'Сдаёт анализы', ultrasound: 'На УЗИ', ct: 'На КТ', mri: 'На МРТ', endoscopy: 'На ЭГДС' } as Record<string, string>,
+      examQueue: { xray: 'Ждёт очереди на рентген', ecg: 'Ждёт очереди на ЭКГ', lab: 'Ждёт очереди на анализы', ultrasound: 'Ждёт очереди на УЗИ', ct: 'Ждёт очереди на КТ', mri: 'Ждёт очереди на МРТ', endoscopy: 'Ждёт очереди на ЭГДС' } as Record<string, string>,
       results: (hh: string) => `Ждёт результатов — будут к ${hh}`,
       leaving: 'Приём окончен — уходит',
       left: (female: boolean) => ago(female, 'Не дождался приёма и уходит', 'Не дождалась приёма и уходит'),

@@ -1,8 +1,9 @@
 // Снимки, лента, сектор УЗИ и срезы КТ в результатах приёма: рисунок по тому, что показало
-// обследование, — как в спецификации карты пациента (рентген, ЭКГ, УЗИ и КТ кодом, ADR 0013).
+// обследование, — как в спецификации карты пациента (рентген, ЭКГ, УЗИ, КТ и ЭГДС кодом, ADR 0013).
 import { useWindowDimensions, View } from 'react-native';
 import { ChestSlice } from '@/render/ChestSlice';
 import { Ecg12 } from '@/render/Ecg12';
+import { EgdView } from '@/render/EgdView';
 import { HeadSlice } from '@/render/HeadSlice';
 import { type UsImage, UsSector } from '@/render/UsSector';
 import { Xray } from '@/render/Xray';
@@ -56,6 +57,14 @@ export function ResultPicture({ image }: { image: ResultImage }) {
     return (
       <View testID="result-ct-chest" style={{ borderRadius: 6, overflow: 'hidden', alignSelf: 'center' }}>
         <ChestSlice width={Math.min(w, 360)} seed={image.seed} findings={image.findings} />
+      </View>
+    );
+  }
+  if (image.kind === 'egd') {
+    // ЭГДС (часть 53а-2) — круг поля зрения эндоскопа, тот же квадрат, что у срезов
+    return (
+      <View testID="result-egd" style={{ borderRadius: 6, overflow: 'hidden', alignSelf: 'center' }}>
+        <EgdView width={Math.min(w, 360)} seed={image.seed} findings={image.findings} />
       </View>
     );
   }

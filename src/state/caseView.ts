@@ -19,6 +19,7 @@ import type { Difficulty } from '@/engine/shift/types';
 import type { EcgFindings, Wall } from '@/render/ecg/model';
 import type { ChestCtFindings } from '@/render/ct/chestGeometry';
 import type { HeadFindings } from '@/render/ct/geometry';
+import type { EgdFindings } from '@/render/egd/geometry';
 import type { BoneFindings, BoneFracture } from '@/render/xray/boneGeometry';
 import { fracturedRibs, type XrayFindings } from '@/render/xray/chestGeometry';
 import { T } from '@/i18n';
@@ -72,7 +73,12 @@ export type ResultImage =
    */
   | { kind: 'head'; seed: number; findings: HeadFindings; mode?: 'mri' }
   /** срез груди на КТ-ангиографии (часть 43а): расслоение аорты — тип A или B, если его показала КТ */
-  | { kind: 'chestCt'; seed: number; findings: ChestCtFindings };
+  | { kind: 'chestCt'; seed: number; findings: ChestCtFindings }
+  /**
+   * ЭГДС (spec 2026-10-chapter-4, часть 53а-2): поле зрения эндоскопа — язва и что в её дне, разрыв кардии, кровь без
+   * видимого источника; ничего — обычная слизистая желудка
+   */
+  | { kind: 'egd'; seed: number; findings: EgdFindings };
 
 /** Результаты одного обследования. `fresh` — пришли за последнее действие игрока. */
 export interface ResultGroup {
@@ -234,6 +240,8 @@ export interface CaseInput {
   bedsideEquipment?: readonly Id[];
   /** своя реанимация (spec 2026-10-chapter-4, часть 47): есть свободная койка с ИВЛ — `free`, все заняты — `full`; нет — её нет */
   ricu?: 'free' | 'full';
+  /** работающие кабинеты больницы (часть 53а): гемостаз — где работает эндоскопический кабинет */
+  rooms?: readonly Id[];
   targets?: string[];
   returnNote?: string;
   /** сложность: «Похоже на» — только у «Студента» (03-game-design.md §14); нет — «Студент» (прототип П4) */
@@ -303,13 +311,15 @@ const TX_GROUPS: [string, string[]][] = [
   // допамин и наружная стимуляция при АВ-блокаде; с частью 43в — фуросемид в вену при сердечной недостаточности;
   // с частью 43д — колхицин при перикардите
   ['heart', ['antihypertensive', 'antiplatelet', 'antianginal', 'anticoagulant', 'vascular', 'adrenergic', 'thrombolytic', 'lipid', 'antiarrhythmic', 'anticholinergic', 'diuretic', 'cardiac']],
-  // противодиарейные (spec 2026-10-chapter-4, часть 49б): лоперамид — при кишечных инфекциях не нужен или вреден
-  ['digestive', ['acid', 'antidiarrheal']],
-  // растворы для питья и капельница (часть 32д-2): и при кишечной инфекции, и при обширном ожоге
-  ['fluids', ['rehydration']],
+  // противодиарейные (spec 2026-10-chapter-4, часть 49б): лоперамид — при кишечных инфекциях не нужен или вреден; с частью
+  // 54а — лактулоза при кровотечении из вен пищевода и печёночной энцефалопатии, орнитин при ней (АТХ A05 — болезни печени)
+  ['digestive', ['acid', 'antidiarrheal', 'laxative', 'liver']],
+  // растворы для питья и капельница (часть 32д-2): и при кишечной инфекции, и при обширном ожоге; с частью 54а — альбумин
+  // при циррозе с асцитом и спонтанном бактериальном перитоните
+  ['fluids', ['rehydration', 'plasma']],
   // с частью 41в — гемостатики: протромбиновый комплекс, витамин K1, транексамовая кислота; с частью 44а — декстроза и
-  // быстрые углеводы при гипогликемии (глюкагон — гормон)
-  ['metabolic', ['antidiabetic', 'hormone', 'mineral', 'hemostatic', 'glucose']],
+  // быстрые углеводы при гипогликемии (глюкагон — гормон); с частью 54б — тиамин при синдроме отмены алкоголя
+  ['metabolic', ['antidiabetic', 'hormone', 'mineral', 'hemostatic', 'glucose', 'vitamin']],
   // травма (часть 32): гипсовая лонгета и закрытая репозиция
   ['trauma', ['immobilization']],
   // травма груди (часть 32в): плевральная пункция и дренирование
@@ -345,8 +355,8 @@ function groupTreatments(items: VisitView['treatments']): VisitView['treatmentGr
  * Лечение по группам с предупреждениями о том, что уже известно, — для смены плана на обходе;
  * `bedside` — аппараты у его койки (часть 39а): в палате монитора нет, в ПИТ — у каждой койки.
  */
-export function treatmentGroupsFor(obs: readonly Observation[], bedside: readonly Id[] = []): VisitView['treatmentGroups'] {
-  return groupTreatments(treatmentChoices(obs, bedside));
+export function treatmentGroupsFor(obs: readonly Observation[], bedside: readonly Id[] = [], rooms: readonly Id[] = []): VisitView['treatmentGroups'] {
+  return groupTreatments(treatmentChoices(obs, bedside, undefined, rooms));
 }
 
 export function conditionChoices(departments?: readonly Id[]): { id: Id; name: string }[] {
@@ -368,15 +378,17 @@ export function diagnosisGroups(departments?: readonly Id[]): DiagnosisGroup[] {
  * у постели нужен его аппарат у постели (часть 39а) — без него кнопка серая, и сказано почему. Лечение
  * реанимации (spec 2026-10-chapter-4, часть 47) — ИВЛ — можно, если в ней есть свободная койка.
  */
-function treatmentChoices(obs: readonly Observation[], bedside: readonly Id[] = [], ricu?: 'free' | 'full'): VisitView['treatments'] {
+function treatmentChoices(obs: readonly Observation[], bedside: readonly Id[] = [], ricu?: 'free' | 'full', rooms: readonly Id[] = []): VisitView['treatments'] {
   const known = knownFacts(db, obs);
   const knownIds = new Set([...known.risks, ...known.conditions]);
   // операцию выбирают не здесь, а «В операционную»: какая — по диагнозу (часть 28)
   return Object.values(db.treatments)
     .filter(x => x.kind !== 'surgery')
     .map(x => {
-      const lack = bedsideLack(db, x.id, { bedside, ...(ricu === 'free' ? { ricu: true } : {}) });
+      const lack = bedsideLack(db, x.id, { bedside, rooms, ...(ricu === 'free' ? { ricu: true } : {}) });
       if (lack && x.place) return { id: x.id, name: x.name.ru, warning: ricu === 'full' ? T.spikes.patient.ricuFull : T.spikes.patient.onlyRicu, disabled: true };
+      // лечение в кабинете (часть 53а): гемостаз — только где работает эндоскопический кабинет
+      if (lack && x.room) return { id: x.id, name: x.name.ru, warning: T.spikes.patient.noRoom(db.rooms[x.room]?.gen.ru ?? x.room), disabled: true };
       if (lack) return { id: x.id, name: x.name.ru, warning: T.spikes.patient.noBedside(db.equipment[lack].gen.ru), disabled: true };
       const by = x.contraindications.find(k => knownIds.has(k.id));
       return { id: x.id, name: x.name.ru, warning: by ? T.spikes.patient.contraindicated(riskName(by.id)) : undefined };
@@ -440,6 +452,27 @@ function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observat
         ...(pe !== undefined ? { pe: pe === 'right' || pe === 'left' ? pe : 'both' } : {}),
       },
     };
+  }
+  // ЭГДС (часть 53а-2): что показала — язва и что в её дне, разрыв кардии, кровь. Сосуд или сгусток, плоские пятна или
+  // чистое дно — одна строка находки на два класса Форреста: какой из двух, решает зерно пациента. Плоские пятна (F2c) —
+  // след недавнего кровотечения: без рвоты кровью и чёрного стула дно у язвы чистое (часть 53б)
+  if (exam === 'exam.egd') {
+    const ulcer = shown('img.egd_ulcer') !== undefined;
+    const bleeding = shown('img.egd_bleeding') !== undefined;
+    const stigmata = shown('img.egd_stigmata') !== undefined;
+    const bled = known.some(o => o.shown && (o.f === 'sym.hematemesis' || o.f === 'sym.melena'));
+    const odd = patientSeed % 2 === 1;
+    const size = 0.35 + (patientSeed % 5) / 10;
+    const base = bleeding ? 'bleeding' : stigmata ? (odd ? 'vessel' : 'clot') : bled && odd ? 'spots' : 'clean';
+    // язва — её дно; разрыв без язвы — кардия; кровь без найденного источника — кровь в просвете. Гастрит (часть 53б) — на
+    // стенке желудка, с язвой или без неё. Варикозные вены (часть 54а) — тоже в кардии, с разрывом или без него: кровь — из
+    // разрыва, если он есть, иначе из вены
+    const gastritis = shown('img.egd_gastritis') !== undefined ? { gastritis: true } : {};
+    const tear = shown('img.egd_tear') !== undefined;
+    const varices = shown('img.egd_varices') !== undefined;
+    const cardia: EgdFindings = { ...(tear ? { tear: { bleeding, size } } : {}), ...(varices ? { varices: { bleeding: bleeding && !tear, size } } : {}) };
+    const findings: EgdFindings = ulcer ? { ulcer: { base, size }, ...gastritis } : tear || varices ? cardia : bleeding ? { blood: true, ...gastritis } : gastritis;
+    return { kind: 'egd', seed, findings };
   }
   if (exam === 'exam.ecg') {
     const pulse = known.find(o => o.f === 'vital.tachycardia' && o.value !== undefined)?.value;
@@ -655,7 +688,7 @@ export function makeCaseView(c: CaseInput): VisitView {
   // «нет» — «пневмоторакса нет» скажет основной признак, а «средостение не смещено» уже лишнее
   const visible = (o: Observation) => o.shown || (db.findings[o.f]?.texts.absent?.length ?? 0) > 0;
   const obs = observationsOfCase(p, c.arrived);
-  const treatments = treatmentChoices(obs, c.bedsideEquipment, c.ricu);
+  const treatments = treatmentChoices(obs, c.bedsideEquipment, c.ricu, c.rooms);
   return {
     version: c.version,
     title: `${patientName(p)}, ${T.spikes.patient.years(p.age)}, ${p.sex === 'm' ? T.spikes.patient.male : T.spikes.patient.female}`,

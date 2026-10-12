@@ -20,7 +20,7 @@ export type Figure = 'doctor' | 'nurse' | 'staff' | 'patient' | 'patientYellow' 
 export type Where = { cell: Cell } | { seat: true } | { bench: true };
 
 /** Помещение, где обследование делают с пациентом: анализы — забор в процедурной. */
-export type ExamRoom = 'xray' | 'ecg' | 'lab' | 'ultrasound' | 'ct' | 'mri';
+export type ExamRoom = 'xray' | 'ecg' | 'lab' | 'ultrasound' | 'ct' | 'mri' | 'endoscopy';
 
 /** Что человек делает: карта по этому ведёт его, подпись под картой — рассказывает. */
 export type Doing =
@@ -84,6 +84,8 @@ const STAFF_FIGURE: Record<StaffRole, Figure> = {
   ctDoctor: 'staff',
   mriTech: 'staff',
   mriDoctor: 'staff',
+  endoscopist: 'doctor',
+  endoscopyNurse: 'nurse',
   ricuDoctor: 'doctor',
   ricuNurse: 'nurse',
 };
@@ -100,7 +102,7 @@ function lookOfPatient(p: ShiftPatient): Look {
   return patientFigure(lookOf(fnv1a(`${seed}:portrait`), sex, age), p.triage === 'red' ? 2 : p.triage === 'yellow' ? 1 : 0);
 }
 
-const EXAM_ROOM: Record<string, ExamRoom> = { 'room.xray': 'xray', 'room.ecg': 'ecg', 'room.lab': 'lab', 'room.ultrasound': 'ultrasound', 'room.ct': 'ct', 'room.mri': 'mri' };
+const EXAM_ROOM: Record<string, ExamRoom> = { 'room.xray': 'xray', 'room.ecg': 'ecg', 'room.lab': 'lab', 'room.ultrasound': 'ultrasound', 'room.ct': 'ct', 'room.mri': 'mri', 'room.endoscopy': 'endoscopy' };
 
 /** Где обследование делают с пациентом; анализы — забор в процедурной. Нет помещения — в кабинете. */
 function examCell(layout: ClinicLayout, room: ExamRoom): Cell {
