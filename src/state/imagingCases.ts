@@ -191,6 +191,7 @@ export const ECG_CASES: EcgCase[] = [
   { key: 'ecg-lvh', findings: { lvh: true }, seed: 17, label: e.lvh },
   { key: 'ecg-rv', findings: { rvStrain: true, rate: 110 }, seed: 18, label: e.rv },
   { key: 'ecg-low', findings: { lowVoltage: true, rate: 105 }, seed: 19, label: e.lowVoltage },
+  { key: 'ecg-long-qt', findings: { longQt: true }, seed: 21, label: e.longQt },
 ];
 
 export interface EgdCase {

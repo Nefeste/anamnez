@@ -51,6 +51,11 @@ export interface EcgFindings {
   lowVoltage?: boolean;
   /** перегрузка правого желудочка: S в I, Q и отрицательный T в III, отрицательные T в V1–V3 */
   rvStrain?: boolean;
+  /**
+   * удлинённый QT (spec 2026-10-chapter-4, часть 56в): при гипокальциемии дольше ровный сегмент ST, зубец T обычный — QTc около
+   * 500 мс вместо 400
+   */
+  longQt?: boolean;
 }
 
 export const ECG_HZ = 250;
@@ -341,8 +346,8 @@ export function synthEcg12(f: EcgFindings, seed: number, seconds = 10): EcgTrace
     for (const x of bumps) put(x, b.qrs, alt);
     const j = b.qrs + width;
     const { st, t, injury } = repolarization(b.kind, f);
-    // QT короче при частом ритме (по Базетту)
-    const qt = 0.4 * Math.sqrt(rr) + (width - 0.09);
+    // QT короче при частом ритме (по Базетту); удлинённый — дольше сегмент ST, зубец T тот же
+    const qt = (f.longQt ? 0.5 : 0.4) * Math.sqrt(rr) + (width - 0.09);
     const tPeak = b.qrs + qt - 0.08;
     plateau(st, j + 0.02, tPeak, 0.03);
     plateau(injury.st, j + 0.02, tPeak, 0.03, false);

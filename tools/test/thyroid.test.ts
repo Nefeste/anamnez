@@ -56,7 +56,8 @@ describe('тиреотоксикоз', () => {
     expect(db.findings[TSH_LOW].value?.of).toBe('lab.tsh_high');
     expect(db.exams['exam.ft4'].routineSeen).toEqual([TSH_LOW]);
     for (const id of ['exam.ecg', 'exam.cbc', 'exam.liver_panel']) expect(db.exams[id].routineSeen).toContain(TSH_LOW);
-    expect(db.exams['exam.thyroid_palpation'].checks.map(c => c.f)).toEqual(['sign.goiter']);
+    // с частью 56в — и рубец после операции на шее
+    expect(db.exams['exam.thyroid_palpation'].checks.map(c => c.f)).toEqual(['sign.goiter', 'sign.neck_scar']);
     expect(db.exams['exam.general_exam'].checks.map(c => c.f)).toContain('sign.exophthalmos');
     expect(db.exams['exam.ask_general'].checks.map(c => c.f)).toEqual(expect.arrayContaining(['sym.heat_intolerance', 'sym.appetite_high']));
     expect(db.exams['exam.ask_chronic'].checks.map(c => c.f)).toContain('hx.thyrotoxicosis');

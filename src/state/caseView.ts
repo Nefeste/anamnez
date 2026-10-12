@@ -501,6 +501,8 @@ function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observat
         // перикардит (часть 43д): подъём ST почти везде с депрессией PQ; большой выпот — низкий вольтаж и альтернация
         ...(shown('ecg.pericarditis') ? { pericarditis: true } : {}),
         ...(shown('ecg.low_voltage') ? { lowVoltage: true } : {}),
+        // удлинённый QT (spec 2026-10-chapter-4, часть 56в): при гипокальциемии — длинный ровный ST
+        ...(shown('ecg.qt_long') ? { longQt: true } : {}),
       },
     };
   }
