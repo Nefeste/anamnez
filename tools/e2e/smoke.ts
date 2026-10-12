@@ -1110,7 +1110,10 @@ try {
   // ЭГДС (spec 2026-10-chapter-4, часть 53а-2): слизистая, дно язвы по Форресту, разрыв кардии, кровь без источника
   const egd = await drawn('[data-testid^="egd-"] canvas');
   check(egd.length === 12 && egd.every(Boolean), `П5: поле зрения ЭГДС нарисовано — ${egd.filter(Boolean).length} из 12 (смотреть 06-egd.png)`);
-  for (const id of ['head-ct', 'head-mri', 'us', 'abdomen', 'chest', 'cta-chest', 'egd']) {
+  // МРТ поясничного отдела (spec 2026-10-chapter-4, часть 58а): без грыж, грыжи разного размера, перекрытый канал
+  const spine = await drawn('[data-testid^="spine-"] canvas');
+  check(spine.length === 5 && spine.every(Boolean), `П5: срезы позвоночника на МРТ нарисованы — ${spine.filter(Boolean).length} из 5 (смотреть 06-spine.png)`);
+  for (const id of ['head-ct', 'head-mri', 'us', 'abdomen', 'chest', 'cta-chest', 'egd', 'spine']) {
     await page.getByTestId(id).scrollIntoViewIfNeeded();
     await page.waitForTimeout(300);
     await page.getByTestId(id).screenshot({ path: join(OUT, `06-${id}.png`) });
