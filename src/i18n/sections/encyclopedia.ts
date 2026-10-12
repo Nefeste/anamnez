@@ -413,6 +413,8 @@ export const encyclopedia = {
     'tetany:no': 'без судорог кистей',
     'hypotension:yes': 'при низком давлении',
     'hypotension:no': 'без низкого давления',
+    'exposure:fire': 'при отравлении дымом пожара',
+    'exposure:home': 'при отравлении от печи или мотора',
   } as Record<string, string>,
   /** несколько условий одной фразой (часть 30д): «при» — один раз, последнее — через «и» */
   whenList: (words: string[]) => {
