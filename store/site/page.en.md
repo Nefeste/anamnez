@@ -70,8 +70,9 @@ in Russian.
   and the end-of-day summary tells you what happened to earlier patients.
 - **Campaign.** A young doctor at a village clinic, and then at a district hospital with an
   emergency department, wards and an operating room, where a vascular unit with a CT room and an
-  intensive care ward opens. The first shift is with a mentor; after that come letters and tasks
-  without deadlines.
+  intensive care ward opens, and at a city hospital with a ventilator ICU, an infectious diseases
+  unit, endoscopy and specialist doctors. The first shift is with a mentor; after that come letters
+  and tasks without deadlines.
 - **Your own hospital.** Offices, a lab, X-ray, ultrasound, CT, MRI and endoscopy rooms, an
   emergency department, wards, isolation boxes and an operating room, hiring, the cash desk. Doctors
   you hire see patients on their own, and specialists have their own appointments. Insurance pays
