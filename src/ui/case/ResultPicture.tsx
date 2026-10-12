@@ -1,10 +1,11 @@
 // Снимки, лента, сектор УЗИ и срезы КТ в результатах приёма: рисунок по тому, что показало
-// обследование, — как в спецификации карты пациента (рентген, ЭКГ, УЗИ, КТ и ЭГДС кодом, ADR 0013).
+// обследование, — как в спецификации карты пациента (рентген, ЭКГ, УЗИ, КТ, МРТ и ЭГДС кодом, ADR 0013).
 import { useWindowDimensions, View } from 'react-native';
 import { ChestSlice } from '@/render/ChestSlice';
 import { Ecg12 } from '@/render/Ecg12';
 import { EgdView } from '@/render/EgdView';
 import { HeadSlice } from '@/render/HeadSlice';
+import { SpineSlice } from '@/render/SpineSlice';
 import { type UsImage, UsSector } from '@/render/UsSector';
 import { Xray } from '@/render/Xray';
 import { XrayAbdomen } from '@/render/XrayAbdomen';
@@ -65,6 +66,14 @@ export function ResultPicture({ image }: { image: ResultImage }) {
     return (
       <View testID="result-egd" style={{ borderRadius: 6, overflow: 'hidden', alignSelf: 'center' }}>
         <EgdView width={Math.min(w, 360)} seed={image.seed} findings={image.findings} />
+      </View>
+    );
+  }
+  if (image.kind === 'spine') {
+    // МРТ поясничного отдела (часть 58б) — продольный срез, тот же квадрат, что у срезов головы
+    return (
+      <View testID="result-mri-spine" style={{ borderRadius: 6, overflow: 'hidden', alignSelf: 'center' }}>
+        <SpineSlice width={Math.min(w, 360)} seed={image.seed} findings={image.findings} />
       </View>
     );
   }

@@ -305,7 +305,9 @@ describe('разумный врач', () => {
     const done: Id[] = [];
     let phase: DoctorPhase = {};
     const rng = Rng.seeded(p.seed).fork('doctor');
-    for (let k = 0; k < 40; k++) {
+    // предел шагов — от зацикливания: у больной 7100054 с ложными хрипами врач перебирает почти все обследования поликлиники
+    // (39 шагов до части 58б, 41 — после неё: в расспросе о спине больше вопросов), у остальных — 3–4
+    for (let k = 0; k < 60; k++) {
       const minutes = done.reduce((a, id) => a + examMinutes(db.exams[id]), 0);
       const r = nextStep(db, p, obs, done, phase, { candidates: cands, exams, threshold: 0.9, minGain: 0.02, venue: { ...venue, minutes } });
       phase = r.phase;

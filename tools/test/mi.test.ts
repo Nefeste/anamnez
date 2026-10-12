@@ -110,7 +110,11 @@ describe('часы от начала боли', () => {
       const has = p.truth.findings.some(f => f.f === ONSET);
       const acute = p.truth.findings.some(f => leaders.includes(f.f));
       const isAcs = p.truth.conditions.some(c => c.id === ACS);
-      expect({ seed, has }).toEqual({ seed, has: acute || isAcs });
+      // острая жалоба или ОКС — строка есть; строка есть — острая жалоба или болезнь, у которой она записана: желудочковая
+      // тахикардия бывает без сердцебиения и одышки (spec 2026-10-chapter-3, часть 42б), а начало больной называет всегда
+      const listed = p.truth.conditions.some(c => db.conditions[c.id].findings.some(l => l.f === ONSET));
+      if (acute || isAcs) expect({ seed, has }).toEqual({ seed, has: true });
+      if (has) expect({ seed, why: acute || listed }).toEqual({ seed, why: true });
       if (has && !isAcs) others++;
       // число — в часах от 1, «0 ч» не бывает
       if (has) expect(p.truth.values[ONSET]).toBeGreaterThanOrEqual(1);

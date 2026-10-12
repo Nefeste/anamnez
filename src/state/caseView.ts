@@ -20,6 +20,7 @@ import type { EcgFindings, Wall } from '@/render/ecg/model';
 import type { ChestCtFindings } from '@/render/ct/chestGeometry';
 import type { HeadFindings } from '@/render/ct/geometry';
 import type { EgdFindings } from '@/render/egd/geometry';
+import type { DiscLevel, SpineFindings } from '@/render/mri/spineGeometry';
 import type { BoneFindings, BoneFracture } from '@/render/xray/boneGeometry';
 import { fracturedRibs, type XrayFindings } from '@/render/xray/chestGeometry';
 import { T } from '@/i18n';
@@ -78,7 +79,12 @@ export type ResultImage =
    * ЭГДС (spec 2026-10-chapter-4, часть 53а-2): поле зрения эндоскопа — язва и что в её дне, разрыв кардии, кровь без
    * видимого источника; ничего — обычная слизистая желудка
    */
-  | { kind: 'egd'; seed: number; findings: EgdFindings };
+  | { kind: 'egd'; seed: number; findings: EgdFindings }
+  /**
+   * МРТ поясничного отдела (spec 2026-10-chapter-4, часть 58б): грыжа диска у корешка или перекрытый канал; переполненный
+   * мочевой пузырь у того, кто не может помочиться; ничего — обычный срез
+   */
+  | { kind: 'spine'; seed: number; findings: SpineFindings };
 
 /** Результаты одного обследования. `fresh` — пришли за последнее действие игрока. */
 export interface ResultGroup {
@@ -475,6 +481,18 @@ function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observat
     const cardia: EgdFindings = { ...(tear ? { tear: { bleeding, size } } : {}), ...(varices ? { varices: { bleeding: bleeding && !tear, size } } : {}) };
     const findings: EgdFindings = ulcer ? { ulcer: { base, size }, ...gastritis } : tear || varices ? cardia : bleeding ? { blood: true, ...gastritis } : gastritis;
     return { kind: 'egd', seed, findings };
+  }
+  // МРТ поясничного отдела (часть 58б): грыжа у корешка — купол в канал, перекрытый канал — грыжа во всю его глубину. Уровень —
+  // по корешку, если осмотр его показал: не встаёт на пятку — L5, грыжа L4–L5; на носок или снижен ахиллов рефлекс — S1, грыжа
+  // L5–S1; иначе — по зерну пациента. Пузырь переполнен у того, кто не может помочиться
+  if (exam === 'exam.mri_spine') {
+    const block = shown('img.mri_canal_block') !== undefined;
+    const herniation = shown('img.mri_disc_herniation') !== undefined;
+    const seen = (f: Id) => [...obs, ...known].some(o => o.f === f && o.shown);
+    const level: DiscLevel = seen('sign.heel_walk_weak') ? 'L4-L5' : seen('sign.toe_walk_weak') || seen('sign.ankle_reflex_low') ? 'L5-S1' : patientSeed % 2 === 1 ? 'L4-L5' : 'L5-S1';
+    const size = block ? 0.9 : herniation ? 0.35 + (patientSeed % 4) / 10 : 0;
+    const bladder = seen('sym.urinary_retention') || seen('sign.bladder_distended');
+    return { kind: 'spine', seed, findings: { ...(size > 0 ? { hernia: { level, size } } : {}), ...(bladder ? { bladder: 0.85 } : {}) } };
   }
   if (exam === 'exam.ecg') {
     const pulse = known.find(o => o.f === 'vital.tachycardia' && o.value !== undefined)?.value;

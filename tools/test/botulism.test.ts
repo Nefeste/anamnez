@@ -66,8 +66,9 @@ describe('ботулизм: болезнь и признаки', () => {
   test('расспрос о еде, зрении и глотании — первым при двоении в глазах; птоз и зрачки — на неврологическом осмотре', () => {
     expect(db.exams['exam.ask_food'].routineFor).toContain('sym.diplopia');
     expect(db.exams['exam.ask_food'].checks.map(c => c.f)).toEqual(['hx.home_canned', 'sym.diplopia', 'sym.dry_mouth', 'sym.swallow_trouble', 'sym.choking_liquids']);
-    // с частью 54а за ними — хлопающий тремор печёночной энцефалопатии, с частью 57а — узкие зрачки отравления опиоидами
-    expect(db.exams['exam.neuro_exam'].checks.map(c => c.f).slice(-4)).toEqual(['sign.ptosis', 'sign.mydriasis', 'sign.asterixis', 'sign.miosis']);
+    // с частью 54а за ними — хлопающий тремор печёночной энцефалопатии, с частью 57а — узкие зрачки отравления опиоидами, с частью
+    // 58б — пятки и носки, ахиллов рефлекс, чувствительность на голени и в промежности, сила обеих ног
+    expect(db.exams['exam.neuro_exam'].checks.map(c => c.f).slice(-10)).toEqual(['sign.ptosis', 'sign.mydriasis', 'sign.asterixis', 'sign.miosis', 'sign.heel_walk_weak', 'sign.toe_walk_weak', 'sign.ankle_reflex_low', 'sign.leg_hypoesthesia', 'sign.saddle_anesthesia', 'sign.legs_paresis']);
     expect(db.exams['exam.neuro_exam'].routineFor).toContain('sym.diplopia');
   });
 });
