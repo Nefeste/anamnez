@@ -643,7 +643,8 @@ function planDay(db: ContentDb, s: ShiftState) {
       : teach
         ? typicalPatient(
           db, n => fnv1a(`${s.meta.seed}:${d}:${a.key}${n ? `:${n}` : ''}`), { ...gen, primary: teach.condition, ...(teach.params ? { params: teach.params } : {}) }, TUTORIAL_TRIES, teach.age,
-          p => treatable(db, p),
+          // с заданными жалобами (часть 60б)
+          p => treatable(db, p) && (teach.complaints ?? []).every(f => p.complaints.includes(f)),
         )
         : a.kind === 'ambulance'
           ? ambulancePatient(db, s, d, a.key, departments, varied)
@@ -693,8 +694,9 @@ function spaceTutorial(tutorial: readonly TutorialPatient[], plan: { t: number; 
 
 /**
  * День смены с обучением в главе (spec 2026-10-chapter-3, часть 45б): первый день главы; у главы с
- * помещением обучения (`tutorialRoom`) — первый её день, когда оно работает, — его запоминает ход главы:
- * главе 3 нужен кабинет КТ, без него неврологию не привозят.
+ * помещениями обучения (`tutorialRoom`) — первый её день, когда они работают, — его запоминает ход главы:
+ * главе 3 нужен кабинет КТ, без него неврологию не привозят; главе 4 (spec 2026-10-chapter-4, часть 60б) — эндоскопия и
+ * бокс: без них кровотечение и заразного переводят.
  */
 function tutorialDay(db: ContentDb, s: ShiftState): number | undefined {
   const c = s.campaign;
@@ -702,7 +704,7 @@ function tutorialDay(db: ContentDb, s: ShiftState): number | undefined {
   if (!c || !ch) return undefined;
   if (ch.tutorialRoom && c.tutorialDay === undefined && s.day > c.since) {
     const ctx = hospitalCtx(db, s);
-    if (ctx.plan.rooms.some(r => r.type === ch.tutorialRoom && ctx.working.has(r.id))) c.tutorialDay = s.day;
+    if (ch.tutorialRoom.every(t => ctx.plan.rooms.some(r => r.type === t && ctx.working.has(r.id)))) c.tutorialDay = s.day;
   }
   return tutorialDayOf(ch, c);
 }

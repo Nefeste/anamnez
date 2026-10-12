@@ -349,7 +349,7 @@ describe('первая смена отделения с заведующей (ч
   }
 
   test('первая скорая — в первые двадцать минут, инфаркт нижней стенки в окне; потом пришедший сам — паралич лица; потом скорая — инсульт в окне; каждый — не раньше чем через 40 минут после прежнего (часть 46в)', () => {
-    expect([ch3.tutorialRoom, ch3.tutorialGap, ch3.tutorial.map(t => t.condition)]).toEqual(['room.ct', 40, ['cond.acs', 'cond.bell_palsy', 'cond.stroke_ischemic']]);
+    expect([ch3.tutorialRoom, ch3.tutorialGap, ch3.tutorial.map(t => t.condition)]).toEqual([['room.ct'], 40, ['cond.acs', 'cond.bell_palsy', 'cond.stroke_ischemic']]);
     for (const seed of [81, 82, 83, 84, 85, 86]) {
       const s = firstShift(seed);
       expect(s.campaign!.tutorialDay).toBe(1);

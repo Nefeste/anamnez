@@ -914,10 +914,15 @@ export const chapterSchema = z.strictObject({
       ambulance: z.literal(true).optional(),
       params: z.record(z.string(), z.string()).optional(),
       age: z.tuple([z.number().int().min(0).max(110), z.number().int().min(0).max(110)]).optional(),
+      /** с какими жалобами приходит (часть 60б): из попыток генератора — тот, у кого они есть */
+      complaints: z.array(z.string().regex(/^sym\.[a-z0-9_]+$/)).min(1).optional(),
     }),
   ])).default([]),
-  /** помещение обучения (часть 45б): смена с обучением — первый день главы, когда оно работает */
-  tutorialRoom: roomId.optional(),
+  /**
+   * помещение обучения (часть 45б): смена с обучением — первый день главы, когда оно работает; с частью 60б — или
+   * несколько: первый день, когда работают все
+   */
+  tutorialRoom: z.union([roomId, z.array(roomId).min(1)]).optional(),
   /** промежуток обучения, минут (часть 46в): заданные пациенты — по порядку списка, не разом */
   tutorialGap: z.number().int().min(1).max(240).optional(),
   missions: z.array(missionSchema).min(1),

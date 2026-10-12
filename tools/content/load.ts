@@ -817,7 +817,9 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     contentVersion, hash: '', conditions: {}, findings: {}, exams: {}, risks: {}, treatments: {}, rooms: {}, equipment: {}, roles: {}, presets: {},
     characters: Object.fromEntries(Object.values(characters).sort((a, b) => (a.id < b.id ? -1 : 1)).map(c => [c.id, c])),
     // заданный пациент строкой — пришедший сам с этой болезнью
-    chapters: Object.fromEntries(Object.values(chapters).sort((a, b) => a.order - b.order).map(c => [c.id, { ...c, tutorial: c.tutorial.map(t => (typeof t === 'string' ? { condition: t } : t)) }])),
+    chapters: Object.fromEntries(Object.values(chapters).sort((a, b) => a.order - b.order).map(({ tutorialRoom, ...c }) => [c.id, {
+      ...c, tutorial: c.tutorial.map(t => (typeof t === 'string' ? { condition: t } : t)), ...(tutorialRoom ? { tutorialRoom: [tutorialRoom].flat() } : {}),
+    }])),
     tips: Object.fromEntries(Object.values(tips).sort((a, b) => a.order - b.order).map(t => [t.id, t])),
     achievements: Object.fromEntries(Object.values(achievements).sort((a, b) => a.order - b.order).map(a => [a.id, a])),
     scores: Object.fromEntries(Object.values(scores).sort((a, b) => (a.id < b.id ? -1 : 1)).map(x => [x.id, x])),
@@ -1078,8 +1080,8 @@ function checkCampaign(db: ContentDb, errors: string[]) {
     const preset = db.presets[c.preset];
     const departments = [c.department, ...new Set((preset?.rooms ?? []).flatMap(r => db.rooms[r.type]?.admits ?? []))];
     const emergency = (preset?.rooms ?? []).some(r => db.rooms[r.type]?.emergency);
-    // помещение обучения (часть 45б): из стройки главы или её готовой больницы
-    if (c.tutorialRoom && !c.build.includes(c.tutorialRoom) && !preset?.rooms.some(r => r.type === c.tutorialRoom)) at(`помещение обучения ${c.tutorialRoom} в главе не построить`);
+    // помещения обучения (часть 45б, с частью 60б — несколько): из стройки главы или её готовой больницы
+    for (const t of c.tutorialRoom ?? []) if (!c.build.includes(t) && !preset?.rooms.some(r => r.type === t)) at(`помещение обучения ${t} в главе не построить`);
     // промежуток обучения (часть 46в) — между заданными пациентами: их хотя бы двое
     if (c.tutorialGap !== undefined && c.tutorial.length < 2) at('промежуток обучения, а заданных пациентов меньше двух');
     for (const t of c.tutorial) {
@@ -1089,6 +1091,10 @@ function checkCampaign(db: ContentDb, errors: string[]) {
       if (t.ambulance && !emergency) at(`болезнь обучения ${t.condition}: скорая, а смотровой приёмного в больнице главы нет`);
       for (const [name, value] of Object.entries(t.params ?? {})) {
         if (cond && cond.params?.[name]?.[value] === undefined) at(`болезнь обучения ${t.condition}: параметра ${name} со значением ${value} у болезни нет`);
+      }
+      // жалобы (часть 60б) — из признаков болезни, с текстом жалобы
+      for (const f of t.complaints ?? []) {
+        if (cond && !(cond.findings.some(l => l.f === f) && db.findings[f]?.texts.complaint)) at(`болезнь обучения ${t.condition}: жалобы ${f} у болезни нет`);
       }
       // возраст — внутри возраста болезни
       const age = cond?.age;

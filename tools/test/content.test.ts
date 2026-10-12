@@ -734,9 +734,16 @@ describe('кампания', () => {
     expect(target.some(e => e.includes('chapter.vascular: задание ct: срок target.stroke_mri не найден'))).toBe(true);
   });
 
-  test('помещение обучения (часть 45б) — из стройки главы или её готовой больницы', () => {
+  test('помещение обучения (часть 45б) — из стройки главы или её готовой больницы; с частью 60б — и несколько', () => {
     const room = broken(d => edit(d, 'campaign/chapters/district.yaml', 'tutorial: [cond.arvi,', 'tutorialRoom: room.ct\ntutorial: [cond.arvi,'));
     expect(room.some(e => e.includes('chapter.district: помещение обучения room.ct в главе не построить'))).toBe(true);
+    const two = broken(d => edit(d, 'campaign/chapters/district.yaml', 'tutorial: [cond.arvi,', 'tutorialRoom: [room.lab, room.mri]\ntutorial: [cond.arvi,'));
+    expect([two.some(e => e.includes('помещение обучения room.mri в главе не построить')), two.some(e => e.includes('помещение обучения room.lab'))]).toEqual([true, false]);
+  });
+
+  test('жалобы заданного пациента (часть 60б) — из признаков его болезни, с текстом жалобы', () => {
+    const bad = broken(d => edit(d, 'campaign/chapters/city.yaml', 'complaints: [sym.hematemesis]', 'complaints: [sym.chest_pain_pressing]'));
+    expect(bad.some(e => e.includes('chapter.city: болезнь обучения cond.mallory_weiss: жалобы sym.chest_pain_pressing у болезни нет'))).toBe(true);
   });
 
   test('промежуток обучения (часть 46в) — между заданными пациентами: их хотя бы двое', () => {

@@ -19,6 +19,19 @@ budget: 2500000
 department: dept.therapy
 specialists: true
 build: [room.reception, room.waiting, room.office, room.triage, room.procedure, room.lab, room.ecg, room.xray, room.toilet, room.staff, room.emergency, room.ward, room.or, room.ultrasound, room.ct, room.icu, room.ricu, room.box, room.endoscopy, room.mri]
+# первая смена с заведующей реанимацией (часть 60б) — в первый день главы, когда работают эндоскопический кабинет и бокс:
+# без них кровотечение и заразного переводят. Первая — скорая с септическим шоком при остром пиелонефрите (посевы,
+# антибиотик в первый час, раствор, норэпинефрин, ПИТ); потом пришедший сам со рвотой кровью — разрыв Мэллори–Вейсса,
+# кровотечение продолжается (ЭГДС в первые 2 часа и гемостаз через эндоскоп); потом пришедшая сама — гастроэнтерит с
+# обезвоживанием III степени (бокс, растворы в вену, без антибиотика: II степень по 875_1 лечат дома). Каждый — не раньше
+# чем через 40 минут после предыдущего, как в главе 3. Жалобы заданы: у шока — жар и боль в пояснице (без жара qSOFA не
+# считают, и срока антибиотика в карте не было бы), у разрыва — рвота кровью (срок ЭГДС — по ней)
+tutorialRoom: [room.endoscopy, room.box]
+tutorialGap: 40
+tutorial:
+  - { condition: cond.sepsis, ambulance: true, params: { source: urinary, shock: yes }, complaints: [sym.fever_hx, sym.flank_pain] }
+  - { condition: cond.mallory_weiss, params: { active: yes }, complaints: [sym.hematemesis] }
+  - { condition: cond.gastroenteritis, params: { severity: severe } }
 missions:
   - id: ricu
     main: true
@@ -95,7 +108,7 @@ letters:
         дыхание 22 в минуту и чаще, спутанность. Два признака из трёх у больного с инфекцией — и часы
         пошли: при шоке антибиотик нужен в первый час, без шока — в первые три, а кровь на посев берут
         до него, если это не задержит антибиотик. Срок считается не от прихода, а от того, когда сепсис
-        можно было предположить.
+        можно было предположить. Когда заработают эндоскопия и боксы, первую смену в них проведём вместе.
   - id: team
     from: char.mentor
     when: start

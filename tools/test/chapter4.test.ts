@@ -12,12 +12,13 @@ import { type CampaignView, dayOk, missionProgress, nextChapterOf, startChapter 
 import { presetHospital } from '../../src/engine/hospital/build';
 import { presetStaff, type StaffMember } from '../../src/engine/hospital/staff';
 import { generatePatient } from '../../src/engine/med/generate';
+import { primaryOf, treatable } from '../../src/engine/med/plan';
 import type { Patient } from '../../src/engine/med/types';
 import { apply, current, departmentsOf, hospitalCtx, newCampaign, newSingle } from '../../src/engine/shift/engine';
-import { type ColleagueDay, type DaySummary, SHIFT_SCHEMA_VERSION, type ShiftPatient, type ShiftState } from '../../src/engine/shift/types';
+import { type ColleagueDay, type DaySummary, SHIFT_SCHEMA_VERSION, SHIFT_START, type ShiftPatient, type ShiftState } from '../../src/engine/shift/types';
 import { T } from '../../src/i18n';
 import { memoryStore, saveSlot } from '../../src/state/saves';
-import { campaignView, forgetShift, loadShift, moveToNextChapter, setStore, singleVenues } from '../../src/state/session';
+import { callPatient, campaignView, examine, forgetShift, loadShift, moveToNextChapter, seenTip, setStore, singleVenues, sortAmbulance, tipView } from '../../src/state/session';
 
 const ch3 = db.chapters['chapter.vascular'];
 const ch4 = db.chapters['chapter.city'];
@@ -395,5 +396,96 @@ describe('глава 4 между сменами', () => {
     await loadShift('campaign', 2);
     const c = campaignView()!;
     expect([c.after, c.next]).toEqual([T.campaign.completeLast, undefined]);
+  });
+});
+
+describe('первая смена с заведующей реанимацией (часть 60б)', () => {
+  const byArrival = (s: ShiftState) => Object.values(s.patients).sort((a, b) => a.arriveT - b.arriveT || (a.id < b.id ? -1 : 1));
+  /** Глава 4 с начала, больница — вся: эндоскопия и бокс работают; открыт первый день; подсказки прежних глав показаны. */
+  function firstShift(seed: number): ShiftState {
+    const s = builtCity(seed);
+    s.campaign!.tips = { shown: Object.values(db.tips).filter(t => t.chapter !== ch4.id).map(t => t.id) };
+    apply(db, s, { kind: 'nextDay' });
+    return s;
+  }
+  /** Построить на местах готовой больницы помещение этого вида, что строят заданием, — с аппаратами и людьми. */
+  function open(s: ShiftState, type: Id) {
+    const r = city.rooms.find(x => x.later && x.type === type)!;
+    apply(db, s, { kind: 'build', cmd: { kind: 'room', type: r.type, size: r.size, x: r.x, y: r.y, rot: r.rot } });
+    const room = s.hospital!.rooms[s.hospital!.rooms.length - 1];
+    expect(room.type).toBe(type);
+    for (const eq of r.equipment) apply(db, s, { kind: 'build', cmd: { kind: 'buy', room: room.id, equipment: eq } });
+    apply(db, s, { kind: 'buildEnd' });
+    s.staff = [...s.staff!, ...db.rooms[type].staff.map((role, i): StaffMember => ({ id: `t${room.id}-${i}`, role, sex: 'f', seed: i + 1, skill: 3, salary: 3000, room: room.id, days: 0 }))];
+  }
+
+  test('первая скорая — в первые двадцать минут, септический шок при пиелонефрите; потом пришедший сам — разрыв Мэллори–Вейсса, кровит; потом пришедшая сама — тяжёлое обезвоживание; каждый — не раньше чем через 40 минут после прежнего', () => {
+    expect([ch4.tutorialRoom, ch4.tutorialGap, ch4.tutorial.map(t => t.condition)]).toEqual([['room.endoscopy', 'room.box'], 40, ['cond.sepsis', 'cond.mallory_weiss', 'cond.gastroenteritis']]);
+    for (const seed of [131, 132, 133, 134]) {
+      const s = firstShift(seed);
+      expect(s.campaign!.tutorialDay).toBe(1);
+      const ps = byArrival(s);
+      const sepsis = ps.filter(p => p.kind === 'ambulance')[0];
+      const tear = ps.find(p => p.kind !== 'ambulance' && primaryOf(p.patient).id === 'cond.mallory_weiss')!;
+      const dry = ps.find(p => p.kind !== 'ambulance' && primaryOf(p.patient).id === 'cond.gastroenteritis' && primaryOf(p.patient).params.severity === 'severe')!;
+      expect(sepsis.arriveT - SHIFT_START).toBeLessThanOrEqual(20 * 60);
+      expect(tear.arriveT - sepsis.arriveT).toBeGreaterThanOrEqual(40 * 60);
+      expect(dry.arriveT - tear.arriveT).toBeGreaterThanOrEqual(40 * 60);
+      expect([tear.to, dry.to]).toEqual([undefined, undefined]);
+      expect(primaryOf(sepsis.patient)).toMatchObject({ id: 'cond.sepsis', params: { source: 'urinary', shock: 'yes' } });
+      expect(primaryOf(tear.patient)).toMatchObject({ id: 'cond.mallory_weiss', params: { active: 'yes' } });
+      // жалобы заданы: без жара qSOFA не считают — срока антибиотика не было бы; срок ЭГДС — по рвоте кровью
+      expect(sepsis.patient.complaints).toEqual(expect.arrayContaining(['sym.fever_hx', 'sym.flank_pain']));
+      expect(tear.patient.complaints).toContain('sym.hematemesis');
+      expect([sepsis, tear, dry].map(p => treatable(db, p.patient))).toEqual([true, true, true]);
+    }
+  });
+
+  test('после перехода — без эндоскопии и бокса обычные дни, с одной эндоскопией — тоже; первая смена с заведующей — в первый день, когда работают оба', () => {
+    const s = doneChapter3(135);
+    apply(db, s, { kind: 'nextChapter' });
+    apply(db, s, { kind: 'nextDay' });
+    expect(s.campaign!.tutorialDay).toBeUndefined();
+    apply(db, s, { kind: 'closeDay' });
+    open(s, 'room.endoscopy');
+    apply(db, s, { kind: 'nextDay' });
+    expect(s.campaign!.tutorialDay).toBeUndefined();
+    apply(db, s, { kind: 'closeDay' });
+    open(s, 'room.box');
+    apply(db, s, { kind: 'nextDay' });
+    expect(s.campaign!.tutorialDay).toBe(s.day);
+    const today = byArrival(s).filter(p => p.id.startsWith(`${s.day}-`));
+    expect(primaryOf(today.filter(p => p.kind === 'ambulance')[0].patient)).toMatchObject({ id: 'cond.sepsis', params: { shock: 'yes' } });
+    expect(today.some(p => primaryOf(p.patient).id === 'cond.mallory_weiss')).toBe(true);
+    // назавтра — как обычно
+    apply(db, s, { kind: 'closeDay' });
+    apply(db, s, { kind: 'nextDay' });
+    expect(s.campaign!.tutorialDay).toBe(s.day - 1);
+  });
+
+  test('подсказки заведующей — только в главе 4 и только в первую смену с ней', async () => {
+    const scoped = Object.values(db.tips).filter(t => t.chapter === ch4.id);
+    expect(scoped.map(t => [t.id, t.from, t.when])).toEqual([
+      ['tip.sepsis', 'char.icu_head', { condition: 'cond.sepsis' }],
+      ['tip.mallory', 'char.icu_head', { condition: 'cond.mallory_weiss' }],
+      ['tip.dehydration', 'char.icu_head', { condition: 'cond.gastroenteritis' }],
+    ]);
+    const s = firstShift(136);
+    const waiting = () => Object.values(s.patients).find(p => p.kind === 'ambulance' && p.status === 'waiting' && !p.sorted);
+    for (let i = 0; i < 40 && !waiting(); i++) apply(db, s, { kind: 'advance', seconds: 60 });
+    const amb = waiting()!;
+    expect(primaryOf(amb.patient).id).toBe('cond.sepsis');
+    const store = memoryStore();
+    setStore(store);
+    forgetShift();
+    await saveSlot(store, 'campaign-1', s, SHIFT_SCHEMA_VERSION, 'x');
+    await loadShift('campaign', 1);
+    sortAmbulance(amb.id, 'red');
+    expect(callPatient(amb.id)).toBe(true);
+    expect(tipView('card')).toBeUndefined();
+    examine('exam.ask_complaints');
+    expect([tipView('card')?.id, tipView('card')?.from]).toEqual(['tip.sepsis', db.characters['char.icu_head'].short.ru]);
+    seenTip('tip.sepsis', 'card');
+    expect(tipView('card')).toBeUndefined();
   });
 });
