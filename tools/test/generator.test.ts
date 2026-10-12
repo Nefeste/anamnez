@@ -111,11 +111,18 @@ describe('случай согласован', () => {
 
   test('с чем пришёл, на то и жалуется; без жалоб приходят только с тем, что находят на профосмотре', () => {
     let checkups = 0;
+    let background = 0;
     for (const p of patients) {
       const primary = db.conditions[p.truth.conditions[0].id];
       const cause = (f: string) => p.truth.findings.find(x => x.f === f)?.cause;
       if (primary.checkup) {
-        if (p.complaints.length === 0) checkups++;
+        // своей жалобы нет — пришёл на профосмотр, даже если фоновые симптомы есть (spec 2026-10-chapter-4, часть 61а);
+        // есть жалобы — среди них и своя
+        if (p.complaints.length > 0) expect(p.complaints.some(f => cause(f) === primary.id)).toBe(true);
+        else {
+          checkups++;
+          if (p.truth.findings.some(x => x.cause === 'leak' && db.findings[x.f]?.kind === 'sym' && db.findings[x.f].salience >= 2)) background++;
+        }
         continue;
       }
       // первая жалоба — от болезней пациента, а не фоновая
@@ -123,6 +130,7 @@ describe('случай согласован', () => {
       expect(p.complaints.some(f => cause(f) === primary.id)).toBe(true);
     }
     expect(checkups).toBeGreaterThan(10); // гипертонию и диабет находят и у тех, кто ни на что не жалуется
+    expect(background).toBeGreaterThan(0);
   });
 
   test('беременность — только у женщин 18–44 лет; «впервые выявленное» — только у тех, у кого этого ещё нет', () => {

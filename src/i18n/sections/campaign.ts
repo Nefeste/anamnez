@@ -50,7 +50,8 @@ export const campaign = {
     if (x.lying < min) return `${last} лежали ${x.lying} — нужно не меньше ${min}`;
     if (x.died === 0) return `${last} лежали ${x.lying}, умерших нет`;
     const pct = ((100 * x.died) / x.lying).toFixed(1).replace('.', ',');
-    return `${last} ${pluralRu(x.died, 'умер', 'умерли', 'умерли')} ${x.died} из ${x.lying}\u00a0${pluralRu(x.lying, 'лежавшего', 'лежавших', 'лежавших')} — ${pct}\u00a0%`;
+    const died = pluralRu(x.died, 'умер', 'умерли', 'умерли');
+    return `${last} ${died} ${x.died} из ${x.lying}\u00a0${pluralRu(x.lying, 'лежавшего', 'лежавших', 'лежавших')} — ${pct}\u00a0%`;
   },
   notYet: 'пока нет',
   doneOn: (day: number) => `выполнено, день ${day}`,

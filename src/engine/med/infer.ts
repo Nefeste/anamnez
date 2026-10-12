@@ -22,6 +22,11 @@ export interface InferContext {
   unknowns: Unknowns;
   /** что известно о записи (spec 2026-10-chapter-4, часть 60а): к специалисту записываются с болезнями его профиля */
   prior?: Prior;
+  /**
+   * пришёл без жалоб — на профосмотр (часть 61а): у него то, что находят на профосмотре; болезнь, с которой всегда
+   * приходят с жалобой, исключена
+   */
+  checkup?: boolean;
 }
 
 /** Болезни, которые у этого пациента вероятнее во столько раз, — профиль специалиста, к которому он записан. */
@@ -147,10 +152,10 @@ export function unknownMiss(ctx: InferContext, f: Id, shares: ReadonlyMap<Id, nu
  * Всё, что вывод знает о пациенте: пол, возраст, сезон, что он сказал о себе, и доли того, чего не сказал; у специалиста
  * — ещё и к кому записан (`prior`, часть 60а).
  */
-export function contextOf(db: ContentDb, patient: { sex: Sex; age: number; season: Season }, observations: readonly Observation[], prior?: Prior): InferContext {
+export function contextOf(db: ContentDb, patient: { sex: Sex; age: number; season: Season; complaints?: readonly Id[] }, observations: readonly Observation[], prior?: Prior): InferContext {
   const known = knownFacts(db, observations);
   const base = { sex: patient.sex, age: patient.age, season: patient.season, knownRisks: known.risks, knownConditions: known.conditions };
-  return { ...base, unknowns: unknownsOf(db, observations, base), ...(prior ? { prior } : {}) };
+  return { ...base, unknowns: unknownsOf(db, observations, base), ...(prior ? { prior } : {}), ...(patient.complaints?.length === 0 ? { checkup: true } : {}) };
 }
 
 /**
@@ -265,7 +270,24 @@ export function priorWeight(db: ContentDb, id: Id, ctx: InferContext): number {
   }
   // записан к специалисту (часть 60а) — болезни его профиля вероятнее
   if (ctx.prior?.ids.includes(id)) w *= ctx.prior.x;
+  // пришёл на профосмотр (часть 61а): с этой болезнью без жалобы не приходят (`ensureManifest`)
+  if (ctx.checkup && !c.checkup && complains(db, c)) return 0;
   return w;
+}
+
+const complainsCache = new WeakMap<Condition, boolean>();
+
+/**
+ * Приходят ли с болезнью всегда с жалобой (часть 61а): у неё есть заметный симптом без условий — его генератор даёт
+ * каждому, кто не пришёл с ней на профосмотр (`ensureManifest`).
+ */
+function complains(db: ContentDb, c: Condition): boolean {
+  let x = complainsCache.get(c);
+  if (x === undefined) {
+    x = c.findings.some(l => l.p > 0 && !l.when && !l.stages && db.findings[l.f]?.kind === 'sym' && db.findings[l.f].salience >= 2);
+    complainsCache.set(c, x);
+  }
+  return x;
 }
 
 /** Сочетание значений скрытых параметров болезни: доля и вероятность каждого признака от её связей. */
@@ -310,13 +332,24 @@ function combosOf(c: Condition): Combo[] {
  * от которых зависят признаки, правдоподобие — сумма по сочетаниям их значений (часть 33а): так
  * признаки одного значения считаются вместе, а не порознь.
  */
+/**
+ * Во сколько раз реже болезнь профосмотра, ни одна жалоба от которой не названа (часть 61а): с ней приходят на профосмотр или
+ * со своей жалобой — чужие жалобы при ней бывают, только если её жалобу вытеснили три жалобы сопутствующих.
+ */
+const UNTOLD = 0.01;
+
 export function posterior(db: ContentDb, candidates: readonly Id[], observations: readonly Observation[], ctx: InferContext): Belief[] {
   // не улика (часть 39а): «плохо стало N ч назад» о болезни не говорит — только число для окна
   const grouped = [...byFinding(observations)].filter(([f]) => db.findings[f]?.evidence !== false).map(([f, obs]) => ({ f, e: evidenceOf(db, obs) }));
+  // с чем пришёл (часть 61а): с болезнью профосмотра приходят без жалоб или со своей (`pickComplaints`); пришёл с жалобами, и
+  // ни одна не от неё — она в 100 раз реже: давление, случайно высокое на приёме у человека с изжогой, — не гипертензия.
+  // Тот же довод верен и для остальных болезней (`ensureManifest`), но у них он делал разумного врача увереннее раньше
+  // времени — меньше обследований, и ЭКГ при тахикардии оставалась несделанной; поэтому — только у болезней профосмотра
+  const told = observations.filter(o => o.exam === 'complaint' && o.shown).map(o => o.f);
   const scored = candidates.map(id => {
     const c = db.conditions[id];
     const shares = sharesFor(db, id, ctx);
-    const prior = priorWeight(db, id, ctx);
+    const prior = priorWeight(db, id, ctx) * (told.length > 0 && c.checkup && !c.findings.some(l => l.p > 0 && told.includes(l.f)) ? UNTOLD : 1);
     const combos = combosOf(c);
     if (combos.length === 1) {
       const set = [id, ...(c.requires ?? []), ...ctx.knownConditions];
