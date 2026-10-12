@@ -304,8 +304,9 @@ function nextChapter(db: ContentDb, s: ShiftState) {
     wingChapter(db, s, c, next);
     return;
   }
-  // лежащих в главе 1 нет — палат там не строят; с палатами прежней главы переход подождёт выписки
-  if (Object.values(s.patients).some(p => p.status === 'admitted')) return;
+  // лежащих долечат врачи прежней больницы (spec 2026-10-chapter-4, часть 61б), как вернувшихся: случай закрыт тем, что
+  // было на день переезда, пребывание — «передан». Прежде переход ждал выписки, а в главе 3 палаты пусты не бывают
+  for (const p of inpatientsOf(s)) closeStay(db, s, p, 'handed', daysIn(p.stay!, s.day));
   const preset = db.presets[next.preset];
   const hired = applicantsOf(db, s.meta.seed, s.day, s.nextStaff ?? 1, builtIn(db, next));
   s.meta.department = next.department;
@@ -799,14 +800,8 @@ function settle(db: ContentDb, s: ShiftState) {
   ledger.expenses.salaries = salariesOf(s.staff ?? []);
   ledger.expenses.equipment = upkeep.equipment;
   ledger.expenses.rooms = upkeep.rooms;
-  // лежащие ночуют в палате: койко-день у каждого (часть 26); в ПИТ — дороже (часть 38а), в реанимации — ещё
-  // дороже (spec 2026-10-chapter-4, часть 47); в боксе — свой, с изоляцией (часть 49а)
-  const lying = inpatientsOf(s);
-  const ricu = lying.filter(p => inRicu(db, s, p)).length;
-  const icu = lying.filter(p => inIcu(db, s, p)).length - ricu;
-  const box = lying.filter(p => inBox(db, s, p)).length;
-  ledger.expenses.ward = (lying.length - icu - ricu - box) * db.economy.ward.bedDay + icu * db.economy.icu.bedDay + ricu * db.economy.ricu.bedDay
-    + box * db.economy.box.bedDay;
+  // лежащие ночуют в палате: койко-день у каждого (часть 26), по месту и тому, что с ними делают (`bedDayOf`)
+  ledger.expenses.ward = inpatientsOf(s).reduce((a, p) => a + bedDayOf(db, s, p), 0);
   const before = e.cash + incomeOf(ledger) - expensesOf(ledger);
   ledger.expenses.interest = interestOf(db, before);
   e.cash = before - ledger.expenses.interest;
@@ -1369,6 +1364,18 @@ export function freeBoxBeds(db: ContentDb, s: ShiftState): Bed[] {
 export function inBox(db: ContentDb, s: ShiftState, p: ShiftPatient): boolean {
   const room = p.stay && s.hospital?.rooms.find(r => r.id === p.stay!.room);
   return !!room && !!db.rooms[room.type]?.box;
+}
+
+/**
+ * Койко-день лежащего, ₽: в палате (часть 26); в ПИТ — дороже (часть 38а); в реанимации на ИВЛ — ещё дороже (spec
+ * 2026-10-chapter-4, часть 47): расходники аппарата и наркоз; в реанимации без ИВЛ — как в ПИТ (часть 61б): лежит под
+ * монитором, аппарат стоит; в боксе — свой, с изоляцией (часть 49а).
+ */
+export function bedDayOf(db: ContentDb, s: ShiftState, p: ShiftPatient): number {
+  const e = db.economy;
+  if (inBox(db, s, p)) return e.box.bedDay;
+  if (inRicu(db, s, p)) return p.stay!.plan.treatments.some(tx => db.treatments[tx]?.bedside?.equipment.includes('eq.ventilator')) ? e.ricu.bedDay : e.icu.bedDay;
+  return inIcu(db, s, p) ? e.icu.bedDay : e.ward.bedDay;
 }
 
 /**

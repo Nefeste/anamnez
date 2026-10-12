@@ -1153,10 +1153,11 @@ function buildCampaignView(): CampaignView | undefined {
     ...(complete ? { after: next ? t.completeNext : t.completeLast } : {}),
     ...(next ? {
       next: {
-        // глава с крылом (часть 45а) — та же больница: лежащих ждать не нужно
+        // глава с крылом (часть 45а) — та же больница; при переезде лежащих долечат врачи прежней (spec 2026-10-chapter-4,
+        // часть 61б): выписки ждать не нужно
         title: t.chapter(next.order, next.name.ru), move: next.move?.ru ?? t.moveTo(next.order), place: next.place.ru,
-        text: next.wing ? t.moveWingText(T.common.rub(next.budget)) : t.moveText(ch.place.ru),
-        ready: !s.dayOpen && (!!next.wing || !Object.values(s.patients).some(p => p.status === 'admitted')),
+        text: next.wing ? t.moveWingText(T.common.rub(next.budget)) : t.moveText(ch.place.ru, Object.values(s.patients).filter(p => p.status === 'admitted').length),
+        ready: !s.dayOpen,
       },
     } : {}),
   };

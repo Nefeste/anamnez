@@ -65,7 +65,8 @@ export interface StayResult {
   end: StayEnd;
 }
 
-export type StayEnd = 'discharged' | 'early' | 'transferred' | 'died';
+/** как кончилось пребывание; `handed` — врач перешёл в другую больницу, лежащего долечат там (spec 2026-10-chapter-4, часть 61б) */
+export type StayEnd = 'discharged' | 'early' | 'transferred' | 'died' | 'handed';
 
 /** Сутки в стационаре: день поступления — ноль, следующее утро — первые сутки. */
 export const daysIn = (stay: Stay, day: number) => Math.max(0, day - stay.since);

@@ -14,7 +14,7 @@ import { presetStaff, type StaffMember } from '../../src/engine/hospital/staff';
 import { generatePatient } from '../../src/engine/med/generate';
 import { primaryOf, treatable } from '../../src/engine/med/plan';
 import type { Patient } from '../../src/engine/med/types';
-import { apply, current, departmentsOf, hospitalCtx, newCampaign, newSingle } from '../../src/engine/shift/engine';
+import { apply, current, departmentsOf, hospitalCtx, inpatientsOf, newCampaign, newSingle } from '../../src/engine/shift/engine';
 import { type ColleagueDay, type DaySummary, SHIFT_SCHEMA_VERSION, SHIFT_START, type ShiftPatient, type ShiftState } from '../../src/engine/shift/types';
 import { T } from '../../src/i18n';
 import { memoryStore, saveSlot } from '../../src/state/saves';
@@ -192,10 +192,14 @@ describe('переход в главу 4', () => {
     expect(s.dayOpen).toBe(true);
   });
 
-  test('пока в районной больнице лежат больные — переход ждёт выписки; те же команды — та же глава 4', () => {
+  test('лежащих в районной больнице долечат её врачи (часть 61б): переход сразу, их пребывание — «передан»; те же команды — та же глава 4', () => {
     const s = doneChapter3(102, true);
+    const lying = inpatientsOf(s);
+    expect(lying.length).toBe(1);
     apply(db, s, { kind: 'nextChapter' });
-    expect(s.campaign!.chapter).toBe(ch3.id);
+    expect(s.campaign!.chapter).toBe(ch4.id);
+    for (const p of lying) expect([p.status, p.closed!.stay?.end]).toEqual(['done', 'handed']);
+    expect(inpatientsOf(s)).toEqual([]);
     const run = () => {
       const x = doneChapter3(103);
       apply(db, x, { kind: 'nextChapter' });
@@ -350,12 +354,13 @@ describe('глава 4 между сменами', () => {
     forgetShift();
   });
 
-  test('глава 3 выполнена — «Перейти в городскую больницу»; лежат больные — ждать выписки; после перехода — письма, задания и «Смена»', async () => {
+  test('глава 3 выполнена — «Перейти в городскую больницу»; лежащих долечат врачи районной больницы — лист перехода это говорит; после перехода — письма, задания и «Смена»', async () => {
     const store = memoryStore();
     setStore(store);
     await saveSlot(store, 'campaign-1', doneChapter3(121, true), SHIFT_SCHEMA_VERSION, 'x');
     await loadShift('campaign', 1);
-    expect(campaignView()!.next).toEqual({ title: T.campaign.chapter(4, ch4.name.ru), move: ch4.move!.ru, place: ch4.place.ru, text: T.campaign.moveText(ch3.place.ru), ready: false });
+    expect(campaignView()!.next).toEqual({ title: T.campaign.chapter(4, ch4.name.ru), move: ch4.move!.ru, place: ch4.place.ru, text: T.campaign.moveText(ch3.place.ru, 1), ready: true });
+    expect(campaignView()!.next!.text).toContain('Лежащих в ней — 1 — долечат её врачи.');
     expect((await singleVenues()).find(x => x.venue === city.id)).toMatchObject({ ok: false, hint: T.single.needChapter(4, ch4.name.ru) });
 
     await saveSlot(store, 'campaign-2', doneChapter3(122, false, 2), SHIFT_SCHEMA_VERSION, 'x');
