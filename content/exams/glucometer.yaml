@@ -12,8 +12,10 @@ discomfort: 1
 # С частью 44в — и каждому с судорожным приступом: при эпилептическом статусе на месте оценивают уровень глюкозы,
 # в стационаре — анализ крови с глюкозой (741_1, блок «Оказание медицинской помощи пациенту с эпилептическим
 # статусом»; гипогликемия — среди причин статуса, раздел 1.6.7)
-routineFor: [sym.tremor, sym.hunger, sym.confusion, sym.weakness_one_side, sym.speech_trouble, sym.face_droop, sym.seizure, sym.seizure_ongoing]
-routineSeen: [sign.gcs_low, hx.insulin, hx.sulfonylurea]
+# С частью 57а — и каждому, кого нашли без сознания, и при коме: «исследование уровня глюкозы в крови проводить не позднее 1 ч
+# от момента поступления в стационар при нарушении сознания» (743_2, раздел 2.3, УУР С, УДД 4; критерий качества 10)
+routineFor: [sym.tremor, sym.hunger, sym.confusion, sym.weakness_one_side, sym.speech_trouble, sym.face_droop, sym.seizure, sym.seizure_ongoing, sym.found_unconscious]
+routineSeen: [sign.gcs_low, hx.insulin, hx.sulfonylurea, sign.gcs_coma]
 checks:
   - { f: lab.glucose_high, sens: 90, spec: 93 }
   # гипогликемия — то же измерение (spec 2026-10-chapter-3, часть 41а): перед тромболизисом глюкоза —
@@ -26,4 +28,5 @@ texts:
     ru: "Капля крови из пальца на тест-полоску."
 sources:
   - { kind: guideline, title: "Алгоритмы специализированной медицинской помощи больным сахарным диабетом", org: "Российская ассоциация эндокринологов", note: "черновик: точность глюкометра — игровая оценка" }
+  - { kind: guideline, title: "Острые отравления опиоидными наркотическими веществами", org: "Минздрав РФ", year: 2026, url: "https://cr.minzdrav.gov.ru/view-cr/743_2", note: "ID 743_2, опубликованы 29.01.2026, применяются; сверено с рубрикатором 12.10.2026; раздел 2.3 (УУР С, УДД 4): глюкоза крови не позднее 1 ч от поступления при нарушении сознания; критерий качества 10" }
 review: draft

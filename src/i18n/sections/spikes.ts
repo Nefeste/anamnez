@@ -328,6 +328,7 @@ export const spikes = {
       nerves: 'Голова и спина',
       bones: 'Кости и суставы',
       skin: 'Кожа и раны',
+      poisoning: 'Отравления',
     } as Record<string, string>,
     txGroup: {
       antibiotics: 'Антибиотики',
@@ -346,6 +347,7 @@ export const spikes = {
       drainage: 'Пункции и дренажи',
       wounds: 'Раны и повязки',
       vaccines: 'Прививки и сыворотки',
+      antidotes: 'Антидоты',
       consult: 'Консультации',
       regimen: 'Режим и советы',
     } as Record<string, string>,

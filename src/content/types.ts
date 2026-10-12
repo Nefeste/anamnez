@@ -56,7 +56,8 @@ export interface Link {
 export type Setting = 'home' | 'ward' | 'ambulance' | 'admit' | 'surgery' | 'transfer' | 'icu' | 'ricu' | 'box';
 
 /** Система органов в порядке показа: простуда и ЛОР, лёгкие, сердце, живот, мочевые, обмен, голова и спина, кости и суставы (часть 32). */
-export const SYSTEMS = ['airways', 'lungs', 'heart', 'digestive', 'urinary', 'metabolic', 'nerves', 'bones', 'skin'] as const;
+// с 0.4.5 — отравления (spec 2026-10-chapter-4, часть 57а): опиоиды, угарный газ, метанол и этиленгликоль
+export const SYSTEMS = ['airways', 'lungs', 'heart', 'digestive', 'urinary', 'metabolic', 'nerves', 'bones', 'skin', 'poisoning'] as const;
 export type BodySystem = (typeof SYSTEMS)[number];
 
 /**

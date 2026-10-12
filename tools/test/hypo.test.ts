@@ -81,9 +81,10 @@ describe('каталог', () => {
 
   test('глюкометр — каждому с дрожью, голодом, спутанностью, признаками инсульта и судорогами, при оглушении и на инсулине или сульфонилмочевине; расспрос о лекарствах — при гипогликемии', () => {
     const g = db.exams[GLU];
-    // с частью 44в — и при судорожном приступе и статусе (741_1)
-    expect(g.routineFor).toEqual(['sym.tremor', 'sym.hunger', CONFUSED, 'sym.weakness_one_side', SPEECH, 'sym.face_droop', 'sym.seizure', 'sym.seizure_ongoing']);
-    expect(g.routineSeen).toEqual([GCS, INSULIN, SU]);
+    // с частью 44в — и при судорожном приступе и статусе (741_1); с частью 57а — кого нашли без сознания и при коме: глюкоза в
+    // первый час при нарушении сознания (743_2, раздел 2.3)
+    expect(g.routineFor).toEqual(['sym.tremor', 'sym.hunger', CONFUSED, 'sym.weakness_one_side', SPEECH, 'sym.face_droop', 'sym.seizure', 'sym.seizure_ongoing', 'sym.found_unconscious']);
+    expect(g.routineSeen).toEqual([GCS, INSULIN, SU, 'sign.gcs_coma']);
     expect(g.checks.filter(k => k.f === LOW).map(k => [k.sens, k.spec])).toEqual([[9300, 10000]]);
     const m = db.exams[MEDS];
     expect(m.routineSeen).toEqual([LOW]);

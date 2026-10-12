@@ -186,8 +186,9 @@ describe('обследования ран', () => {
     expect(['exam.wound_exam', 'exam.ask_tetanus', 'exam.hand_function', 'exam.ask_head_injury'].map(id => fits(id, flu))).toEqual([false, false, false, false]);
     // с частью 44в — и при судорожном приступе (741_1, раздел 2.2); с частью 50а — при сильной распирающей головной боли
     // (1020_1, раздел 2.1); с частью 51б — когда голова не держится (567_2, раздел 2.2); с частью 51в — при двоении в глазах (911_1,
-    // критерий качества 2); с частью 54а — когда днём сонлив и путает дни: стадия энцефалопатии (715_2, раздел 1.5, табл. 2)
-    expect(db.exams['exam.neuro_exam'].routineFor).toEqual(['sym.head_injury', 'sym.head_wound', 'sym.seizure', 'sym.headache_severe', 'sym.neck_weakness', 'sym.diplopia', 'sym.daytime_sleepiness']);
+    // критерий качества 2); с частью 54а — когда днём сонлив и путает дни: стадия энцефалопатии (715_2, раздел 1.5, табл. 2); с
+    // частью 57а — кого нашли без сознания: шкала Глазго и зрачки (743_2, раздел 2.2)
+    expect(db.exams['exam.neuro_exam'].routineFor).toEqual(['sym.head_injury', 'sym.head_wound', 'sym.seizure', 'sym.headache_severe', 'sym.neck_weakness', 'sym.diplopia', 'sym.daytime_sleepiness', 'sym.found_unconscious']);
   });
 
   test('обязательные при жалобе: рана головы — расспрос о травме головы, неврологический осмотр и осмотр раны первыми; у больного гриппом их нет', () => {
