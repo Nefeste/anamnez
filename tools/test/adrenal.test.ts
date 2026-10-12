@@ -61,8 +61,8 @@ describe('надпочечниковый криз', () => {
   test('натрий и калий — один анализ, каждому с известной болезнью Аддисона; о ней — в расспросе о хронических болезнях, кожа — на общем осмотре', () => {
     expect(db.exams[LYTES]).toMatchObject({ kind: 'lab', room: 'room.lab', routineSeen: [HX] });
     expect(db.exams[LYTES].checks.map(c => c.f)).toEqual([NA, K]);
-    expect(db.exams['exam.ask_chronic'].checks.at(-1)?.f).toBe(HX);
-    expect(db.exams['exam.general_exam'].checks.at(-1)?.f).toBe('sign.hyperpigmentation');
+    expect(db.exams['exam.ask_chronic'].checks.map(c => c.f)).toContain(HX);
+    expect(db.exams['exam.general_exam'].checks.map(c => c.f)).toContain('sign.hyperpigmentation');
     // ответ — через час: дольше срока раствора, ждать его нельзя
     expect(examMinutes(db.exams[LYTES])).toBeGreaterThan(60);
   });

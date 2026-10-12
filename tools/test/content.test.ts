@@ -172,9 +172,9 @@ describe('каталог больницы', () => {
     expect(db.rooms['room.procedure'].collects).toContain('exam.cbc');
     expect(db.rooms['room.lab'].equipment).toContain('eq.biochem_analyzer');
     // NT-proBNP (часть 43в) — тоже на иммунохимическом; с частью 49б — антиген и токсины C. difficile в кале, с частью 51 —
-    // антитела к боррелиям и к вирусу клещевого энцефалита, с частью 53б — антиген H. pylori в кале
+    // антитела к боррелиям и к вирусу клещевого энцефалита, с частью 53б — антиген H. pylori в кале, с частью 56б — свободный Т4
     expect(db.equipment['eq.immuno_analyzer'].exams).toEqual([
-      'exam.borrelia_elisa', 'exam.cdiff_stool', 'exam.d_dimer', 'exam.hantavirus_elisa', 'exam.hepatitis_markers', 'exam.hp_stool', 'exam.nt_probnp', 'exam.tbe_elisa', 'exam.troponin_hs', 'exam.tsh',
+      'exam.borrelia_elisa', 'exam.cdiff_stool', 'exam.d_dimer', 'exam.ft4', 'exam.hantavirus_elisa', 'exam.hepatitis_markers', 'exam.hp_stool', 'exam.nt_probnp', 'exam.tbe_elisa', 'exam.troponin_hs', 'exam.tsh',
     ]);
     expect(db.equipment['eq.xray_digital'].upgradeOf).toBe('eq.xray_analog');
     expect(db.roles['role.nurse'].rooms).toEqual(['room.box', 'room.ecg', 'room.emergency', 'room.endoscopy', 'room.icu', 'room.procedure', 'room.ricu', 'room.triage', 'room.ward']);
@@ -457,6 +457,8 @@ describe('каталог больницы', () => {
       edit(d, 'exams/tbe_elisa.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.biochem_analyzer]');
       edit(d, 'exams/hepatitis_markers.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.biochem_analyzer]');
       edit(d, 'exams/hantavirus_elisa.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.biochem_analyzer]');
+      // свободный Т4 (часть 56б) — тоже
+      edit(d, 'exams/ft4.yaml', 'equipment: [eq.immuno_analyzer]', 'equipment: [eq.biochem_analyzer]');
     });
     expect(foreign.some(e => e.includes('exam.tsh: аппарат eq.ecg стоит в room.ecg'))).toBe(true);
     // и тогда иммунохимическим анализатором ничего не делают

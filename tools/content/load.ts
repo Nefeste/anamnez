@@ -942,6 +942,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (t.bedside) out.bedside = t.bedside;
     if (t.place) out.place = t.place;
     if (t.room) out.room = t.room;
+    if (t.confirmFirst) out.confirmFirst = true;
     if (t.companions) out.companions = t.companions;
     if (t.companionsFor) out.companionsFor = t.companionsFor;
     if (t.companionsIf) out.companionsIf = t.companionsIf;

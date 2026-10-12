@@ -25,7 +25,9 @@ routineFor: [sym.palpitations, sym.syncope, sym.orthopnea, sym.pericardial_pain,
 # С частью 43д — и шум трения перикарда (746_2, раздел 2.4)
 # С частью 44в — и судорожный приступ: обморок с судорогами клинически может не отличаться от эпилептического
 # приступа (741_1, раздел 1.6.6), в стационарном отделении скорой помощи — ЭКГ (там же, блок об эпилептическом статусе)
-routineSeen: [sign.pulse_irregular, vital.tachycardia_150, vital.bradycardia, sign.crackles_bilateral, sign.crackles_diffuse, vital.bp_very_high, sign.pericardial_rub]
+# С частью 56б (spec 2026-10-chapter-4) — и ТТГ ниже 0,1: ЭКГ в покое «лицам с диагностированным тиреотоксикозом для скрининга
+# сердечно-сосудистой патологии» (270_2, раздел 2.5, УУР C, УДД 5; критерий качества 8)
+routineSeen: [sign.pulse_irregular, vital.tachycardia_150, vital.bradycardia, sign.crackles_bilateral, sign.crackles_diffuse, vital.bp_very_high, sign.pericardial_rub, lab.tsh_low]
 checks:
   - { f: ecg.st_elevation, sens: 92, spec: 99 }
   - { f: ecg.st_depression, sens: 85, spec: 95 }
@@ -54,4 +56,5 @@ texts:
 sources:
   - { kind: guideline, title: "2023 ESC Guidelines for the management of acute coronary syndromes. Eur Heart J 2023;44(38):3720–3826", note: "черновик: точность — игровая оценка" }
   - { kind: guideline, title: "Острый инфаркт миокарда с подъемом сегмента ST электрокардиограммы", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/157_5", note: "ID 157_5, опубликованы 25.11.2024, применяются; сверено с рубрикатором 03.10.2026; раздел 2.4 (ЕОК IB, УУР С, УДД 5): ЭКГ регистрируют в течение 10 минут от первичного медицинского контакта на месте этого контакта и интерпретирует её квалифицированный специалист; время на месте ЭКГ у постели и без описания — игровая оценка" }
+  - { kind: guideline, title: "Тиреотоксикоз с диффузным зобом (болезнь Грейвса), узловым/многоузловым зобом", org: "Минздрав РФ", year: 2025, url: "https://cr.minzdrav.gov.ru/view-cr/270_2", note: "ID 270_2, опубликованы 20.06.2025, применяются; сверено с рубрикатором 12.10.2026; раздел 2.5 (УУР C, УДД 5): ЭКГ в покое лицам с диагностированным тиреотоксикозом для скрининга сердечно-сосудистой патологии; критерий качества 8" }
 review: draft
