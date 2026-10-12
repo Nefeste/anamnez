@@ -62,7 +62,7 @@ export default function StaffScreen() {
           <>
             <H>{t.assignTitle(person.name)}</H>
             <P muted>{hint(person)}</P>
-            {v.posts.filter(x => x.role === person.role).map(x => {
+            {v.posts.filter(x => x.roles.includes(person.role)).map(x => {
               const holder = v.staff.find(m => m.id === x.who);
               const here = x.who === person.id;
               return (
@@ -70,7 +70,7 @@ export default function StaffScreen() {
                   hint={holder ? (here ? t.here : t.replaces(holder.name)) : t.postFree} onPress={() => { assign(person.id, x.room); close(); }} />
               );
             })}
-            {v.posts.every(x => x.role !== person.role) && <P muted>{t.noPosts}</P>}
+            {v.posts.every(x => !x.roles.includes(person.role)) && <P muted>{t.noPosts}</P>}
             <Button testID="assign-reserve" kind="plain" title={t.toReserve} onPress={() => { assign(person.id); close(); }} />
             <Button testID="staff-fire" kind="plain" title={t.fire} onPress={() => setFiring(true)} />
           </>

@@ -73,7 +73,7 @@ function turnAt(m: number[], turns: number[], i: number, clock: number): number 
   return turns[off + Math.min(last, Math.floor(s))] ?? 0;
 }
 
-export function ClinicMap({ layout, people, signs = [], width, active, label, selected, awaiting, onSelect, onArrive, room, onRoom }: {
+export function ClinicMap({ layout, people, signs = [], width, active, label, selected, awaiting, onSelect, onArrive, room, onRoom, offices }: {
   layout: ClinicLayout;
   people: Placement[];
   /** что показывает помещение из смены: анализы лаборатории, очередь, «нет персонала»; лампы и свет у аппаратов карта считает сама */
@@ -92,6 +92,8 @@ export function ClinicMap({ layout, people, signs = [], width, active, label, se
   room?: string;
   /** коснулись помещения мимо людей; нет — касание помещений не нужно (практика) */
   onRoom?: (id: string | undefined) => void;
+  /** названия кабинетов специалистов (spec 2026-10-chapter-4, часть 59); остальные кабинеты врачей — «Кабинет терапевта» */
+  offices?: Record<string, string>;
 }) {
   const t = useTheme();
   const scale = width / (layout.grid.w * CELL_PX);
@@ -259,7 +261,7 @@ export function ClinicMap({ layout, people, signs = [], width, active, label, se
       </GestureDetector>
       <View pointerEvents="none" style={StyleSheet.absoluteFill}>
         {layout.rooms.map(r => {
-          const name = r.type === 'office' && layout.mine && r.id !== layout.mine ? T.shift.map.rooms.colleagueOffice : T.shift.map.rooms[r.type];
+          const name = r.type === 'office' && layout.mine && r.id !== layout.mine ? (offices?.[r.id] ?? T.shift.map.rooms.colleagueOffice) : T.shift.map.rooms[r.type];
           const at = roomLabel(name ?? '', r, cell, doorOnTop(r, [r.door]));
           return (
             <Text key={r.id} numberOfLines={at.lines} allowFontScaling={false} style={[styles.room, { left: at.left, top: at.top, maxWidth: at.width, fontSize: at.fontSize, lineHeight: at.fontSize * 1.2 }]}>

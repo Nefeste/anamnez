@@ -1124,7 +1124,10 @@
     "roles": [
       "role.anesthetist",
       "role.doctor",
+      "role.endocrinologist",
       "role.endoscopist",
+      "role.gastroenterologist",
+      "role.infectionist",
       "role.lab_tech",
       "role.nurse",
       "role.or_nurse",

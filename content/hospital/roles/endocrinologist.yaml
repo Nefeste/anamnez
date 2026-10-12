@@ -1,0 +1,11 @@
+id: role.endocrinologist
+name: { ru: "Эндокринолог" }
+gen: { ru: "эндокринолога" }
+dat: { ru: "эндокринологу" }
+# нанятый врач со специальностью (spec 2026-10-chapter-4, часть 59), как гастроэнтеролог
+salary: [4000, 7000]
+stands: role.doctor
+needs: room.staff
+profile: [cond.hypothyroidism, cond.thyrotoxicosis, cond.thyroid_storm, cond.diabetes2_new, cond.hypoglycemia, cond.adrenal_crisis, cond.hypocalcemia_acute]
+texts:
+  hint: { ru: "Нанятый врач со специальностью: у его кабинета своя запись — к нему записываются с болезнями щитовидной железы, сахарным диабетом, надпочечниками. Принимает только своих, ведёт приём сам, как терапевт. Нужно место в ординаторской." }

@@ -221,12 +221,13 @@ export function newSingle(
  * строит, — терапевты придут с главой, где откроется ординаторская (spec 2026-09-hired-doctors);
  * и только тех, кто работает в помещении, которое глава строит или которое уже стоит в её больнице:
  * хирург и анестезиолог — с главой, где есть операционная (spec 2026-09-chapter-2, часть 28).
+ * Специалистов в главах 1–3 нет: они придут с главой 4 (spec 2026-10-chapter-4, части 59 и 60).
  */
 function builtIn(db: ContentDb, build: readonly Id[], preset?: Id): (role: Id) => boolean {
   const here = new Set([...build, ...(preset ? (db.presets[preset]?.rooms.map(r => r.type) ?? []) : [])]);
   return role => {
     const r = db.roles[role];
-    if (!r || (r.needs && !build.includes(r.needs))) return false;
+    if (!r || r.profile || (r.needs && !build.includes(r.needs))) return false;
     return r.rooms.some(id => here.has(id));
   };
 }
@@ -489,16 +490,18 @@ function hiring(db: ContentDb, s: ShiftState, cmd: Extract<Command, { kind: 'hir
     s.staff = s.staff.filter(x => x.id !== cmd.id);
     return;
   }
+  // встающий на чужое место (терапевт, специалист) — на место врача, но в вашем кабинете врач — вы
+  const postOf = (x: StaffMember) => db.roles[x.role]?.stands ?? x.role;
+  const post = postOf(m);
   if (cmd.room !== undefined) {
     const room = s.hospital.rooms.find(r => r.id === cmd.room);
-    // встающий на чужое место (терапевт) — на место врача, но в вашем кабинете врач — вы
-    const post = db.roles[m.role]?.stands ?? m.role;
     if (!room || !db.rooms[room.type].staff.includes(post)) return;
     if (post === DOCTOR && room.id === doctorRoom(hospitalCtx(db, s).plan)) return;
   }
   s.staff = s.staff.map(x => {
     if (x.id === m.id) return cmd.room === undefined ? { ...x, room: undefined } : { ...x, room: cmd.room };
-    if (cmd.room !== undefined && x.room === cmd.room && x.role === m.role) return { ...x, room: undefined };
+    // место одно: специалист сменяет терапевта в кабинете, как терапевт — терапевта (часть 59)
+    if (cmd.room !== undefined && x.room === cmd.room && postOf(x) === post) return { ...x, room: undefined };
     return x;
   });
 }
@@ -550,17 +553,23 @@ function planDay(db: ContentDb, s: ShiftState) {
   const r = branch(s, `day:${d}`);
   // песочница: с репутацией записываются и приходят чаще или реже (spec 2026-09-own-hospital)
   const flow = s.economy ? flowOf(db, s.economy.reputation ?? db.economy.reputation.start) : 100;
-  const plan: { t: number; kind: VisitKind; key: string; ret?: PlannedReturn }[] = [];
+  const plan: { t: number; kind: VisitKind; key: string; ret?: PlannedReturn; to?: string; only?: readonly Id[] }[] = [];
+  // какие отделения больница принимает сегодня (часть 30): с работающей смотровой приёмного — и хирургию
+  const admits = departmentsOf(db, s);
   // запись: у вашего кабинета и у каждого нанятого врача — своя (spec 2026-09-hired-doctors);
-  // ветви вашей записи — прежние, поэтому без врачей день тот же
-  const desks = colleaguesOf(db, s).length;
-  for (let k = 0; k <= desks; k++) {
+  // ветви вашей записи — прежние, поэтому без врачей день тот же. К специалисту (spec 2026-10-chapter-4,
+  // часть 59) записываются с болезнями его профиля, которых больница принимает: нет таких — записи к нему нет
+  const desks = colleaguesOf(db, s);
+  for (let k = 0; k <= desks.length; k++) {
+    const m = k === 0 ? undefined : desks[k - 1];
+    const only = m ? profileHere(db, m, admits) : undefined;
+    if (only?.length === 0) continue;
     for (let slot = 0; slot < SLOTS; slot++) {
       const key = k === 0 ? `slot:${slot}` : `desk:${k}:slot:${slot}`;
       const sr = r.fork(key);
       if (!sr.chance(Math.min(10000, Math.round((SLOT_BOOKED * flow) / 100)))) continue;
       const late = sr.range(-5, 10);
-      plan.push({ t: base + SHIFT_START + Math.max(0, slot * SLOT_MIN + late) * MIN, kind: 'appointment', key });
+      plan.push({ t: base + SHIFT_START + Math.max(0, slot * SLOT_MIN + late) * MIN, kind: 'appointment', key, ...(m && only ? { to: m.id, only } : {}) });
     }
   }
   const wr = r.fork('walk-ins');
@@ -572,7 +581,6 @@ function planDay(db: ContentDb, s: ShiftState) {
   }
   // вернулся с другой болезнью (часть 41б): инсульт после ТИА привозит скорая — туда, где его
   // принимают; больница его не принимает — человека увезли в другую
-  const admits = departmentsOf(db, s);
   for (const ret of s.returns.filter(x => x.day === d)) {
     const as = ret.as ? db.conditions[ret.as] : undefined;
     if (as && !admits.includes(as.department)) continue;
@@ -600,16 +608,16 @@ function planDay(db: ContentDb, s: ShiftState) {
   const gap = s.campaign ? chapterOf(db, s.campaign)?.tutorialGap : undefined;
   const spaced = tutorial.length > 0 && gap !== undefined ? spaceTutorial(tutorial, plan, gap * MIN, base + SHIFT_END - 30 * MIN) : undefined;
   plan.sort((a, b) => a.t - b.t || (a.key < b.key ? -1 : 1));
-  // заданного пациента получает первый пришедший того же вида: скорая — скорая (часть 34б)
+  // заданного пациента получает первый пришедший того же вида: скорая — скорая (часть 34б); записанный к
+  // специалисту — не он: заданный — для вас
   const taught = new Set<number>();
-  // какие отделения больница принимает сегодня (часть 30): с работающей смотровой приёмного — и хирургию
-  const departments = departmentsOf(db, s);
+  const departments = admits;
   // «Больные: разнообразие» (spec 2026-10-variety) — кроме кампании: на частоты жизни настроены главы
   const varied = s.meta.variety === true && s.meta.mode !== 'campaign';
   plan.forEach((a, i) => {
     const id = `${d}-${String(i + 1).padStart(2, '0')}`;
     const gen = { department: s.meta.department, departments, season: s.meta.season, ...(varied ? { variety: true } : {}) };
-    const k = spaced ? (spaced.get(a) ?? -1) : a.ret ? -1 : tutorial.findIndex((x, j) => !taught.has(j) && !!x.ambulance === (a.kind === 'ambulance'));
+    const k = spaced ? (spaced.get(a) ?? -1) : a.ret || a.to ? -1 : tutorial.findIndex((x, j) => !taught.has(j) && !!x.ambulance === (a.kind === 'ambulance'));
     const teach = k >= 0 ? tutorial[k] : undefined;
     if (teach) taught.add(k);
     const patient = a.ret
@@ -621,14 +629,15 @@ function planDay(db: ContentDb, s: ShiftState) {
         )
         : a.kind === 'ambulance'
           ? ambulancePatient(db, s, d, a.key, departments, varied)
-          // пришёл сам (часть 41а): инсульта у него нет — его привозит скорая
-          : generatePatient(db, fnv1a(`${s.meta.seed}:${d}:${a.key}`), { ...gen, walkIn: true });
+          // пришёл сам (часть 41а): инсульта у него нет — его привозит скорая; к специалисту — с болезнью профиля (часть 59)
+          : generatePatient(db, fnv1a(`${s.meta.seed}:${d}:${a.key}`), { ...gen, walkIn: true, ...(a.only ? { only: a.only } : {}) });
     // вернувшийся — и с теми отделениями, с какими его приняли в первый раз
     const own = a.ret ? [...new Set([...(s.patients[a.ret.of]?.departments ?? []), ...departments])] : departments;
     s.patients[id] = {
       id, patient, arriveT: a.t, kind: a.kind, triage: 'green', status: 'coming', queuedT: 0, wait: 0, patience: 0,
       results: [], pending: [], done: [], step: 0, spent: { seconds: 0, money: 0 }, draft: { treatments: [], setting: 'home' },
       ...(a.ret ? { returnOf: a.ret.of, returnReason: a.ret.reason } : {}),
+      ...(a.to ? { to: a.to } : {}),
       // выписали из палаты недолеченным — вернулся хуже: новый случай стационара не оплатят (часть 35)
       ...(a.ret && s.patients[a.ret.of]?.closed?.stay?.end === 'early' ? { afterEarly: true as const } : {}),
       ...(own.length > 1 ? { departments: own } : {}),
@@ -647,11 +656,11 @@ function planDay(db: ContentDb, s: ShiftState) {
  * Машины скорой позже не нашлось — приезжает ближайшая к этому сроку из оставшихся, но не позже `last`. Кому из плана
  * дня — какой по списку.
  */
-function spaceTutorial(tutorial: readonly TutorialPatient[], plan: { t: number; kind: VisitKind; key: string; ret?: PlannedReturn }[], gap: number, last: number) {
+function spaceTutorial(tutorial: readonly TutorialPatient[], plan: { t: number; kind: VisitKind; key: string; ret?: PlannedReturn; to?: string }[], gap: number, last: number) {
   const out = new Map<object, number>();
   let after = -Infinity;
   tutorial.forEach((x, j) => {
-    const free = plan.filter(a => !a.ret && !out.has(a) && !!x.ambulance === (a.kind === 'ambulance')).sort((a, b) => a.t - b.t || (a.key < b.key ? -1 : 1));
+    const free = plan.filter(a => !a.ret && !a.to && !out.has(a) && !!x.ambulance === (a.kind === 'ambulance')).sort((a, b) => a.t - b.t || (a.key < b.key ? -1 : 1));
     let a = free.find(e => e.t >= after);
     if (!a && x.ambulance && free.length > 0 && after <= last) {
       a = free[free.length - 1];
@@ -2003,12 +2012,23 @@ function colleaguesOf(db: ContentDb, s: ShiftState): StaffMember[] {
 }
 
 /**
+ * С какими болезнями к специалисту записываются в этой больнице (spec 2026-10-chapter-4, часть 59): его профиль — те,
+ * чьё отделение больница принимает. У терапевта профиля нет.
+ */
+function profileHere(db: ContentDb, m: StaffMember, admits: readonly Id[]): Id[] | undefined {
+  return db.roles[m.role]?.profile?.filter(id => admits.includes(db.conditions[id].department));
+}
+
+/**
  * Кого берёт нанятый врач: нового пациента, которого ещё никто не смотрел, — не «красного» по
  * сортировке, не повторное обращение и не того, кого вы отпустили ждать результатов. Без
- * доврачебного кабинета срочность никто не определил — берёт по очереди прихода.
+ * доврачебного кабинета срочность никто не определил — берёт по очереди прихода. Специалист (часть 59) —
+ * только записанных к нему; терапевт — кроме записанных к специалисту, который сегодня принимает.
  */
-function colleagueTakes(p: ShiftPatient): boolean {
-  return p.status === 'waiting' && p.by === undefined && p.calledT === undefined && p.kind !== 'return' && p.kind !== 'ambulance' && !(p.triaged !== false && p.triage === 'red');
+function colleagueTakes(db: ContentDb, p: ShiftPatient, m: StaffMember, list: readonly StaffMember[]): boolean {
+  if (!(p.status === 'waiting' && p.by === undefined && p.calledT === undefined && p.kind !== 'return' && p.kind !== 'ambulance' && !(p.triaged !== false && p.triage === 'red'))) return false;
+  if (db.roles[m.role]?.profile) return p.to === m.id;
+  return p.to === undefined || !list.some(x => x.id === p.to);
 }
 
 /**
@@ -2021,9 +2041,13 @@ function staffDesks(db: ContentDb, s: ShiftState) {
   const all = Object.values(s.patients);
   const busy = new Set(all.flatMap(p => (p.status === 'inRoom' && p.by ? [p.by] : [])));
   for (const m of list) {
-    if (busy.has(m.id) || (s.desk?.[m.id] ?? 0) > s.t) continue;
+    if ((s.desk?.[m.id] ?? 0) > s.t) continue;
+    if (busy.has(m.id)) {
+      releaseWaiting(db, s, all.find(p => p.status === 'inRoom' && p.by === m.id)!, m, list);
+      continue;
+    }
     const back = all.filter(p => p.status === 'waiting' && p.by === m.id).sort((a, b) => a.queuedT - b.queuedT || (a.id < b.id ? -1 : 1))[0];
-    const id = back?.id ?? s.queue.find(x => colleagueTakes(s.patients[x]));
+    const id = back?.id ?? s.queue.find(x => colleagueTakes(db, s.patients[x], m, list));
     if (!id) continue;
     const p = s.patients[id];
     s.queue = s.queue.filter(x => x !== id);
@@ -2038,6 +2062,24 @@ function staffDesks(db: ContentDb, s: ShiftState) {
     schedule(s, s.t + MIN, { kind: 'colleague', id });
     busy.add(m.id);
   }
+}
+
+/**
+ * Врач ждёт у себя результатов, а пришёл тот, кого он может принять, — отпускает ждать, как отпустил бы, будь тот в
+ * очереди сразу (spec 2026-10-chapter-4, часть 59): к специалисту записанные приходят по одному, и прежде он сидел над
+ * анализами, пока они уходили. Ожидание, записанное в приём вперёд, снимается; минута — сказать, и врач свободен.
+ */
+function releaseWaiting(db: ContentDb, s: ShiftState, p: ShiftPatient, m: StaffMember, list: readonly StaffMember[]) {
+  if (p.pending.length === 0 || p.results.some(r => r.at > s.t)) return;
+  const step = s.events.find(e => e.event.kind === 'colleague' && e.event.id === p.id);
+  if (!step || step.t <= s.t || !s.queue.some(x => colleagueTakes(db, s.patients[x], m, list))) return;
+  s.events = s.events.filter(e => e !== step);
+  p.spent.seconds -= step.t - s.t;
+  p.status = 'away';
+  p.wait++;
+  p.spent.seconds += MIN;
+  (s.desk ??= {})[m.id] = s.t + MIN;
+  schedule(s, s.t + MIN, { kind: 'free', by: m.id });
 }
 
 /**
@@ -2116,7 +2158,8 @@ function colleagueStep(db: ContentDb, s: ShiftState, p: ShiftPatient) {
     const cost = orderExam(db, s, p, r.step.exam, pct) ?? 0;
     if (!p.done.includes(r.step.exam)) p.done.push(r.step.exam); // сделать нельзя — дальше без него
     // результатов ждать, а в очереди есть кого принять, — отпустить ждать и позвать следующего, как вы
-    if (p.pending.length > 0 && s.queue.some(x => colleagueTakes(s.patients[x]))) {
+    const list = colleaguesOf(db, s);
+    if (p.pending.length > 0 && s.queue.some(x => colleagueTakes(db, s.patients[x], m, list))) {
       p.status = 'away';
       p.wait++;
       const away = cost + MIN;

@@ -11,7 +11,8 @@
 // отобранным из того же потока (`--profile-n`, по умолчанию 600 в каждой группе), и прицельный прогон
 // «ОКС и инсульт в смотровой приёмного» (`--focus-n`, по умолчанию 300 больных каждой болезнью):
 // диагноз, сроки, тромболизис без противопоказаний, ленивый — без ЭКГ и с опозданиями. Порог не
-// выполнен — выход с кодом 1.
+// выполнен — выход с кодом 1. Врачи-специалисты (spec 2026-10-chapter-4, часть 59) — на записанных к ним
+// (`--specialist-n`, по умолчанию 300): нанятый навыка 3 и разумный, для сведения.
 import type { Id } from '../../src/content/types';
 import { Rng } from '../../src/engine/core/rng';
 import { observe, type OutcomeKind } from '../../src/engine/med/course';
@@ -42,6 +43,8 @@ const HN = Math.min(N, Number(arg('hired-n', '1000')));
 const FOCUS_N = Number(arg('focus-n', '300'));
 /** кардиология и неврология главы 3: больных каждой группы */
 const PROFILE_N = Number(arg('profile-n', '600'));
+/** врачи-специалисты (spec 2026-10-chapter-4, часть 59): записанных к каждому */
+const SPECIALIST_N = Number(arg('specialist-n', '300'));
 
 const { db, errors } = buildDb();
 if (errors.length) {
@@ -263,12 +266,18 @@ interface ProfileTally {
   patients: number; accuracy: number; groupAccuracy: number; balanced: number;
   perCondition: Record<string, { n: number; groupAccuracy: number }>; topConfusions: [string, number][];
 }
-function profileTally(people: readonly Patient[], s: Strategy): ProfileTally {
+function profileTally(people: readonly Patient[], s: Strategy, skill?: number): ProfileTally {
   const per: Record<string, { n: number; correct: number; correctGroup: number }> = {};
   const confusion: Record<string, number> = {};
+  // нанятый врач навыка `skill` — пороги economy.yaml, как в таблице по навыку выше
+  const d = db.economy.staff.doctor;
+  const how = skill ? { threshold: d.threshold[skill - 1] / 100, minGain: d.minGain[skill - 1] / 1000, forget: d.forget[skill - 1] } : undefined;
   for (const p of people) {
     const truth = p.truth.conditions[0].id;
-    const r = runDoctor(db, p, s, Rng.seeded(p.seed).fork(`doctor:${s}`), { candidates, exams, threshold });
+    const forgot = Rng.seeded(p.seed).fork('forget');
+    const r = runDoctor(db, p, s, Rng.seeded(p.seed).fork(`doctor:${s}`), how
+      ? { candidates, exams, threshold: how.threshold, minGain: how.minGain, skipAsk: q => how.forget > 0 && forgot.fork(q).chance(how.forget * 100) }
+      : { candidates, exams, threshold });
     const pc = (per[truth] ??= { n: 0, correct: 0, correctGroup: 0 });
     pc.n++;
     if (r.correctGroup) pc.correctGroup++;
@@ -303,6 +312,19 @@ for (const f of profiles) {
   thresholds[`profileAccuracy:${f.profile}`] = { value: f.rational.groupAccuracy, need: '≥ 90', ok: f.rational.groupAccuracy >= 90, info: few };
   thresholds[`profileBalanced:${f.profile}`] = { value: f.rational.balanced, need: '≥ 85', ok: f.rational.balanced >= 85, info: few };
 }
+
+// Врачи-специалисты (spec 2026-10-chapter-4, часть 59): к специалисту записываются с болезнями его профиля, которых
+// принимает больница этого прогона, — те же больные, что в смене (`only`, пришли сами; зёрна с 8 500 000). Ведёт их
+// нанятый врач навыка 3, рядом — разумный на тех же больных. Для сведения: пороги отделений главы 4 — в части 61а.
+const t4 = performance.now();
+const specialists = Object.values(db.roles)
+  .flatMap(r => (r.profile ? [{ role: r.id, only: r.profile.filter(id => departments.includes(db.conditions[id].department)) }] : []))
+  .filter(x => x.only.length > 0)
+  .map(({ role, only }) => {
+    const people = Array.from({ length: SPECIALIST_N }, (_, i) => generatePatient(db, 8_500_000 + i, { department, departments, season: seasons[i % seasons.length], walkIn: true, only, ...(variety ? { variety: true } : {}) }));
+    return { role, rational: profileTally(people, 'rational'), skill3: profileTally(people, 'rational', 3) };
+  });
+const specialistMs = performance.now() - t4;
 
 // Глава 3 (spec 2026-10-chapter-3, критерий приёмки 3, часть 46а): ОКС и инсульт в смотровой приёмного — у
 // постели монитор с дефибриллятором, есть КТ, ПИТ, палата и операционная. Больные — те, у кого болезнь обычна
@@ -432,7 +454,7 @@ if (variety) for (const t of Object.values(thresholds)) t.info ??= 'больны
 const passed = Object.values(thresholds).every(t => t.ok || t.info);
 
 if (asJson) {
-  console.log(JSON.stringify({ contentVersion: db.contentVersion, contentHash: db.hash, departments, patients: N, seasons, threshold, totalMs: total, report, hired: hiredReport, profiles, focus, thresholds, passed }, null, 2));
+  console.log(JSON.stringify({ contentVersion: db.contentVersion, contentHash: db.hash, departments, patients: N, seasons, threshold, totalMs: total, report, hired: hiredReport, profiles, specialists, focus, thresholds, passed }, null, 2));
 } else {
   console.log(`База ${db.contentVersion} (${db.hash}), отделения ${departments.join(', ')}, пациентов ${N}, сезоны: ${seasons.join(', ')}, порог разумного врача ${threshold}${variety ? ', больные — с разнообразием' : ''}`);
   console.log(`Время: ${(total / 1000).toFixed(2)} с на всех трёх врачей (${(total / N).toFixed(2)} мс на пациента)\n`);
@@ -465,6 +487,14 @@ if (asJson) {
   console.log(`\nНанятый врач по навыку (economy.yaml, staff.doctor; первые ${HN} пациентов; ${(hiredMs / 1000).toFixed(1)} с):`);
   for (const h of hiredReport) {
     console.log(`  навык ${h.skill}  точность ${h.accuracy.toFixed(1).padStart(5)} %  до группы ${h.groupAccuracy.toFixed(1).padStart(5)} %  сбалансированная ${h.balanced.toFixed(1).padStart(5)} %   ${h.money.toFixed(0).padStart(5)} ₽   ${h.minutes.toFixed(0).padStart(4)} мин   обследований ${h.exams.toFixed(1)}   антибиотик без показаний ${h.needlessAntibiotic.toFixed(1)} %   реакция ${h.reactions.toFixed(1)} %`);
+  }
+  if (specialists.length > 0) {
+    console.log(`\nВрачи-специалисты — записанные к ним, по ${SPECIALIST_N} (${(specialistMs / 1000).toFixed(1)} с; до группы / сбалансированная; для сведения):`);
+    for (const x of specialists) {
+      const cells = [['навык 3', x.skill3], ['разумный', x.rational]] as const;
+      console.log(`  ${x.role.replace('role.', '').padEnd(18)} ${cells.map(([k, v]) => `${k} ${v.groupAccuracy.toFixed(1).padStart(5)} / ${v.balanced.toFixed(1).padStart(5)} %`).join('   ')}`);
+      if (x.skill3.topConfusions.length > 0) console.log(`    навык 3 путает: ${x.skill3.topConfusions.map(([k, v]) => `${k.replace(/cond\./g, '')}: ${v}`).join(', ')}`);
+    }
   }
   if (chapter3) {
     console.log(`\nКардиология и неврология главы 3 — больные группы из потока больницы (по ${PROFILE_N}; ${(profileMs / 1000).toFixed(1)} с; до группы / сбалансированная):`);

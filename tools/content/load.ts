@@ -992,6 +992,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     const out: StaffRole = {
       id: r.id, name: r.name, gen: r.gen, hire: r.hire, salary: r.salary,
       ...(r.stands ? { stands: r.stands } : {}), ...(r.needs ? { needs: r.needs } : {}), ...(r.reads ? { reads: true as const } : {}),
+      ...(r.profile ? { profile: [...r.profile] } : {}), ...(r.dat ? { dat: r.dat } : {}),
       // встающий на чужое место работает там же, где та должность
       rooms: Object.keys(rooms).sort().filter(id => rooms[id].staff.includes(r.stands ?? r.id)), texts: r.texts,
     };
@@ -1359,6 +1360,19 @@ function checkHospital(c: {
     if (!Object.values(rooms).some(x => x.staff.includes(r.stands ?? r.id))) errors.push(`${r.id}: ни одно помещение в нём не нуждается`);
     // описывает снимки (часть 29): там, где он работает, снимки делают
     if (r.reads && !Object.values(rooms).some(x => x.staff.includes(r.id) && exList.some(e => e.room === x.id && e.kind === 'imaging'))) errors.push(`${r.id}: описывает снимки, а там, где он работает, снимков не делают`);
+    // специалист (spec 2026-10-chapter-4, часть 59): профиль — у нанятого врача, болезни профиля — те, с которыми
+    // приходят, и хотя бы с одной приходят сами: иначе к нему некому записаться
+    if (r.profile) {
+      if (!r.stands) errors.push(`${r.id}: профиль бывает только у нанятого врача — того, кто встаёт на место врача`);
+      for (const id of r.profile) {
+        const cond = c.conditions[id];
+        if (!cond) errors.push(`${r.id}: в профиле ${id} — такой болезни нет`);
+        else if (!cond.presenting) errors.push(`${r.id}: в профиле ${id} — с ней не приходят`);
+      }
+      if (new Set(r.profile).size !== r.profile.length) errors.push(`${r.id}: болезни профиля повторяются`);
+      if (!r.profile.some(id => c.conditions[id]?.presenting && c.conditions[id].arrival !== 'ambulance')) errors.push(`${r.id}: к нему некому записаться — все болезни профиля привозит скорая`);
+      if (!r.dat) errors.push(`${r.id}: у специалиста нужен дательный падеж (dat) — «по записи к …»`);
+    }
   }
   // снимок помещения описывает один человек — от его навыка точность
   for (const x of Object.values(rooms)) {

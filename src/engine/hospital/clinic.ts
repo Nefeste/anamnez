@@ -42,6 +42,10 @@ const FIGURE: Record<string, StaffRole> = {
   'room.triage|role.nurse': 'nurse',
   'room.office|role.doctor': 'doctor',
   'room.office|role.therapist': 'therapist',
+  // специалисты (spec 2026-10-chapter-4, часть 59) — та же фигурка нанятого врача в кабинете; подпись — по должности
+  'room.office|role.gastroenterologist': 'therapist',
+  'room.office|role.endocrinologist': 'therapist',
+  'room.office|role.infectionist': 'therapist',
   'room.procedure|role.nurse': 'procedureNurse',
   'room.lab|role.lab_tech': 'labTech',
   'room.ecg|role.nurse': 'ecgNurse',

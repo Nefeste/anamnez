@@ -780,3 +780,16 @@ describe('эндоскопия (spec 2026-10-chapter-4, часть 53а)', () =>
     expect(neither.some(e => e.includes('без чего это место'))).toBe(true);
   });
 });
+
+describe('врачи-специалисты (spec 2026-10-chapter-4, часть 59)', () => {
+  test('профиль — у нанятого врача, из болезней, с которыми приходят, без повторов; хоть с одной приходят сами; дательный падеж есть', () => {
+    const roles = 'hospital/roles/gastroenterologist.yaml';
+    const has = (errors: string[], text: string) => expect({ text, found: errors.some(e => e.includes(text)) }).toEqual({ text, found: true });
+    has(broken(d => edit(d, roles, 'stands: role.doctor\n', '')), 'role.gastroenterologist: профиль бывает только у нанятого врача');
+    has(broken(d => edit(d, roles, 'cond.gerd,', 'cond.gerdd,')), 'role.gastroenterologist: в профиле cond.gerdd — такой болезни нет');
+    has(broken(d => edit(d, roles, 'cond.gerd,', 'cond.hypertension,')), 'role.gastroenterologist: в профиле cond.hypertension — с ней не приходят');
+    has(broken(d => edit(d, roles, 'cond.constipation,', 'cond.ibs,')), 'role.gastroenterologist: болезни профиля повторяются');
+    has(broken(d => edit(d, roles, /profile: \[[^\]]*\]/.exec(readFileSync(join(CONTENT_DIR, roles), 'utf8'))![0], 'profile: [cond.stroke_ischemic]')), 'role.gastroenterologist: к нему некому записаться — все болезни профиля привозит скорая');
+    has(broken(d => edit(d, roles, 'dat: { ru: "гастроэнтерологу" }\n', '')), 'role.gastroenterologist: у специалиста нужен дательный падеж');
+  });
+});

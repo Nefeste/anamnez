@@ -37,7 +37,8 @@ export function salaryOf(db: ContentDb, role: Id, skill: number, trait?: Trait):
 
 /**
  * Кандидаты дня: на каждую должность, которую нанимают (и `allow` пропускает), — от и до
- * `candidates` человек из ветви зерна `candidates:<день>`. Номера продолжают сквозной счёт.
+ * `candidates` человек из ветви зерна `candidates:<день>`. Номера продолжают сквозной счёт. Специалисты (spec
+ * 2026-10-chapter-4, часть 59) — после остальных: номера прежних кандидатов от них не сдвинулись.
  */
 export function applicantsOf(db: ContentDb, seed: number, day: number, next: number, allow: (role: Id) => boolean = () => true): { list: StaffMember[]; next: number } {
   const b = db.economy.staff;
@@ -46,7 +47,8 @@ export function applicantsOf(db: ContentDb, seed: number, day: number, next: num
   for (const t of TRAITS) weights[t] = b.traits[t].weight;
   const list: StaffMember[] = [];
   let n = next;
-  for (const role of Object.keys(db.roles).sort()) {
+  const roles = Object.keys(db.roles).sort();
+  for (const role of [...roles.filter(id => !db.roles[id].profile), ...roles.filter(id => db.roles[id].profile)]) {
     if (!db.roles[role].hire || !allow(role)) continue;
     const r = root.fork(role);
     const count = r.range(b.candidates[0], b.candidates[1]);

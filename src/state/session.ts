@@ -15,7 +15,7 @@ import { evaluatePlan, primaryOf } from '@/engine/med/plan';
 import type { Grade } from '@/engine/med/score';
 import { complaintText, observationText } from '@/engine/med/text';
 import { build, type BuildCommand, type BuildError, type HospitalState, type Plan, planOf } from '@/engine/hospital/build';
-import { type Block, doctorRoom, examWhere, openBlocks, type Problem, problemsOf, standInOf, workingRooms } from '@/engine/hospital/requirements';
+import { type Block, doctorRoom, examWhere, openBlocks, type Problem, problemsOf, standInOf, standInsOf, workingRooms } from '@/engine/hospital/requirements';
 import { type ClinicLayout, cropPlan, layoutOf } from '@/engine/hospital/clinic';
 import { memberAt, type StaffMember, staffingOf } from '@/engine/hospital/staff';
 import { type MissionProgress, missionProgress, nextChapterOf, tutorialDayOf } from '@/engine/campaign/campaign';
@@ -201,6 +201,8 @@ export interface ShiftView {
   people: Placement[];
   /** план своей больницы для карты смены — в песочнице; в практике — готовая амбулатория (CLINIC) */
   layout?: ClinicLayout;
+  /** названия кабинетов специалистов на карте (spec 2026-10-chapter-4, часть 59): «Кабинет гастроэнтеролога» */
+  offices?: Record<string, string>;
   /** кто это — для каждого на карте */
   who: Record<string, WhoView>;
   /** песочница: помещения карты смены — по касанию */
@@ -851,6 +853,8 @@ export interface PostView {
   roomName: string;
   role: Id;
   roleName: string;
+  /** кого можно назначить: на место врача — терапевта и специалистов (spec 2026-10-chapter-4, часть 59) */
+  roles: Id[];
   who?: string;
 }
 
@@ -891,12 +895,14 @@ function buildStaffView(): StaffView | undefined {
   const ctx = hospitalCtx(db, s);
   const mine = doctorRoom(ctx.plan);
   const names = roomNames(s.hospital.rooms);
-  // место врача в другом кабинете — для нанятого врача (терапевта); в вашем кабинете врач — вы
+  // место врача в другом кабинете — для нанятого врача (терапевта или специалиста, часть 59); в вашем кабинете врач — вы
   const posts: PostView[] = s.hospital.rooms.flatMap(r => db.rooms[r.type].staff.flatMap(role => {
     const post = db.roles[role]?.hire ? role : r.id !== mine ? standInOf(db, role) : undefined;
     if (!post) return [];
-    const m = staff.find(x => x.room === r.id && x.role === post);
-    return [{ room: r.id, roomName: names[r.id], role: post, roleName: db.roles[post].name.ru, ...(m ? { who: m.id } : {}) }];
+    const roles = db.roles[role]?.hire ? [role] : standInsOf(db, role);
+    const m = staff.find(x => x.room === r.id && roles.includes(x.role));
+    const roleName = roles.length > 1 ? T.sandbox.doctorPost(db.roles[post].name.ru) : db.roles[post].name.ru;
+    return [{ room: r.id, roomName: names[r.id], role: post, roleName, roles, ...(m ? { who: m.id } : {}) }];
   }));
   const problem = (m: StaffMember) => {
     const needs = db.roles[m.role]?.needs;
@@ -1325,7 +1331,12 @@ function row(s: ShiftState, p: ShiftPatient): QueueRow {
   const badges: string[] = [];
   if (p.kind === 'return') badges.push(T.shift.badge.return);
   else if (p.kind === 'ambulance') badges.push(T.shift.badge.ambulance);
-  else badges.push(p.kind === 'appointment' ? T.shift.badge.appointment : T.shift.badge.walkIn);
+  else if (p.kind !== 'appointment') badges.push(T.shift.badge.walkIn);
+  else {
+    // записан к специалисту (spec 2026-10-chapter-4, часть 59) — «по записи к гастроэнтерологу»
+    const to = p.to ? s.staff?.find(x => x.id === p.to) : undefined;
+    badges.push(to ? T.shift.badge.booked(db.roles[to.role]?.dat?.ru ?? '') : T.shift.badge.appointment);
+  }
   if (p.payer) badges.push(T.sandbox.payers[p.payer]);
   if (p.step > 0) badges.push(T.shift.badge.results);
   return {
@@ -1472,7 +1483,13 @@ function buildShiftView(): ShiftView {
     ambulance: ambulanceRows(s),
     ...(s.hospital ? { rooms: roomsOf(s) } : {}),
     ...(layout ? { layout } : {}),
+    ...(s.staff?.some(m => m.room && db.roles[m.role]?.profile) ? { offices: specialistOffices(s) } : {}),
   };
+}
+
+/** Кабинеты, где работают специалисты (часть 59), — их названия на карте; у терапевта — прежнее «Кабинет терапевта». */
+function specialistOffices(s: ShiftState): Record<string, string> {
+  return Object.fromEntries((s.staff ?? []).flatMap(m => (m.room && db.roles[m.role]?.profile ? [[m.room, T.shift.map.specialistOffice(db.roles[m.role].gen.ru)]] : [])));
 }
 
 // помещения своей больницы без нужной должности — значок «нет персонала» на карте (часть 23)
@@ -1563,8 +1580,8 @@ function whoOf(s: ShiftState, people: readonly Placement[]): Record<string, WhoV
       const m = s.staff?.find(y => y.room === room && db.roles[y.role]?.stands);
       const p = m ? Object.values(s.patients).find(q => q.status === 'inRoom' && q.by === m.id) : undefined;
       out[x.id] = {
-        title: m ? t.therapist(personName(m.sex, m.seed), m.skill) : t.staff.therapist,
-        doing: p ? t.therapistWith(nameOf(p)) : t.duty.therapist, callable: false,
+        title: m ? t.therapist(personName(m.sex, m.seed), lowerFirst(db.roles[m.role]?.name.ru ?? ''), m.skill) : t.staff.therapist,
+        doing: p ? t.therapistWith(nameOf(p)) : m && db.roles[m.role]?.profile ? t.duty.specialist : t.duty.therapist, callable: false,
       };
       continue;
     }
@@ -1596,9 +1613,9 @@ function doingText(s: ShiftState, p: ShiftPatient, d: Doing): string {
     case 'waiting':
       return t.waiting(Math.max(0, Math.floor((s.t - p.arriveT) / 60)));
     case 'office': {
-      // у нанятого врача — «у терапевта Ивановой»
+      // у нанятого врача — «у терапевта Ивановой», у специалиста — по должности (часть 59)
       const m = d.by ? s.staff?.find(x => x.id === d.by) : undefined;
-      return m ? t.colleague(personName(m.sex, m.seed)) : t.office;
+      return m ? t.colleague(db.roles[m.role]?.gen.ru ?? '', personName(m.sex, m.seed)) : t.office;
     }
     case 'exam':
       return t.exam[d.room];

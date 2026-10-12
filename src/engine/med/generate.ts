@@ -42,6 +42,11 @@ export interface GenContext {
    * весу записи и сезону (`VARIETY_POWER`); человек и вывод — как в жизни
    */
   variety?: boolean;
+  /**
+   * записан к специалисту (spec 2026-10-chapter-4, часть 59): основное заболевание — из этих, с их весами у этого
+   * человека; ни одного из них у него не бывает — из всех, как у пришедшего сам
+   */
+  only?: readonly Id[];
 }
 
 /**
@@ -112,7 +117,7 @@ export function generatePatient(db: ContentDb, seed: number, ctx: GenContext): P
   });
 
   // Основное заболевание.
-  const primaryId = ctx.primary ?? pickPrimary(db, root.fork('primary'), { sex, age, season: ctx.season, departments: ctx.departments ?? [ctx.department], risks, chronic, walkIn: ctx.walkIn === true }, ctx.carried, ctx.variety === true);
+  const primaryId = ctx.primary ?? pickPrimary(db, root.fork('primary'), { sex, age, season: ctx.season, departments: ctx.departments ?? [ctx.department], risks, chronic, walkIn: ctx.walkIn === true }, ctx.carried, ctx.variety === true, ctx.only);
   const primary = db.conditions[primaryId];
   if (!primary) throw new Error(`generatePatient: unknown condition ${primaryId}`);
 
@@ -215,9 +220,14 @@ function variedWeight(c: Condition, who: Omit<Who, 'departments'>): number {
   return w > 0 && base > 0 ? (w / base) * base ** VARIETY_POWER : 0;
 }
 
-function pickPrimary(db: ContentDb, rng: Rng, who: Who, carried?: GenContext['carried'], variety = false): Id {
-  const ids = sortedKeys(db.conditions).filter(id => who.departments.includes(db.conditions[id].department) && !(who.walkIn && db.conditions[id].arrival === 'ambulance'));
-  const base = ids.map(id => (variety ? variedWeight : presentingWeight)(db.conditions[id], who));
+function pickPrimary(db: ContentDb, rng: Rng, who: Who, carried?: GenContext['carried'], variety = false, only?: readonly Id[]): Id {
+  const all = sortedKeys(db.conditions).filter(id => who.departments.includes(db.conditions[id].department) && !(who.walkIn && db.conditions[id].arrival === 'ambulance'));
+  const weightOf = (id: Id) => (variety ? variedWeight : presentingWeight)(db.conditions[id], who);
+  // запись к специалисту (spec 2026-10-chapter-4, часть 59): болезнь — из его профиля; ни одной из них у этого человека
+  // не бывает — как у всех
+  const own = only ? all.filter(id => only.includes(id)) : all;
+  const ids = own !== all && own.some(id => Math.round(weightOf(id) * 100) > 0) ? own : all;
+  const base = ids.map(weightOf);
   // скорая: вес ещё и по тяжести; ничего из того, что везут, у этого человека не бывает — как пришёл сам
   const carriedBy = carried && ids.map((id, i) => base[i] * carriedWeight(db.conditions[id], carried));
   const w = carriedBy && carriedBy.some(x => Math.round(x * 100) > 0) ? carriedBy : base;

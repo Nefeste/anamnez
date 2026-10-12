@@ -43,7 +43,11 @@ export const shift = {
   log: 'Что происходит',
   waits: (min: number) => `ждёт ${min}\u00a0мин`,
   arrivedAt: (hh: string) => `пришёл в ${hh}`,
-  badge: { return: 'повторно', results: 'с результатами', appointment: 'по записи', walkIn: 'без записи', ambulance: 'скорая' },
+  badge: {
+    return: 'повторно', results: 'с результатами', appointment: 'по записи', walkIn: 'без записи', ambulance: 'скорая',
+    // записан к специалисту (spec 2026-10-chapter-4, часть 59): к нему и придёт, если вы не позовёте сами
+    booked: (doctorDat: string) => `по записи к ${doctorDat}`,
+  },
   // срочность — цветом и словом со значком: цвет один различают не все (ui/theme.ts)
   triage: { red: '‼ срочно', yellow: '! нужно скоро', green: 'в порядке очереди' } as Record<string, string>,
   counts: (seen: number, waiting: number, left: number) =>
@@ -143,7 +147,7 @@ export const shift = {
       reception: 'Регистратура',
       triage: 'Медсестра',
       office: 'Ваш кабинет',
-      // кабинет нанятого врача и ординаторская (spec 2026-09-hired-doctors)
+      // кабинет нанятого врача и ординаторская (spec 2026-09-hired-doctors); у специалиста — по должности (часть 59)
       colleagueOffice: 'Кабинет терапевта',
       staff: 'Ординаторская',
       procedure: 'Процедурная',
@@ -173,6 +177,8 @@ export const shift = {
       // эндоскопический кабинет (часть 53а)
       endoscopy: 'Эндоскопия',
     } as Record<string, string>,
+    // кабинет специалиста (spec 2026-10-chapter-4, часть 59): «Кабинет гастроэнтеролога»
+    specialistOffice: (doctorGen: string) => `Кабинет ${doctorGen}`,
     // для чтения с экрана: что на карте, словами
     label: (waiting: number, away: number, inRoom: string | undefined) =>
       `Карта амбулатории. В зале ожидания: ${patients(waiting)}; на обследованиях: ${patients(away)}; в кабинете: ${inRoom ?? 'никого'}.`,
@@ -213,14 +219,15 @@ export const shift = {
       endoscopist: 'Врач-эндоскопист',
       endoscopyNurse: 'Медсестра эндоскопического кабинета',
     } as Record<string, string>,
-    // нанятый врач (spec 2026-09-hired-doctors): кто он и кого принимает
-    therapist: (name: string, skill: number) => `${name}, терапевт · навык ${skill}`,
+    // нанятый врач (spec 2026-09-hired-doctors): кто он и кого принимает; специалист — по своей должности (часть 59)
+    therapist: (name: string, role: string, skill: number) => `${name}, ${role} · навык ${skill}`,
     therapistWith: (patient: string) => `Принимает: ${patient}`,
     duty: {
       registrar: 'Записывает пришедших и заводит на них карту',
       nurse: 'Каждому пришедшему меряет давление, пульс, температуру и сатурацию и решает, кого принять первым',
       doctor: 'Принимаете пациентов: расспрос, осмотр, обследования, диагноз и лечение',
       therapist: 'Сейчас без пациента — позовёт следующего из очереди',
+      specialist: 'Сейчас без пациента — позовёт следующего из записанных к нему',
       procedureNurse: 'Берёт кровь на анализы',
       labTech: 'Делает анализы крови и мочи',
       ecgNurse: 'Снимает ЭКГ',
@@ -244,7 +251,7 @@ export const shift = {
       // между числом и единицей — неразрывный пробел (голос студии)
       waiting: (min: number) => `Ждёт приёма ${min}\u00a0мин`,
       office: 'У вас в кабинете',
-      colleague: (doctor: string) => `На приёме у терапевта: ${doctor}`,
+      colleague: (doctorGen: string, doctor: string) => `На приёме у ${doctorGen}: ${doctor}`,
       exam: { xray: 'На рентгене', ecg: 'На ЭКГ', lab: 'Сдаёт анализы', ultrasound: 'На УЗИ', ct: 'На КТ', mri: 'На МРТ', endoscopy: 'На ЭГДС' } as Record<string, string>,
       examQueue: { xray: 'Ждёт очереди на рентген', ecg: 'Ждёт очереди на ЭКГ', lab: 'Ждёт очереди на анализы', ultrasound: 'Ждёт очереди на УЗИ', ct: 'Ждёт очереди на КТ', mri: 'Ждёт очереди на МРТ', endoscopy: 'Ждёт очереди на ЭГДС' } as Record<string, string>,
       results: (hh: string) => `Ждёт результатов — будут к ${hh}`,

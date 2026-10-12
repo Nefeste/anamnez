@@ -349,7 +349,13 @@ describe('«У врачей» и разбор приёма врача (част�
 
   test('вы с пациентом — забранный ждёт в вашей очереди, в журнале смены — строка', () => {
     openWithTherapist();
-    for (let i = 0; i < 400 && !(busyWithResults() && shiftView().queue.length > 0); i++) minute();
+    // врач с результатами — и не на последнем шаге: минута на ваш вызов его приём не закончит (с 0.4.5 он не сидит над
+    // анализами, пока в очереди есть кого взять, — часть 59; с пациентом у вас часы карты стоят)
+    const midVisit = (id: string) => {
+      const s = shiftState()!;
+      return s.patients[id].pending.length === 0 && s.events.some(e => e.event.kind === 'colleague' && e.event.id === id && e.t > s.t + 2 * 60);
+    };
+    for (let i = 0; i < 400 && !(busyWithResults() && midVisit(busyWithResults()!.id) && shiftView().queue.length > 0); i++) minute();
     const row = busyWithResults()!;
     expect(callPatient(shiftView().queue[0].id)).toBe(true);
     const mine = shiftView().inRoom!.id;
