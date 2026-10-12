@@ -7,6 +7,7 @@ import { parse } from 'yaml';
 import type { z } from 'zod';
 import { type AttrSpec, beyond, byParams, type Cell, type Condition, type ContentDb, type Equipment, type Exam, type Finding, type Link, membersOf, type Preset, type Risk, type RoomType, type RulePoints, type StaffRole, type Treatment } from '../../src/content/types';
 import { planOf, presetHospital } from '../../src/engine/hospital/build';
+import { presetStaff, staffingOf } from '../../src/engine/hospital/staff';
 import { problemsOf } from '../../src/engine/hospital/requirements';
 import { ALLERGY_EXAM } from '../../src/engine/career/achievements';
 import { fingerprint } from '../../src/engine/core/hash';
@@ -791,6 +792,15 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     for (const id of x.exams) if (!exams[id]) errors.push(`${x.id}: обследование ${id} не найдено`);
     // часть 48а: правило отсчёта — из базы и решает по баллам или признакам, которые показывают обследования
     if (x.rule && !rules[x.rule]) errors.push(`${x.id}: правило ${x.rule} не найдено`);
+    // часть 60а (spec 2026-10-chapter-4): серия — другой срок той же меры: то же обследование, назначение и место, сам он
+    // без серии
+    const head = x.series ? targets[x.series] : undefined;
+    const same = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every(id => b.includes(id));
+    if (x.series && (!head || x.series === x.id)) errors.push(`${x.id}: серия ${x.series} не найдена или это сам срок`);
+    else if (head?.series) errors.push(`${x.id}: у срока серии ${x.series} своя серия`);
+    else if (head && !(same(head.exams, x.exams) && same(head.treatments, x.treatments) && same(head.settings, x.settings))) {
+      errors.push(`${x.id}: серия ${x.series} — другая мера: обследования, назначения и места не те же`);
+    }
     if (x.room && !rooms[x.room]) errors.push(`${x.id}: помещение ${x.room} не найдено`);
     else if (x.room && !rooms[x.room].emergency) errors.push(`${x.id}: срок у лежащих — только в смотровой приёмного, а ${x.room} не она`);
     else if (x.room && x.exams.length > 0 && !x.exams.some(id => exams[id]?.bedside?.room === x.room && exams[id].bedside!.time.procedure <= x.minutes)) {
@@ -1000,9 +1010,12 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   }
   for (const p of Object.values(presets).sort((a, b) => (a.id < b.id ? -1 : 1))) {
     const out: Preset = {
-      id: p.id, name: p.name, plot: p.plot, entrance: p.entrance, corridor: rects(p.corridor),
-      rooms: p.rooms.map(r => ({ type: r.type, size: r.size, x: r.x, y: r.y, rot: r.rot, ...(r.door !== undefined ? { door: r.door } : {}), equipment: r.equipment })),
-      decor: p.decor.map(([kind, x, y]) => ({ kind, x, y })), staff: p.staff,
+      id: p.id, name: p.name, plot: p.plot, ...(p.ambulance ? { ambulance: p.ambulance } : {}), entrance: p.entrance, corridor: rects(p.corridor),
+      rooms: p.rooms.map(r => ({
+        type: r.type, size: r.size, x: r.x, y: r.y, rot: r.rot, ...(r.door !== undefined ? { door: r.door } : {}), equipment: r.equipment,
+        ...(r.later ? { later: r.later } : {}),
+      })),
+      decor: p.decor.map(([kind, x, y]) => ({ kind, x, y })), staff: p.staff.map(x => ({ role: x.role, room: x.room, ...(x.later ? { later: x.later } : {}) })),
     };
     db.presets[p.id] = out;
   }
@@ -1025,11 +1038,16 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       for (const d of r.admits ?? []) if (!Object.values(db.conditions).some(x => x.presenting && x.department === d)) errors.push(`${r.id}: принимает ${d}, а болезней этого отделения в базе нет`);
     }
     // готовая амбулатория помещается на участок песочницы, вход песочницы — в краю; больница главы с
-    // крылом (часть 45а) — на участок песочницы с её крылом справа
+    // крылом (часть 45а) — на участок песочницы с её крылом справа; больница главы с переездом шире песочницы
+    // (большая больница главы 4, spec 2026-10-chapter-4, часть 60а) — на своём участке, как в движке (chapterPlot)
     const sb = db.economy.sandbox;
     const wings = new Map(Object.values(db.chapters).filter(c => c.wing).map(c => [c.preset, c.wing!]));
+    const moves = new Set(Object.values(db.chapters).filter(c => !c.wing).map(c => c.preset));
     for (const p of Object.values(db.presets)) {
-      const plot: [number, number] = [sb.plot[0] + (wings.get(p.id) ?? 0), sb.plot[1]];
+      const own = moves.has(p.id) && !wings.has(p.id);
+      const plot: [number, number] = own
+        ? [Math.max(sb.plot[0], p.plot[0]), Math.max(sb.plot[1], p.plot[1])]
+        : [sb.plot[0] + (wings.get(p.id) ?? 0), sb.plot[1]];
       if (p.plot[0] > plot[0] || p.plot[1] > plot[1]) errors.push(`${p.id}: участок ${p.plot.join(' × ')} больше участка песочницы${wings.has(p.id) ? ' с крылом' : ''}`);
       else errors.push(...presetHospital(db, p, plot).failed.map(f => `${p.id}: на участке песочницы помещение ${f.room} — ${f.error.kind}`));
     }
@@ -1083,9 +1101,18 @@ function checkCampaign(db: ContentDb, errors: string[]) {
       if (missions.has(m.id)) at(`задание ${m.id} повторяется`);
       missions.add(m.id);
       if (m.kind === 'roomWorks' && !db.rooms[m.room]) at(`задание ${m.id}: помещение ${m.room} не найдено`);
-      if (m.kind === 'roomWorks' && !c.build.includes(m.room) && !db.presets[c.preset]?.rooms.some(r => r.type === m.room)) at(`задание ${m.id}: ${m.room} нельзя построить в главе`);
-      // срок подряд (часть 45а): срок есть в базе
+      // помещение задания глава строит или оно стоит с начала главы; то, что строят заданием (часть 60а), — не с начала
+      if (m.kind === 'roomWorks' && !c.build.includes(m.room) && !db.presets[c.preset]?.rooms.some(r => r.type === m.room && !r.later)) at(`задание ${m.id}: ${m.room} нельзя построить в главе`);
+      // срок подряд (часть 45а): срок есть в базе; с частью 60а — не срок, который сам в серии другого: его оценки
+      // считает задание по сроку серии
       if (m.kind === 'deadline' && !db.targets[m.target]) at(`задание ${m.id}: срок ${m.target} не найден`);
+      else if (m.kind === 'deadline' && db.targets[m.target].series) at(`задание ${m.id}: срок ${m.target} — в серии ${db.targets[m.target].series}, задание — по ней`);
+      // глава 4 (часть 60а): приёмы специалистов — в главе со специалистами; смертность в стационаре — где есть койки;
+      // смены без заразного в общей палате — где можно построить бокс
+      const has = (fits: (r: RoomType) => boolean) => [...c.build, ...(preset?.rooms.map(r => r.type) ?? [])].some(r => db.rooms[r] && fits(db.rooms[r]));
+      if (m.kind === 'staff' && !c.specialists) at(`задание ${m.id}: приёмы специалистов, а специалистов в главе нет`);
+      if (m.kind === 'mortality' && !has(r => r.beds && !r.emergency)) at(`задание ${m.id}: смертность в стационаре, а коек в главе нет`);
+      if ((m.kind === 'days' || m.kind === 'streak') && m.day === 'noInfectiousInWard' && !has(r => r.box)) at(`задание ${m.id}: заразные в общей палате, а бокса в главе не построить`);
     }
     // крыло (часть 45а): больница прежней главы остаётся, участок шире — готовая больница главы (её
     // «Смена» и начало карьеры с этой главы) — та же больница прежней главы, шире ровно на крыло, с тем же
@@ -1104,6 +1131,10 @@ function checkCampaign(db: ContentDb, errors: string[]) {
         if (!same) at(`крыло: помещения ${preset.id} не начинаются с помещений ${was.id} на тех же местах`);
       }
     }
+    // что в готовой больнице строят заданием (часть 60а), в главе можно построить, а кого нанимают в главе — нанять:
+    // специалистов — только в главе со специалистами
+    for (const r of preset?.rooms ?? []) if (r.later && !c.build.includes(r.type)) at(`${r.type} строят заданием, а в главе его не построить`);
+    for (const x of preset?.staff ?? []) if (x.later && db.roles[x.role]?.profile && !c.specialists) at(`${x.role} нанимают в главе, а специалистов в ней нет`);
     if (!c.missions.some(m => m.main)) at('нет основных заданий');
     const letters = new Set<string>();
     for (const l of c.letters) {
@@ -1153,14 +1184,22 @@ function checkPresets(db: ContentDb, errors: string[]) {
       if (!db.rooms[r.type]) { errors.push(`${p.id}: помещение ${r.type} не найдено`); return; }
       if (!db.rooms[r.type].sizes.some(z => z.id === r.size)) { errors.push(`${p.id}: у ${r.type} нет размера ${r.size}`); return; }
     }
+    // то, что строят заданием главы (spec 2026-10-chapter-4, часть 60а), — в конце записи: номера остальных помещений в
+    // начале главы те же; штат такого помещения нанимают в главе
+    const first = p.rooms.findIndex(r => r.later);
+    if (first >= 0 && p.rooms.slice(first).some(r => !r.later)) errors.push(`${p.id}: помещения, которые строят заданием, — не в конце записи`);
     const seen = new Set<string>();
     for (const s of p.staff) {
       const room = p.rooms[s.room];
       if (!room) errors.push(`${p.id}: ${s.role} — в помещении ${s.room}, а их ${p.rooms.length}`);
-      else if (!db.rooms[room.type].staff.includes(s.role)) errors.push(`${p.id}: ${s.role} не нужен в ${room.type}`);
+      // встающий на чужое место — на месте той должности: специалист — на месте врача (часть 60а)
+      else if (!db.rooms[room.type].staff.includes(db.roles[s.role]?.stands ?? s.role)) errors.push(`${p.id}: ${s.role} не нужен в ${room.type}`);
+      else if (room.later && !s.later) errors.push(`${p.id}: ${s.role} в помещении ${s.room} — его строят заданием, а штат на месте с начала главы`);
       if (seen.has(`${s.room}:${s.role}`)) errors.push(`${p.id}: в помещении ${s.room} два человека на ${s.role}`);
       seen.add(`${s.room}:${s.role}`);
     }
+    // своя скорая (часть 60а) — от и до по порядку, и есть смотровая приёмного, куда её везти
+    if (p.ambulance && (p.ambulance[0] > p.ambulance[1] || !p.rooms.some(r => db.rooms[r.type].emergency))) errors.push(`${p.id}: скорая ${p.ambulance.join('–')} — без смотровой приёмного или от больше до`);
     const [w, h] = p.plot;
     const [ex, ey] = p.entrance;
     if (!(ex === 0 || ey === 0 || ex === w - 1 || ey === h - 1)) errors.push(`${p.id}: вход (${ex}, ${ey}) — не в краю участка`);
@@ -1174,7 +1213,8 @@ function checkPresets(db: ContentDb, errors: string[]) {
     }
     if (built.failed.length > 0) continue;
     const plan = planOf(db, built.hospital);
-    const staffed = (room: string, role: string) => p.staff.some(s => `r${s.room + 1}` === room && s.role === role);
+    // кто на месте — как в движке: специалист встаёт на место врача, если ему досталось место в ординаторской
+    const staffed = staffingOf(db, plan, presetStaff(db, p));
     for (const r of plan.rooms) {
       for (const pr of problemsOf(db, plan, r, staffed)) errors.push(`${p.id}: ${r.type} (${r.id}) не работает: ${pr.kind}${pr.kind === 'noStaff' ? ` ${pr.role}` : ''}`);
     }

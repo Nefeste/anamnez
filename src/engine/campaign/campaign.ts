@@ -34,13 +34,16 @@ export interface CampaignProgress {
 
 /**
  * Ход задания: сколько есть, сколько нужно; у «принять N» — ещё точность, %; у сроков стационара
- * (часть 34) — суток в среднем и обычных в среднем у выписанных подряд.
+ * (часть 34) — суток в среднем и обычных в среднем у выписанных подряд; у приёмов специалистов (spec 2026-10-chapter-4,
+ * часть 60а) — точность и сколько разных специалистов принимали; у смертности — умерли и лежали за последние дни окна.
  */
 export interface MissionProgress {
   value: number;
   target: number;
   accuracy?: number;
   stay?: { days: number; norm: number };
+  doctors?: number;
+  mortality?: { died: number; lying: number };
   done: boolean;
 }
 
@@ -83,7 +86,22 @@ export function dayOk(kind: DayKind, h: DaySummary): boolean {
     // глава 3 (spec 2026-10-chapter-3, часть 45а): были ваши больные с ОКС, и ни у одного он не пропущен
     case 'noMissedMI':
       return (h.acs?.seen ?? 0) > 0 && !h.acs?.missed;
+    // глава 4 (spec 2026-10-chapter-4, часть 60а): были заразные, которым нужен бокс, и ни один не лёг в общую палату
+    case 'noInfectiousInWard':
+      return (h.isolation?.seen ?? 0) > 0 && !h.isolation?.ward;
   }
+}
+
+/**
+ * Смертность в стационаре за дни подряд (часть 60а): умерли — и в «мягком режиме» переведены в тяжёлом состоянии вместо
+ * смерти; лежали — лежавшие вечером накануне первого дня и поступившие за эти дни.
+ */
+function mortalityOf(history: readonly DaySummary[], days: readonly DaySummary[]): { died: number; lying: number } {
+  const before = history.find(h => h.day === days[0].day - 1)?.ward?.lying ?? 0;
+  return {
+    died: days.reduce((a, h) => a + (h.ward?.died ?? 0) + (h.ward?.severe ?? 0), 0),
+    lying: before + days.reduce((a, h) => a + (h.ward?.admitted ?? 0), 0),
+  };
 }
 
 /**
@@ -169,6 +187,37 @@ export function missionProgress(db: ContentDb, v: CampaignView, m: Mission): Mis
       return {
         value: Math.min(n, m.count), target: m.count, done: was || (n >= m.count && sum <= norm),
         ...(n > 0 ? { stay: { days: sum / n, norm: norm / n } } : {}),
+      };
+    }
+    // глава 4 (spec 2026-10-chapter-4, часть 60а): приёмы нанятых врачей-специалистов за главу — их итоги дня помнят
+    // должность и после увольнения; точность — доля верных диагнозов, как у «принять N»
+    case 'staff': {
+      let seen = 0;
+      let correct = 0;
+      const who = new Set<string>();
+      for (const h of days) {
+        for (const [id, c] of Object.entries(h.colleagues ?? {})) {
+          if (!c.role || !db.roles[c.role]?.profile || c.seen === 0) continue;
+          seen += c.seen;
+          correct += c.correct;
+          who.add(id);
+        }
+      }
+      const accuracy = seen > 0 ? Math.round((100 * correct) / seen) : 0;
+      return {
+        value: Math.min(seen, m.count), target: m.count, accuracy, doctors: who.size,
+        done: was || (seen >= m.count && accuracy >= m.accuracy && who.size >= m.doctors),
+      };
+    }
+    // окно — дни главы подряд; выполнено, если хоть в одном окне лежало не меньше порога и умерло не больше доли; ход —
+    // последнее окно
+    case 'mortality': {
+      const fits = (x: { died: number; lying: number }) => x.lying >= m.lying && x.died * 100 <= m.percent * x.lying;
+      let ok = false;
+      for (let i = m.days; i <= days.length && !ok; i++) ok = fits(mortalityOf(v.history, days.slice(i - m.days, i)));
+      return {
+        value: Math.min(days.length, m.days), target: m.days, done: was || ok,
+        ...(days.length > 0 ? { mortality: mortalityOf(v.history, days.slice(-m.days)) } : {}),
       };
     }
   }

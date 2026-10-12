@@ -1,0 +1,95 @@
+# Городская больница — больница главы 4 «Большая больница» (spec 2026-10-chapter-4, часть 60а): областной центр
+# Верхнеборск, участок 56 × 40 (геймдизайн §7: «большая больница»). Четыре ряда помещений и три коридора. Сверху —
+# регистратура, доврачебный, кабинет врача, процедурный, лаборатория, ординаторская на четыре места и два кабинета
+# специалистов. Во втором ряду — зона ожидания, ЭКГ, проход ко второму коридору, рентген, УЗИ экспертного класса, КТ на 64
+# среза, санузел и третий кабинет специалиста. В третьем — стационар: смотровая приёмного на три койки, две палаты, проход
+# к третьему коридору, палата интенсивной терапии, операционная и третья палата. Нижний ряд строят заданиями главы
+# (`later`): реанимация на шесть коек, три бокса, эндоскопический кабинет и кабинет МРТ — в карьере врач строит их сам,
+# где захочет, а в «Смене» они стоят. Специалисты — гастроэнтеролог, эндокринолог и инфекционист — в «Смене» на местах,
+# в карьере их нанимают; в начале главы их кабинеты пустуют. Пятый кабинет — терапевта, рядом с кабинетом МРТ: в «Смене»
+# он берёт пришедших без записи к специалисту, в карьере его кабинет и терапевта — по желанию врача. Штат — на всё, что
+# построено
+id: preset.city
+name: { ru: "Городская больница" }
+plot: [56, 40]
+# скорая везёт в городскую больницу областного центра больше, чем в районную (2–5 за смену), — игровая оценка,
+# подобрана прогоном: так сепсис и кровотечения приходят несколько раз в месяц
+ambulance: [5, 9]
+entrance: [0, 8]
+corridor:
+  - [1, 7, 54, 9]
+  - [18, 10, 20, 16]
+  - [1, 17, 54, 19]
+  - [27, 20, 29, 26]
+  - [1, 27, 54, 29]
+rooms:
+  - { type: room.reception, size: S, x: 0, y: 0, rot: 0 }
+  - { type: room.triage, size: S, x: 5, y: 0, rot: 0 }
+  - { type: room.office, size: M, x: 10, y: 0, rot: 0 }
+  - { type: room.procedure, size: S, x: 17, y: 0, rot: 0 }
+  - { type: room.lab, size: M, x: 22, y: 0, rot: 0, equipment: [eq.hematology_analyzer, eq.biochem_analyzer, eq.urine_analyzer, eq.immuno_analyzer] }
+  - { type: room.staff, size: M, x: 29, y: 0, rot: 0 }
+  - { type: room.office, size: M, x: 37, y: 0, rot: 0 }
+  - { type: room.office, size: M, x: 44, y: 0, rot: 0 }
+  - { type: room.waiting, size: L, x: 0, y: 10, rot: 2 }
+  - { type: room.ecg, size: S, x: 12, y: 10, rot: 2, equipment: [eq.ecg] }
+  - { type: room.xray, size: M, x: 21, y: 10, rot: 2, equipment: [eq.xray_digital] }
+  - { type: room.ultrasound, size: S, x: 28, y: 10, rot: 2, equipment: [eq.us_expert] }
+  - { type: room.ct, size: M, x: 33, y: 10, rot: 2, equipment: [eq.ct_64] }
+  - { type: room.toilet, size: S, x: 41, y: 10, rot: 2 }
+  - { type: room.office, size: M, x: 46, y: 10, rot: 2 }
+  - { type: room.emergency, size: L, x: 0, y: 20, rot: 2, equipment: [eq.monitor_defib] }
+  - { type: room.ward, size: M, x: 10, y: 20, rot: 2 }
+  - { type: room.ward, size: M, x: 18, y: 20, rot: 2 }
+  - { type: room.icu, size: M, x: 30, y: 20, rot: 2, equipment: [eq.monitor_defib, eq.monitor_defib, eq.monitor_defib, eq.monitor_defib] }
+  - { type: room.or, size: M, x: 38, y: 20, rot: 2, equipment: [eq.or_table, eq.anesthesia] }
+  - { type: room.ward, size: M, x: 46, y: 20, rot: 2 }
+  - { type: room.ricu, size: L, x: 0, y: 30, rot: 2, later: true, equipment: [eq.monitor_defib, eq.monitor_defib, eq.monitor_defib, eq.monitor_defib, eq.monitor_defib, eq.monitor_defib, eq.ventilator, eq.ventilator, eq.ventilator, eq.ventilator, eq.ventilator, eq.ventilator] }
+  - { type: room.box, size: S, x: 12, y: 30, rot: 2, later: true }
+  - { type: room.box, size: S, x: 17, y: 30, rot: 2, later: true }
+  - { type: room.box, size: S, x: 22, y: 30, rot: 2, later: true }
+  - { type: room.endoscopy, size: M, x: 27, y: 30, rot: 2, later: true, equipment: [eq.videoendoscope] }
+  - { type: room.mri, size: L, x: 34, y: 30, rot: 2, later: true, equipment: [eq.mri_15] }
+  - { type: room.office, size: M, x: 44, y: 30, rot: 2, later: true }
+decor:
+  - [bench, 9, 9]
+  - [bench, 10, 9]
+  - [bench, 11, 9]
+  - [bench, 12, 9]
+  - [bench, 26, 9]
+  - [bench, 27, 9]
+  - [bench, 40, 9]
+  - [bench, 41, 9]
+staff:
+  - { role: role.registrar, room: 0 }
+  - { role: role.nurse, room: 1 }
+  - { role: role.nurse, room: 3 }
+  - { role: role.lab_tech, room: 4 }
+  - { role: role.gastroenterologist, room: 6, later: true }
+  - { role: role.endocrinologist, room: 7, later: true }
+  - { role: role.nurse, room: 9 }
+  - { role: role.radiographer, room: 10 }
+  - { role: role.radiologist, room: 10 }
+  - { role: role.sonographer, room: 11 }
+  - { role: role.radiographer, room: 12 }
+  - { role: role.radiologist, room: 12 }
+  - { role: role.infectionist, room: 14, later: true }
+  - { role: role.nurse, room: 15 }
+  - { role: role.nurse, room: 16 }
+  - { role: role.nurse, room: 17 }
+  - { role: role.nurse, room: 18 }
+  - { role: role.anesthetist, room: 18 }
+  - { role: role.surgeon, room: 19 }
+  - { role: role.anesthetist, room: 19 }
+  - { role: role.or_nurse, room: 19 }
+  - { role: role.nurse, room: 20 }
+  - { role: role.nurse, room: 21, later: true }
+  - { role: role.anesthetist, room: 21, later: true }
+  - { role: role.nurse, room: 22, later: true }
+  - { role: role.nurse, room: 23, later: true }
+  - { role: role.nurse, room: 24, later: true }
+  - { role: role.endoscopist, room: 25, later: true }
+  - { role: role.nurse, room: 25, later: true }
+  - { role: role.radiographer, room: 26, later: true }
+  - { role: role.radiologist, room: 26, later: true }
+  - { role: role.therapist, room: 27, later: true }

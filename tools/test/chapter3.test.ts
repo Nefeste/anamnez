@@ -323,7 +323,7 @@ describe('глава 3 между сменами', () => {
     expect(after.find(x => x.venue === ch3.preset)).toMatchObject({ ok: true, name: db.presets[ch3.preset].name.ru });
   });
 
-  test('глава 3 — последняя: выполнена — «в следующей версии», кнопки нет', async () => {
+  test('глава 3 выполнена — дальше глава 4 в новой больнице (spec 2026-10-chapter-4, часть 60а): кнопка «Перейти в городскую больницу»', async () => {
     const store = memoryStore();
     setStore(store);
     const s = newCampaign(db, { seed: 84, season: 'winter', career: 2, chapter: ch3.id });
@@ -331,7 +331,10 @@ describe('глава 3 между сменами', () => {
     await saveSlot(store, 'campaign-2', s, SHIFT_SCHEMA_VERSION, 'x');
     await loadShift('campaign', 2);
     const c = campaignView()!;
-    expect([c.after, c.next]).toEqual([T.campaign.completeLater(4), undefined]);
+    const ch4 = db.chapters['chapter.city'];
+    expect([c.after, c.next]).toEqual([
+      T.campaign.completeNext, { title: T.campaign.chapter(4, ch4.name.ru), move: ch4.move!.ru, place: ch4.place.ru, text: T.campaign.moveText(ch3.place.ru), ready: true },
+    ]);
   });
 });
 

@@ -4,7 +4,7 @@
 // Две точки входа, как в `06-architecture.md` §2: `apply(state, command)` — действие врача,
 // которое двигает часы на свою цену, и команда `advance` — время на карте. Состояние
 // меняется на месте; случайность — только из именованных ветвей зерна смены (ADR 0004).
-import type { Chapter, ContentDb, Exam, Id, Season, Setting, TutorialPatient } from '../../content/types';
+import type { Chapter, ContentDb, Exam, Id, Preset, Season, Setting, TutorialPatient } from '../../content/types';
 import { fnv1a } from '../core/hash';
 import {
   caseIncome, consumablesOf, emptyLedger, expensesOf, flowOf, incomeOf, interestOf, type Ledger, levelOf, payerOf, reputationAfter, salariesOf, upkeepOf,
@@ -13,7 +13,7 @@ import {
 import { type CampaignProgress, campaignEvening, chapterOf, nextChapterOf, startChapter, tutorialDayOf } from '../campaign/campaign';
 import { build, emptyPlot, type HospitalState, type Plan, planOf, presetHospital, sizeOf, UNDO_DEPTH, widenPlot } from '../hospital/build';
 import { bedsideIn, DOCTOR, doctorRoom, examWhere, openBlocks, type Problem, problemsOf, type Staffing, workingRooms } from '../hospital/requirements';
-import { applicantsOf, doctorOf, grow, memberAt, presetStaff, readingOf, type StaffMember, speedOf, staffingOf } from '../hospital/staff';
+import { applicantsOf, doctorOf, grow, memberAt, presetStaff, PROFILE_PRIOR, readingOf, type StaffMember, speedOf, staffingOf } from '../hospital/staff';
 import { log2 } from '../core/math';
 import { P_ONE, RNG_VERSION, Rng } from '../core/rng';
 import { examHarmOutcome, observe, type Outcome, rscOutcome } from '../med/course';
@@ -42,6 +42,7 @@ const PATIENCE: Record<Exclude<Triage, 'red'>, [number, number]> = { yellow: [12
 const SLOTS = 18;
 const SLOT_MIN = 20;
 const SLOT_BOOKED = 6000;
+
 /** первая скорая в первую смену главы с обучением по скорой — не позже стольких минут (часть 34б) */
 const TUTORIAL_AMBULANCE_MIN = 20;
 /**
@@ -221,29 +222,46 @@ export function newSingle(
  * строит, — терапевты придут с главой, где откроется ординаторская (spec 2026-09-hired-doctors);
  * и только тех, кто работает в помещении, которое глава строит или которое уже стоит в её больнице:
  * хирург и анестезиолог — с главой, где есть операционная (spec 2026-09-chapter-2, часть 28).
- * Специалистов в главах 1–3 нет: они придут с главой 4 (spec 2026-10-chapter-4, части 59 и 60).
+ * Специалисты — только в главе со специалистами: в главах 1–3 их нет, они приходят с главой 4 (spec
+ * 2026-10-chapter-4, части 59 и 60а).
  */
-function builtIn(db: ContentDb, build: readonly Id[], preset?: Id): (role: Id) => boolean {
-  const here = new Set([...build, ...(preset ? (db.presets[preset]?.rooms.map(r => r.type) ?? []) : [])]);
+function builtIn(db: ContentDb, ch: Chapter): (role: Id) => boolean {
+  const here = new Set([...ch.build, ...(db.presets[ch.preset]?.rooms.map(r => r.type) ?? [])]);
   return role => {
     const r = db.roles[role];
-    if (!r || r.profile || (r.needs && !build.includes(r.needs))) return false;
+    if (!r || (r.profile && !ch.specialists) || (r.needs && !ch.build.includes(r.needs))) return false;
     return r.rooms.some(id => here.has(id));
   };
 }
 
 /**
+ * Машин скорой за смену (spec 2026-10-chapter-4, часть 60а): у готовой больницы главы или «Смены» — её собственные (в
+ * городскую везут больше), иначе — как везде.
+ */
+function ambulanceOf(db: ContentDb, s: ShiftState): [number, number] {
+  const preset = s.campaign ? db.presets[chapterOf(db, s.campaign)?.preset ?? ''] : s.meta.mode === 'single' ? db.presets[s.meta.venue ?? ''] : undefined;
+  return preset?.ambulance ?? db.economy.ambulance.perDay;
+}
+
+/**
+ * Участок главы: участок песочницы, а больница главы шире него — её собственный: у главы 3 — с крылом (часть 45а), у
+ * главы 4 — большая больница 56 × 40 (spec 2026-10-chapter-4, часть 60а).
+ */
+function chapterPlot(db: ContentDb, preset: Preset): [number, number] {
+  const sb = db.economy.sandbox.plot;
+  return [Math.max(sb[0], preset.plot[0]), Math.max(sb[1], preset.plot[1])];
+}
+
+/**
  * Кампания (spec 2026-09-campaign): карьера в слоте `career`, первая глава — по порядку.
  * Больница главы — её готовая больница на участке песочницы со штатом, касса — бюджет главы;
- * в начале — письма «в начале главы». Остальное — как в песочнице.
+ * в начале — письма «в начале главы». Остальное — как в песочнице. Что строят и кого нанимают заданием главы
+ * (часть 60а), в начале главы нет.
  */
 export function newCampaign(db: ContentDb, opts: { seed: number; season: Season; difficulty?: Difficulty; career: number; chapter?: Id }): ShiftState {
   const ch = opts.chapter ? db.chapters[opts.chapter] : Object.values(db.chapters)[0];
   const preset = db.presets[ch.preset];
-  const hired = applicantsOf(db, opts.seed >>> 0, 0, 1, builtIn(db, ch.build, ch.preset));
-  // больница главы с крылом (часть 45а) шире участка песочницы — на её собственном участке
-  const sb = db.economy.sandbox.plot;
-  const plot: [number, number] = [Math.max(sb[0], preset.plot[0]), Math.max(sb[1], preset.plot[1])];
+  const hired = applicantsOf(db, opts.seed >>> 0, 0, 1, builtIn(db, ch));
   return {
     meta: {
       schemaVersion: SHIFT_SCHEMA_VERSION, contentVersion: db.contentVersion, rngVersion: RNG_VERSION, mode: 'campaign', career: opts.career,
@@ -261,10 +279,10 @@ export function newCampaign(db: ContentDb, opts: { seed: number; season: Season;
     summary: emptySummary(0),
     history: [],
     journal: [],
-    hospital: presetHospital(db, preset, plot).hospital,
+    hospital: presetHospital(db, preset, chapterPlot(db, preset), true).hospital,
     economy: { cash: ch.budget, reputation: db.economy.reputation.start, ledger: emptyLedger() },
     undo: [],
-    staff: presetStaff(db, preset),
+    staff: presetStaff(db, preset, true),
     candidates: hired.list,
     nextStaff: hired.next,
     campaign: startChapter(db, ch.id, 0),
@@ -289,10 +307,10 @@ function nextChapter(db: ContentDb, s: ShiftState) {
   // лежащих в главе 1 нет — палат там не строят; с палатами прежней главы переход подождёт выписки
   if (Object.values(s.patients).some(p => p.status === 'admitted')) return;
   const preset = db.presets[next.preset];
-  const hired = applicantsOf(db, s.meta.seed, s.day, s.nextStaff ?? 1, builtIn(db, next.build, next.preset));
+  const hired = applicantsOf(db, s.meta.seed, s.day, s.nextStaff ?? 1, builtIn(db, next));
   s.meta.department = next.department;
-  s.hospital = presetHospital(db, preset, db.economy.sandbox.plot).hospital;
-  s.staff = presetStaff(db, preset);
+  s.hospital = presetHospital(db, preset, chapterPlot(db, preset), true).hospital;
+  s.staff = presetStaff(db, preset, true);
   s.candidates = hired.list;
   s.nextStaff = hired.next;
   s.economy = { cash: next.budget, reputation: db.economy.reputation.start, ledger: emptyLedger() };
@@ -335,7 +353,7 @@ function campaignCase(db: ContentDb, sum: DaySummary, p: ShiftPatient, closed: C
  * прежних снимках участок уже.
  */
 function wingChapter(db: ContentDb, s: ShiftState, c: CampaignProgress, next: Chapter) {
-  const hired = applicantsOf(db, s.meta.seed, s.day, s.nextStaff ?? 1, builtIn(db, next.build, next.preset));
+  const hired = applicantsOf(db, s.meta.seed, s.day, s.nextStaff ?? 1, builtIn(db, next));
   s.meta.department = next.department;
   if (s.hospital) s.hospital = widenPlot(s.hospital, next.wing ?? 0);
   s.candidates = hired.list;
@@ -594,9 +612,9 @@ function planDay(db: ContentDb, s: ShiftState) {
   // скорая (spec 2026-09-chapter-2, часть 27): работает смотровая приёмного — машины в любое
   // время смены, из своей ветви дня; без смотровой день прежний
   if (emergencyBays(db, s).length > 0) {
-    const a = db.economy.ambulance;
     const ar = r.fork('ambulance');
-    const cars = ar.range(a.perDay[0], a.perDay[1]);
+    const [lo, hi] = ambulanceOf(db, s);
+    const cars = ar.range(lo, hi);
     // обучение со скорой (часть 34б): первая машина — в первые двадцать минут смены
     const early = tutorial.some(x => x.ambulance);
     for (let i = 0; i < cars; i++) {
@@ -756,7 +774,7 @@ function closeDay(db: ContentDb, s: ShiftState) {
   if (s.staff && s.hospital) {
     s.staff = s.staff.map(m => grow(db, m));
     const ch = s.campaign ? chapterOf(db, s.campaign) : undefined;
-    const c = applicantsOf(db, s.meta.seed, s.day, s.nextStaff ?? 1, s.campaign ? builtIn(db, ch?.build ?? [], ch?.preset) : undefined);
+    const c = applicantsOf(db, s.meta.seed, s.day, s.nextStaff ?? 1, s.campaign ? (ch ? builtIn(db, ch) : () => false) : undefined);
     s.candidates = c.list;
     s.nextStaff = c.next;
   }
@@ -1048,14 +1066,14 @@ function closePatient(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase
     }
   }
   // сроки за день (часть 37): ваши приёмы — у скольких срок был и у скольких выполнен; с частью 45а —
-  // и оценки по порядку закрытия, для заданий «срок у N больных подряд»
+  // и оценки по порядку закрытия, для заданий «срок у N больных подряд»; срок с серией (часть 60а) — и в строку серии
   if (!p.by) {
     for (const t of closed.targets ?? []) {
       const day = ((s.summary.targets ??= {})[t.id] ??= { onTime: 0, total: 0 });
       day.total++;
       if (t.grade === 'A') day.onTime++;
       const seq = (s.summary.targetSeq ??= {});
-      seq[t.id] = (seq[t.id] ?? '') + t.grade;
+      for (const key of [t.id, db.targets[t.id]?.series]) if (key) seq[key] = (seq[key] ?? '') + t.grade;
     }
   }
   if (p.bay) {
@@ -1077,8 +1095,15 @@ function closePatient(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase
     p.paid = x;
   }
   const sum = s.summary;
+  // кампания (spec 2026-10-chapter-4, часть 60а): заразный, которому нужен бокс, — у всех приёмов больницы; положен ли он в
+  // общую палату (строка разбора «соседи по палате — контактные»)
+  if (s.campaign && recommendedSetting(db, p.patient, p.results.map(r => r.exam), closed.bedside, closed.rooms) === 'box') {
+    const day = (sum.isolation ??= { seen: 0, ward: 0 });
+    day.seen++;
+    if (closed.plan.setting === 'admit') day.ward++;
+  }
   if (p.by) {
-    const c: ColleagueDay = ((sum.colleagues ??= {})[p.by] ??= { seen: 0, correct: 0, partly: 0, wrong: 0, grades: { A: 0, B: 0, C: 0, D: 0 } });
+    const c = colleagueDay(s, p.by);
     c.seen++;
     c[closed.verdict]++;
     c.grades[closed.grades.overall]++;
@@ -1099,6 +1124,12 @@ function closePatient(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase
   }
   if (STAYS.includes(closed.plan.setting)) admit(db, s, p);
   return closed;
+}
+
+/** Строка итогов нанятого врача за день (spec 2026-09-hired-doctors) — с его должностью (spec 2026-10-chapter-4, часть 60а). */
+function colleagueDay(s: ShiftState, by: string): ColleagueDay {
+  const role = s.staff?.find(m => m.id === by)?.role;
+  return ((s.summary.colleagues ??= {})[by] ??= { ...(role ? { role } : {}), seen: 0, correct: 0, partly: 0, wrong: 0, grades: { A: 0, B: 0, C: 0, D: 0 } });
 }
 
 /** Лечение реанимации (spec 2026-10-chapter-4, часть 47) остаётся, только если место — его: ИВЛ — «В ОРИТ». */
@@ -2103,9 +2134,8 @@ function takeOver(db: ContentDb, s: ShiftState, id: string): Notice[] {
     p.spent.seconds -= Math.max(0, step.t - busy);
     s.events = s.events.filter(e => e !== step);
   }
-  const col = s.summary.colleagues?.[by] ?? { seen: 0, correct: 0, partly: 0, wrong: 0, grades: { A: 0, B: 0, C: 0, D: 0 } };
+  const col = colleagueDay(s, by);
   col.taken = (col.taken ?? 0) + 1;
-  (s.summary.colleagues ??= {})[by] = col;
   let notices: Notice[] = [];
   if (p.status !== 'away') {
     if (!s.current) {
@@ -2146,8 +2176,12 @@ function colleagueStep(db: ContentDb, s: ShiftState, p: ShiftPatient) {
   if (!m) return;
   const how = doctorOf(db, m);
   const pct = speedOf(db, m);
+  // специалист знает, с чем к нему записываются (spec 2026-10-chapter-4, часть 60а): у записанного к нему болезни профиля
+  // вероятнее — во столько раз
+  const profile = p.to === m.id ? db.roles[m.role]?.profile : undefined;
   const r = nextStep(db, p.patient, observationsOf(p), p.done, p.phase ?? {}, {
     candidates: candidatesOf(db, p.departments ?? s.meta.department), exams: examsHere(db, s), threshold: how.threshold, minGain: how.minGain,
+    ...(profile ? { prior: { ids: profile, x: PROFILE_PRIOR } } : {}),
     // навык 1–2 иногда забывает спросить перед лечением — жребий своей ветви
     skipAsk: q => how.forget > 0 && branch(s, `forget:${p.id}:${q}`).chance(how.forget * 100),
     // и что у постели (часть 39а): под монитором — тромболизис; и сколько прошло с прихода (часть 41а)

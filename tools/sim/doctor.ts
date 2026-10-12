@@ -18,7 +18,8 @@ import { Rng } from '../../src/engine/core/rng';
 import { observe, type OutcomeKind } from '../../src/engine/med/course';
 import { complaintObservations, runExam } from '../../src/engine/med/exams';
 import { generatePatient, patientAt, presentingWeight } from '../../src/engine/med/generate';
-import { contextOf, posterior } from '../../src/engine/med/infer';
+import { contextOf, posterior, type Prior } from '../../src/engine/med/infer';
+import { PROFILE_PRIOR } from '../../src/engine/hospital/staff';
 import { evaluatePlan, type Plan, primaryOf, selfLimits, type Venue } from '../../src/engine/med/plan';
 import { choosePlan, type DoctorPhase, type DoctorResult, examCost, examMinutes, MIN_GAIN, nextStep, ORDER_MINUTES, runDoctor, type Strategy } from '../../src/engine/med/policy';
 import { type Grade, scoreCase } from '../../src/engine/med/score';
@@ -266,7 +267,7 @@ interface ProfileTally {
   patients: number; accuracy: number; groupAccuracy: number; balanced: number;
   perCondition: Record<string, { n: number; groupAccuracy: number }>; topConfusions: [string, number][];
 }
-function profileTally(people: readonly Patient[], s: Strategy, skill?: number): ProfileTally {
+function profileTally(people: readonly Patient[], s: Strategy, skill?: number, prior?: Prior): ProfileTally {
   const per: Record<string, { n: number; correct: number; correctGroup: number }> = {};
   const confusion: Record<string, number> = {};
   // нанятый врач навыка `skill` — пороги economy.yaml, как в таблице по навыку выше
@@ -276,7 +277,7 @@ function profileTally(people: readonly Patient[], s: Strategy, skill?: number): 
     const truth = p.truth.conditions[0].id;
     const forgot = Rng.seeded(p.seed).fork('forget');
     const r = runDoctor(db, p, s, Rng.seeded(p.seed).fork(`doctor:${s}`), how
-      ? { candidates, exams, threshold: how.threshold, minGain: how.minGain, skipAsk: q => how.forget > 0 && forgot.fork(q).chance(how.forget * 100) }
+      ? { candidates, exams, threshold: how.threshold, minGain: how.minGain, skipAsk: q => how.forget > 0 && forgot.fork(q).chance(how.forget * 100), ...(prior ? { prior } : {}) }
       : { candidates, exams, threshold });
     const pc = (per[truth] ??= { n: 0, correct: 0, correctGroup: 0 });
     pc.n++;
@@ -315,14 +316,16 @@ for (const f of profiles) {
 
 // Врачи-специалисты (spec 2026-10-chapter-4, часть 59): к специалисту записываются с болезнями его профиля, которых
 // принимает больница этого прогона, — те же больные, что в смене (`only`, пришли сами; зёрна с 8 500 000). Ведёт их
-// нанятый врач навыка 3, рядом — разумный на тех же больных. Для сведения: пороги отделений главы 4 — в части 61а.
+// нанятый врач навыка 3 — и, как в смене, знает, с чем к нему записываются (часть 60а: болезни профиля вероятнее в
+// `PROFILE_PRIOR` раз); рядом — разумный на тех же больных, без этого знания. Для сведения: пороги отделений главы 4 — в
+// части 61а.
 const t4 = performance.now();
 const specialists = Object.values(db.roles)
   .flatMap(r => (r.profile ? [{ role: r.id, only: r.profile.filter(id => departments.includes(db.conditions[id].department)) }] : []))
   .filter(x => x.only.length > 0)
   .map(({ role, only }) => {
     const people = Array.from({ length: SPECIALIST_N }, (_, i) => generatePatient(db, 8_500_000 + i, { department, departments, season: seasons[i % seasons.length], walkIn: true, only, ...(variety ? { variety: true } : {}) }));
-    return { role, rational: profileTally(people, 'rational'), skill3: profileTally(people, 'rational', 3) };
+    return { role, rational: profileTally(people, 'rational'), skill3: profileTally(people, 'rational', 3, { ids: db.roles[role].profile!, x: PROFILE_PRIOR }) };
   });
 const specialistMs = performance.now() - t4;
 

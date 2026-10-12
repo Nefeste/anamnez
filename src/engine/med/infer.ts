@@ -20,6 +20,14 @@ export interface InferContext {
   knownConditions: Id[];
   /** чего о нём не знают — хронические болезни и факторы риска с их долей (`unknownsOf`) */
   unknowns: Unknowns;
+  /** что известно о записи (spec 2026-10-chapter-4, часть 60а): к специалисту записываются с болезнями его профиля */
+  prior?: Prior;
+}
+
+/** Болезни, которые у этого пациента вероятнее во столько раз, — профиль специалиста, к которому он записан. */
+export interface Prior {
+  ids: readonly Id[];
+  x: number;
 }
 
 /**
@@ -135,11 +143,14 @@ export function unknownMiss(ctx: InferContext, f: Id, shares: ReadonlyMap<Id, nu
   return miss;
 }
 
-/** Всё, что вывод знает о пациенте: пол, возраст, сезон, что он сказал о себе, и доли того, чего не сказал. */
-export function contextOf(db: ContentDb, patient: { sex: Sex; age: number; season: Season }, observations: readonly Observation[]): InferContext {
+/**
+ * Всё, что вывод знает о пациенте: пол, возраст, сезон, что он сказал о себе, и доли того, чего не сказал; у специалиста
+ * — ещё и к кому записан (`prior`, часть 60а).
+ */
+export function contextOf(db: ContentDb, patient: { sex: Sex; age: number; season: Season }, observations: readonly Observation[], prior?: Prior): InferContext {
   const known = knownFacts(db, observations);
   const base = { sex: patient.sex, age: patient.age, season: patient.season, knownRisks: known.risks, knownConditions: known.conditions };
-  return { ...base, unknowns: unknownsOf(db, observations, base) };
+  return { ...base, unknowns: unknownsOf(db, observations, base), ...(prior ? { prior } : {}) };
 }
 
 /**
@@ -252,6 +263,8 @@ export function priorWeight(db: ContentDb, id: Id, ctx: InferContext): number {
     if (ctx.knownRisks.includes(r.id) || assumed.includes(r.id)) continue;
     w *= 1 - share(r.id) + share(r.id) * r.x;
   }
+  // записан к специалисту (часть 60а) — болезни его профиля вероятнее
+  if (ctx.prior?.ids.includes(id)) w *= ctx.prior.x;
   return w;
 }
 

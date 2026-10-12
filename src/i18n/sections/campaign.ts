@@ -41,9 +41,21 @@ export const campaign = {
   // глава 3 (spec 2026-10-chapter-3, часть 45а): срок у больных подряд, тромболизисы в окне
   deadlineProgress: (n: number, of: number) => `${n} из ${of}\u00a0${pluralRu(of, 'больного', 'больных', 'больных')} подряд`,
   lysisProgress: (n: number, of: number) => `${n} из ${of}`,
+  // глава 4 (spec 2026-10-chapter-4, часть 60а): приёмы специалистов; дни подряд со смертностью в стационаре не выше порога
+  staffProgress: (seen: number, of: number, accuracy: number, doctors: number, need: number) =>
+    `${seen} из ${of}, точность ${accuracy}\u00a0%, специалистов ${doctors} из ${need}`,
+  mortalityProgress: (days: number, of: number, x: { died: number; lying: number } | undefined, min: number) => {
+    if (days < of || !x) return `${days} из ${of}\u00a0${pluralRu(of, 'дня', 'дней', 'дней')}`;
+    const last = `за ${pluralRu(of, 'последний', 'последние', 'последние')} ${of}\u00a0${pluralRu(of, 'день', 'дня', 'дней')}`;
+    if (x.lying < min) return `${last} лежали ${x.lying} — нужно не меньше ${min}`;
+    if (x.died === 0) return `${last} лежали ${x.lying}, умерших нет`;
+    const pct = ((100 * x.died) / x.lying).toFixed(1).replace('.', ',');
+    return `${last} ${pluralRu(x.died, 'умер', 'умерли', 'умерли')} ${x.died} из ${x.lying}\u00a0${pluralRu(x.lying, 'лежавшего', 'лежавших', 'лежавших')} — ${pct}\u00a0%`;
+  },
   notYet: 'пока нет',
   doneOn: (day: number) => `выполнено, день ${day}`,
-  completeLater: (next: number) => `Основные задания главы выполнены. Глава ${next} — в следующей версии; работать здесь можно и дальше.`,
+  // глава 4 — последняя (spec 2026-10-chapter-4, часть 60а): следующей не обещаем
+  completeLast: 'Основные задания главы выполнены. Следующей главы пока нет — работать здесь можно и дальше.',
   completeNext: 'Основные задания главы выполнены. Работать здесь можно и дальше — или перейти в следующую главу.',
   moveTo: (order: number) => `Перейти в главу ${order}`,
   moveHint: 'между сменами',

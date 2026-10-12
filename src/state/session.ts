@@ -1116,6 +1116,11 @@ function missionText(m: Mission, p: MissionProgress): string {
       return t.deadlineProgress(p.value, p.target);
     case 'thrombolysis':
       return t.lysisProgress(p.value, p.target);
+    // глава 4 (spec 2026-10-chapter-4, часть 60а)
+    case 'staff':
+      return t.staffProgress(p.value, p.target, p.accuracy ?? 0, p.doctors ?? 0, m.doctors);
+    case 'mortality':
+      return t.mortalityProgress(p.value, p.target, p.mortality, m.lying);
   }
 }
 
@@ -1145,7 +1150,7 @@ function buildCampaignView(): CampaignView | undefined {
   const next = complete ? nextChapterOf(db, c) : undefined;
   return {
     version, title: t.chapter(ch.order, ch.name.ru), place: ch.place.ru, day: s.day - c.since, letters, missions, complete,
-    ...(complete ? { after: next ? t.completeNext : t.completeLater(ch.order + 1) } : {}),
+    ...(complete ? { after: next ? t.completeNext : t.completeLast } : {}),
     ...(next ? {
       next: {
         // глава с крылом (часть 45а) — та же больница: лежащих ждать не нужно

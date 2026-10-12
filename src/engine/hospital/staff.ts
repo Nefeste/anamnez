@@ -27,6 +27,12 @@ export interface StaffMember {
   days: number;
 }
 
+/**
+ * Во сколько раз болезни профиля вероятнее у записанного к специалисту (spec 2026-10-chapter-4, часть 60а): к нему
+ * записываются с ними, и он это знает. Игровая оценка, подобрана прогоном городской больницы
+ */
+export const PROFILE_PRIOR = 10;
+
 /** Зарплата за смену: между «навык 1» и «навык 5» должности, с поправкой черты; до 50 ₽. */
 export function salaryOf(db: ContentDb, role: Id, skill: number, trait?: Trait): number {
   const [lo, hi] = db.roles[role].salary;
@@ -145,9 +151,12 @@ export function memberAt(staff: readonly StaffMember[], room: string, role: Id):
   return staff.find(m => m.room === room && m.role === role);
 }
 
-/** Штат готовой больницы: навык 3, без черт — работает ровно так, как записано в базе. */
-export function presetStaff(db: ContentDb, p: Preset): StaffMember[] {
-  return p.staff.map((s, i) => ({
+/**
+ * Штат готовой больницы: навык 3, без черт — работает ровно так, как записано в базе. В начале главы кампании (`start`,
+ * spec 2026-10-chapter-4, часть 60а) — без тех, кого нанимают в главе; номера остальных — те же.
+ */
+export function presetStaff(db: ContentDb, p: Preset, start = false): StaffMember[] {
+  return p.staff.flatMap((s, i): StaffMember[] => (start && s.later ? [] : [{
     id: `p${i + 1}`, role: s.role, sex: i % 2 === 0 ? 'f' : 'm', seed: i + 1, skill: 3, salary: salaryOf(db, s.role, 3), room: `r${s.room + 1}`, days: 0,
-  }));
+  }]));
 }

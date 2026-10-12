@@ -333,9 +333,11 @@ export interface PresetFailure {
 /**
  * Готовая больница из записи каталога: помещения ставятся теми же командами, что у игрока,
  * — поэтому запись, которую движок не может построить, валидатор не пропустит.
- * Участок может быть больше записанного (песочница с готовой амбулаторией).
+ * Участок может быть больше записанного (песочница с готовой амбулаторией). В начале главы кампании
+ * (`start`, spec 2026-10-chapter-4, часть 60а) — без помещений, которые строят заданием: они в конце записи, и номера
+ * остальных те же.
  */
-export function presetHospital(db: ContentDb, p: Preset, plot: [number, number] = p.plot): { hospital: HospitalState; failed: PresetFailure[] } {
+export function presetHospital(db: ContentDb, p: Preset, plot: [number, number] = p.plot, start = false): { hospital: HospitalState; failed: PresetFailure[] } {
   const failed: PresetFailure[] = [];
   let s: Built = { hospital: emptyPlot(plot[0], plot[1], p.entrance, p.corridor), cash: Number.MAX_SAFE_INTEGER };
   const run = (room: number, cmd: BuildCommand) => {
@@ -344,6 +346,7 @@ export function presetHospital(db: ContentDb, p: Preset, plot: [number, number] 
     else failed.push({ room, cmd: cmd.kind, ...(cmd.kind === 'buy' ? { equipment: cmd.equipment } : {}), error: r.error });
   };
   p.rooms.forEach((r, n) => {
+    if (start && r.later) return;
     run(n, { kind: 'room', type: r.type, size: r.size, x: r.x, y: r.y, rot: r.rot });
     const id = `r${n + 1}`;
     if (r.door !== undefined) run(n, { kind: 'door', room: id, at: r.door });

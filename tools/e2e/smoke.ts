@@ -3233,10 +3233,12 @@ try {
   await page.getByTestId('menu-single').click();
   await page.getByTestId('venue-preset.clinic').waitFor({ timeout: 10_000 });
   // районная больница — с тех пор как карьера 2 перешла в главу 2
-  // с частью 45а — и районная больница с сосудистым отделением: карьера 3 перешла в главу 3
+  // с частью 45а — и районная больница с сосудистым отделением: карьера 3 перешла в главу 3; с частью 60а — и городская
+  // больница, но закрытая: до главы 4 не дошла ни одна карьера
   check(!(await page.getByTestId('venue-preset.village').isDisabled()) && !(await page.getByTestId('venue-preset.district').isDisabled())
-    && !(await page.getByTestId('venue-preset.vascular').isDisabled()) && (await page.locator('[data-testid^="venue-"]').count()) === 5,
-    `смена: больницы — практика, посёлок, районная, с сосудистым отделением, своя (${(await text(page, 'venue-sandbox')).replace(/\n/g, ' · ')})`);
+    && !(await page.getByTestId('venue-preset.vascular').isDisabled()) && (await page.getByTestId('venue-preset.city').isDisabled())
+    && (await page.locator('[data-testid^="venue-"]').count()) === 6,
+    `смена: больницы — практика, посёлок, районная, с сосудистым отделением, городская (закрыта), своя (${(await text(page, 'venue-sandbox')).replace(/\n/g, ' · ')})`);
   await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/single.json', singleEndOfDaySave()]);
   await page.goto(base);
   await page.getByTestId('menu-continue').waitFor({ timeout: 10_000 });

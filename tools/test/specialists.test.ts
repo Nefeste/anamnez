@@ -1,12 +1,15 @@
 // Врачи-специалисты (spec 2026-10-chapter-4, часть 59): гастроэнтеролог, эндокринолог и инфекционист — нанятые врачи со
 // специальностью. Встают на место врача в кабинете, как терапевт; у кабинета специалиста своя запись — с болезнями его
 // профиля, которых больница принимает, — и принимает он только записанных к нему, а терапевт их не берёт. Кандидаты
-// прежних должностей не сдвинулись, в главах 1–3 специалистов нет.
+// прежних должностей не сдвинулись, в главах 1–3 специалистов нет — они приходят с главой 4.
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
 import { standInOf, standInsOf } from '../../src/engine/hospital/requirements';
-import { applicantsOf, salaryOf, type StaffMember } from '../../src/engine/hospital/staff';
-import { apply, departmentsOf, newCampaign, newSandbox } from '../../src/engine/shift/engine';
+import { applicantsOf, PROFILE_PRIOR, salaryOf, type StaffMember } from '../../src/engine/hospital/staff';
+import { complaintObservations } from '../../src/engine/med/exams';
+import { generatePatient } from '../../src/engine/med/generate';
+import { contextOf, posterior, priorWeight } from '../../src/engine/med/infer';
+import { apply, candidatesOf, departmentsOf, newCampaign, newSandbox } from '../../src/engine/shift/engine';
 import type { ShiftPatient, ShiftState } from '../../src/engine/shift/types';
 import { memoryStore } from '../../src/state/saves';
 import { assign, buildAction, buildView, endBuild, forgetShift, hire, nextDay, setSpeed, setStore, shiftState, shiftView, staffView, startSandbox, tick } from '../../src/state/session';
@@ -84,10 +87,11 @@ describe('должности специалистов', () => {
     }
   });
 
-  test('в главах 1–3 специалистов среди кандидатов нет', () => {
-    for (const chapter of Object.keys(db.chapters)) {
-      const s = newCampaign(db, { seed: 7, season: 'winter', career: 1, chapter });
-      expect({ chapter, specialists: (s.candidates ?? []).filter(c => db.roles[c.role].profile).length }).toEqual({ chapter, specialists: 0 });
+  test('в главах 1–3 специалистов среди кандидатов нет; с главой 4 (часть 60а) — есть', () => {
+    for (const ch of Object.values(db.chapters)) {
+      const s = newCampaign(db, { seed: 7, season: 'winter', career: 1, chapter: ch.id });
+      const specialists = (s.candidates ?? []).filter(c => db.roles[c.role].profile).length;
+      expect({ chapter: ch.id, specialists: specialists > 0 }).toEqual({ chapter: ch.id, specialists: ch.order >= 4 });
     }
   });
 
@@ -217,4 +221,33 @@ describe('экраны: запись, карта, «Персонал»', () => {
     const figure = Object.keys(shiftView().who).find(k => k === `staff.therapist.${office}`)!;
     expect(shiftView().who[figure].title).toMatch(/, гастроэнтеролог · навык \d$/);
   }, 30_000);
+});
+
+describe('специалист знает, с чем к нему записываются (spec 2026-10-chapter-4, часть 60а)', () => {
+  test('у записанного к нему болезни профиля вероятнее в PROFILE_PRIOR раз, остальные — как были', () => {
+    const prior = { ids: db.roles[GASTRO].profile!, x: PROFILE_PRIOR };
+    expect(PROFILE_PRIOR).toBe(10);
+    const candidates = candidatesOf(db, 'dept.therapy');
+    // записанный к гастроэнтерологу, у которого по жалобам возможна и болезнь не из профиля
+    for (let seed = 1; seed < 200; seed++) {
+      const p = generatePatient(db, seed, { department: 'dept.therapy', season: 'winter', walkIn: true, only: prior.ids });
+      const obs = complaintObservations(p);
+      const plain = contextOf(db, p, obs);
+      const booked = contextOf(db, p, obs, prior);
+      const before = posterior(db, candidates, obs, plain);
+      const mine = before.find(b => prior.ids.includes(b.id) && b.p > 0)?.id;
+      const other = before.find(b => !prior.ids.includes(b.id) && b.p > 0)?.id;
+      if (!mine || !other) continue;
+      expect(priorWeight(db, mine, booked)).toBeCloseTo(PROFILE_PRIOR * priorWeight(db, mine, plain), 12);
+      expect(priorWeight(db, other, booked)).toBe(priorWeight(db, other, plain));
+      // в выводе — отношение шансов болезни профиля к прочей выросло ровно во столько же
+      const odds = (ctx: typeof plain) => {
+        const b = posterior(db, candidates, obs, ctx);
+        return b.find(x => x.id === mine)!.p / b.find(x => x.id === other)!.p;
+      };
+      expect(odds(booked) / odds(plain)).toBeCloseTo(PROFILE_PRIOR, 6);
+      return;
+    }
+    throw new Error('нет такого больного');
+  });
 });

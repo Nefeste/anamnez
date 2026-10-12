@@ -696,6 +696,11 @@ export const presetSchema = z.strictObject({
   id: z.string().regex(/^preset\.[a-z0-9_]+$/),
   name: text,
   plot: z.tuple([z.number().int().min(8).max(64), z.number().int().min(8).max(64)]),
+  /**
+   * машин скорой за смену, от и до (spec 2026-10-chapter-4, часть 60а): в городскую больницу везут больше, чем в районную;
+   * нет — как везде (hospital/economy.yaml, ambulance.perDay)
+   */
+  ambulance: z.tuple([z.number().int().min(1).max(20), z.number().int().min(1).max(20)]).optional(),
   entrance: cellSrc,
   /** коридор — прямоугольники клеток: x0, y0, x1, y1 включительно */
   corridor: z.array(z.tuple([int, int, int, int])).min(1),
@@ -709,10 +714,18 @@ export const presetSchema = z.strictObject({
     /** дверь — первая клетка вдоль дверной стороны в координатах шаблона; нет — сама */
     door: z.number().int().min(1).optional(),
     equipment: z.array(eqId).default([]),
+    /**
+     * строят заданием главы (spec 2026-10-chapter-4, часть 60а): в начале главы кампании его нет — врач строит сам на
+     * свободном месте; в «Смене» оно стоит. Такие помещения — в конце списка
+     */
+    later: z.literal(true).optional(),
   })).min(1),
   decor: z.array(z.tuple([z.enum(OBJECT_KINDS), int, int])).default([]),
-  /** кто где работает: должность и номер помещения в списке */
-  staff: z.array(z.strictObject({ role: roleId, room: int })).default([]),
+  /**
+   * кто где работает: должность и номер помещения в списке; `later` — нанимают в главе (часть 60а): в «Смене» он на месте,
+   * в начале главы кампании — нет; у помещения, которое строят заданием, штат — тоже такой
+   */
+  staff: z.array(z.strictObject({ role: roleId, room: int, later: z.literal(true).optional() })).default([]),
 });
 
 /** Поправка чувствительности и специфичности, процентные пункты. */
@@ -841,7 +854,8 @@ export const characterSchema = z.strictObject({
 // noWaitComplication (spec 2026-09-chapter-2, часть 34): операции были, и ни у кого болезнь не
 // осложнилась, пока он ждал в больнице
 // noMissedMI (spec 2026-10-chapter-3, часть 45а): были ваши больные с ОКС, и ни у одного он не пропущен
-const dayKind = z.enum(['noNeedlessAntibiotic', 'noLeft', 'cashPositive', 'noWaitComplication', 'noMissedMI']);
+// noInfectiousInWard (spec 2026-10-chapter-4, часть 60а): были заразные, которым нужен бокс, и ни один не лёг в общую палату
+const dayKind = z.enum(['noNeedlessAntibiotic', 'noLeft', 'cashPositive', 'noWaitComplication', 'noMissedMI', 'noInfectiousInWard']);
 
 /** Задание главы: вид — в движке, числа и текст — здесь. */
 const missionSchema = z.discriminatedUnion('kind', [
@@ -858,6 +872,11 @@ const missionSchema = z.discriminatedUnion('kind', [
   // столько тромболизисов в окне и без противопоказаний
   z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('deadline'), target: z.string().regex(/^target\.[a-z0-9_]+$/), count, text }),
   z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('thrombolysis'), count, text }),
+  // глава 4 (spec 2026-10-chapter-4, часть 60а): приёмов врачей-специалистов за главу — столько, с точностью от `accuracy` %,
+  // и принимали не меньше `doctors` разных специалистов; `days` смен подряд, за которые в стационаре умерло не больше
+  // `percent` % лежавших, а лежало не меньше `lying`
+  z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('staff'), count, accuracy: pct, doctors: count, text }),
+  z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('mortality'), days: count, percent: pct, lying: count, text }),
 ]);
 
 /** Письмо: от кого, когда — в начале главы, после дня N, при задании, в конце главы. */
@@ -882,6 +901,8 @@ export const chapterSchema = z.strictObject({
   budget: int,
   department: z.string().regex(/^dept\.[a-z0-9_]+$/),
   build: z.array(roomId).min(1),
+  /** в главе нанимают врачей-специалистов (часть 60а): в главах 1–3 их нет */
+  specialists: z.literal(true).optional(),
   /**
    * первые пациенты главы — заданные болезни (обучение с наставником): строкой — пришедший сам;
    * с часть 34б — и привезённый скорой (`ambulance`), и с заданными скрытыми параметрами
@@ -1070,6 +1091,12 @@ export const targetSchema = z.strictObject({
    */
   stays: z.literal(true).optional(),
   minutes: z.number().int().min(1).max(24 * 60),
+  /**
+   * серия (spec 2026-10-chapter-4, часть 60а): этот срок — той же меры, что срок `series`, у другой группы больных:
+   * антибиотик при септическом шоке и без шока. Задание «N больных подряд» по сроку серии считает и этот — в порядке
+   * закрытия приёмов
+   */
+  series: z.string().regex(/^target\.[a-z0-9_]+$/).optional(),
   texts: z.strictObject({ hint, from: text.optional(), after: text.optional() }),
   sources: z.array(source).min(1),
   review,

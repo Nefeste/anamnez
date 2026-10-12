@@ -1,0 +1,7 @@
+id: ach.city
+order: 24
+category: campaign
+name: { ru: "Большая больница" }
+need: { ru: "Выполнить основные задания главы 4 «Большая больница»." }
+kind: chapter
+chapter: chapter.city
