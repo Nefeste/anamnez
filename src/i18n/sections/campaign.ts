@@ -47,8 +47,9 @@ export const campaign = {
   mortalityProgress: (days: number, of: number, x: { died: number; lying: number } | undefined, min: number) => {
     if (days < of || !x) return `${days} из ${of}\u00a0${pluralRu(of, 'дня', 'дней', 'дней')}`;
     const last = `за ${pluralRu(of, 'последний', 'последние', 'последние')} ${of}\u00a0${pluralRu(of, 'день', 'дня', 'дней')}`;
-    if (x.lying < min) return `${last} лежали ${x.lying} — нужно не меньше ${min}`;
-    if (x.died === 0) return `${last} лежали ${x.lying}, умерших нет`;
+    const lay = `${pluralRu(x.lying, 'лежал', 'лежали', 'лежали')} ${x.lying}`;
+    if (x.lying < min) return `${last} ${lay} — нужно не меньше ${min}`;
+    if (x.died === 0) return `${last} ${lay}, умерших нет`;
     const pct = ((100 * x.died) / x.lying).toFixed(1).replace('.', ',');
     const died = pluralRu(x.died, 'умер', 'умерли', 'умерли');
     return `${last} ${died} ${x.died} из ${x.lying}\u00a0${pluralRu(x.lying, 'лежавшего', 'лежавших', 'лежавших')} — ${pct}\u00a0%`;

@@ -322,7 +322,8 @@ describe('итоги дня для заданий главы 4', () => {
     const rows = Object.entries(s.summary.colleagues ?? {});
     for (const [id, c] of rows) expect(c.role).toBe(s.staff!.find(m => m.id === id)!.role);
     expect(rows.map(([, c]) => c.role).sort()).toEqual([...SPECIALISTS, 'role.therapist']);
-  });
+    // до восьми часов смены, пока не примут все четверо, — под нагрузкой дольше пяти секунд по умолчанию (проверки 0.5.0)
+  }, 60_000);
 
   test('антибиотик при септическом шоке в срок — оценка и в строке срока, и в строке серии', () => {
     for (let seed = 1; seed < 200; seed++) {
@@ -387,6 +388,8 @@ describe('глава 4 между сменами', () => {
     const t = T.campaign;
     expect(t.mortalityProgress(3, 7, { died: 0, lying: 12 }, 30)).toBe('3 из 7 дней');
     expect(t.mortalityProgress(7, 7, { died: 0, lying: 20 }, 30)).toBe('за последние 7 дней лежали 20 — нужно не меньше 30');
+    expect(t.mortalityProgress(7, 7, { died: 0, lying: 1 }, 30)).toBe('за последние 7 дней лежал 1 — нужно не меньше 30');
+    expect(t.mortalityProgress(7, 7, { died: 0, lying: 21 }, 21)).toBe('за последние 7 дней лежал 21, умерших нет');
     expect(t.mortalityProgress(7, 7, { died: 0, lying: 44 }, 30)).toBe('за последние 7 дней лежали 44, умерших нет');
     expect(t.mortalityProgress(7, 7, { died: 1, lying: 56 }, 30)).toBe('за последние 7 дней умер 1 из 56 лежавших — 1,8 %');
     expect(t.mortalityProgress(7, 7, { died: 2, lying: 41 }, 30)).toBe('за последние 7 дней умерли 2 из 41 лежавшего — 4,9 %');

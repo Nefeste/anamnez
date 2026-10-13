@@ -3258,7 +3258,10 @@ try {
   // глава 4 (spec 2026-10-chapter-4, часть 61в, сценарий chapter4): карьера 3 с выполненной главой 3 и лежащим в палате —
   // «Перейти в городскую больницу» сразу: лежащих долечат врачи районной больницы (часть 61б); лист перехода — новая
   // больница, штат и касса; глава 4 — письма главврача, заведующей реанимацией и наставника, девять заданий; на стройке —
-  // реанимация, боксы, эндоскопия и МРТ
+  // реанимация, боксы, эндоскопия и МРТ. Сначала — в меню: живая партия — та же карьера 3 (сценарий главы 3), и, уходя со
+  // страницы, она записала бы себя поверх подменённого сохранения (так и вышло под нагрузкой в проверках 0.5.0)
+  await page.goto(base);
+  await page.getByTestId('menu-campaign').waitFor({ timeout: 10_000 });
   await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/campaign-3.json', chapter3DoneSave()]);
   await page.goto(base);
   await page.getByTestId('menu-campaign').click();
@@ -3451,11 +3454,11 @@ try {
   await page.getByTestId('venue-preset.clinic').waitFor({ timeout: 10_000 });
   // районная больница — с тех пор как карьера 2 перешла в главу 2
   // с частью 45а — и районная больница с сосудистым отделением: карьера 3 перешла в главу 3; с частью 60а — и городская
-  // больница, но закрытая: до главы 4 не дошла ни одна карьера
+  // больница, с частью 61в — открытая: карьера 3 перешла и в главу 4 (сценарий chapter4)
   check(!(await page.getByTestId('venue-preset.village').isDisabled()) && !(await page.getByTestId('venue-preset.district').isDisabled())
-    && !(await page.getByTestId('venue-preset.vascular').isDisabled()) && (await page.getByTestId('venue-preset.city').isDisabled())
+    && !(await page.getByTestId('venue-preset.vascular').isDisabled()) && !(await page.getByTestId('venue-preset.city').isDisabled())
     && (await page.locator('[data-testid^="venue-"]').count()) === 6,
-    `смена: больницы — практика, посёлок, районная, с сосудистым отделением, городская (закрыта), своя (${(await text(page, 'venue-sandbox')).replace(/\n/g, ' · ')})`);
+    `смена: больницы — практика, посёлок, районная, с сосудистым отделением, городская, своя (${(await text(page, 'venue-sandbox')).replace(/\n/g, ' · ')})`);
   await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/single.json', singleEndOfDaySave()]);
   await page.goto(base);
   await page.getByTestId('menu-continue').waitFor({ timeout: 10_000 });

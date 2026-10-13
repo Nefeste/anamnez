@@ -23,8 +23,9 @@ interface Clinrec {
   age: number;
 }
 
-// «й» в рубрикаторе бывает записана двумя знаками — «и» и кратка (у 382_2): сравнивают после NFC
-const norm = (s: string) => s.normalize('NFC').replace(/\s+/g, ' ').replace(/ё/g, 'е').trim().toLowerCase();
+// «й» в рубрикаторе бывает записана двумя знаками — «и» и кратка (у 382_2): сравнивают после NFC; точку между частями
+// названия список рубрикатора теряет (у 784_1 — «…алкоголя Синдром отмены…», в документе — с точкой): сравнивают без точек
+const norm = (s: string) => s.normalize('NFC').replace(/\./g, ' ').replace(/\s+/g, ' ').replace(/ё/g, 'е').trim().toLowerCase();
 
 type Source = { org?: string; title: string; url?: string; year?: number; note?: string };
 export type Cited = { title: string; url?: string; year?: number; note?: string; files: string[] };
@@ -49,8 +50,20 @@ export function minzdravSources(dir = CONTENT_DIR): Map<string, Cited> {
   return out;
 }
 
+/** Список рубрикатора — около 0,5 МБ, и ответ бывает оборван на полуслове: тогда запрос повторяют, до трёх раз. */
+async function clinrecs(): Promise<Clinrec[]> {
+  for (let i = 1; ; i++) {
+    const text = await (await fetch(LIST)).text();
+    try {
+      return JSON.parse(text) as Clinrec[];
+    } catch (e) {
+      if (i >= 3) throw new Error(`список рубрикатора не разобран за ${i} попытки: ${(e as Error).message}`);
+    }
+  }
+}
+
 if (import.meta.main) {
-  const recs = (await (await fetch(LIST)).json()) as Clinrec[];
+  const recs = await clinrecs();
   const byId = new Map(recs.map(r => [r.id, r]));
   const seen = minzdravSources();
   let problems = 0;
