@@ -14,6 +14,7 @@
 | `screenshots/phone/*.png` | восемь снимков экрана 1080 × 1920 с подписями | RuStore; сайт |
 | `graphics/feature-1024x500.png` | графика 1024 × 500 | Google Play; шапка сайта |
 | `graphics/cover-1920x1080.png` | обложка: название и два экрана игры | сайт, соцсети |
+| `graphics/cover-site-1920x640.png` | обложка над названием на странице игры: план городской больницы без надписей (брендбук студии, 3 : 1) | сайт |
 | [`site/page.ru.md`](site/page.ru.md), [`site/page.en.md`](site/page.en.md) | страница игры и карточка на главной: поля и текст по формату устава студии (`docs/08-publishing.md`, «Сайт»); формат проверяет `tools/test/site.test.ts` | gornitsa.games/anamnez — сайт забирает сам раз в сутки (ADR студии 0015) |
 | [`site/press.ru.md`](site/press.ru.md) | коротко для прессы и блогеров | по запросу; сайт его не читает |
 

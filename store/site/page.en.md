@@ -8,6 +8,7 @@ lead: "Every patient is a puzzle: ask, examine, order tests and X-rays, make a d
 icon: icon/icon-512.png
 feature: graphics/feature-1024x500.png
 og: graphics/cover-1920x1080.png
+cover: graphics/cover-site-1920x640.png
 shots:
   - file: screenshots/phone/01-emergency.png
     caption: Emergency room

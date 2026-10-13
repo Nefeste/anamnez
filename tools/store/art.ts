@@ -1,11 +1,10 @@
 // Иконка и графика магазина — кодом, как всё изображение игры (ADR 0013): SVG здесь,
 // растр — Chromium (tools/store/render.ts). Знак — лупа с лентой ЭКГ в линзе: «медицинский
-// детектив». Красного креста нет и не будет: это охраняемая эмблема.
+// детектив». Красного креста нет и не будет: это охраняемая эмблема. По брендбуку студии
+// (иконка — плоский рисунок, ADR 0017): заливки ровные, без градиентов и бликов.
 
 export const BRAND = {
   teal: '#1A8A86',
-  tealLight: '#26A7A1',
-  tealDark: '#0F5F5C',
   lens: '#0A4745',
   trace: '#7CF3C9',
   ink: '#1C2B2D',
@@ -33,17 +32,12 @@ function glyph(mono: boolean): string {
   return `
     <defs>
       <clipPath id="lensClip"><circle cx="${LENS.x}" cy="${LENS.y}" r="${LENS.r - RING / 2 + 1}"/></clipPath>
-      <radialGradient id="lensFill" cx="0.42" cy="0.38" r="0.7">
-        <stop offset="0" stop-color="${BRAND.tealDark}"/>
-        <stop offset="1" stop-color="${BRAND.lens}"/>
-      </radialGradient>
     </defs>
-    ${mono ? '' : `<circle cx="${LENS.x}" cy="${LENS.y}" r="${LENS.r}" fill="url(#lensFill)"/>`}
+    ${mono ? '' : `<circle cx="${LENS.x}" cy="${LENS.y}" r="${LENS.r}" fill="${BRAND.lens}"/>`}
     <line x1="${hx1}" y1="${hx1}" x2="${hx2}" y2="${hx2}" stroke="${white}" stroke-width="${HANDLE.width}" stroke-linecap="round"/>
     <line x1="${hx1 - 18}" y1="${hx1 - 18}" x2="${hx1 + 40}" y2="${hx1 + 40}" stroke="${white}" stroke-width="${HANDLE.width * 0.62}" stroke-linecap="round"/>
     <g clip-path="url(#lensClip)">
       <path d="${trace}" fill="none" stroke="${mono ? white : BRAND.trace}" stroke-width="34" stroke-linejoin="round" stroke-linecap="round"/>
-      ${mono ? '' : `<path d="M ${LENS.x - 170} ${LENS.y - 120} A 210 210 0 0 1 ${LENS.x - 40} ${LENS.y - 205}" fill="none" stroke="#FFFFFF" stroke-opacity="0.22" stroke-width="22" stroke-linecap="round"/>`}
     </g>
     <circle cx="${LENS.x}" cy="${LENS.y}" r="${LENS.r}" fill="none" stroke="${white}" stroke-width="${RING}"/>`;
 }
@@ -57,14 +51,7 @@ function placed(mono: boolean, size: number, share: number): string {
 }
 
 function background(size: number): string {
-  return `
-    <defs>
-      <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0" stop-color="${BRAND.tealLight}"/>
-        <stop offset="1" stop-color="${BRAND.tealDark}"/>
-      </linearGradient>
-    </defs>
-    <rect width="${size}" height="${size}" fill="url(#bg)"/>`;
+  return `<rect width="${size}" height="${size}" fill="${BRAND.teal}"/>`;
 }
 
 export type IconVariant = 'full' | 'foreground' | 'background' | 'monochrome';
