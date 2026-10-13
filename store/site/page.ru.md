@@ -8,6 +8,7 @@ lead: "Каждый пациент — загадка: расспросите, �
 icon: icon/icon-512.png
 feature: graphics/feature-1024x500.png
 og: graphics/cover-1920x1080.png
+cover: graphics/cover-site-1920x640.png
 shots:
   - file: screenshots/phone/01-emergency.png
     caption: Приёмное

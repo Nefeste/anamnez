@@ -46,7 +46,9 @@ jobs:
     name: Проверки
     needs: version
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    # С пределом в 20 минут задание сняли на тегах v0.5.1 и v0.5.2: тесты шли 13,7 минуты, «Виртуальный врач» — 5,5,
+    # и APK не вышел. С 0.5.3 оба короче, а предел — с запасом на разброс машин (docs/08-process.md, «Релизы и проверки»).
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5

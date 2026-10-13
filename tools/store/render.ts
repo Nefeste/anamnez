@@ -12,7 +12,7 @@ import { type Browser, chromium, type Page } from 'playwright';
 import { buildDb } from '../content/load';
 import { BRAND, iconSvg, markSvg } from './art';
 import { CAPTIONS } from './captions';
-import { acsCase, districtState, egdCase, envelope, pneumoniaCase, sandboxState, strokeCtCase } from './states';
+import { acsCase, cityState, districtState, egdCase, envelope, pneumoniaCase, sandboxState, strokeCtCase } from './states';
 
 const ROOT = join(import.meta.dir, '../..');
 const DIST = join(ROOT, 'dist-web');
@@ -81,13 +81,14 @@ const ecgLine = (w: number, y: number, amp: number) => {
   return `<svg width="${w}" height="${y + amp + 10}" style="position:absolute;left:0;top:0"><polyline points="${pts.join(' ')}" fill="none" stroke="${BRAND.trace}" stroke-opacity="0.35" stroke-width="5" stroke-linejoin="round"/></svg>`;
 };
 
+// экран — в тонкой рамке телефона, без тени: графика плоская, как в брендбуке студии
 const phone = (png: Buffer, width: number, style = '') =>
-  `<img src="data:image/png;base64,${png.toString('base64')}" style="width:${width}px;border-radius:${width * 0.05}px;border:${Math.round(width * 0.012)}px solid #0B3F3D;box-shadow:0 ${width * 0.03}px ${width * 0.08}px rgba(0,0,0,.35);${style}"/>`;
+  `<img src="data:image/png;base64,${png.toString('base64')}" style="width:${width}px;border-radius:${width * 0.05}px;border:${Math.round(width * 0.012)}px solid #0B3F3D;${style}"/>`;
 
 async function page(browser: Browser, w: number, h: number, body: string, file: string) {
   const p = await browser.newPage({ viewport: { width: w, height: h }, deviceScaleFactor: 1 });
   await p.setContent(`<html><head><style>${fontCss().replaceAll('url(/__fonts/', `url(file://${FONTS}/files/`)}</style></head>
-    <body style="margin:0;width:${w}px;height:${h}px;overflow:hidden;position:relative;background:linear-gradient(155deg, ${BRAND.tealLight}, ${BRAND.tealDark});color:#fff">${body}</body></html>`);
+    <body style="margin:0;width:${w}px;height:${h}px;overflow:hidden;position:relative;background:${BRAND.teal};color:#fff">${body}</body></html>`);
   await p.evaluate(() => document.fonts.ready);
   mkdirSync(join(file, '..'), { recursive: true });
   await p.screenshot({ path: file });
@@ -117,7 +118,21 @@ async function graphics(browser: Browser, screens: Record<string, Buffer>) {
     </div>
     ${a ? `<div style="position:absolute;left:1040px;top:140px">${phone(a, 400)}</div>` : ''}
     ${b ? `<div style="position:absolute;left:1440px;top:230px">${phone(b, 380)}</div>` : ''}`, join(STORE, 'graphics/cover-1920x1080.png'));
+  // 1920 × 640 — обложка над названием на странице игры (брендбук студии, «Как игры носят бренд студии»: картина мира
+  // игры без надписей, 3 : 1, главное — в средней части 2 : 1): план городской больницы полосой — коридоры, зал
+  // ожидания, кабинеты снимков, смотровая, палаты и операционная
+  const plan = screens['plan.png'];
+  if (plan) {
+    // размеры PNG — из заголовка IHDR
+    const [pw, ph] = [plan.readUInt32BE(16), plan.readUInt32BE(20)];
+    const h = (1920 * ph) / pw;
+    await page(browser, 1920, 640, `<img src="data:image/png;base64,${plan.toString('base64')}" style="position:absolute;left:0;top:${Math.round(320 - COVER_BAND * h)}px;width:1920px"/>`,
+      join(STORE, 'graphics/cover-site-1920x640.png'));
+  }
 }
+
+/** Середина полосы обложки — доля высоты плана: между первым и третьим коридором городской больницы. */
+const COVER_BAND = 0.47;
 
 /** Снимок экрана — в рамке с подписью: 1080 × 1920, как просит RuStore. */
 async function framed(browser: Browser, raw: Buffer, caption: string, file: string) {
@@ -127,12 +142,17 @@ async function framed(browser: Browser, raw: Buffer, caption: string, file: stri
     <div style="position:absolute;left:50%;top:400px;transform:translateX(-50%)">${phone(raw, 820)}</div>`, file);
 }
 
+/** Экран телефона: 360 × 640 при плотности 3 — снимок 1080 × 1920. */
+const PHONE = { width: 360, height: 640, scale: 3 };
+/** Для обложки сайта: лист шириной 640 — план во всю его ширину, при плотности 3,2 — шире 1920 точек. */
+const WIDE = { width: 640, height: 1000, scale: 3.2 };
+
 /**
  * Партия из сохранения в слоте `slot` — на экране `path` (оговорка и имя врача — только у
  * меню). Тема — как у телефона (`scheme`): «Как в телефоне» стоит по умолчанию.
  */
-async function openShift(browser: Browser, base: string, save: string, slot = 'shift', path = '/shift', scheme: 'light' | 'dark' = 'light'): Promise<Page> {
-  const ctx = await browser.newContext({ viewport: { width: 360, height: 640 }, deviceScaleFactor: 3, colorScheme: scheme });
+async function openShift(browser: Browser, base: string, save: string, slot = 'shift', path = '/shift', scheme: 'light' | 'dark' = 'light', view = PHONE): Promise<Page> {
+  const ctx = await browser.newContext({ viewport: { width: view.width, height: view.height }, deviceScaleFactor: view.scale, colorScheme: scheme });
   await ctx.addInitScript(([key, value]) => localStorage.setItem(key, value), [`anamnez:saves/${slot}.json`, save]);
   const p = await ctx.newPage();
   await p.goto(`${base}${path}`);
@@ -149,8 +169,8 @@ async function openSandbox(browser: Browser, base: string, save: string): Promis
 }
 
 /** Карьера из сохранения — как её открывает игрок: «Кампания» → «Карьера 1» → «Продолжить». */
-async function openCampaign(browser: Browser, base: string, save: string): Promise<Page> {
-  const p = await openShift(browser, base, save, 'campaign-1', '/campaign');
+async function openCampaign(browser: Browser, base: string, save: string, view = PHONE): Promise<Page> {
+  const p = await openShift(browser, base, save, 'campaign-1', '/campaign', 'light', view);
   await p.getByTestId('career-1').click();
   await p.getByTestId('career-continue').click();
   return p;
@@ -279,6 +299,16 @@ async function shots(browser: Browser): Promise<Record<string, Buffer>> {
     await ghostTo(p, db.economy.sandbox.plot, [31, 19]);
     await p.waitForTimeout(500);
     raw['08-build.png'] = await snap(p);
+    await p.context().close();
+
+    // обложка сайта: план городской больницы главы 4 на третий день — без надписей (брендбук студии): подписи
+    // помещений и значки очереди спрятаны, остаётся рисунок
+    p = await openCampaign(browser, base, envelope(cityState(db)), WIDE);
+    const map = p.getByTestId('clinic-map');
+    await map.waitFor({ timeout: 30_000 });
+    await p.addStyleTag({ content: '[data-testid="clinic-map"] [dir="auto"], [data-testid^="sign-"] { visibility: hidden !important; }' });
+    await p.waitForTimeout(800);
+    raw['plan.png'] = Buffer.from(await map.screenshot({ type: 'png' }));
     await p.context().close();
   } finally {
     server.stop(true);

@@ -137,7 +137,8 @@ describe('терапевт в своей больнице', () => {
     apply(db, alone, { kind: 'nextDay' });
     playIdle(alone);
     expect(day.arrived).toBeGreaterThan(alone.summary.arrived);
-  });
+    // два дня смены — около 3 с; на общей нагрузке пяти секунд по умолчанию не хватает (0.5.3)
+  }, 30_000);
 
   test('на карте: терапевт — в своём кабинете, его пациент — у него, а ваш кабинет — прежний', () => {
     const { s, office } = withSecondOffice();

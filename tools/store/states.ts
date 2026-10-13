@@ -230,3 +230,40 @@ export function egdCase(db: ContentDb): ShiftState {
   }
   throw new Error('egdCase: не нашлось разрыва Мэллори–Вейсса, у которого ЭГДС показала кровотечение');
 }
+
+/**
+ * Обложка сайта (брендбук студии: картина мира игры без надписей, ADR 0017): городская больница главы 4 на третий день,
+ * больница вся, как в «Смене», — с реанимацией, боксами, эндоскопией и МРТ. Два дня врач принимает всех, утром — обход;
+ * на третий — в разгаре: в зале ожидания и у кабинетов очередь, в палатах лежат.
+ */
+export function cityState(db: ContentDb): ShiftState {
+  const city = db.presets[db.chapters['chapter.city'].preset];
+  for (let seed = 1; seed <= SEEDS; seed++) {
+    const s = newCampaign(db, { seed, ...winter, career: 1, chapter: 'chapter.city' });
+    s.hospital = presetHospital(db, city, [s.hospital!.w, s.hospital!.h]).hospital;
+    s.staff = presetStaff(db, city);
+    s.campaign!.letters = s.campaign!.letters.map(l => ({ ...l, read: true }));
+    s.campaign!.tips = { shown: Object.values(db.tips).map(t => t.id) };
+    for (let d = 1; d <= 2; d++) {
+      apply(db, s, { kind: 'nextDay' });
+      rounds(db, s);
+      for (let guard = 0; guard < 2000; guard++) {
+        sortAll(db, s);
+        const waiting = Object.values(s.patients).some(p => p.status === 'away' || p.status === 'coming' || (p.kind === 'ambulance' && p.status === 'waiting' && !p.sorted));
+        if (s.t % DAY >= SHIFT_END && s.queue.length === 0 && !current(s) && !waiting) break;
+        if (!current(s) && s.queue.length > 0) seeHere(db, s);
+        else apply(db, s, { kind: 'advance', seconds: MIN });
+      }
+      apply(db, s, { kind: 'closeDay' });
+    }
+    apply(db, s, { kind: 'nextDay' });
+    rounds(db, s);
+    for (let m = 0; m < 5 * 60 && s.t % DAY < SHIFT_END; m++) {
+      sortAll(db, s);
+      if (!current(s) && s.queue.length >= 5 && inpatientsOf(s).length >= 8) return s;
+      if (!current(s) && s.queue.length >= 6) seeHere(db, s);
+      apply(db, s, { kind: 'advance', seconds: MIN });
+    }
+  }
+  throw new Error('cityState: не нашлось дня, когда в городской больнице очередь и в палатах лежат');
+}

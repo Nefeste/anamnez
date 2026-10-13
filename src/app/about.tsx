@@ -1,23 +1,30 @@
 // «Об игре» (11-publishing.md §3, 03-game-design.md §12): версия и что нового, полная
 // медицинская оговорка, медицинская база и её источники, разработчик и письмо ему, данные и
 // политика конфиденциальности. Ссылки открываются в браузере и почте телефона: у самой игры
-// доступа в интернет нет.
+// доступа в интернет нет. Студия — по брендбуку (ADR 0017): знак, строка «Игра студии „Горница“»,
+// сайт и почта, внизу — полоса-рушник.
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Linking } from 'react-native';
+import { Linking, View } from 'react-native';
 import { db } from '@/content';
 import { T } from '@/i18n';
 import { PRIVACY_URL, SITE_URL, SUPPORT_EMAIL, VERSION } from '@/info';
+import { Rushnik, StudioMark } from '@/render/Studio';
 import { sourceGroups } from '@/state/sources';
 import { Button, Card, H, P, Screen } from '@/ui/components';
 import { device } from '@/ui/device';
+import { makeStyles, space, useTheme } from '@/ui/theme';
 
 const noScheme = (url: string) => url.replace(/^https?:\/\//, '');
 
 export default function About() {
   const t = T.about;
+  const styles = useStyles();
+  const dark = useTheme().name === 'dark';
   const version = VERSION;
   const [failed, setFailed] = useState<string | null>(null);
+  // ширина полосы-рушника — по ширине листа, когда он разложен
+  const [band, setBand] = useState(0);
   const open = (url: string, shown: string) => {
     setFailed(null);
     Linking.openURL(url).catch(() => setFailed(shown));
@@ -53,7 +60,10 @@ export default function About() {
       </Card>
       <Card>
         <H>{t.developerTitle}</H>
-        <P>{t.developer}</P>
+        <View testID="about-studio" style={styles.studio} accessible accessibilityLabel={t.studio}>
+          <StudioMark size={44} dark={dark} />
+          <View style={styles.studioText}><P>{t.studio}</P></View>
+        </View>
         <Button testID="about-write" title={t.write} hint={SUPPORT_EMAIL} onPress={() => open(mail, SUPPORT_EMAIL)} />
         <Button testID="about-site" kind="plain" title={t.site} hint={noScheme(SITE_URL)} onPress={() => open(SITE_URL, noScheme(SITE_URL))} />
         {failed ? <P testID="about-failed">{t.cantOpen(failed)}</P> : null}
@@ -63,6 +73,16 @@ export default function About() {
         <P>{t.data}</P>
         <Button testID="about-privacy" kind="plain" title={t.privacy} hint={noScheme(PRIVACY_URL)} onPress={() => open(PRIVACY_URL, noScheme(PRIVACY_URL))} />
       </Card>
+      <View testID="about-rushnik" style={styles.band} onLayout={e => setBand(Math.floor(e.nativeEvent.layout.width))}>
+        {band > 0 ? <Rushnik width={band} dark={dark} /> : null}
+      </View>
     </Screen>
   );
 }
+
+const useStyles = makeStyles(t => ({
+  studio: { flexDirection: 'row', alignItems: 'center', gap: space.m },
+  studioText: { flex: 1 },
+  // рушник — на бумаге между двумя тонкими линиями (брендбук студии, «Орнамент и канва»)
+  band: { backgroundColor: t.colors.card, borderTopWidth: 1, borderBottomWidth: 1, borderColor: t.colors.line, paddingVertical: 10 },
+}));
