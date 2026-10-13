@@ -974,6 +974,12 @@ try {
   check((await text(page, 'about-disclaimer')).includes('112') && (await text(page, 'about-write')).includes('support@gornitsa.games'), '«Об игре»: полная оговорка, почта разработчика');
   // звук и музыка (часть 62): авторы треков и набора звуков
   check((await text(page, 'about-sound')).includes('The Cynic Project') && (await text(page, 'about-sound')).includes('Kenney'), '«Об игре»: авторы музыки и звуков');
+  // студия по брендбуку (ADR 0017, 0.5.3): знак со строкой «Игра студии „Горница“», внизу — полоса-рушник во всю ширину листа
+  const studio = page.getByTestId('about-studio');
+  const band = await page.getByTestId('about-rushnik').boundingBox();
+  const aboutCard = await page.getByTestId('about-version').boundingBox();
+  check((await studio.getAttribute('aria-label')) === 'Игра студии «Горница»' && (await studio.locator('canvas').count()) === 1
+    && !!band && !!aboutCard && band.height >= 40 && band.width > 0.8 * aboutCard.width, `«Об игре»: знак студии и рушник — ${band ? `${Math.round(band.width)} × ${Math.round(band.height)}` : 'нет'}`);
   await page.screenshot({ path: join(OUT, '10-about.png'), fullPage: true });
   await page.getByTestId('about-sources').click();
   await page.getByTestId('source').first().waitFor({ timeout: 5000 });

@@ -31,7 +31,8 @@ export const about = {
   soundTitle: 'Звук и музыка',
   sound: 'Музыка: «Vaporware» — The Cynic Project, «Contemplation» — Joth. Звуки: набор «RPG Audio» — Kenney. Всё — под лицензией CC0, с OpenGameArt и kenney.nl; сигналы игры — свои.',
   developerTitle: 'Разработчик',
-  developer: '«Горница»',
+  // строка студии по брендбуку (ADR 0017): рядом — знак студии
+  studio: 'Игра студии «Горница»',
   write: 'Написать разработчику',
   mailSubject: (v: string) => `Анамнез ${v}`,
   mailBody: (v: string, device: string) =>
