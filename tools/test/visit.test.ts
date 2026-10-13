@@ -1,7 +1,7 @@
 // Приём пациента прототипа П4 (spec 2026-09-spikes): модуль грузится, часы идут делами,
 // результаты приходят в свой срок, правда видна только в разборе после диагноза.
 import { describe, expect, test } from 'bun:test';
-import { outcomeText } from '../../src/state/caseView';
+import { outcomeText, suggestedTreatments } from '../../src/state/caseView';
 import { act, chooseDiagnosis, chooseSetting, conditionChoices, conditionTerm, diagnosisGroups, examInfo, examsByAction, examTerm, findingInfo, finish, nextPatient, toggleTreatment, treatmentTerm, visitView, waitForResults } from '../../src/state/visit';
 
 describe('приём', () => {
@@ -144,6 +144,20 @@ describe('приём', () => {
     expect(group('tx.aspirin_acs')).toBe('heart');
     expect(group('tx.rest_fluids')).toBe('regimen');
     expect(v.treatmentGroups.every(g => g.title.length > 0)).toBe(true);
+  });
+
+  // вопрос 34 (замечание владельца 12.10.2026): при ОРВИ «Режим и обильное питьё» был в самом низу, рядом с прививками и гипсом
+  test('лечение сверху — при поставленном диагнозе: и нужное, и лишнее, и по болезням его группы; выбранное — тоже; без диагноза — только выбранное', () => {
+    const arvi = suggestedTreatments('cond.arvi', []);
+    for (const tx of ['tx.rest_fluids', 'tx.paracetamol', 'tx.amoxicillin', 'tx.oseltamivir']) expect(arvi.has(tx)).toBe(true);
+    // группа ОРВИ — и острый бронхит, и COVID-19: у них свои назначения
+    expect(arvi.has('tx.oxygen_mask')).toBe(true);
+    for (const tx of ['tx.tetanus_toxoid', 'tx.cast_splint', 'tx.rabies_vaccine']) expect(arvi.has(tx)).toBe(false);
+    expect(suggestedTreatments('cond.arvi', ['tx.cast_splint']).has('tx.cast_splint')).toBe(true);
+    expect([...suggestedTreatments(undefined, ['tx.paracetamol'])]).toEqual(['tx.paracetamol']);
+    const v = visitView();
+    expect(v.suggested.length).toBeLessThan(v.treatments.length);
+    expect(v.suggested.every(x => v.treatments.some(y => y.id === x.id))).toBe(true);
   });
 
   test('«Что это?» у лечения; всё лечение базы в выборе', () => {

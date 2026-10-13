@@ -1,14 +1,16 @@
 // Решение по пациенту — отдельный экран в два шага (03-game-design.md §5): сначала диагноз,
 // потом лечение и место. На одной вкладке с осмотром это было тесно (отзыв на 0.0.5).
-// Выбор — черновик приёма: можно вернуться, дообследовать и продолжить.
+// Выбор — черновик приёма: можно вернуться, дообследовать и продолжить. Лечение (вопрос 34): сверху — выбор при
+// поставленном диагнозе, остальное — свёрнуто, с поиском по названию.
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Text } from '../text';
+import { Text, TextInput } from '../text';
 import { T } from '@/i18n';
 import { conditionTerm, type TermInfo, treatmentTerm, type VisitView } from '@/state/caseView';
+import { matchesQuery } from '@/state/encyclopedia';
 import { Button, Card, Chip, Chips, H, P, Screen } from '@/ui/components';
 import { TermSheet } from '@/ui/TermSheet';
-import { makeStyles, space } from '@/ui/theme';
+import { makeStyles, space, touch } from '@/ui/theme';
 import type { CaseActions } from './actions';
 
 type Step = 'diagnosis' | 'plan';
@@ -17,6 +19,9 @@ export function DecisionScreen({ view: v, actions }: { view: VisitView; actions:
   const styles = useStyles();
   const [step, setStep] = useState<Step>('diagnosis');
   const [term, setTerm] = useState<TermInfo | null>(null);
+  // остальное лечение — свёрнуто, с поиском (вопрос 34)
+  const [restOpen, setRestOpen] = useState(false);
+  const [query, setQuery] = useState('');
   const t = T.spikes.patient;
   const d = T.spikes.decision;
 
@@ -35,6 +40,17 @@ export function DecisionScreen({ view: v, actions }: { view: VisitView; actions:
     actions.finish();
     router.replace(actions.routes.outcome);
   };
+
+  const top = new Set(v.suggested.map(x => x.id));
+  const rest = v.treatmentGroups
+    .map(g => ({ ...g, items: g.items.filter(x => !top.has(x.id) && matchesQuery(query, x.name)) }))
+    .filter(g => g.items.length > 0);
+  const restCount = v.treatments.filter(x => !top.has(x.id)).length;
+  const txButton = (x: VisitView['treatments'][number]) => (
+    <Button key={x.id} testID={`tx-${x.id}`} kind={v.draft.treatments.includes(x.id) ? 'primary' : 'plain'} title={x.name} hint={x.warning}
+      disabled={x.disabled && !v.draft.treatments.includes(x.id)}
+      onPress={() => actions.toggleTreatment(x.id)} onInfo={() => setTerm(treatmentTerm(x.id))} infoLabel={t.whatIsIt} />
+  );
 
   const footer = step === 'diagnosis'
     ? <Button testID="decision-to-plan" title={d.toPlan} hint={v.draft.diagnosis ? undefined : d.needDiagnosis} disabled={!v.draft.diagnosis} onPress={() => setStep('plan')} />
@@ -77,14 +93,24 @@ export function DecisionScreen({ view: v, actions }: { view: VisitView; actions:
         </>
       ) : (
         <>
-          {v.treatmentGroups.map(g => (
+          {v.suggested.length > 0 && (
+            <Card testID="tx-suggested">
+              <Text style={styles.label}>{d.suggested}</Text>
+              <P muted>{d.suggestedNote}</P>
+              {v.suggested.map(txButton)}
+            </Card>
+          )}
+          <Card>
+            <Button testID="tx-rest" kind="plain" title={restOpen ? d.restHide : d.restShow(restCount)} onPress={() => setRestOpen(!restOpen)} />
+            {restOpen && (
+              <TextInput testID="tx-search" value={query} onChangeText={setQuery} placeholder={d.search} autoCorrect={false} returnKeyType="search" style={styles.search} />
+            )}
+            {restOpen && rest.length === 0 && <P muted>{d.nothing}</P>}
+          </Card>
+          {restOpen && rest.map(g => (
             <Card key={g.key}>
               <Text style={styles.label}>{g.title}</Text>
-              {g.items.map(x => (
-                <Button key={x.id} testID={`tx-${x.id}`} kind={v.draft.treatments.includes(x.id) ? 'primary' : 'plain'} title={x.name} hint={x.warning}
-                  disabled={x.disabled && !v.draft.treatments.includes(x.id)}
-                  onPress={() => actions.toggleTreatment(x.id)} onInfo={() => setTerm(treatmentTerm(x.id))} infoLabel={t.whatIsIt} />
-              ))}
+              {g.items.map(txButton)}
             </Card>
           ))}
           <Card>
@@ -105,4 +131,14 @@ export function DecisionScreen({ view: v, actions }: { view: VisitView; actions:
 
 const useStyles = makeStyles(t => ({
   label: { fontSize: 13, fontWeight: '700', letterSpacing: 1.2, color: t.colors.muted, textTransform: 'uppercase', marginTop: space.s },
+  search: {
+    minHeight: touch,
+    backgroundColor: t.colors.card,
+    borderRadius: t.shape.radius,
+    borderWidth: 1,
+    borderColor: t.colors.line,
+    paddingHorizontal: space.l,
+    fontSize: 16,
+    color: t.colors.ink,
+  },
 }));
