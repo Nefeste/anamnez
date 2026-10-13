@@ -1103,9 +1103,19 @@ try {
   await page.getByTestId('decision-to-plan').click();
   await page.getByTestId('tx-tx.amoxicillin').waitFor({ timeout: 5000 });
   check((await text(page, 'decision-diagnosis')).includes('Внебольничная пневмония'), 'решение, шаг 2: выбранный диагноз виден над лечением');
+  // лечение (вопрос 34): сверху — выбор при диагнозе, и нужное, и лишнее; остальное — свёрнуто, с поиском по названию
+  check((await text(page, 'tx-suggested')).includes('Амоксициллин') && (await page.getByTestId('tx-tx.thrombolysis').count()) === 0
+    && (await text(page, 'tx-rest')).startsWith('Остальные назначения — '),
+    `решение, шаг 2: сверху — выбор при пневмонии, остальное свёрнуто («${await text(page, 'tx-rest')}»)`);
+  await page.getByTestId('tx-rest').click();
+  await page.getByTestId('tx-search').fill('тромбол');
+  check((await page.getByTestId('tx-tx.thrombolysis').count()) === 1 && (await page.getByTestId('tx-tx.cast_splint').count()) === 0,
+    'решение, шаг 2: поиск «тромбол» — тромболизис есть, гипса нет');
   // тромболизис (часть 39а) — только лежащему под монитором: в кабинете кнопка серая, причина под названием
   check(await page.getByTestId('tx-tx.thrombolysis').isDisabled() && (await text(page, 'tx-tx.thrombolysis')).includes('У постели нет монитора с дефибриллятором'),
     'решение в кабинете: «Тромболизис при инфаркте» серый — у постели нет монитора с дефибриллятором');
+  await page.getByTestId('tx-search').fill('');
+  await page.getByTestId('tx-rest').click();
   await page.getByTestId('tx-tx.amoxicillin').click();
   await page.getByTestId('setting-home').click();
   await page.screenshot({ path: join(OUT, '05-decision-plan.png') });
@@ -1963,9 +1973,12 @@ try {
   await visible(page, 'visit-decide').click();
   await page.getByTestId('decision-to-plan').click();
   await page.getByTestId('setting-icu').waitFor({ timeout: 5000 });
-  // кислород через маску (часть 38б) — своя группа в списке назначений
-  check((await page.getByTestId('tx-tx.oxygen_mask').count()) === 1 && (await page.getByText('Кислород', { exact: true }).count()) >= 1,
-    'ПИТ, решение: «Кислород через маску» — в группе «Кислород»');
+  // кислород через маску (часть 38б) — своя группа в списке назначений; с вопросом 34 — сверху, если он есть в тактике
+  // поставленного диагноза, иначе — в остальных назначениях
+  await page.getByTestId('tx-rest').click();
+  const o2top = (await page.getByTestId('tx-suggested').locator('[data-testid="tx-tx.oxygen_mask"]').count()) === 1;
+  check((await page.getByTestId('tx-tx.oxygen_mask').count()) === 1 && (o2top || (await page.getByText('Кислород', { exact: true }).count()) >= 1),
+    `ПИТ, решение: «Кислород через маску» — ${o2top ? 'сверху, в выборе при диагнозе' : 'в группе «Кислород»'}`);
   const icuOption = await text(page, 'setting-icu');
   check(icuOption.startsWith('В ПИТ') && icuOption.includes('под монитором свободно 2 из 2') && !(await page.getByTestId('setting-icu').isDisabled()),
     `ПИТ, решение: ${icuOption.replace(/\n/g, ' · ')}`);

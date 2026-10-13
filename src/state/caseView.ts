@@ -3,7 +3,7 @@
 // случая. Общий для прототипа П4 (visit.ts) и смены (session.ts): экраны карты пациента
 // работают с любым из них. Правда здесь появляется только в разборе закрытого случая.
 import { db } from '@/content';
-import { type BodySystem, type Id, type Rule, type Setting, SYSTEMS } from '@/content/types';
+import { type BodySystem, type Condition, type Id, membersOf, type Rule, type Setting, SYSTEMS, type Tactics, type TacticsByParam } from '@/content/types';
 import { fnv1a } from '@/engine/core/hash';
 import type { Outcome } from '@/engine/med/course';
 import { complaintObservations, examFits } from '@/engine/med/exams';
@@ -181,6 +181,11 @@ export interface VisitView {
   treatments: { id: Id; name: string; warning?: string; disabled?: boolean }[];
   /** то же лечение — по группам (антибиотики, обезболивающие…) для экрана решения */
   treatmentGroups: { key: string; title: string; items: VisitView['treatments'] }[];
+  /**
+   * сверху экрана решения (вопрос 34): лечение, которое база называет при выбранном диагнозе и болезнях его группы, —
+   * и нужное, и лишнее; выбранное — тоже; по алфавиту. Остальное — свёрнуто, с поиском
+   */
+  suggested: VisitView['treatments'];
   draft: Draft;
   /** название выбранного, но ещё не поставленного диагноза */
   draftDiagnosisName?: string;
@@ -350,6 +355,27 @@ export function txGroupOfClass(cls: string | undefined): string {
 
 function txGroup(id: Id): string {
   return txGroupOfClass(db.treatments[id].class);
+}
+
+/** Всё лечение тактики болезни — все роли, и по значениям параметров (вопрос 34). */
+function tacticsTreatments(c: Condition): Id[] {
+  const roles = (t: Tactics | TacticsByParam) => [
+    ...t.firstLine, ...t.acceptable, ...t.supportive, ...t.notIndicated, ...t.harmful, ...(t.plan ?? []), ...(t.prevent ?? []),
+    ...membersOf(t.require), ...(t.preHospital ?? []), ...membersOf(t.beforeTransfer),
+  ];
+  return c.treatment ? [...roles(c.treatment), ...(c.treatment.byParam ?? []).flatMap(roles)] : [];
+}
+
+/**
+ * Что предложить сверху (вопрос 34, замечание владельца 12.10.2026): при ОРВИ «Режим и обильное питьё» был в самом
+ * низу списка, рядом с прививками, ранами и гипсом. Наверху — лечение, которое база называет при выбранном диагнозе и
+ * болезнях его группы, — и нужное, и лишнее: при ОРВИ — режим и жаропонижающие, но и антибиотики, которые не нужны;
+ * выбранное — тоже. По диагнозу игрока, а не по выводу: тот на уровне «Врач» подсказывал бы диагноз.
+ */
+export function suggestedTreatments(diagnosis: Id | undefined, chosen: readonly Id[]): Set<Id> {
+  const c = diagnosis ? db.conditions[diagnosis] : undefined;
+  const kin = c ? Object.values(db.conditions).filter(x => x.id === c.id || (c.group !== undefined && x.group === c.group)) : [];
+  return new Set([...kin.flatMap(tacticsTreatments), ...chosen]);
 }
 
 function groupTreatments(items: VisitView['treatments']): VisitView['treatmentGroups'] {
@@ -711,6 +737,7 @@ export function makeCaseView(c: CaseInput): VisitView {
   const visible = (o: Observation) => o.shown || (db.findings[o.f]?.texts.absent?.length ?? 0) > 0;
   const obs = observationsOfCase(p, c.arrived);
   const treatments = treatmentChoices(obs, c.bedsideEquipment, c.ricu, c.rooms);
+  const suggested = suggestedTreatments(c.draft.diagnosis, c.draft.treatments);
   return {
     version: c.version,
     title: `${patientName(p)}, ${T.spikes.patient.years(p.age)}, ${p.sex === 'm' ? T.spikes.patient.male : T.spikes.patient.female}`,
@@ -741,6 +768,7 @@ export function makeCaseView(c: CaseInput): VisitView {
     rules: c.difficulty === 'doctor' ? [] : rulesOf(p, obs),
     treatments,
     treatmentGroups: groupTreatments(treatments),
+    suggested: treatments.filter(x => suggested.has(x.id)),
     draft: c.draft,
     draftDiagnosisName: c.draft.diagnosis ? db.conditions[c.draft.diagnosis].name.ru : undefined,
     ...(c.canSendAway ? { canSendAway: true } : {}),

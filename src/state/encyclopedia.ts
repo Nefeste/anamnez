@@ -746,6 +746,12 @@ export function sectionsOf(db: ContentDb): { section: Section; title: string; co
 /** Строчные, «ё» как «е»: ищут и «прием», и «приём». */
 const norm = (s: string) => s.toLowerCase().replace(/\u0451/g, '\u0435');
 
+/** Название подходит к запросу: все слова запроса — в нём, без учёта регистра и «ё»; так же ищут назначения (вопрос 34). */
+export function matchesQuery(query: string, title: string): boolean {
+  const hay = norm(title);
+  return norm(query).split(/\s+/).filter(Boolean).every(w => hay.includes(w));
+}
+
 /** Поиск по названиям (у болезней — и по коду МКБ): все слова запроса — в названии. */
 export function search(db: ContentDb, query: string, limit = 50): (Ref & { section: Section })[] {
   const words = norm(query).split(/\s+/).filter(Boolean);
