@@ -13,9 +13,9 @@ beforeEach(() => {
 });
 
 describe('настройки', () => {
-  test('файла нет — умолчания: звук полный, фон и вибрация включены, автопауза тоже, оговорка не прочитана, текст обычный, тема как в телефоне, мягкий режим выключен, больные — как в жизни', async () => {
+  test('файла нет — умолчания: звук полный, музыка средне, фон и вибрация включены, автопауза тоже, оговорка не прочитана, текст обычный, тема как в телефоне, мягкий режим выключен, больные — как в жизни', async () => {
     await loadSettings();
-    expect(settings()).toEqual({ sound: 1, ambience: true, vibration: true, pauseOnRed: true, pauseOnResults: true, disclaimerAccepted: false, textScale: 1, theme: 'system', softMode: false, variety: false });
+    expect(settings()).toEqual({ sound: 1, music: 0.7, ambience: true, vibration: true, pauseOnRed: true, pauseOnResults: true, disclaimerAccepted: false, textScale: 1, theme: 'system', softMode: false, variety: false });
   });
 
   test('поменяли — записано; после «перезапуска» — те же', async () => {
@@ -56,6 +56,11 @@ describe('настройки', () => {
     expect(sanitize({ sound: 0.35 }).softMode).toBe(false);
     expect(sanitize({ softMode: true }).softMode).toBe(true);
     expect(sanitize({ softMode: 'yes' }).softMode).toBe(false);
+    // музыка (часть 62) — в файле прежней версии её нет: средне; громкость — от 0 до 1, иначе по умолчанию
+    expect(sanitize({ sound: 0.35 }).music).toBe(0.7);
+    expect(sanitize({ music: 0 }).music).toBe(0);
+    expect(sanitize({ music: 1.5 }).music).toBe(0.7);
+    expect(sanitize({ music: 'loud' }).music).toBe(0.7);
     expect(sanitize(null)).toEqual(DEFAULTS);
     expect(sanitize([1, 2])).toEqual(DEFAULTS);
   });

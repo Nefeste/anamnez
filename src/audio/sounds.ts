@@ -1,7 +1,7 @@
-// Звуки и вибрация (03-game-design.md §13, 06-architecture.md §10). В движке звуков нет:
+// Звуки, музыка и вибрация (03-game-design.md §13, 06-architecture.md §10). В движке звуков нет:
 // их вызывает интерфейс по событиям. Короткие звуки загружаются один раз в проигрыватели.
-// Громкость, фон и вибрация — из настроек игрока. Приход пациента и фон амбулатории — из
-// наборов CC0 (tools/audio/clinic.ts, assets/audio/LICENSES.md).
+// Громкость, фон и вибрация — из настроек игрока. Приход пациента, фон амбулатории и музыка (часть 62) — из
+// наборов CC0 (tools/audio/clinic.ts, tools/audio/music.mjs, assets/audio/LICENSES.md).
 import { type AudioPlayer, createAudioPlayer } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
 import { AppState, Platform } from 'react-native';
@@ -64,7 +64,56 @@ function applyAmbient(active: boolean) {
   else p.pause();
 }
 
-AppState.addEventListener('change', state => applyAmbient(state === 'active'));
+/** Где музыка: в меню — спокойная, на смене — своя и тише, под фоном амбулатории (часть 62). */
+export type MusicScene = 'menu' | 'shift';
+
+const MUSIC: Record<MusicScene, number> = {
+  menu: require('../../assets/audio/music-menu.mp3'),
+  shift: require('../../assets/audio/music-shift.mp3'),
+};
+// музыка — подложка: тише сигналов; на смене — вдвое тише, чем в меню
+const musicVolume: Record<MusicScene, number> = { menu: 0.5, shift: 0.25 };
+const music: Partial<Record<MusicScene, AudioPlayer>> = {};
+let scene: MusicScene = 'menu';
+/** настройки прочитаны: до того громкость музыки неизвестна, и выключившему её она не заиграет на миг */
+let musicReady = false;
+
+/** Сцена по экрану, который на виду; заиграет, когда настройки прочитаны (`startMusic`). */
+export function setMusicScene(next: MusicScene) {
+  scene = next;
+  applyMusic(AppState.currentState === 'active');
+}
+
+/** Настройки прочитаны — музыка может играть. */
+export function startMusic() {
+  musicReady = true;
+  applyMusic(AppState.currentState === 'active');
+}
+
+/**
+ * Музыка: петля сцены, что на виду, другая — на паузе; громкость или сцену сменили — сразу. Музыка на нуле или игра
+ * свёрнута — не играет. В вебе — стенде для сценариев — музыки нет, как и фона.
+ */
+export function applyMusic(active = AppState.currentState === 'active') {
+  if (Platform.OS === 'web' || !musicReady) return;
+  const level = settings().music;
+  for (const k of ['menu', 'shift'] as const) {
+    const audible = active && level > 0 && k === scene;
+    if (!audible) {
+      music[k]?.pause();
+      continue;
+    }
+    const p = (music[k] ??= createAudioPlayer(MUSIC[k]));
+    p.loop = true;
+    p.volume = musicVolume[k] * level;
+    p.play();
+  }
+}
+
+AppState.addEventListener('change', state => {
+  applyAmbient(state === 'active');
+  applyMusic(state === 'active');
+});
 
 /** Вибрация на срочное и на готовый результат; в вебе её нет, в настройках её можно выключить. */
 export function buzz(kind: 'urgent' | 'ready' | 'tap') {

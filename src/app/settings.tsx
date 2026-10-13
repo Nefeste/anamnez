@@ -1,11 +1,11 @@
-// Настройки (03-game-design.md §12, spec 2026-09-first-shift): звук, вибрация, автопауза
+// Настройки (03-game-design.md §12, spec 2026-09-first-shift): звук и музыка (часть 62), вибрация, автопауза
 // смены, мягкий режим, больные — реализм или разнообразие (spec 2026-10-variety), тема (spec
 // 2026-09-own-look) и размер текста; перенос на другой телефон; «Сообщить об ошибке»; «Об игре»; прототипы первого этапа — ими на телефоне меряют отпечаток движка,
 // кадры карты и запись сохранения.
 import { type Href, router } from 'expo-router';
 import { useEffect } from 'react';
 import { Platform, useColorScheme } from 'react-native';
-import { play } from '@/audio/sounds';
+import { applyMusic, play } from '@/audio/sounds';
 import { T } from '@/i18n';
 import { loadSettings, TEXT_SCALES, THEME_CHOICES, type ThemeChoice, updateSettings, useSettings, VOLUMES } from '@/state/settings';
 import { Button, Card, Choice, H, P, Screen, Tabs, Toggle } from '@/ui/components';
@@ -16,10 +16,10 @@ type Patients = 'real' | 'varied';
 const PATIENTS: readonly Patients[] = ['real', 'varied'];
 
 /** Ближайшая ступень громкости — файл могла записать и другая версия игры. */
-const levelOf = (sound: number): Level => {
+const levelOf = (volume: number): Level => {
   let best = 0;
   VOLUMES.forEach((v, i) => {
-    if (Math.abs(v - sound) < Math.abs(VOLUMES[best] - sound)) best = i;
+    if (Math.abs(v - volume) < Math.abs(VOLUMES[best] - volume)) best = i;
   });
   return String(best) as Level;
 };
@@ -44,6 +44,11 @@ export default function SettingsScreen() {
     // услышать новую громкость; веб — стенд для сценариев, там звук не нужен
     if (Platform.OS !== 'web') play('ready');
   };
+  // музыка (часть 62) — сразу новой громкостью; в вебе её нет
+  const setMusic = (k: Level) => {
+    updateSettings({ music: VOLUMES[Number(k)] });
+    applyMusic();
+  };
 
   return (
     <Screen>
@@ -51,6 +56,8 @@ export default function SettingsScreen() {
         <H>{t.sound}</H>
         <P muted>{t.volume}</P>
         <Tabs<Level> testPrefix="sound" value={levelOf(s.sound)} onChange={setVolume} items={t.volumes.map((title, i) => ({ key: String(i) as Level, title }))} />
+        <P muted>{t.music}</P>
+        <Tabs<Level> testPrefix="music" value={levelOf(s.music)} onChange={setMusic} items={t.volumes.map((title, i) => ({ key: String(i) as Level, title }))} />
         <Toggle testID="settings-ambience" title={t.ambience} hint={t.ambienceHint} value={s.ambience} onChange={v => updateSettings({ ambience: v })} />
         <Toggle testID="settings-vibration" title={t.vibration} hint={t.vibrationHint} value={s.vibration} onChange={v => updateSettings({ vibration: v })} />
       </Card>
