@@ -326,8 +326,10 @@ describe('разумный врач', () => {
       expect(r.plan.treatments.some(tx => ['tx.lmwh', 'tx.fondaparinux', HEPARIN, 'tx.doac'].includes(tx))).toBe(true);
       if (r.plan.treatments.includes(LYSIS)) expect(paramsOf(p).shock).toBe('yes');
     }
-    // с частью 48а — 51 из 60: лихорадящему с частым дыханием сперва проверяют qSOFA, и один больной ушёл в пневмонию
-    expect(right / xs.length).toBeGreaterThanOrEqual(0.85);
+    // с частью 48а — 51 из 60: лихорадящему с частым дыханием сперва проверяют qSOFA, и один больной ушёл в пневмонию; с
+    // 0.5.5 (вопрос 33) — 50: больному с кашлем и болью при дыхании ТЭЛА прежде «подтвердил» ложный тромб на УЗИ вен ноги,
+    // а такой находки по его жалобам теперь в 5 раз реже. На 300 больных — 263 против 264: разброс, а не сдвиг
+    expect(right / xs.length).toBeGreaterThanOrEqual(0.83);
     // остальным ТЭЛА подтвердил тромб в венах ноги на УЗИ (ESC 2019, раздел 4.10, I A)
     expect(cta / xs.length).toBeGreaterThan(0.75);
   }, 60_000);
