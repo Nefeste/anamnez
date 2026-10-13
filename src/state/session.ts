@@ -27,7 +27,7 @@ import {
 } from '@/engine/shift/engine';
 import { minutesTo, targetStart, targetsFor } from '@/engine/shift/targets';
 import {
-  type Command, DAY, type Difficulty, type Mode, type Notice, SHIFT_END, SHIFT_SCHEMA_VERSION, type ShiftPatient, type ShiftState, type Triage,
+  type Command, DAY, type Difficulty, easyLevel, type Mode, type Notice, SHIFT_END, SHIFT_SCHEMA_VERSION, type ShiftPatient, type ShiftState, type Triage,
 } from '@/engine/shift/types';
 import { T } from '@/i18n';
 import { lowerFirst } from '@/i18n/case';
@@ -1685,7 +1685,7 @@ export function roundsView(): RoundCard[] {
   if (!sess) return [];
   const s = sess.s;
   const t = T.shift.ward;
-  const student = s.meta.difficulty === 'student';
+  const student = easyLevel(s.meta.difficulty);
   const hasOr = s.hospital !== undefined && hospitalCtx(db, s).plan.rooms.some(r => r.type === 'room.or');
   const queue = orQueueOf(s).map(p => p.id);
   return inpatientsOf(s).map(p => {
@@ -1796,7 +1796,7 @@ function ambulanceRows(s: ShiftState): AmbulanceRow[] {
     .sort((a, b) => a.arriveT - b.arriveT || (a.id < b.id ? -1 : 1))
     .map(p => {
       const paramedic = p.results.find(r => r.exam === 'exam.vitals');
-      const student = s.meta.difficulty === 'student' && p.scale !== undefined;
+      const student = easyLevel(s.meta.difficulty) && p.scale !== undefined;
       const flag = student && p.scale?.flag ? db.findings[p.scale.flag]?.name.ru : undefined;
       return {
         id: p.id,

@@ -1,4 +1,5 @@
-// Выбор сложности (03-game-design.md §14): при начале практики и при «Начать заново».
+// Выбор сложности (03-game-design.md §14): при начале практики и при «Начать заново»; с 0.5.4 — и «Практикант»,
+// самый простой (spec 2026-10-trainee).
 import { Text } from './text';
 import type { Difficulty } from '@/engine/shift/types';
 import { T } from '@/i18n';
@@ -11,8 +12,9 @@ export function DifficultyChoice({ value, onChange }: { value: Difficulty; onCha
   return (
     <>
       <Text style={styles.label}>{t.title}</Text>
-      <Tabs<Difficulty> testPrefix="difficulty" value={value} onChange={onChange} items={[{ key: 'student', title: t.student }, { key: 'doctor', title: t.doctor }]} />
-      <P muted testID="difficulty-text">{value === 'student' ? t.studentText : t.doctorText}</P>
+      <Tabs<Difficulty> testPrefix="difficulty" value={value} onChange={onChange}
+        items={[{ key: 'trainee', title: t.trainee }, { key: 'student', title: t.student }, { key: 'doctor', title: t.doctor }]} />
+      <P muted testID="difficulty-text">{t[`${value}Text`]}</P>
     </>
   );
 }

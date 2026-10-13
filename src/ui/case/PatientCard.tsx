@@ -40,6 +40,11 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
   const t = T.spikes.patient;
   const d = T.spikes.decision;
   const groups = examsByAction(v.portrait);
+  // «Практикант» (spec 2026-10-trainee): сверху — то, что относится к жалобе, и сделанное; остальное — свёрнуто
+  const focus = v.focus ? new Set(v.focus) : undefined;
+  const main = focus ? groups[tab].filter(id => focus.has(id) || v.done.includes(id)) : groups[tab];
+  const rest = focus ? groups[tab].filter(id => !main.includes(id)) : [];
+  const restKey = `rest:${tab}`;
   // «Известно»: новое, то, где что-то нашли, и снимки — на виду; где ничего не нашли — одной строкой
   const loud = v.groups.filter(g => g.fresh || found(g) || g.image);
   const quiet = v.groups.filter(g => !loud.includes(g));
@@ -168,7 +173,8 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
             items={[{ key: 'ask', title: t.ask }, { key: 'examine', title: t.examine }, { key: 'order', title: t.order }]}
           />
           <Card>
-            {groups[tab].map(id => {
+            {focus && <P muted testID="visit-focus">{t.focusNote}</P>}
+            {[...main, ...(isOpen(restKey) ? rest : [])].map(id => {
               const info = examInfo(id);
               // сделанное — с ответом на месте: не нужно листать вверх к «Известно» (отзыв на 0.0.37);
               // только что пришедшее — целиком, прежнее — строкой «что нашли», касание раскрывает
@@ -202,6 +208,9 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
                   onPress={() => doExam(id)} onInfo={() => explain(examTerm(id))} infoLabel={t.whatIsIt} />
               );
             })}
+            {rest.length > 0 && (
+              <Button testID={`visit-rest-${tab}`} kind="plain" title={isOpen(restKey) ? t.restHide : t.restShow(rest.length)} onPress={() => toggle(restKey)} />
+            )}
           </Card>
         </>
       )}

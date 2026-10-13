@@ -82,6 +82,9 @@ in Russian.
   against the NEWS2 score. You do a ward round every morning and discharge patients when they are
   better; a surgical team works in the operating room — and the longer an appendicitis or a
   perforated ulcer waits, the more dangerous it gets.
+- **Three difficulty levels.** Trainee: “Looks like” hints, what relates to the complaint comes first
+  in questions, examination and tests, and the review is gentler. Student: hints, and tests never
+  err. Doctor: no hints, and tests sometimes err, as in real life.
 
 ## What’s inside
 

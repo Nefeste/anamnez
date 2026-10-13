@@ -731,6 +731,16 @@ function anginaSave(): { save: string; id: string } {
   }
 }
 
+/** Практика на «Практиканте» (spec 2026-10-trainee): первый в очереди — с жалобой. */
+function traineeSave(): { save: string; id: string } {
+  const { db } = buildDb();
+  const s = newShift(db, { seed: 47, season: 'winter', difficulty: 'trainee' });
+  for (let i = 0; i < 600 && s.queue.length === 0; i++) apply(db, s, { kind: 'advance', seconds: 60 });
+  const id = s.queue.find(q => s.patients[q].patient.complaints.length > 0);
+  if (!id) throw new Error('traineeSave: в очереди нет пациента с жалобой');
+  return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s }), id };
+}
+
 /** Песочница до открытия: готовая амбулатория, бюджет «обычный» — экран «Перед открытием». */
 /**
  * Карьера 2, у которой глава 1 выполнена к концу дня 3 (spec 2026-09-chapter-2, часть 34): переход
@@ -1238,6 +1248,10 @@ try {
   await page.getByTestId('shift-start').waitFor({ timeout: 15_000 });
   // сложность выбирают при начале практики; по умолчанию — «Студент» с подсказками
   check((await page.getByTestId('difficulty-student').getAttribute('aria-selected')) === 'true' && (await text(page, 'difficulty-text')).startsWith('Подсказки'), 'смена: сложность по умолчанию — «Студент»');
+  // «Практикант» (spec 2026-10-trainee) — первым, самый простой; подпись — его
+  await page.getByTestId('difficulty-trainee').click();
+  check((await text(page, 'difficulty-text')).startsWith('Как «Студент»'), `смена: «Практикант» — «${(await text(page, 'difficulty-text')).slice(0, 80)}»`);
+  await page.getByTestId('difficulty-student').click();
   await page.getByTestId('shift-start').click();
   // в очереди никого — «промотать до следующего» (отзыв на 0.0.7: ждали 40 секунд)
   const skipped = await skipToFirst(page);
@@ -1918,6 +1932,28 @@ try {
   await pa.waitForTimeout(500);
   await pa.screenshot({ path: join(OUT, '19-angina.png'), fullPage: true });
   await ac.close();
+  // «Практикант» (spec 2026-10-trainee): в карте сверху — то, что относится к жалобе, остальное — «Остальное — N»
+  const trainee = traineeSave();
+  const tc = await browser.newContext({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2 });
+  await tc.addInitScript(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/shift.json', trainee.save]);
+  const pt = await tc.newPage();
+  pt.on('pageerror', e => errors.push(String(e)));
+  await pt.goto(`${base}/shift`);
+  await pt.getByTestId(`queue-${trainee.id}`).waitFor({ timeout: 15_000 });
+  await pt.getByTestId('tab-pause').click();
+  await pt.getByTestId(`queue-${trainee.id}`).click();
+  await visible(pt, 'visit-decide').waitFor({ timeout: 15_000 });
+  await pt.getByTestId('tab-order').click();
+  // кнопки обследований, без их «?» (`exam-…-info`)
+  const exams = () => pt.locator('[data-testid^="exam-"]:not([data-testid$="-info"])').count();
+  const shown = await exams();
+  const rest = await text(pt, 'visit-rest-order');
+  await pt.getByTestId('visit-rest-order').click();
+  const all = await exams();
+  check((await text(pt, 'visit-focus')).startsWith('Сверху — то, что относится к жалобе') && /^Остальное — \d+$/.test(rest) && all > shown && shown > 0
+    && (await pt.locator('[data-testid^="likely-"]').count()) > 0, `«Практикант»: «Назначить» — ${shown} по жалобе, «${rest}», всего ${all}`);
+  await pt.screenshot({ path: join(OUT, '19-trainee.png'), fullPage: true });
+  await tc.close();
   // операционная (spec 2026-09-chapter-2, часть 28): у вас пациент с аппендицитом — в решении
   // «В операционную» с операцией и койками; итог приёма — операция и палата; на обходе —
   // «идёт операция» и выписать нельзя; вечером — в итогах дня операционная

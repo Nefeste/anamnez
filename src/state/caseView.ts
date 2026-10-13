@@ -186,6 +186,11 @@ export interface VisitView {
    * и нужное, и лишнее; выбранное — тоже; по алфавиту. Остальное — свёрнуто, с поиском
    */
   suggested: VisitView['treatments'];
+  /**
+   * «Практикант» (spec 2026-10-trainee): обследования, которые относятся к жалобе, — их карта показывает сверху,
+   * остальное сворачивает; нет — уровень другой или пациент пришёл без жалоб (профосмотр)
+   */
+  focus?: Id[];
   draft: Draft;
   /** название выбранного, но ещё не поставленного диагноза */
   draftDiagnosisName?: string;
@@ -285,6 +290,35 @@ export function patientName(p: Patient): string {
 /** Болезни, из которых выбирают диагноз: отделения больницы (с приёмным — и хирургия, часть 30); нет — терапия. */
 export function candidates(departments: readonly Id[] = [DEPARTMENT]): Id[] {
   return Object.keys(db.conditions).filter(id => db.conditions[id].presenting && departments.includes(db.conditions[id].department));
+}
+
+/**
+ * «Практикант» (spec 2026-10-trainee): обследования, которые относятся к жалобе. Болезни с этой жалобой — из тех, что
+ * принимает больница, у которых жалоба пациента есть среди признаков записи; обследование относится к жалобе, если
+ * проверяет признак такой болезни, кроме самих жалоб, её фактор риска или то, без чего она не бывает (курение, ХОБЛ),
+ * или противопоказание к её лечению (аллергия на пенициллин). По жалобе, а не по выводу: список не подсказывает
+ * диагноз, а настоящая болезнь пациента всегда среди болезней с его жалобой. Без жалоб (профосмотр) — ничего:
+ * относится всё.
+ */
+export function complaintExams(patient: Pick<Patient, 'complaints'>, departments?: readonly Id[]): Id[] {
+  const told = new Set(patient.complaints);
+  if (told.size === 0) return [];
+  const findings = new Set<Id>();
+  // чем узнают о факторе риска, хронической болезни или противопоказании: признаки фактора, анамнез болезни
+  const reveal = (id: Id) => {
+    if (db.findings[id]) findings.add(id);
+    for (const l of db.risks[id]?.findings ?? []) findings.add(l.f);
+    for (const l of db.conditions[id]?.findings ?? []) if (db.findings[l.f]?.kind === 'hx') findings.add(l.f);
+  };
+  for (const id of candidates(departments)) {
+    const c = db.conditions[id];
+    if (!c.findings.some(l => told.has(l.f) && l.p > 0)) continue;
+    for (const l of c.findings) if (!told.has(l.f)) findings.add(l.f);
+    for (const r of c.risks ?? []) reveal(r.id);
+    for (const r of c.requires ?? []) reveal(r);
+    for (const tx of tacticsTreatments(c)) for (const x of db.treatments[tx]?.contraindications ?? []) reveal(x.id);
+  }
+  return Object.keys(db.exams).filter(e => db.exams[e].checks.some(x => findings.has(x.f))).sort();
 }
 
 /** Жалобы и всё, что пришло, — как для вывода. */
@@ -769,6 +803,7 @@ export function makeCaseView(c: CaseInput): VisitView {
     treatments,
     treatmentGroups: groupTreatments(treatments),
     suggested: treatments.filter(x => suggested.has(x.id)),
+    ...(c.difficulty === 'trainee' && p.complaints.length > 0 ? { focus: complaintExams(p, c.departments) } : {}),
     draft: c.draft,
     draftDiagnosisName: c.draft.diagnosis ? db.conditions[c.draft.diagnosis].name.ru : undefined,
     ...(c.canSendAway ? { canSendAway: true } : {}),
@@ -921,6 +956,7 @@ export function noteText(n: ScoreNote): string {
     case 'safety.redFlagIgnored': return t.redFlagIgnored(db.findings[n.f].name.ru);
     case 'safety.redFlagUnchecked': return t.redFlagUnchecked(db.findings[n.f].name.ru);
     case 'thrift.over': return t.thriftOver(n.times);
+    case 'level.lenient': return t.lenient;
     case 'triage.under': return t.triageUnder(n.triage, n.news2, n.flag && db.findings[n.flag]?.name.ru);
     case 'triage.over': return t.triageOver(n.triage, n.news2, n.flag && db.findings[n.flag]?.name.ru);
     case 'op.onTime': return t.opOnTime(tx(n.tx), n.hours, n.window, n.onset === true, n.observed === true);

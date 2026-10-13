@@ -27,7 +27,7 @@ import { buildReview, type ReviewData } from '../med/review';
 import { scoreCase } from '../med/score';
 import type { Observation } from '../med/types';
 import {
-  type ClosedCase, type ColleagueDay, type Command, DAY, type DaySummary, type Difficulty, type Notice, type PlannedReturn, SHIFT_END, SHIFT_SCHEMA_VERSION,
+  type ClosedCase, type ColleagueDay, type Command, DAY, type DaySummary, type Difficulty, easyLevel, type Notice, type PlannedReturn, SHIFT_END, SHIFT_SCHEMA_VERSION,
   SHIFT_START, type ShiftEvent, type ShiftPatient, type ShiftState, type Triage, type VisitKind, type WardDay, type AmbulanceDay, type SurgeryDay,
 } from './types';
 import { COMPLICATION_DAYS, complicationAt, complicationsOf, deathsOf, onsetHours, operationFor } from './surgery';
@@ -108,7 +108,7 @@ export function hospitalCtx(db: ContentDb, s: ShiftState): HospitalCtx {
   return c;
 }
 /** «Студент»: обследования не ошибаются, пациенты ждут в полтора раза дольше (03-game-design.md §14). */
-const exact = (s: ShiftState) => s.meta.difficulty === 'student';
+const exact = (s: ShiftState) => easyLevel(s.meta.difficulty);
 const STUDENT_PATIENCE = 1.5;
 
 /** Как пришли бы больные (spec 2026-10-variety): `variety` — «разнообразие» из настроек; нет — как в жизни. */
@@ -1201,6 +1201,8 @@ function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
     // что было правильно выбрать здесь: со своей палатой — положить в неё, со своей операционной — оперировать
     should: choiceFor(recommendedSetting(db, patient, p.results.map(r => r.exam), bedside, rooms), venueOf(db, s, operationFor(db, truth, primaryOf(patient).params) ?? null, plan.setting)),
     ...(targets.length > 0 ? { targets: targets.map(t => t.grade) } : {}),
+    // «Практикант» (spec 2026-10-trainee): обоснованность и бережливость — для сведения
+    ...(s.meta.difficulty === 'trainee' ? { lenient: true as const } : {}),
   });
   const { notes, targets: _worst, ...grades } = score;
   return {
@@ -1923,7 +1925,7 @@ function arrive(db: ContentDb, s: ShiftState, p: ShiftPatient, notices: Notice[]
   p.triage = triageOf(db, p);
   if (!ctx.triage) p.triaged = false;
   const [lo, hi] = p.triage === 'red' ? [0, 0] : PATIENCE[p.triage];
-  p.patience = Math.round(branch(s, `patience:${p.id}`).range(lo, hi) * MIN * (s.meta.difficulty === 'student' ? STUDENT_PATIENCE : 1));
+  p.patience = Math.round(branch(s, `patience:${p.id}`).range(lo, hi) * MIN * (easyLevel(s.meta.difficulty) ? STUDENT_PATIENCE : 1));
   // своя больница: пришёл в полную зону ожидания — стоит, и ждать готов вдвое меньше
   if (s.hospital && p.patience > 0 && s.queue.length >= ctx.seats) p.patience = Math.round(p.patience / 2);
   s.summary.arrived++;
