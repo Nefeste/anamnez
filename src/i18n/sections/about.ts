@@ -28,6 +28,9 @@ export const about = {
     score: 'Шкалы',
     dataset: 'Наборы данных',
   },
+  // звук и музыка (часть 62): CC0 упоминания не требует, но автор «Vaporware» его просит (assets/audio/LICENSES.md)
+  soundTitle: 'Звук и музыка',
+  sound: 'Музыка: «Vaporware» — The Cynic Project, «Contemplation» — Joth. Звуки: набор «RPG Audio» — Kenney. Всё — под лицензией CC0, с OpenGameArt и kenney.nl; сигналы игры — свои.',
   developerTitle: 'Разработчик',
   developer: '«Горница»',
   write: 'Написать разработчику',

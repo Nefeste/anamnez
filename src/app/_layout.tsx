@@ -1,13 +1,15 @@
 // Корень: стек Expo Router (ADR 0003) внутри корня жестов. Здесь же смене, настройкам и
-// профилю даётся хранилище платформы, и смена сохраняется, когда приложение уходит в фон.
+// профилю даётся хранилище платформы, и смена сохраняется, когда приложение уходит в фон; музыка — по экрану:
+// на приёме своя, тише, в остальном — меню (часть 62).
 // Шапка, строка состояния и фон окна — по теме (spec 2026-09-own-look).
-import { Stack } from 'expo-router';
+import { Stack, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
 import { useEffect } from 'react';
 import { AppState } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { setMusicScene, startMusic } from '@/audio/sounds';
 import { T } from '@/i18n';
 import { installErrorLog } from '@/state/errors';
 import { loadProfile, setProfileStore } from '@/state/profile';
@@ -30,6 +32,15 @@ installFonts();
 
 export default function RootLayout() {
   const t = useTheme();
+  const path = usePathname();
+  // музыка — когда прочитаны настройки: выключившему её она не заиграет на миг
+  useEffect(() => {
+    loadSettings().then(startMusic);
+  }, []);
+  // приём — на смене и в «Случае дня» (его карта, решение и разбор): там музыка тише
+  useEffect(() => {
+    setMusicScene(path.startsWith('/shift') || path.startsWith('/daily/') ? 'shift' : 'menu');
+  }, [path]);
   // фон окна — под экраном при переходах и за клавиатурой
   useEffect(() => {
     SystemUI.setBackgroundColorAsync(t.colors.bg).catch(() => undefined);

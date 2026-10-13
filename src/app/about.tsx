@@ -48,6 +48,10 @@ export default function About() {
         <Button testID="about-sources" kind="plain" title={t.sources(sources)} onPress={() => router.push('/sources')} />
       </Card>
       <Card>
+        <H>{t.soundTitle}</H>
+        <P testID="about-sound">{t.sound}</P>
+      </Card>
+      <Card>
         <H>{t.developerTitle}</H>
         <P>{t.developer}</P>
         <Button testID="about-write" title={t.write} hint={SUPPORT_EMAIL} onPress={() => open(mail, SUPPORT_EMAIL)} />

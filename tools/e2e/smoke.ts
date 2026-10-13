@@ -905,6 +905,9 @@ try {
   const quiet = () => page.getByTestId('sound-1').getAttribute('aria-selected');
   check((await vibration()) === 'true' && (await page.getByTestId('sound-3').getAttribute('aria-selected')) === 'true', 'настройки: по умолчанию вибрация включена, звук громкий');
   check((await page.getByTestId('settings-ambience').getAttribute('aria-checked')) === 'true', 'настройки: фон амбулатории по умолчанию включён');
+  // музыка (часть 62): по умолчанию — «Средне»; в вебе она не играет, но выбор хранится, как у звука
+  const music = (k: number) => page.getByTestId(`music-${k}`).getAttribute('aria-selected');
+  check((await music(2)) === 'true', 'настройки: музыка по умолчанию — «Средне»');
   // «мягкий режим» (spec 2026-09-chapter-2, часть 28б): по умолчанию выключен
   check((await page.getByTestId('settings-soft').getAttribute('aria-checked')) === 'false' && (await text(page, 'settings-soft')).includes('перевод в областную больницу'),
     `настройки: мягкий режим — выключен, ${(await text(page, 'settings-soft')).replace(/\n/g, ' · ')}`);
@@ -913,16 +916,19 @@ try {
     `настройки: больные — «Реализм»; ${(await text(page, 'patients-varied')).replace(/\n/g, ' · ')}`);
   await page.getByTestId('settings-vibration').click();
   await page.getByTestId('sound-1').click();
+  await page.getByTestId('music-0').click();
   await page.getByTestId('patients-varied').click();
   await page.screenshot({ path: join(OUT, '10-settings.png'), fullPage: true });
   await page.goto(`${base}/settings`);
   await page.getByTestId('settings-vibration').waitFor({ timeout: 10_000 });
   check((await vibration()) === 'false' && (await quiet()) === 'true', 'настройки: вибрация и громкость — те же после перезапуска');
+  check((await music(0)) === 'true', 'настройки: музыка «Выкл» — та же после перезапуска');
   // «Разнообразие» — тоже; дальше сценарий — на частотах жизни
   check((await page.getByTestId('patients-varied').getAttribute('aria-checked')) === 'true', 'настройки: «Разнообразие» — то же после перезапуска');
   await page.getByTestId('patients-real').click();
   await page.getByTestId('settings-vibration').click();
   await page.getByTestId('sound-3').click();
+  await page.getByTestId('music-2').click();
   // размер текста: «Крупный» — шрифт в 1,3 раза больше; вернуть «Обычный»
   const fontOf = () => page.getByTestId('settings-about').locator('div[dir="auto"]').first().evaluate(el => parseFloat(getComputedStyle(el).fontSize));
   const normal = await fontOf();
@@ -966,6 +972,8 @@ try {
   const version = JSON.parse(readFileSync(join(ROOT, 'app.json'), 'utf8')).expo.version;
   check((await text(page, 'about-version')).includes(version), `«Об игре»: версия ${version}`);
   check((await text(page, 'about-disclaimer')).includes('112') && (await text(page, 'about-write')).includes('support@gornitsa.games'), '«Об игре»: полная оговорка, почта разработчика');
+  // звук и музыка (часть 62): авторы треков и набора звуков
+  check((await text(page, 'about-sound')).includes('The Cynic Project') && (await text(page, 'about-sound')).includes('Kenney'), '«Об игре»: авторы музыки и звуков');
   await page.screenshot({ path: join(OUT, '10-about.png'), fullPage: true });
   await page.getByTestId('about-sources').click();
   await page.getByTestId('source').first().waitFor({ timeout: 5000 });
