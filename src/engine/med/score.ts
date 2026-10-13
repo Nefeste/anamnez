@@ -36,6 +36,8 @@ export type ScoreNote =
   | { code: 'safety.examHarmKnown' | 'safety.examHarmUnchecked'; exam: Id; by: Id[] }
   | { code: 'safety.redFlagIgnored' | 'safety.redFlagUnchecked'; f: Id }
   | { code: 'thrift.over'; times: number }
+  /** «Практикант» (spec 2026-10-trainee): обоснованность и бережливость не вошли в общую оценку */
+  | { code: 'level.lenient' }
   /**
    * скорая (spec 2026-09-chapter-2, часть 27): врач отсортировал срочнее или спокойнее, чем шкала
    * NEWS2 с красными флагами; `flag` — признак, что поднял цвет выше баллов
@@ -71,6 +73,11 @@ export interface CaseInput {
   should?: Setting;
   /** оценки сроков приёма (spec 2026-10-chapter-3, часть 37): ЭКГ при боли в груди за 10 минут */
   targets?: Grade[];
+  /**
+   * «Практикант» (spec 2026-10-trainee): разбор мягче — обоснованность и бережливость считаются и видны, но в общую
+   * оценку не входят: новичок назначает лишнее и ставит диагноз по подсказке, а учится на лечении и безопасности
+   */
+  lenient?: true;
 }
 
 export interface CaseScore {
@@ -208,9 +215,12 @@ export function scoreCase(x: CaseInput): CaseScore {
 
   // сроки (часть 37) — десятая доля общей; у приёма без срока общая — как прежде
   const targets = x.targets && x.targets.length > 0 ? worst(...x.targets) : undefined;
-  const weighted = 2 * POINTS[accuracy] + 2 * POINTS[treatment] + 2 * POINTS[safety] + POINTS[setting] + POINTS[defensibility] + POINTS[thrift] + (targets ? POINTS[targets] : 0);
-  const mean = weighted / (targets ? 10 : 9);
+  const lenient = x.lenient === true;
+  const reasoning = lenient ? 0 : POINTS[defensibility] + POINTS[thrift];
+  const weighted = 2 * POINTS[accuracy] + 2 * POINTS[treatment] + 2 * POINTS[safety] + POINTS[setting] + reasoning + (targets ? POINTS[targets] : 0);
+  const mean = weighted / ((lenient ? 7 : 9) + (targets ? 1 : 0));
   let overall: Grade = mean >= 2.5 ? 'A' : mean >= 1.75 ? 'B' : mean >= 1 ? 'C' : 'D';
   if (safety === 'D') overall = worst(overall, 'C'); // опасное решение не бывает хорошим случаем
+  if (lenient && (defensibility !== 'A' || thrift !== 'A')) notes.push({ code: 'level.lenient' });
   return { accuracy, defensibility, thrift, treatment, setting, safety, ...(targets ? { targets } : {}), overall, notes };
 }
