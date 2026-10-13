@@ -54,6 +54,27 @@ export interface BuildResult {
   files: number;
 }
 
+/**
+ * Разбор YAML и поиск торговых названий — по тексту файла, один раз за процесс: валидатор в тестах собирает сотни
+ * испорченных копий базы (tools/test/content.test.ts), а меняется в копии один файл — без этого каждая копия
+ * разбиралась бы заново целиком. Разобранное не меняется: схема (zod) собирает из него новые записи.
+ */
+const parsed = new Map<string, { raw?: unknown; error?: string; brand?: string }>();
+function parseOnce(source: string): { raw?: unknown; error?: string; brand?: string } {
+  const known = parsed.get(source);
+  if (known) return known;
+  const out: { raw?: unknown; error?: string; brand?: string } = {};
+  const brand = findBrand(source);
+  if (brand) out.brand = brand;
+  try {
+    out.raw = parse(source);
+  } catch (e) {
+    out.error = (e as Error).message;
+  }
+  parsed.set(source, out);
+  return out;
+}
+
 function yamlFiles(dir: string): string[] {
   return readdirSync(dir).sort().flatMap(n => {
     const p = join(dir, n);
@@ -134,14 +155,10 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   for (const file of files) {
     const rel = relative(dir, file);
     const top = rel.split('/')[0];
-    let raw: unknown;
-    const source = readFileSync(file, 'utf8');
-    const brand = findBrand(source);
+    const { raw, error, brand } = parseOnce(readFileSync(file, 'utf8'));
     if (brand) errors.push(`${rel}: торговое название «${brand}» — только МНН или группа (ADR 0012)`);
-    try {
-      raw = parse(source);
-    } catch (e) {
-      errors.push(`${rel}: не разбирается как YAML: ${(e as Error).message}`);
+    if (error !== undefined) {
+      errors.push(`${rel}: не разбирается как YAML: ${error}`);
       continue;
     }
     const check = <S extends z.ZodType>(schema: S): z.infer<S> | undefined => {

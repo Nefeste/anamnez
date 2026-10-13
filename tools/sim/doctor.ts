@@ -17,6 +17,9 @@
 // эндокринологии — по их больным из потока, как у групп главы 3, и прицельный прогон «сепсис и кровотечения в
 // смотровой приёмного городской больницы»: диагноз, сроки антибиотика и ЭГДС, пункций с противопоказанием — ноль,
 // ленивый — с опозданиями.
+// --jobs 4 — сколько процессов считают (по умолчанию — ядер, но не больше четырёх): каждый пациент считается сам по
+// себе, поэтому их делят между процессами, как в экономике и районной больнице; итог — тот же, что в одном процессе.
+import { availableParallelism } from 'node:os';
 import type { Id } from '../../src/content/types';
 import { Rng } from '../../src/engine/core/rng';
 import { observe, type OutcomeKind } from '../../src/engine/med/course';
@@ -88,10 +91,8 @@ const empty = (): Tally => ({
 const costOf = (r: DoctorResult) => r.exams.reduce((a, id) => a + examCost(db, id), 0);
 const strategies: Strategy[] = ['rational', 'lazy', 'shotgun'];
 const tally: Record<Strategy, Tally> = { rational: empty(), lazy: empty(), shotgun: empty() };
-/** разумный на первых HN пациентах — это нанятый врач навыка 5 */
+/** приём нанятого врача: разумный на первых HN пациентах — это нанятый врач навыка 5 */
 interface Case { truth: string; correct: boolean; correctGroup: boolean; money: number; minutes: number; exams: number; needless: boolean; reaction: boolean }
-const rationalCases: Case[] = [];
-const timing: Record<Strategy, number> = { rational: 0, lazy: 0, shotgun: 0 };
 /** больница главы 3 — с неврологией */
 const chapter3 = departments.includes('dept.neurology');
 /** больница главы 4 — с инфекционным отделением (spec 2026-10-chapter-4, часть 61а) */
@@ -103,20 +104,25 @@ function decidedAt(patient: Patient, minutes: number): { copy: Patient; before: 
   return { copy: at.patient, before: at.before };
 }
 
-const t0 = performance.now();
-for (let i = 0; i < N; i++) {
+/** Один врач на одном пациенте основного прогона: всё, что идёт в таблицы. */
+interface Visit {
+  correct: boolean; correctGroup: boolean; diagnosis: Id; money: number; minutes: number; exams: number;
+  overall: Grade; treatment: Grade; outcome: OutcomeKind; needless: boolean; ms: number;
+}
+/** Пациент основного прогона — все три врача на нём. */
+function mainVisit(i: number): { truth: Id; by: Record<Strategy, Visit> } {
   const season = seasons[i % seasons.length];
   const patient = generatePatient(db, 9_000_000 + i, { department, departments, season, ...(variety ? { variety: true } : {}) });
   const truth = patient.truth.conditions[0].id;
   const cond = db.conditions[truth];
   const present = new Set(patient.truth.findings.map(f => f.f));
   let rationalCost = 0;
+  const by = {} as Record<Strategy, Visit>;
   for (const s of strategies) {
     const t = performance.now();
     const r = runDoctor(db, patient, s, Rng.seeded(patient.seed).fork(`doctor:${s}`), { candidates, exams, threshold });
-    timing[s] += performance.now() - t;
+    const ms = performance.now() - t;
     if (s === 'rational') rationalCost = costOf(r);
-    const x = tally[s];
     // окна по часам — на минуту решения этого врача (часть 41а): у каждого своё время
     const { copy, before } = decidedAt(patient, r.minutes);
     const ev = evaluatePlan(db, copy, r.plan, r.observations, { minutes: r.minutes }, before);
@@ -126,18 +132,329 @@ for (let i = 0; i < N; i++) {
       confidence: r.confidence, cost: costOf(r), rationalCost, plan: ev, outcome, selfLimiting: selfLimits(db, primaryOf(patient)), ...(cond.settles ? { settles: true } : {}),
       redFlags: (cond.redFlags ?? []).filter(f => present.has(f)).map(f => ({ f, seen: r.observations.some(o => o.f === f && o.shown) })),
     });
-    x.overall[score.overall]++;
-    x.treatment[score.treatment]++;
-    x.outcomes[outcome.kind]++;
     const needless = selfLimits(db, primaryOf(patient)) && ev.roles.some(v => v.role === 'notIndicated' && db.treatments[v.tx].class?.startsWith('antibiotic.'));
-    if (needless) x.needlessAntibiotic++;
+    by[s] = {
+      correct: r.correct, correctGroup: r.correctGroup, diagnosis: r.diagnosis, money: r.money, minutes: r.minutes, exams: r.exams.length,
+      overall: score.overall, treatment: score.treatment, outcome: outcome.kind, needless, ms,
+    };
+  }
+  return { truth, by };
+}
+
+// Нанятый врач (spec 2026-09-hired-doctors): те же пациенты и те же результаты обследований, что у
+// разумного (ветвь `doctor:rational`), пороги — навыка из economy.yaml. Навык 5 — это и есть
+// разумный врач, его приёмы берутся из прогона выше; навыки 1–4 — на тех же первых HN пациентах.
+const SKILLS = [1, 2, 3, 4, 5] as const;
+interface Hired { skill: number; cases: Case[] }
+const hiredOf = (skill: number) => {
+  const d = db.economy.staff.doctor;
+  return { thr: d.threshold[skill - 1] / 100, gain: d.minGain[skill - 1] / 1000, forget: d.forget[skill - 1] };
+};
+/** навыки, у которых пороги не те, что у разумного: их считают отдельно */
+const OWN_SKILLS = SKILLS.filter(skill => {
+  const { thr, gain, forget } = hiredOf(skill);
+  return !(thr === threshold && gain === 0.02 && forget === 0);
+});
+function hiredCase(skill: number, i: number): Case {
+  const { thr, gain, forget } = hiredOf(skill);
+  const season = seasons[i % seasons.length];
+  const patient = generatePatient(db, 9_000_000 + i, { department, departments, season, ...(variety ? { variety: true } : {}) });
+  const truth = patient.truth.conditions[0].id;
+  const forgot = Rng.seeded(patient.seed).fork('forget');
+  const r = runDoctor(db, patient, 'rational', Rng.seeded(patient.seed).fork('doctor:rational'), {
+    candidates, exams, threshold: thr, minGain: gain, skipAsk: q => forget > 0 && forgot.fork(q).chance(forget * 100),
+  });
+  const { copy, before } = decidedAt(patient, r.minutes);
+  const ev = evaluatePlan(db, copy, r.plan, r.observations, { minutes: r.minutes }, before);
+  const outcome = observe(db, copy, r.plan, ev, Rng.seeded(patient.seed).fork('outcome:rational'));
+  const needless = selfLimits(db, primaryOf(patient)) && ev.roles.some(v => v.role === 'notIndicated' && db.treatments[v.tx].class?.startsWith('antibiotic.'));
+  return { truth, correct: r.correct, correctGroup: r.correctGroup, money: r.money, minutes: r.minutes, exams: r.exams.length, needless, reaction: outcome.kind === 'reaction' };
+}
+
+// Кардиология и неврология главы 3 (критерий приёмки 3, часть 46а): в потоке больницы их больных 4 и 2 % — на
+// 3000 пациентов сотня и полсотни, и пороги были бы для сведения. Поэтому из того же потока (зёрна с 8 000 000)
+// отбираются больные каждой группы, пока их не наберётся `PROFILE_N`: болезни — с частотами этой больницы.
+// Пороги — как у отделений: до группы ≥ 90 %, сбалансированная ≥ 85 %.
+interface ProfileTally {
+  patients: number; accuracy: number; groupAccuracy: number; balanced: number;
+  perCondition: Record<string, { n: number; groupAccuracy: number }>; topConfusions: [string, number][];
+}
+/** Диагноз врача у больного группы или специалиста: `skill` — нанятый врач этого навыка, пороги economy.yaml. */
+interface Guess { truth: Id; correct: boolean; correctGroup: boolean; diagnosis: Id }
+function guess(p: Patient, s: Strategy, skill?: number, prior?: Prior): Guess {
+  const truth = p.truth.conditions[0].id;
+  // нанятый врач навыка `skill` — пороги economy.yaml, как в таблице по навыку выше
+  const d = db.economy.staff.doctor;
+  const how = skill ? { threshold: d.threshold[skill - 1] / 100, minGain: d.minGain[skill - 1] / 1000, forget: d.forget[skill - 1] } : undefined;
+  const forgot = Rng.seeded(p.seed).fork('forget');
+  const r = runDoctor(db, p, s, Rng.seeded(p.seed).fork(`doctor:${s}`), how
+    ? { candidates, exams, threshold: how.threshold, minGain: how.minGain, skipAsk: q => how.forget > 0 && forgot.fork(q).chance(how.forget * 100), ...(prior ? { prior } : {}) }
+    : { candidates, exams, threshold });
+  return { truth, correct: r.correct, correctGroup: r.correctGroup, diagnosis: r.diagnosis };
+}
+function profileTally(guesses: readonly Guess[]): ProfileTally {
+  const per: Record<string, { n: number; correct: number; correctGroup: number }> = {};
+  const confusion: Record<string, number> = {};
+  for (const { truth, correct, correctGroup, diagnosis } of guesses) {
+    const pc = (per[truth] ??= { n: 0, correct: 0, correctGroup: 0 });
+    pc.n++;
+    if (correctGroup) pc.correctGroup++;
+    if (correct) pc.correct++;
+    else confusion[`${truth} → ${diagnosis}`] = (confusion[`${truth} → ${diagnosis}`] ?? 0) + 1;
+  }
+  const all = Object.values(per);
+  return {
+    patients: guesses.length,
+    accuracy: pct(all.reduce((a, v) => a + v.correct, 0), guesses.length),
+    groupAccuracy: pct(all.reduce((a, v) => a + v.correctGroup, 0), guesses.length),
+    balanced: balancedOf(all),
+    perCondition: Object.fromEntries(Object.entries(per).sort().map(([k, v]) => [k, { n: v.n, groupAccuracy: pct(v.correctGroup, v.n) }])),
+    topConfusions: Object.entries(confusion).sort((a, b) => b[1] - a[1]).slice(0, 5),
+  };
+}
+// Глава 4 (spec 2026-10-chapter-4, критерий приёмки 3, часть 61а): пороги — и у инфекционного отделения,
+// гастроэнтерологии и эндокринологии, как у кардиологии и неврологии главы 3. Инфекционное отделение — болезни отделения;
+// гастроэнтерологии и эндокринологии как отделений в базе нет — их болезни из терапии: профили специалистов (часть 59)
+const GROUPS: Record<string, readonly Id[]> = {
+  ...(chapter3 ? PROFILES : {}),
+  ...(chapter4 ? {
+    infectious: candidates.filter(id => db.conditions[id].department === 'dept.infectious'),
+    gastro: (db.roles['role.gastroenterologist']?.profile ?? []).filter(id => candidates.includes(id)),
+    endocrinology: (db.roles['role.endocrinologist']?.profile ?? []).filter(id => candidates.includes(id)),
+  } : {}),
+};
+let groupPeopleMemo: Record<string, Patient[]> | undefined;
+/** Больные групп из потока больницы — отбор один и тот же в каждом процессе: зёрна по порядку. */
+function groupPeople(): Record<string, Patient[]> {
+  if (groupPeopleMemo) return groupPeopleMemo;
+  const out: Record<string, Patient[]> = Object.fromEntries(Object.keys(GROUPS).map(k => [k, []]));
+  // больных группы в потоке нет (больница без терапии) — не дольше чем 100 зёрен на каждого нужного
+  for (let i = 0; i < 100 * PROFILE_N && Object.values(out).some(x => x.length < PROFILE_N); i++) {
+    const p = generatePatient(db, 8_000_000 + i, { department, departments, season: seasons[i % seasons.length], ...(variety ? { variety: true } : {}) });
+    for (const k of Object.keys(GROUPS)) {
+      if (out[k].length < PROFILE_N && GROUPS[k].includes(p.truth.conditions[0].id)) out[k].push(p);
+    }
+  }
+  groupPeopleMemo = out;
+  return out;
+}
+
+// Врачи-специалисты (spec 2026-10-chapter-4, часть 59): к специалисту записываются с болезнями его профиля, которых
+// принимает больница этого прогона, — те же больные, что в смене (`only`, пришли сами; зёрна с 8 500 000). Ведёт их
+// нанятый врач навыка 3 — и, как в смене, знает, с чем к нему записываются (часть 60а: болезни профиля вероятнее в
+// `PROFILE_PRIOR` раз); рядом — разумный на тех же больных, без этого знания. Для сведения: пороги отделений главы 4 — в
+// части 61а.
+const SPECIALISTS = Object.values(db.roles)
+  .flatMap(r => (r.profile ? [{ role: r.id, only: r.profile.filter(id => departments.includes(db.conditions[id].department)) }] : []))
+  .filter(x => x.only.length > 0);
+const specialistPatient = (only: readonly Id[], i: number) =>
+  generatePatient(db, 8_500_000 + i, { department, departments, season: seasons[i % seasons.length], walkIn: true, only: [...only], ...(variety ? { variety: true } : {}) });
+
+// Глава 3 (spec 2026-10-chapter-3, критерий приёмки 3, часть 46а): ОКС и инсульт в смотровой приёмного — у
+// постели монитор с дефибриллятором, есть КТ, ПИТ, палата и операционная. Больные — те, у кого болезнь обычна
+// (возраст, пол, факторы риска), формы — по частотам; врач видит их сразу по приходе. Минуты — как в смене: у
+// постели — процедура, снимок — 2 минуты назначить, процедура и описание, анализ — с ожиданием результата;
+// разумный ждёт каждый результат (в смене он ждёт только нужный — там сроки не хуже). Сроки — тем же кодом,
+// что в смене (`targetResults`). Тромболизис с противопоказанием — о котором знал или не спросил; спросил, а
+// расспрос не открыл (точность вопроса меньше 100 %), — для сведения.
+const ED_BEDSIDE: readonly Id[] = ['eq.monitor_defib'];
+const ED_VENUE: Venue = { bedside: ED_BEDSIDE, icu: true, ward: true, or: true };
+const LYSIS: readonly Id[] = ['tx.thrombolysis', 'tx.thrombolysis_stroke', 'tx.thrombolysis_pe'];
+const FOCUS: readonly Id[] = ['cond.acs', 'cond.stroke_ischemic'];
+const atBedside = (id: Id) => db.exams[id]?.bedside?.equipment.every(e => ED_BEDSIDE.includes(e)) === true;
+/** минут до результата, как в смене */
+function edMinutes(id: Id): number {
+  const e = db.exams[id];
+  if (atBedside(id)) return e.bedside!.time.procedure;
+  return e.kind === 'imaging' || e.kind === 'functional' ? ORDER_MINUTES + examMinutes(e) : examMinutes(e);
+}
+const edPlace: TargetPlace = { roomType: () => 'room.emergency', bedside: atBedside, can: () => true };
+interface EdCase {
+  correct: boolean; onTime: number; targets: number; ecg: boolean; lysis: boolean; contra: boolean; missed: boolean; minutes: number; byTarget: Record<string, [number, number]>;
+  /** обследование при противопоказании (spec 2026-10-chapter-4, часть 50а): пункция при шоке или коме — о нём знал или не проверил */
+  harm: boolean;
+}
+
+function edCase(patient: Patient, lazy: boolean, venue: Venue = ED_VENUE): EdCase {
+  const obs: Observation[] = complaintObservations(patient);
+  const done: Id[] = [];
+  const results: ResultBatch[] = [];
+  const rng = Rng.seeded(patient.seed).fork('doctor:rational');
+  let t = 0;
+  let decision: { diagnosis: Id; plan: Plan };
+  if (lazy) {
+    const top = posterior(db, candidates, obs, contextOf(db, patient, obs))[0];
+    decision = { diagnosis: top.id, plan: choosePlan(db, top.id, obs, patient, { ...venue, minutes: 0 }) };
+  } else {
+    let phase: DoctorPhase = {};
+    for (;;) {
+      const r = nextStep(db, patient, obs, done, phase, { candidates, exams, threshold, minGain: MIN_GAIN, venue: { ...venue, minutes: t } });
+      phase = r.phase;
+      if (r.step.kind === 'decide') {
+        decision = r.step;
+        break;
+      }
+      const id = r.step.exam;
+      const o = runExam(db, patient, id, rng.fork(`exam:${done.length}:${id}`));
+      obs.push(...o);
+      done.push(id);
+      t += edMinutes(id);
+      results.push({ exam: id, obs: o, at: t * 60, step: done.length });
+    }
+  }
+  const seen = { patient, bay: { room: 'ed', bed: 0 }, results, arriveT: 0 };
+  const targets = targetResults(db, seen, edPlace, { t: t * 60, plan: decision.plan });
+  const { copy, before } = decidedAt(patient, t);
+  const ev = evaluatePlan(db, copy, decision.plan, obs, { ...venue, minutes: t }, before);
+  const lysisBad = ev.violations.filter(v => LYSIS.includes(v.tx));
+  const byTarget: Record<string, [number, number]> = {};
+  for (const x of targets) {
+    const b = (byTarget[x.id] ??= [0, 0]);
+    b[1]++;
+    if (x.grade === 'A') b[0]++;
+  }
+  return {
+    correct: decision.diagnosis === primaryOf(patient).id,
+    onTime: targets.filter(x => x.grade === 'A').length,
+    targets: targets.length,
+    ecg: done.includes('exam.ecg'),
+    lysis: decision.plan.treatments.some(tx => LYSIS.includes(tx)),
+    contra: lysisBad.some(v => v.known || !v.asked),
+    missed: lysisBad.some(v => v.asked && !v.known),
+    minutes: t,
+    byTarget,
+    harm: ev.examHarms.length > 0,
+  };
+}
+/** Больные с болезнью `cond`, у которых она обычна, — по порядку зёрен. */
+const typicalMemo = new Map<Id, Patient[]>();
+function typical(cond: Id, n: number): Patient[] {
+  const memo = typicalMemo.get(cond);
+  if (memo?.length === n) return memo;
+  const out: Patient[] = [];
+  for (let seed = 7_100_000; out.length < n; seed++) {
+    const p = generatePatient(db, seed, { department, departments, season: seasons[out.length % seasons.length], primary: cond, carried: db.economy.ambulance.weight });
+    const chronic = p.truth.conditions.filter(x => x.role === 'comorbid').map(x => x.id);
+    if (presentingWeight(db.conditions[cond], { sex: p.sex, age: p.age, season: p.season, risks: p.truth.risks, chronic }) > 0) out.push(p);
+  }
+  typicalMemo.set(cond, out);
+  return out;
+}
+function tallyEd(cases: EdCase[]) {
+  const n = cases.length;
+  const count = (f: (c: EdCase) => boolean) => cases.filter(f).length;
+  const byTarget: Record<string, [number, number]> = {};
+  for (const c of cases) {
+    for (const [k, [a, b]] of Object.entries(c.byTarget)) {
+      const x = (byTarget[k] ??= [0, 0]);
+      x[0] += a;
+      x[1] += b;
+    }
+  }
+  const onTime = cases.reduce((a, c) => a + c.onTime, 0);
+  const targets = cases.reduce((a, c) => a + c.targets, 0);
+  return {
+    patients: n, accuracy: pct(count(c => c.correct), n), onTime, targets, onTimeShare: pct(onTime, targets), ecg: pct(count(c => c.ecg), n),
+    lysis: count(c => c.lysis), lysisContra: count(c => c.contra), lysisMissed: count(c => c.missed), minutes: cases.reduce((a, c) => a + c.minutes, 0) / Math.max(1, n), byTarget,
+    harms: count(c => c.harm),
+  };
+}
+
+// Глава 4 (spec 2026-10-chapter-4, критерий приёмки 3, часть 61а): сепсис и кровотечения в смотровой приёмного городской
+// больницы — у постели монитор, есть ПИТ, реанимация, боксы, палата, операционная и кабинеты городской больницы
+// (эндоскопия — ЭГДС и гемостаз у себя); и менингококковая инфекция — пункция при противопоказании (шок, кома, растущая
+// сыпь) смертельна, её быть не должно. Пороги — диагноз и сроки (антибиотик при сепсисе и менингококке, ЭГДС при
+// кровотечении) от 90 %, пункций с противопоказанием — ноль, ленивый — с опозданиями
+const CITY_VENUE: Venue = { ...ED_VENUE, ricu: true, box: true, rooms: [...new Set(db.presets['preset.city']?.rooms.map(r => r.type) ?? [])] };
+const FOCUS4: readonly Id[] = ['cond.sepsis', 'cond.ulcer_bleeding', 'cond.mallory_weiss', 'cond.variceal_bleeding', 'cond.meningococcal'];
+
+// Задачи прогона — по разделам; каждая зависит только от своего номера в разделе, поэтому их делят между процессами,
+// как в экономике и районной больнице: помощник (`--worker k/n`) считает каждую n-ю задачу с k-й и печатает их
+// строками JSON, а сводят их по порядку — итог тот же, что в одном процессе.
+const FOCUS3 = chapter3 ? FOCUS : [];
+const FOCUS4_HERE = chapter4 ? FOCUS4.filter(cond => candidates.includes(cond)) : [];
+const SECTIONS: { key: string; n: number; run: (i: number) => unknown }[] = [
+  { key: 'main', n: N, run: mainVisit },
+  ...OWN_SKILLS.map(skill => ({ key: `hired:${skill}`, n: HN, run: (i: number) => hiredCase(skill, i) })),
+  // в группе больных может набраться меньше `PROFILE_N` — лишние задачи пустые
+  ...Object.keys(GROUPS).flatMap(k => (['rational', 'lazy'] as const).map(who => ({
+    key: `profile:${k}:${who}`, n: PROFILE_N, run: (i: number) => { const p = groupPeople()[k][i]; return p ? guess(p, who) : null; },
+  }))),
+  ...SPECIALISTS.flatMap(({ role, only }) => [
+    { key: `specialist:${role}:rational`, n: SPECIALIST_N, run: (i: number) => guess(specialistPatient(only, i), 'rational') },
+    { key: `specialist:${role}:skill3`, n: SPECIALIST_N, run: (i: number) => guess(specialistPatient(only, i), 'rational', 3, { ids: db.roles[role].profile!, x: PROFILE_PRIOR }) },
+  ]),
+  ...FOCUS3.flatMap(cond => [false, true].map(lazy => ({ key: `focus:${cond}:${lazy ? 'lazy' : 'rational'}`, n: FOCUS_N, run: (i: number) => edCase(typical(cond, FOCUS_N)[i], lazy) }))),
+  ...FOCUS4_HERE.flatMap(cond => [false, true].map(lazy => ({ key: `focus4:${cond}:${lazy ? 'lazy' : 'rational'}`, n: FOCUS_N, run: (i: number) => edCase(typical(cond, FOCUS_N)[i], lazy, CITY_VENUE) }))),
+];
+const TASKS = SECTIONS.flatMap((section, s) => Array.from({ length: section.n }, (_, i) => [s, i] as const));
+const WORKER = arg('worker', '');
+const JOBS = WORKER ? 1 : Math.max(1, Math.min(TASKS.length, Number(arg('jobs', String(Math.min(4, availableParallelism()))))));
+const doTask = (j: number) => {
+  const [s, i] = TASKS[j];
+  const t = performance.now();
+  const out = SECTIONS[s].run(i);
+  return { out, ms: performance.now() - t };
+};
+if (WORKER) {
+  const [k, n] = WORKER.split('/').map(Number);
+  for (let j = k; j < TASKS.length; j += n) console.log(JSON.stringify({ j, ...doTask(j) }));
+  process.exit(0);
+}
+const t0 = performance.now();
+const results: unknown[][] = SECTIONS.map(x => new Array<unknown>(x.n));
+/** время раздела — сумма задач во всех процессах, мс */
+const sectionMs: number[] = SECTIONS.map(() => 0);
+const put = (j: number, out: unknown, ms: number) => {
+  const [s, i] = TASKS[j];
+  results[s][i] = out;
+  sectionMs[s] += ms;
+};
+if (JOBS === 1) for (let j = 0; j < TASKS.length; j++) {
+  const { out, ms } = doTask(j);
+  put(j, out, ms);
+} else {
+  const args = process.argv.slice(2).filter((a, j, all) => a !== '--jobs' && all[j - 1] !== '--jobs');
+  const workers = Array.from({ length: JOBS }, (_, k) => Bun.spawn([process.execPath, import.meta.path, ...args, '--worker', `${k}/${JOBS}`], { stdout: 'pipe', stderr: 'inherit' }));
+  const outs = await Promise.all(workers.map(async w => ({ text: await new Response(w.stdout).text(), code: await w.exited })));
+  const seen = new Uint8Array(TASKS.length);
+  for (const { text, code } of outs) {
+    if (code !== 0) throw new Error(`виртуальный врач: помощник вышел с кодом ${code}`);
+    for (const line of text.split('\n').filter(Boolean)) {
+      const x = JSON.parse(line) as { j: number; out: unknown; ms: number };
+      put(x.j, x.out, x.ms);
+      seen[x.j] = 1;
+    }
+  }
+  const lost = seen.indexOf(0);
+  if (lost >= 0) throw new Error(`виртуальный врач: нет задачи ${lost} (${SECTIONS[TASKS[lost][0]].key})`);
+}
+const wallMs = performance.now() - t0;
+const section = <T>(key: string): T[] => {
+  const s = SECTIONS.findIndex(x => x.key === key);
+  return s < 0 ? [] : (results[s] as (T | null)[]).filter((x): x is T => x !== null);
+};
+const msOf = (prefix: string) => SECTIONS.reduce((a, x, s) => a + (x.key === prefix || x.key.startsWith(`${prefix}:`) ? sectionMs[s] : 0), 0);
+
+// Основной прогон — по порядку пациентов, как в одном процессе: те же суммы в том же порядке.
+const rationalCases: Case[] = [];
+const timing: Record<Strategy, number> = { rational: 0, lazy: 0, shotgun: 0 };
+section<ReturnType<typeof mainVisit>>('main').forEach(({ truth, by }, i) => {
+  for (const s of strategies) {
+    const r = by[s];
+    const x = tally[s];
+    timing[s] += r.ms;
+    x.overall[r.overall]++;
+    x.treatment[r.treatment]++;
+    x.outcomes[r.outcome]++;
+    if (r.needless) x.needlessAntibiotic++;
     if (s === 'rational' && i < HN) {
-      rationalCases.push({ truth, correct: r.correct, correctGroup: r.correctGroup, money: r.money, minutes: r.minutes, exams: r.exams.length, needless, reaction: outcome.kind === 'reaction' });
+      rationalCases.push({ truth, correct: r.correct, correctGroup: r.correctGroup, money: r.money, minutes: r.minutes, exams: r.exams, needless: r.needless, reaction: r.outcome === 'reaction' });
     }
     x.n++;
     x.money += r.money;
     x.minutes += r.minutes;
-    x.exams += r.exams.length;
+    x.exams += r.exams;
     const pc = (x.perCondition[truth] ??= { n: 0, correct: 0, correctGroup: 0 });
     pc.n++;
     if (r.correctGroup) { x.correctGroup++; pc.correctGroup++; }
@@ -146,37 +463,10 @@ for (let i = 0; i < N; i++) {
       x.confusion[key] = (x.confusion[key] ?? 0) + 1;
     }
   }
-}
-const total = performance.now() - t0;
-
-// Нанятый врач (spec 2026-09-hired-doctors): те же пациенты и те же результаты обследований, что у
-// разумного (ветвь `doctor:rational`), пороги — навыка из economy.yaml. Навык 5 — это и есть
-// разумный врач, его приёмы берутся из прогона выше; навыки 1–4 — на тех же первых HN пациентах.
-const SKILLS = [1, 2, 3, 4, 5] as const;
-interface Hired { skill: number; cases: Case[] }
-const t1 = performance.now();
-const hired: Hired[] = SKILLS.map(skill => {
-  const d = db.economy.staff.doctor;
-  const [thr, gain, forget] = [d.threshold[skill - 1] / 100, d.minGain[skill - 1] / 1000, d.forget[skill - 1]];
-  if (thr === threshold && gain === 0.02 && forget === 0) return { skill, cases: rationalCases };
-  const cases: Case[] = [];
-  for (let i = 0; i < HN; i++) {
-    const season = seasons[i % seasons.length];
-    const patient = generatePatient(db, 9_000_000 + i, { department, departments, season, ...(variety ? { variety: true } : {}) });
-    const truth = patient.truth.conditions[0].id;
-    const forgot = Rng.seeded(patient.seed).fork('forget');
-    const r = runDoctor(db, patient, 'rational', Rng.seeded(patient.seed).fork('doctor:rational'), {
-      candidates, exams, threshold: thr, minGain: gain, skipAsk: q => forget > 0 && forgot.fork(q).chance(forget * 100),
-    });
-    const { copy, before } = decidedAt(patient, r.minutes);
-    const ev = evaluatePlan(db, copy, r.plan, r.observations, { minutes: r.minutes }, before);
-    const outcome = observe(db, copy, r.plan, ev, Rng.seeded(patient.seed).fork('outcome:rational'));
-    const needless = selfLimits(db, primaryOf(patient)) && ev.roles.some(v => v.role === 'notIndicated' && db.treatments[v.tx].class?.startsWith('antibiotic.'));
-    cases.push({ truth, correct: r.correct, correctGroup: r.correctGroup, money: r.money, minutes: r.minutes, exams: r.exams.length, needless, reaction: outcome.kind === 'reaction' });
-  }
-  return { skill, cases };
 });
-const hiredMs = performance.now() - t1;
+const total = msOf('main');
+const hired: Hired[] = SKILLS.map(skill => ({ skill, cases: OWN_SKILLS.includes(skill) ? section<Case>(`hired:${skill}`) : rationalCases }));
+const hiredMs = msOf('hired');
 
 const pct = (a: number, b: number) => (b ? (100 * a) / b : 0);
 /** средняя по болезням точность до группы: частая болезнь не вытягивает редкие */
@@ -265,199 +555,20 @@ if (departments.length > 1) {
     thresholds[`rationalBalanced:${k}`] = { value: x.balanced, need: '≥ 85', ok: x.balanced >= 85, info: few };
   }
 }
-// Кардиология и неврология главы 3 (критерий приёмки 3, часть 46а): в потоке больницы их больных 4 и 2 % — на
-// 3000 пациентов сотня и полсотни, и пороги были бы для сведения. Поэтому из того же потока (зёрна с 8 000 000)
-// отбираются больные каждой группы, пока их не наберётся `PROFILE_N`: болезни — с частотами этой больницы.
-// Пороги — как у отделений: до группы ≥ 90 %, сбалансированная ≥ 85 %.
-interface ProfileTally {
-  patients: number; accuracy: number; groupAccuracy: number; balanced: number;
-  perCondition: Record<string, { n: number; groupAccuracy: number }>; topConfusions: [string, number][];
-}
-function profileTally(people: readonly Patient[], s: Strategy, skill?: number, prior?: Prior): ProfileTally {
-  const per: Record<string, { n: number; correct: number; correctGroup: number }> = {};
-  const confusion: Record<string, number> = {};
-  // нанятый врач навыка `skill` — пороги economy.yaml, как в таблице по навыку выше
-  const d = db.economy.staff.doctor;
-  const how = skill ? { threshold: d.threshold[skill - 1] / 100, minGain: d.minGain[skill - 1] / 1000, forget: d.forget[skill - 1] } : undefined;
-  for (const p of people) {
-    const truth = p.truth.conditions[0].id;
-    const forgot = Rng.seeded(p.seed).fork('forget');
-    const r = runDoctor(db, p, s, Rng.seeded(p.seed).fork(`doctor:${s}`), how
-      ? { candidates, exams, threshold: how.threshold, minGain: how.minGain, skipAsk: q => how.forget > 0 && forgot.fork(q).chance(how.forget * 100), ...(prior ? { prior } : {}) }
-      : { candidates, exams, threshold });
-    const pc = (per[truth] ??= { n: 0, correct: 0, correctGroup: 0 });
-    pc.n++;
-    if (r.correctGroup) pc.correctGroup++;
-    if (r.correct) pc.correct++;
-    else confusion[`${truth} → ${r.diagnosis}`] = (confusion[`${truth} → ${r.diagnosis}`] ?? 0) + 1;
-  }
-  const all = Object.values(per);
-  return {
-    patients: people.length,
-    accuracy: pct(all.reduce((a, v) => a + v.correct, 0), people.length),
-    groupAccuracy: pct(all.reduce((a, v) => a + v.correctGroup, 0), people.length),
-    balanced: balancedOf(all),
-    perCondition: Object.fromEntries(Object.entries(per).sort().map(([k, v]) => [k, { n: v.n, groupAccuracy: pct(v.correctGroup, v.n) }])),
-    topConfusions: Object.entries(confusion).sort((a, b) => b[1] - a[1]).slice(0, 5),
-  };
-}
-const t3 = performance.now();
-// Глава 4 (spec 2026-10-chapter-4, критерий приёмки 3, часть 61а): пороги — и у инфекционного отделения,
-// гастроэнтерологии и эндокринологии, как у кардиологии и неврологии главы 3. Инфекционное отделение — болезни отделения;
-// гастроэнтерологии и эндокринологии как отделений в базе нет — их болезни из терапии: профили специалистов (часть 59)
-const GROUPS: Record<string, readonly Id[]> = {
-  ...(chapter3 ? PROFILES : {}),
-  ...(chapter4 ? {
-    infectious: candidates.filter(id => db.conditions[id].department === 'dept.infectious'),
-    gastro: (db.roles['role.gastroenterologist']?.profile ?? []).filter(id => candidates.includes(id)),
-    endocrinology: (db.roles['role.endocrinologist']?.profile ?? []).filter(id => candidates.includes(id)),
-  } : {}),
-};
-const groupPeople: Record<string, Patient[]> = Object.fromEntries(Object.keys(GROUPS).map(k => [k, []]));
-// больных группы в потоке нет (больница без терапии) — не дольше чем 100 зёрен на каждого нужного
-for (let i = 0; i < 100 * PROFILE_N && Object.values(groupPeople).some(x => x.length < PROFILE_N); i++) {
-  const p = generatePatient(db, 8_000_000 + i, { department, departments, season: seasons[i % seasons.length], ...(variety ? { variety: true } : {}) });
-  for (const k of Object.keys(GROUPS)) {
-    if (groupPeople[k].length < PROFILE_N && GROUPS[k].includes(p.truth.conditions[0].id)) groupPeople[k].push(p);
-  }
-}
-const profiles = Object.keys(GROUPS).map(k => ({ profile: k, rational: profileTally(groupPeople[k], 'rational'), lazy: profileTally(groupPeople[k], 'lazy') }));
-const profileMs = performance.now() - t3;
+
+const profiles = Object.keys(GROUPS).map(k => ({ profile: k, rational: profileTally(section<Guess>(`profile:${k}:rational`)), lazy: profileTally(section<Guess>(`profile:${k}:lazy`)) }));
+const profileMs = msOf('profile');
 for (const f of profiles) {
   const few = f.rational.patients < PROFILE_N ? `больных группы в потоке меньше ${PROFILE_N}` : undefined;
   thresholds[`profileAccuracy:${f.profile}`] = { value: f.rational.groupAccuracy, need: '≥ 90', ok: f.rational.groupAccuracy >= 90, info: few };
   thresholds[`profileBalanced:${f.profile}`] = { value: f.rational.balanced, need: '≥ 85', ok: f.rational.balanced >= 85, info: few };
 }
 
-// Врачи-специалисты (spec 2026-10-chapter-4, часть 59): к специалисту записываются с болезнями его профиля, которых
-// принимает больница этого прогона, — те же больные, что в смене (`only`, пришли сами; зёрна с 8 500 000). Ведёт их
-// нанятый врач навыка 3 — и, как в смене, знает, с чем к нему записываются (часть 60а: болезни профиля вероятнее в
-// `PROFILE_PRIOR` раз); рядом — разумный на тех же больных, без этого знания. Для сведения: пороги отделений главы 4 — в
-// части 61а.
-const t4 = performance.now();
-const specialists = Object.values(db.roles)
-  .flatMap(r => (r.profile ? [{ role: r.id, only: r.profile.filter(id => departments.includes(db.conditions[id].department)) }] : []))
-  .filter(x => x.only.length > 0)
-  .map(({ role, only }) => {
-    const people = Array.from({ length: SPECIALIST_N }, (_, i) => generatePatient(db, 8_500_000 + i, { department, departments, season: seasons[i % seasons.length], walkIn: true, only, ...(variety ? { variety: true } : {}) }));
-    return { role, rational: profileTally(people, 'rational'), skill3: profileTally(people, 'rational', 3, { ids: db.roles[role].profile!, x: PROFILE_PRIOR }) };
-  });
-const specialistMs = performance.now() - t4;
+const specialists = SPECIALISTS.map(({ role }) => ({ role, rational: profileTally(section<Guess>(`specialist:${role}:rational`)), skill3: profileTally(section<Guess>(`specialist:${role}:skill3`)) }));
+const specialistMs = msOf('specialist');
 
-// Глава 3 (spec 2026-10-chapter-3, критерий приёмки 3, часть 46а): ОКС и инсульт в смотровой приёмного — у
-// постели монитор с дефибриллятором, есть КТ, ПИТ, палата и операционная. Больные — те, у кого болезнь обычна
-// (возраст, пол, факторы риска), формы — по частотам; врач видит их сразу по приходе. Минуты — как в смене: у
-// постели — процедура, снимок — 2 минуты назначить, процедура и описание, анализ — с ожиданием результата;
-// разумный ждёт каждый результат (в смене он ждёт только нужный — там сроки не хуже). Сроки — тем же кодом,
-// что в смене (`targetResults`). Тромболизис с противопоказанием — о котором знал или не спросил; спросил, а
-// расспрос не открыл (точность вопроса меньше 100 %), — для сведения.
-const ED_BEDSIDE: readonly Id[] = ['eq.monitor_defib'];
-const ED_VENUE: Venue = { bedside: ED_BEDSIDE, icu: true, ward: true, or: true };
-const LYSIS: readonly Id[] = ['tx.thrombolysis', 'tx.thrombolysis_stroke', 'tx.thrombolysis_pe'];
-const FOCUS: readonly Id[] = ['cond.acs', 'cond.stroke_ischemic'];
-const atBedside = (id: Id) => db.exams[id]?.bedside?.equipment.every(e => ED_BEDSIDE.includes(e)) === true;
-/** минут до результата, как в смене */
-function edMinutes(id: Id): number {
-  const e = db.exams[id];
-  if (atBedside(id)) return e.bedside!.time.procedure;
-  return e.kind === 'imaging' || e.kind === 'functional' ? ORDER_MINUTES + examMinutes(e) : examMinutes(e);
-}
-const edPlace: TargetPlace = { roomType: () => 'room.emergency', bedside: atBedside, can: () => true };
-interface EdCase {
-  correct: boolean; onTime: number; targets: number; ecg: boolean; lysis: boolean; contra: boolean; missed: boolean; minutes: number; byTarget: Record<string, [number, number]>;
-  /** обследование при противопоказании (spec 2026-10-chapter-4, часть 50а): пункция при шоке или коме — о нём знал или не проверил */
-  harm: boolean;
-}
-
-function edCase(patient: Patient, lazy: boolean, venue: Venue = ED_VENUE): EdCase {
-  const obs: Observation[] = complaintObservations(patient);
-  const done: Id[] = [];
-  const results: ResultBatch[] = [];
-  const rng = Rng.seeded(patient.seed).fork('doctor:rational');
-  let t = 0;
-  let decision: { diagnosis: Id; plan: Plan };
-  if (lazy) {
-    const top = posterior(db, candidates, obs, contextOf(db, patient, obs))[0];
-    decision = { diagnosis: top.id, plan: choosePlan(db, top.id, obs, patient, { ...venue, minutes: 0 }) };
-  } else {
-    let phase: DoctorPhase = {};
-    for (;;) {
-      const r = nextStep(db, patient, obs, done, phase, { candidates, exams, threshold, minGain: MIN_GAIN, venue: { ...venue, minutes: t } });
-      phase = r.phase;
-      if (r.step.kind === 'decide') {
-        decision = r.step;
-        break;
-      }
-      const id = r.step.exam;
-      const o = runExam(db, patient, id, rng.fork(`exam:${done.length}:${id}`));
-      obs.push(...o);
-      done.push(id);
-      t += edMinutes(id);
-      results.push({ exam: id, obs: o, at: t * 60, step: done.length });
-    }
-  }
-  const seen = { patient, bay: { room: 'ed', bed: 0 }, results, arriveT: 0 };
-  const targets = targetResults(db, seen, edPlace, { t: t * 60, plan: decision.plan });
-  const { copy, before } = decidedAt(patient, t);
-  const ev = evaluatePlan(db, copy, decision.plan, obs, { ...venue, minutes: t }, before);
-  const lysisBad = ev.violations.filter(v => LYSIS.includes(v.tx));
-  const byTarget: Record<string, [number, number]> = {};
-  for (const x of targets) {
-    const b = (byTarget[x.id] ??= [0, 0]);
-    b[1]++;
-    if (x.grade === 'A') b[0]++;
-  }
-  return {
-    correct: decision.diagnosis === primaryOf(patient).id,
-    onTime: targets.filter(x => x.grade === 'A').length,
-    targets: targets.length,
-    ecg: done.includes('exam.ecg'),
-    lysis: decision.plan.treatments.some(tx => LYSIS.includes(tx)),
-    contra: lysisBad.some(v => v.known || !v.asked),
-    missed: lysisBad.some(v => v.asked && !v.known),
-    minutes: t,
-    byTarget,
-    harm: ev.examHarms.length > 0,
-  };
-}
-
-/** Больные с болезнью `cond`, у которых она обычна, — по порядку зёрен. */
-function typical(cond: Id, n: number): Patient[] {
-  const out: Patient[] = [];
-  for (let seed = 7_100_000; out.length < n; seed++) {
-    const p = generatePatient(db, seed, { department, departments, season: seasons[out.length % seasons.length], primary: cond, carried: db.economy.ambulance.weight });
-    const chronic = p.truth.conditions.filter(x => x.role === 'comorbid').map(x => x.id);
-    if (presentingWeight(db.conditions[cond], { sex: p.sex, age: p.age, season: p.season, risks: p.truth.risks, chronic }) > 0) out.push(p);
-  }
-  return out;
-}
-
-function tallyEd(cases: EdCase[]) {
-  const n = cases.length;
-  const count = (f: (c: EdCase) => boolean) => cases.filter(f).length;
-  const byTarget: Record<string, [number, number]> = {};
-  for (const c of cases) {
-    for (const [k, [a, b]] of Object.entries(c.byTarget)) {
-      const x = (byTarget[k] ??= [0, 0]);
-      x[0] += a;
-      x[1] += b;
-    }
-  }
-  const onTime = cases.reduce((a, c) => a + c.onTime, 0);
-  const targets = cases.reduce((a, c) => a + c.targets, 0);
-  return {
-    patients: n, accuracy: pct(count(c => c.correct), n), onTime, targets, onTimeShare: pct(onTime, targets), ecg: pct(count(c => c.ecg), n),
-    lysis: count(c => c.lysis), lysisContra: count(c => c.contra), lysisMissed: count(c => c.missed), minutes: cases.reduce((a, c) => a + c.minutes, 0) / Math.max(1, n), byTarget,
-    harms: count(c => c.harm),
-  };
-}
-
-const t2 = performance.now();
-const focus = chapter3 ? FOCUS.map(cond => {
-  const people = typical(cond, FOCUS_N);
-  return { condition: cond, rational: tallyEd(people.map(p => edCase(p, false))), lazy: tallyEd(people.map(p => edCase(p, true))) };
-}) : [];
-const focusMs = performance.now() - t2;
+const focus = FOCUS3.map(cond => ({ condition: cond, rational: tallyEd(section<EdCase>(`focus:${cond}:rational`)), lazy: tallyEd(section<EdCase>(`focus:${cond}:lazy`)) }));
+const focusMs = msOf('focus');
 if (chapter3) {
   const sum = (who: 'rational' | 'lazy', k: 'onTime' | 'targets' | 'lysisContra') => focus.reduce((a, f) => a + f[who][k], 0);
   for (const f of focus) {
@@ -473,19 +584,8 @@ if (chapter3) {
   };
 }
 
-// Глава 4 (spec 2026-10-chapter-4, критерий приёмки 3, часть 61а): сепсис и кровотечения в смотровой приёмного городской
-// больницы — у постели монитор, есть ПИТ, реанимация, боксы, палата, операционная и кабинеты городской больницы
-// (эндоскопия — ЭГДС и гемостаз у себя); и менингококковая инфекция — пункция при противопоказании (шок, кома, растущая
-// сыпь) смертельна, её быть не должно. Пороги — диагноз и сроки (антибиотик при сепсисе и менингококке, ЭГДС при
-// кровотечении) от 90 %, пункций с противопоказанием — ноль, ленивый — с опозданиями
-const CITY_VENUE: Venue = { ...ED_VENUE, ricu: true, box: true, rooms: [...new Set(db.presets['preset.city']?.rooms.map(r => r.type) ?? [])] };
-const FOCUS4: readonly Id[] = ['cond.sepsis', 'cond.ulcer_bleeding', 'cond.mallory_weiss', 'cond.variceal_bleeding', 'cond.meningococcal'];
-const t5 = performance.now();
-const focus4 = chapter4 ? FOCUS4.filter(cond => candidates.includes(cond)).map(cond => {
-  const people = typical(cond, FOCUS_N);
-  return { condition: cond, rational: tallyEd(people.map(p => edCase(p, false, CITY_VENUE))), lazy: tallyEd(people.map(p => edCase(p, true, CITY_VENUE))) };
-}) : [];
-const focus4Ms = performance.now() - t5;
+const focus4 = FOCUS4_HERE.map(cond => ({ condition: cond, rational: tallyEd(section<EdCase>(`focus4:${cond}:rational`)), lazy: tallyEd(section<EdCase>(`focus4:${cond}:lazy`)) }));
+const focus4Ms = msOf('focus4');
 if (chapter4) {
   const sum = (who: 'rational' | 'lazy', k: 'onTime' | 'targets' | 'harms') => focus4.reduce((a, f) => a + f[who][k], 0);
   for (const f of focus4) {
@@ -503,10 +603,10 @@ if (variety) for (const t of Object.values(thresholds)) t.info ??= 'больны
 const passed = Object.values(thresholds).every(t => t.ok || t.info);
 
 if (asJson) {
-  console.log(JSON.stringify({ contentVersion: db.contentVersion, contentHash: db.hash, departments, patients: N, seasons, threshold, totalMs: total, report, hired: hiredReport, profiles, specialists, focus, focus4, thresholds, passed }, null, 2));
+  console.log(JSON.stringify({ contentVersion: db.contentVersion, contentHash: db.hash, departments, patients: N, seasons, threshold, totalMs: total, wallMs, jobs: JOBS, report, hired: hiredReport, profiles, specialists, focus, focus4, thresholds, passed }, null, 2));
 } else {
   console.log(`База ${db.contentVersion} (${db.hash}), отделения ${departments.join(', ')}, пациентов ${N}, сезоны: ${seasons.join(', ')}, порог разумного врача ${threshold}${variety ? ', больные — с разнообразием' : ''}`);
-  console.log(`Время: ${(total / 1000).toFixed(2)} с на всех трёх врачей (${(total / N).toFixed(2)} мс на пациента)\n`);
+  console.log(`Время: ${(wallMs / 1000).toFixed(1)} с, процессов ${JOBS}; основной прогон — ${(total / 1000).toFixed(2)} с счёта на всех трёх врачей (${(total / N).toFixed(2)} мс на пациента)\n`);
   const names: Record<Strategy, string> = { rational: 'разумный', lazy: 'ленивый', shotgun: 'всё подряд' };
   for (const r of report) {
     console.log(`${names[r.strategy].padEnd(11)} точность ${r.accuracy.toFixed(1).padStart(5)} %  до группы ${r.groupAccuracy.toFixed(1).padStart(5)} %  сбалансированная ${r.balanced.toFixed(1).padStart(5)} %   ${r.money.toFixed(0).padStart(5)} ₽   ${r.minutes.toFixed(0).padStart(4)} мин   обследований ${r.exams.toFixed(1)}   ${r.msPerPatient.toFixed(2)} мс/пациент`);
