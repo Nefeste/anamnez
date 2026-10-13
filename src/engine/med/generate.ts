@@ -144,7 +144,7 @@ export function generatePatient(db: ContentDb, seed: number, ctx: GenContext): P
   if (primary.onset && findings.some(x => x.f === primary.onset!.f)) values[primary.onset.f] = onsetValue(primary.onset, root.fork('onset'));
   deriveByValue(db, conditions, values);
   deriveByParams(db, conditions);
-  const complaints = pickComplaints(db, findings);
+  const complaints = pickComplaints(db, findings, primary);
 
   // отделение пациента — его основного заболевания: в больнице с приёмным это и хирургия
   return { seed, sex, age, season: ctx.season, department: primary.department, truth: { conditions, risks, findings, values }, complaints };
@@ -539,12 +539,16 @@ export function sampleRange(rng: Rng, [lo, hi]: [number, number], decimals: numb
 /**
  * Жалобы: заметные симптомы (заметность ≥ 2), не больше трёх. Сначала то, с чем пришёл, —
  * симптомы от болезней пациента, самые заметные первыми; фоновые (без причины в модели) —
- * только после них: человек с изжогой не начнёт рассказ с того, что иногда ноет спина.
+ * только после них: человек с изжогой не начнёт рассказ с того, что иногда ноет спина. То, что
+ * находят на профосмотре (`checkup`), не дав своей жалобы, — и пришёл на профосмотр (spec
+ * 2026-10-chapter-4, часть 61а): жалоб нет, остальное узнают расспросом. Прежде он приходил с
+ * фоновыми — «иногда ноет спина» — и диабет у него был неотличим от болей в спине.
  */
-function pickComplaints(db: ContentDb, findings: TrueFinding[]): Id[] {
+function pickComplaints(db: ContentDb, findings: TrueFinding[], primary: Condition): Id[] {
   const background = (x: TrueFinding) => (x.cause === 'leak' ? 1 : 0);
-  return findings
-    .filter(x => db.findings[x.f]?.kind === 'sym' && db.findings[x.f].salience >= 2)
+  const salient = findings.filter(x => db.findings[x.f]?.kind === 'sym' && db.findings[x.f].salience >= 2);
+  if (primary.checkup && !salient.some(x => x.cause === primary.id)) return [];
+  return salient
     .sort((a, b) => background(a) - background(b) || db.findings[b.f].salience - db.findings[a.f].salience || (a.f < b.f ? -1 : 1))
     .slice(0, 3)
     .map(x => x.f);

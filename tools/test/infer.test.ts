@@ -3,7 +3,7 @@
 import { describe, expect, test } from 'bun:test';
 import { NO_ECONOMY } from '../content/load';
 import type { Condition, ContentDb, Exam, Finding } from '../../src/content/types';
-import { entropy, expectedGain, NO_UNKNOWNS, posterior } from '../../src/engine/med/infer';
+import { contextOf, entropy, expectedGain, NO_UNKNOWNS, posterior } from '../../src/engine/med/infer';
 import type { Observation } from '../../src/engine/med/types';
 
 const cond = (id: string, weight: number, crackles: number, infiltrate: number): Condition => ({
@@ -106,5 +106,41 @@ describe('пример из 04-medical-model.md §12', () => {
   test('энтропия: уверенность в одном — ноль бит, равные шансы четырёх — два бита', () => {
     expect(entropy([{ id: 'a', p: 1 }])).toBe(0);
     expect(entropy(['a', 'b', 'c', 'd'].map(id => ({ id, p: 0.25 })))).toBeCloseTo(2, 9);
+  });
+});
+
+// С чем пришёл (spec 2026-10-chapter-4, часть 61а): хоть одна жалоба — от основной болезни, без жалоб приходят только на
+// профосмотр (`04-medical-model.md` §3 и §10)
+describe('с чем пришёл', () => {
+  const sym = (id: string): Finding => ({ id, name: { ru: id }, kind: 'sym', leak: 300, salience: 3, texts: { present: [{ ru: id }] }, review: 'draft' });
+  const of = (id: string, links: [string, number][], checkup = false): Condition => ({ ...cond(id, 50, 0, 0), findings: links.map(([f, q]) => ({ f, p: q })), ...(checkup ? { checkup } : {}) });
+  const mini: ContentDb = {
+    ...db,
+    conditions: {
+      'cond.gerd': of('cond.gerd', [['sym.heartburn', 7500], ['sym.cough', 2500]]),
+      'cond.cold': of('cond.cold', [['sym.cough', 7500]]),
+      'cond.htn': of('cond.htn', [['sign.bp_high', 9500]], true),
+    },
+    findings: { 'sym.heartburn': sym('sym.heartburn'), 'sym.cough': sym('sym.cough'), 'sign.bp_high': finding('sign.bp_high', 1000) },
+    exams: { 'exam.ask': exam('exam.ask', 'sym.heartburn', 10000, 10000) },
+  };
+  const all = Object.keys(mini.conditions);
+
+  test('болезнь профосмотра, которая ни одной из жалоб не даёт, — в 100 раз реже; то же, узнанное расспросом, — довод прежнего веса', () => {
+    const asked = posterior(mini, all, [{ f: 'sym.heartburn', shown: true, exam: 'exam.ask' }], ctx);
+    const said = posterior(mini, all, [{ f: 'sym.heartburn', shown: true, exam: 'complaint' }], ctx);
+    expect(p(said, 'cond.htn') / p(said, 'cond.gerd')).toBeCloseTo((0.01 * p(asked, 'cond.htn')) / p(asked, 'cond.gerd'), 9);
+    // остальных болезней это не касается
+    expect(p(said, 'cond.cold') / p(said, 'cond.gerd')).toBeCloseTo(p(asked, 'cond.cold') / p(asked, 'cond.gerd'), 9);
+    expect(said[0].id).toBe('cond.gerd');
+  });
+
+  test('пришёл без жалоб — на профосмотр: болезнь, с которой всегда приходят с жалобой, исключена', () => {
+    const checkup = contextOf(mini, { sex: 'm', age: 67, season: 'winter', complaints: [] }, []);
+    expect(checkup.checkup).toBe(true);
+    const b = posterior(mini, all, [], checkup);
+    expect([p(b, 'cond.htn'), p(b, 'cond.gerd'), p(b, 'cond.cold')]).toEqual([1, 0, 0]);
+    // с жалобой — не профосмотр
+    expect(contextOf(mini, { sex: 'm', age: 67, season: 'winter', complaints: ['sym.cough'] }, []).checkup).toBeUndefined();
   });
 });

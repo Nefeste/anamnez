@@ -10,7 +10,7 @@ import { generatePatient } from '../../src/engine/med/generate';
 import { choiceFor, evaluatePlan, recommendedSetting, settingFit, txAvailable } from '../../src/engine/med/plan';
 import { choosePlan } from '../../src/engine/med/policy';
 import {
-  apply, careUnit, freeRicuBeds, hospitalCtx, icuBeds, inIcu, inRicu, newSandbox, ricuBeds, wardBeds,
+  apply, bedDayOf, careUnit, freeRicuBeds, hospitalCtx, icuBeds, inIcu, inRicu, newSandbox, ricuBeds, wardBeds,
 } from '../../src/engine/shift/engine';
 import type { ShiftPatient, ShiftState } from '../../src/engine/shift/types';
 import { article } from '../../src/state/encyclopedia';
@@ -142,6 +142,20 @@ describe('реанимация: решение, поступление, касс
     expect(s.summary.ward?.icuLying).toBeUndefined();
     // ночь в реанимации — дороже ПИТ
     expect(s.summary.economy!.ledger.expenses.ward).toBe(db.economy.ricu.bedDay);
+  });
+
+  test('нерефрактерный в реанимации без ИВЛ — прибавка и койко-день ПИТ (часть 61б)', () => {
+    const { s, ricu } = withRicu(4, 4);
+    apply(db, s, { kind: 'nextDay' });
+    const p = status(s, 'no');
+    apply(db, s, { kind: 'toggleTreatment', id: 'tx.benzodiazepine' });
+    apply(db, s, { kind: 'setting', setting: 'ricu' });
+    apply(db, s, { kind: 'finish' });
+    expect(p.stay!.room).toBe(ricu);
+    expect(p.stay!.plan.treatments).not.toContain(VENT);
+    expect(bedDayOf(db, s, p)).toBe(db.economy.icu.bedDay);
+    apply(db, s, { kind: 'closeDay' });
+    expect(s.summary.economy!.ledger.expenses.ward).toBe(db.economy.icu.bedDay);
   });
 
   test('без реанимации ИВЛ не назначить, «В ОРИТ» не выбрать; рефрактерный в ПИТ — меньше нужного', () => {

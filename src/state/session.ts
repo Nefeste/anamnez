@@ -1116,6 +1116,11 @@ function missionText(m: Mission, p: MissionProgress): string {
       return t.deadlineProgress(p.value, p.target);
     case 'thrombolysis':
       return t.lysisProgress(p.value, p.target);
+    // глава 4 (spec 2026-10-chapter-4, часть 60а)
+    case 'staff':
+      return t.staffProgress(p.value, p.target, p.accuracy ?? 0, p.doctors ?? 0, m.doctors);
+    case 'mortality':
+      return t.mortalityProgress(p.value, p.target, p.mortality, m.lying);
   }
 }
 
@@ -1145,13 +1150,14 @@ function buildCampaignView(): CampaignView | undefined {
   const next = complete ? nextChapterOf(db, c) : undefined;
   return {
     version, title: t.chapter(ch.order, ch.name.ru), place: ch.place.ru, day: s.day - c.since, letters, missions, complete,
-    ...(complete ? { after: next ? t.completeNext : t.completeLater(ch.order + 1) } : {}),
+    ...(complete ? { after: next ? t.completeNext : t.completeLast } : {}),
     ...(next ? {
       next: {
-        // глава с крылом (часть 45а) — та же больница: лежащих ждать не нужно
+        // глава с крылом (часть 45а) — та же больница; при переезде лежащих долечат врачи прежней (spec 2026-10-chapter-4,
+        // часть 61б): выписки ждать не нужно
         title: t.chapter(next.order, next.name.ru), move: next.move?.ru ?? t.moveTo(next.order), place: next.place.ru,
-        text: next.wing ? t.moveWingText(T.common.rub(next.budget)) : t.moveText(ch.place.ru),
-        ready: !s.dayOpen && (!!next.wing || !Object.values(s.patients).some(p => p.status === 'admitted')),
+        text: next.wing ? t.moveWingText(T.common.rub(next.budget)) : t.moveText(ch.place.ru, Object.values(s.patients).filter(p => p.status === 'admitted').length),
+        ready: !s.dayOpen,
       },
     } : {}),
   };

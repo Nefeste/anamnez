@@ -1,11 +1,12 @@
 {
-  "version": "0.4.5",
-  "base": 74,
+  "version": "0.5.0",
+  "base": 75,
   "ids": {
     "achievements": [
       "ach.allergy_10",
       "ach.cases_200",
       "ach.cases_50",
+      "ach.city",
       "ach.daily_7",
       "ach.district",
       "ach.first_patient",
@@ -28,11 +29,26 @@
       "ach.xray"
     ],
     "chapters": [
+      "chapter.city",
       "chapter.district",
       "chapter.hospital",
       "chapter.vascular"
     ],
     "chapters.letters": [
+      "chapter.city/boxDone",
+      "chapter.city/egdDone",
+      "chapter.city/end",
+      "chapter.city/endoscopyDone",
+      "chapter.city/firstDay",
+      "chapter.city/hello",
+      "chapter.city/isolationDone",
+      "chapter.city/mortalityDone",
+      "chapter.city/mriDone",
+      "chapter.city/ricuDone",
+      "chapter.city/sepsis",
+      "chapter.city/sepsisDone",
+      "chapter.city/staffDone",
+      "chapter.city/team",
       "chapter.district/antibioticsDone",
       "chapter.district/end",
       "chapter.district/firstDay",
@@ -57,12 +73,22 @@
       "chapter.vascular/firstDay",
       "chapter.vascular/hello",
       "chapter.vascular/icuDone",
+      "chapter.vascular/invite",
       "chapter.vascular/lysisDone",
       "chapter.vascular/minutes",
       "chapter.vascular/noMissedMIDone",
       "chapter.vascular/swallowDone"
     ],
     "chapters.missions": [
+      "chapter.city/box",
+      "chapter.city/egd",
+      "chapter.city/endoscopy",
+      "chapter.city/isolation",
+      "chapter.city/mortality",
+      "chapter.city/mri",
+      "chapter.city/ricu",
+      "chapter.city/sepsis",
+      "chapter.city/staff",
       "chapter.district/antibiotics",
       "chapter.district/cash",
       "chapter.district/lab",
@@ -83,6 +109,8 @@
     ],
     "characters": [
       "char.chief",
+      "char.city_chief",
+      "char.icu_head",
       "char.mentor",
       "char.neurologist",
       "char.surgeon"
@@ -1089,6 +1117,7 @@
       "vital.tachypnea"
     ],
     "presets": [
+      "preset.city",
       "preset.clinic",
       "preset.district",
       "preset.vascular",
@@ -1236,11 +1265,14 @@
     "tips": [
       "tip.appendicitis",
       "tip.decision",
+      "tip.dehydration",
       "tip.examine",
       "tip.forehead",
       "tip.handover",
+      "tip.mallory",
       "tip.review",
       "tip.rounds",
+      "tip.sepsis",
       "tip.start",
       "tip.stemi",
       "tip.strep",

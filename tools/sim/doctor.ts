@@ -12,13 +12,18 @@
 // «ОКС и инсульт в смотровой приёмного» (`--focus-n`, по умолчанию 300 больных каждой болезнью):
 // диагноз, сроки, тромболизис без противопоказаний, ленивый — без ЭКГ и с опозданиями. Порог не
 // выполнен — выход с кодом 1. Врачи-специалисты (spec 2026-10-chapter-4, часть 59) — на записанных к ним
-// (`--specialist-n`, по умолчанию 300): нанятый навыка 3 и разумный, для сведения.
+// (`--specialist-n`, по умолчанию 300): нанятый навыка 3 и разумный, для сведения. С инфекционным отделением
+// (spec 2026-10-chapter-4, часть 61а) — больница главы 4: пороги и у инфекционного отделения, гастроэнтерологии и
+// эндокринологии — по их больным из потока, как у групп главы 3, и прицельный прогон «сепсис и кровотечения в
+// смотровой приёмного городской больницы»: диагноз, сроки антибиотика и ЭГДС, пункций с противопоказанием — ноль,
+// ленивый — с опозданиями.
 import type { Id } from '../../src/content/types';
 import { Rng } from '../../src/engine/core/rng';
 import { observe, type OutcomeKind } from '../../src/engine/med/course';
 import { complaintObservations, runExam } from '../../src/engine/med/exams';
 import { generatePatient, patientAt, presentingWeight } from '../../src/engine/med/generate';
-import { contextOf, posterior } from '../../src/engine/med/infer';
+import { contextOf, posterior, type Prior } from '../../src/engine/med/infer';
+import { PROFILE_PRIOR } from '../../src/engine/hospital/staff';
 import { evaluatePlan, type Plan, primaryOf, selfLimits, type Venue } from '../../src/engine/med/plan';
 import { choosePlan, type DoctorPhase, type DoctorResult, examCost, examMinutes, MIN_GAIN, nextStep, ORDER_MINUTES, runDoctor, type Strategy } from '../../src/engine/med/policy';
 import { type Grade, scoreCase } from '../../src/engine/med/score';
@@ -26,7 +31,7 @@ import type { Observation, Patient } from '../../src/engine/med/types';
 import { targetResults, type TargetPlace } from '../../src/engine/shift/targets';
 import type { ResultBatch } from '../../src/engine/shift/types';
 import { buildDb } from '../content/load';
-import { type Profile, PROFILES } from './profiles';
+import { PROFILES } from './profiles';
 
 const arg = (name: string, def: string) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -89,6 +94,8 @@ const rationalCases: Case[] = [];
 const timing: Record<Strategy, number> = { rational: 0, lazy: 0, shotgun: 0 };
 /** больница главы 3 — с неврологией */
 const chapter3 = departments.includes('dept.neurology');
+/** больница главы 4 — с инфекционным отделением (spec 2026-10-chapter-4, часть 61а) */
+const chapter4 = departments.includes('dept.infectious');
 
 /** Пациент на минуту решения (часть 41а): копия с окнами по часам на это время и прежние значения. */
 function decidedAt(patient: Patient, minutes: number): { copy: Patient; before: Record<string, string> } {
@@ -266,7 +273,7 @@ interface ProfileTally {
   patients: number; accuracy: number; groupAccuracy: number; balanced: number;
   perCondition: Record<string, { n: number; groupAccuracy: number }>; topConfusions: [string, number][];
 }
-function profileTally(people: readonly Patient[], s: Strategy, skill?: number): ProfileTally {
+function profileTally(people: readonly Patient[], s: Strategy, skill?: number, prior?: Prior): ProfileTally {
   const per: Record<string, { n: number; correct: number; correctGroup: number }> = {};
   const confusion: Record<string, number> = {};
   // нанятый врач навыка `skill` — пороги economy.yaml, как в таблице по навыку выше
@@ -276,7 +283,7 @@ function profileTally(people: readonly Patient[], s: Strategy, skill?: number): 
     const truth = p.truth.conditions[0].id;
     const forgot = Rng.seeded(p.seed).fork('forget');
     const r = runDoctor(db, p, s, Rng.seeded(p.seed).fork(`doctor:${s}`), how
-      ? { candidates, exams, threshold: how.threshold, minGain: how.minGain, skipAsk: q => how.forget > 0 && forgot.fork(q).chance(how.forget * 100) }
+      ? { candidates, exams, threshold: how.threshold, minGain: how.minGain, skipAsk: q => how.forget > 0 && forgot.fork(q).chance(how.forget * 100), ...(prior ? { prior } : {}) }
       : { candidates, exams, threshold });
     const pc = (per[truth] ??= { n: 0, correct: 0, correctGroup: 0 });
     pc.n++;
@@ -295,17 +302,26 @@ function profileTally(people: readonly Patient[], s: Strategy, skill?: number): 
   };
 }
 const t3 = performance.now();
-const profilePeople: Record<Profile, Patient[]> = { cardiology: [], neurology: [] };
+// Глава 4 (spec 2026-10-chapter-4, критерий приёмки 3, часть 61а): пороги — и у инфекционного отделения,
+// гастроэнтерологии и эндокринологии, как у кардиологии и неврологии главы 3. Инфекционное отделение — болезни отделения;
+// гастроэнтерологии и эндокринологии как отделений в базе нет — их болезни из терапии: профили специалистов (часть 59)
+const GROUPS: Record<string, readonly Id[]> = {
+  ...(chapter3 ? PROFILES : {}),
+  ...(chapter4 ? {
+    infectious: candidates.filter(id => db.conditions[id].department === 'dept.infectious'),
+    gastro: (db.roles['role.gastroenterologist']?.profile ?? []).filter(id => candidates.includes(id)),
+    endocrinology: (db.roles['role.endocrinologist']?.profile ?? []).filter(id => candidates.includes(id)),
+  } : {}),
+};
+const groupPeople: Record<string, Patient[]> = Object.fromEntries(Object.keys(GROUPS).map(k => [k, []]));
 // больных группы в потоке нет (больница без терапии) — не дольше чем 100 зёрен на каждого нужного
-for (let i = 0; chapter3 && i < 100 * PROFILE_N && Object.values(profilePeople).some(x => x.length < PROFILE_N); i++) {
+for (let i = 0; i < 100 * PROFILE_N && Object.values(groupPeople).some(x => x.length < PROFILE_N); i++) {
   const p = generatePatient(db, 8_000_000 + i, { department, departments, season: seasons[i % seasons.length], ...(variety ? { variety: true } : {}) });
-  for (const k of Object.keys(PROFILES) as Profile[]) {
-    if (profilePeople[k].length < PROFILE_N && PROFILES[k].includes(p.truth.conditions[0].id)) profilePeople[k].push(p);
+  for (const k of Object.keys(GROUPS)) {
+    if (groupPeople[k].length < PROFILE_N && GROUPS[k].includes(p.truth.conditions[0].id)) groupPeople[k].push(p);
   }
 }
-const profiles = chapter3
-  ? (Object.keys(PROFILES) as Profile[]).map(k => ({ profile: k, rational: profileTally(profilePeople[k], 'rational'), lazy: profileTally(profilePeople[k], 'lazy') }))
-  : [];
+const profiles = Object.keys(GROUPS).map(k => ({ profile: k, rational: profileTally(groupPeople[k], 'rational'), lazy: profileTally(groupPeople[k], 'lazy') }));
 const profileMs = performance.now() - t3;
 for (const f of profiles) {
   const few = f.rational.patients < PROFILE_N ? `больных группы в потоке меньше ${PROFILE_N}` : undefined;
@@ -315,14 +331,16 @@ for (const f of profiles) {
 
 // Врачи-специалисты (spec 2026-10-chapter-4, часть 59): к специалисту записываются с болезнями его профиля, которых
 // принимает больница этого прогона, — те же больные, что в смене (`only`, пришли сами; зёрна с 8 500 000). Ведёт их
-// нанятый врач навыка 3, рядом — разумный на тех же больных. Для сведения: пороги отделений главы 4 — в части 61а.
+// нанятый врач навыка 3 — и, как в смене, знает, с чем к нему записываются (часть 60а: болезни профиля вероятнее в
+// `PROFILE_PRIOR` раз); рядом — разумный на тех же больных, без этого знания. Для сведения: пороги отделений главы 4 — в
+// части 61а.
 const t4 = performance.now();
 const specialists = Object.values(db.roles)
   .flatMap(r => (r.profile ? [{ role: r.id, only: r.profile.filter(id => departments.includes(db.conditions[id].department)) }] : []))
   .filter(x => x.only.length > 0)
   .map(({ role, only }) => {
     const people = Array.from({ length: SPECIALIST_N }, (_, i) => generatePatient(db, 8_500_000 + i, { department, departments, season: seasons[i % seasons.length], walkIn: true, only, ...(variety ? { variety: true } : {}) }));
-    return { role, rational: profileTally(people, 'rational'), skill3: profileTally(people, 'rational', 3) };
+    return { role, rational: profileTally(people, 'rational'), skill3: profileTally(people, 'rational', 3, { ids: db.roles[role].profile!, x: PROFILE_PRIOR }) };
   });
 const specialistMs = performance.now() - t4;
 
@@ -345,9 +363,13 @@ function edMinutes(id: Id): number {
   return e.kind === 'imaging' || e.kind === 'functional' ? ORDER_MINUTES + examMinutes(e) : examMinutes(e);
 }
 const edPlace: TargetPlace = { roomType: () => 'room.emergency', bedside: atBedside, can: () => true };
-interface EdCase { correct: boolean; onTime: number; targets: number; ecg: boolean; lysis: boolean; contra: boolean; missed: boolean; minutes: number; byTarget: Record<string, [number, number]> }
+interface EdCase {
+  correct: boolean; onTime: number; targets: number; ecg: boolean; lysis: boolean; contra: boolean; missed: boolean; minutes: number; byTarget: Record<string, [number, number]>;
+  /** обследование при противопоказании (spec 2026-10-chapter-4, часть 50а): пункция при шоке или коме — о нём знал или не проверил */
+  harm: boolean;
+}
 
-function edCase(patient: Patient, lazy: boolean): EdCase {
+function edCase(patient: Patient, lazy: boolean, venue: Venue = ED_VENUE): EdCase {
   const obs: Observation[] = complaintObservations(patient);
   const done: Id[] = [];
   const results: ResultBatch[] = [];
@@ -356,11 +378,11 @@ function edCase(patient: Patient, lazy: boolean): EdCase {
   let decision: { diagnosis: Id; plan: Plan };
   if (lazy) {
     const top = posterior(db, candidates, obs, contextOf(db, patient, obs))[0];
-    decision = { diagnosis: top.id, plan: choosePlan(db, top.id, obs, patient, { ...ED_VENUE, minutes: 0 }) };
+    decision = { diagnosis: top.id, plan: choosePlan(db, top.id, obs, patient, { ...venue, minutes: 0 }) };
   } else {
     let phase: DoctorPhase = {};
     for (;;) {
-      const r = nextStep(db, patient, obs, done, phase, { candidates, exams, threshold, minGain: MIN_GAIN, venue: { ...ED_VENUE, minutes: t } });
+      const r = nextStep(db, patient, obs, done, phase, { candidates, exams, threshold, minGain: MIN_GAIN, venue: { ...venue, minutes: t } });
       phase = r.phase;
       if (r.step.kind === 'decide') {
         decision = r.step;
@@ -377,7 +399,7 @@ function edCase(patient: Patient, lazy: boolean): EdCase {
   const seen = { patient, bay: { room: 'ed', bed: 0 }, results, arriveT: 0 };
   const targets = targetResults(db, seen, edPlace, { t: t * 60, plan: decision.plan });
   const { copy, before } = decidedAt(patient, t);
-  const ev = evaluatePlan(db, copy, decision.plan, obs, { ...ED_VENUE, minutes: t }, before);
+  const ev = evaluatePlan(db, copy, decision.plan, obs, { ...venue, minutes: t }, before);
   const lysisBad = ev.violations.filter(v => LYSIS.includes(v.tx));
   const byTarget: Record<string, [number, number]> = {};
   for (const x of targets) {
@@ -395,6 +417,7 @@ function edCase(patient: Patient, lazy: boolean): EdCase {
     missed: lysisBad.some(v => v.asked && !v.known),
     minutes: t,
     byTarget,
+    harm: ev.examHarms.length > 0,
   };
 }
 
@@ -425,6 +448,7 @@ function tallyEd(cases: EdCase[]) {
   return {
     patients: n, accuracy: pct(count(c => c.correct), n), onTime, targets, onTimeShare: pct(onTime, targets), ecg: pct(count(c => c.ecg), n),
     lysis: count(c => c.lysis), lysisContra: count(c => c.contra), lysisMissed: count(c => c.missed), minutes: cases.reduce((a, c) => a + c.minutes, 0) / Math.max(1, n), byTarget,
+    harms: count(c => c.harm),
   };
 }
 
@@ -449,12 +473,37 @@ if (chapter3) {
   };
 }
 
+// Глава 4 (spec 2026-10-chapter-4, критерий приёмки 3, часть 61а): сепсис и кровотечения в смотровой приёмного городской
+// больницы — у постели монитор, есть ПИТ, реанимация, боксы, палата, операционная и кабинеты городской больницы
+// (эндоскопия — ЭГДС и гемостаз у себя); и менингококковая инфекция — пункция при противопоказании (шок, кома, растущая
+// сыпь) смертельна, её быть не должно. Пороги — диагноз и сроки (антибиотик при сепсисе и менингококке, ЭГДС при
+// кровотечении) от 90 %, пункций с противопоказанием — ноль, ленивый — с опозданиями
+const CITY_VENUE: Venue = { ...ED_VENUE, ricu: true, box: true, rooms: [...new Set(db.presets['preset.city']?.rooms.map(r => r.type) ?? [])] };
+const FOCUS4: readonly Id[] = ['cond.sepsis', 'cond.ulcer_bleeding', 'cond.mallory_weiss', 'cond.variceal_bleeding', 'cond.meningococcal'];
+const t5 = performance.now();
+const focus4 = chapter4 ? FOCUS4.filter(cond => candidates.includes(cond)).map(cond => {
+  const people = typical(cond, FOCUS_N);
+  return { condition: cond, rational: tallyEd(people.map(p => edCase(p, false, CITY_VENUE))), lazy: tallyEd(people.map(p => edCase(p, true, CITY_VENUE))) };
+}) : [];
+const focus4Ms = performance.now() - t5;
+if (chapter4) {
+  const sum = (who: 'rational' | 'lazy', k: 'onTime' | 'targets' | 'harms') => focus4.reduce((a, f) => a + f[who][k], 0);
+  for (const f of focus4) {
+    thresholds[`focus4:${f.condition.replace('cond.', '')}`] = { value: f.rational.accuracy, need: '≥ 90', ok: f.rational.accuracy >= 90 };
+  }
+  const rationalOnTime = pct(sum('rational', 'onTime'), sum('rational', 'targets'));
+  const lazyOnTime = pct(sum('lazy', 'onTime'), sum('lazy', 'targets'));
+  thresholds.focus4Targets = { value: rationalOnTime, need: '≥ 90', ok: rationalOnTime >= 90 };
+  thresholds.focus4Puncture = { value: sum('rational', 'harms'), need: '0 — обследование при противопоказании', ok: sum('rational', 'harms') === 0 };
+  thresholds.focus4Lazy = { value: lazyOnTime, need: `в срок реже разумного (${rationalOnTime.toFixed(1)}) не меньше чем на 25 п. п.`, ok: lazyOnTime <= rationalOnTime - 25 };
+}
+
 // с разнообразием (spec 2026-10-variety) пороги — для сведения: они про частоты жизни
 if (variety) for (const t of Object.values(thresholds)) t.info ??= 'больные с разнообразием';
 const passed = Object.values(thresholds).every(t => t.ok || t.info);
 
 if (asJson) {
-  console.log(JSON.stringify({ contentVersion: db.contentVersion, contentHash: db.hash, departments, patients: N, seasons, threshold, totalMs: total, report, hired: hiredReport, profiles, specialists, focus, thresholds, passed }, null, 2));
+  console.log(JSON.stringify({ contentVersion: db.contentVersion, contentHash: db.hash, departments, patients: N, seasons, threshold, totalMs: total, report, hired: hiredReport, profiles, specialists, focus, focus4, thresholds, passed }, null, 2));
 } else {
   console.log(`База ${db.contentVersion} (${db.hash}), отделения ${departments.join(', ')}, пациентов ${N}, сезоны: ${seasons.join(', ')}, порог разумного врача ${threshold}${variety ? ', больные — с разнообразием' : ''}`);
   console.log(`Время: ${(total / 1000).toFixed(2)} с на всех трёх врачей (${(total / N).toFixed(2)} мс на пациента)\n`);
@@ -496,14 +545,26 @@ if (asJson) {
       if (x.skill3.topConfusions.length > 0) console.log(`    навык 3 путает: ${x.skill3.topConfusions.map(([k, v]) => `${k.replace(/cond\./g, '')}: ${v}`).join(', ')}`);
     }
   }
-  if (chapter3) {
-    console.log(`\nКардиология и неврология главы 3 — больные группы из потока больницы (по ${PROFILE_N}; ${(profileMs / 1000).toFixed(1)} с; до группы / сбалансированная):`);
+  if (profiles.length > 0) {
+    console.log(`\nГруппы глав 3 и 4 — больные группы из потока больницы (по ${PROFILE_N}; ${(profileMs / 1000).toFixed(1)} с; до группы / сбалансированная):`);
     for (const f of profiles) {
       const cells = (['rational', 'lazy'] as const).map(who => `${names[who]} ${f[who].groupAccuracy.toFixed(1).padStart(5)} / ${f[who].balanced.toFixed(1).padStart(5)} %`);
-      console.log(`  ${f.profile.padEnd(11)} ${String(f.rational.patients).padStart(4)}   ${cells.join('   ')}`);
+      console.log(`  ${f.profile.padEnd(13)} ${String(f.rational.patients).padStart(4)}   ${cells.join('   ')}`);
       console.log(`    ${Object.entries(f.rational.perCondition).map(([k, v]) => `${k.replace('cond.', '')} ${v.groupAccuracy.toFixed(0)} % из ${v.n}`).join(', ')}`);
       if (f.rational.topConfusions.length > 0) console.log(`    путает: ${f.rational.topConfusions.map(([k, v]) => `${k.replace(/cond\./g, '')}: ${v}`).join(', ')}`);
     }
+  }
+  if (chapter4) {
+    console.log(`\nСепсис, кровотечения и менингококк в смотровой приёмного городской больницы (по ${FOCUS_N} больных; ${(focus4Ms / 1000).toFixed(1)} с):`);
+    for (const f of focus4) {
+      for (const who of ['rational', 'lazy'] as const) {
+        const x = f[who];
+        const lines = Object.entries(x.byTarget).map(([k, [a, b]]) => `${k.replace('target.', '')} ${a}/${b}`).join(', ');
+        console.log(`  ${f.condition.padEnd(24)} ${names[who].padEnd(9)} верно ${x.accuracy.toFixed(1).padStart(5)} %   сроки ${x.onTimeShare.toFixed(1).padStart(5)} % (${lines})   с противопоказанием ${x.harms}   ${x.minutes.toFixed(0)} мин`);
+      }
+    }
+  }
+  if (chapter3) {
     console.log(`\nОКС и инсульт в смотровой приёмного (по ${FOCUS_N} больных; ${(focusMs / 1000).toFixed(1)} с):`);
     for (const f of focus) {
       for (const who of ['rational', 'lazy'] as const) {

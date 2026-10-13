@@ -95,8 +95,8 @@ describe('эндоскопический кабинет', () => {
     expect(db.exams[EGD].checks.find(c => c.f === 'img.egd_stigmata')!.given).toBe('img.egd_ulcer');
   });
 
-  test('в главах 1–3 его не построить: он в песочнице, в кампании — с главой 4', () => {
-    for (const ch of Object.values(db.chapters)) expect(ch.build ?? []).not.toContain(ROOM);
+  test('в главах 1–3 его не построить: он в песочнице, в кампании — с главой 4 (часть 60а)', () => {
+    for (const ch of Object.values(db.chapters)) expect({ chapter: ch.id, builds: ch.build.includes(ROOM) }).toEqual({ chapter: ch.id, builds: ch.order >= 4 });
   });
 
   test('в песочнице: работает со стойкой и людьми, без стойки — серым с причиной; на карте — эндоскопист и медсестра у кушетки', () => {

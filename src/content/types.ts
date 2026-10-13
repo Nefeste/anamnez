@@ -808,14 +808,17 @@ export interface Preset {
   id: Id;
   name: Text;
   plot: [number, number];
+  /** машин скорой за смену в этой больнице (spec 2026-10-chapter-4, часть 60а); нет — `economy.ambulance.perDay` */
+  ambulance?: [number, number];
   /** вход — дверь в краю участка */
   entrance: Cell;
   corridor: Cell[];
-  rooms: { type: Id; size: RoomSizeId; x: number; y: number; rot: Rot; door?: number; equipment: Id[] }[];
+  /** `later` — строят заданием главы (spec 2026-10-chapter-4, часть 60а): в начале главы кампании его нет, в «Смене» есть */
+  rooms: { type: Id; size: RoomSizeId; x: number; y: number; rot: Rot; door?: number; equipment: Id[]; later?: true }[];
   /** предметы коридора: скамьи */
   decor: { kind: ObjectKind; x: number; y: number }[];
-  /** кто где работает: должность и номер помещения в списке */
-  staff: { role: Id; room: number }[];
+  /** кто где работает: должность и номер помещения в списке; `later` — нанимают в главе (часть 60а) */
+  staff: { role: Id; room: number; later?: true }[];
 }
 
 /** Баланс своей больницы (content/hospital/economy.yaml); числа — игровые. */
@@ -924,8 +927,11 @@ export interface Character {
   role: Text;
 }
 
-/** Условие дня для заданий «N дней»; с главой 3 — были ОКС, и ни один не пропущен (`noMissedMI`). */
-export type DayKind = 'noNeedlessAntibiotic' | 'noLeft' | 'cashPositive' | 'noWaitComplication' | 'noMissedMI';
+/**
+ * Условие дня для заданий «N дней»; с главой 3 — были ОКС, и ни один не пропущен (`noMissedMI`); с главой 4 — были
+ * заразные, которым нужен бокс, и ни один не лёг в общую палату (`noInfectiousInWard`).
+ */
+export type DayKind = 'noNeedlessAntibiotic' | 'noLeft' | 'cashPositive' | 'noWaitComplication' | 'noMissedMI' | 'noInfectiousInWard';
 
 export type Mission = { id: string; main: boolean; text: Text } & (
   | { kind: 'seen'; count: number; accuracy: number }
@@ -942,6 +948,13 @@ export type Mission = { id: string; main: boolean; text: Text } & (
    */
   | { kind: 'deadline'; target: Id; count: number }
   | { kind: 'thrombolysis'; count: number }
+  /**
+   * глава 4 (spec 2026-10-chapter-4, часть 60а): приёмов врачей-специалистов за главу с точностью от порога, и принимали
+   * не меньше `doctors` разных специалистов; `days` дней главы подряд со смертностью в стационаре не выше `percent` %
+   * лежавших, если лежало не меньше `lying`
+   */
+  | { kind: 'staff'; count: number; accuracy: number; doctors: number }
+  | { kind: 'mortality'; days: number; percent: number; lying: number }
 );
 
 export type LetterWhen = 'start' | 'end' | { afterDay: number } | { mission: string };
@@ -966,6 +979,11 @@ export interface TutorialPatient {
   params?: Record<string, string>;
   /** возраст, лет: от и до — аппендицит у молодого (часть 34б) */
   age?: [number, number];
+  /**
+   * с какими жалобами приходит (spec 2026-10-chapter-4, часть 60б): из попыток генератора — тот, у кого они есть; у
+   * септического шока — жар, иначе qSOFA не считают и срока антибиотика нет
+   */
+  complaints?: Id[];
 }
 
 /** Глава кампании: больница, бюджет, что можно строить, задания и письма. */
@@ -987,12 +1005,15 @@ export interface Chapter {
   budget: number;
   department: Id;
   build: Id[];
+  /** в главе нанимают врачей-специалистов (spec 2026-10-chapter-4, часть 60а); в главах 1–3 их нет */
+  specialists?: true;
   tutorial: TutorialPatient[];
   /**
-   * помещение обучения (spec 2026-10-chapter-3, часть 45б): смена с обучением — первый день главы,
-   * когда оно работает (главе 3 — кабинет КТ: без него неврологию не привозят). Нет — первый день главы
+   * помещения обучения (spec 2026-10-chapter-3, часть 45б): смена с обучением — первый день главы,
+   * когда они работают (главе 3 — кабинет КТ: без него неврологию не привозят; главе 4 — эндоскопия и бокс, часть 60б).
+   * Нет — первый день главы
    */
-  tutorialRoom?: Id;
+  tutorialRoom?: Id[];
   /**
    * промежуток обучения, минут (spec 2026-10-chapter-3, часть 46в): заданные пациенты приходят по порядку списка,
    * каждый — не раньше чем через столько минут после предыдущего; у главы 3 все трое «красные», и врач один. Нет —
@@ -1174,6 +1195,11 @@ export interface Target {
   /** только тем, кто остаётся у нас (часть 41а): тест глотания — в палате, ПИТ, операционной */
   stays?: true;
   minutes: number;
+  /**
+   * серия (spec 2026-10-chapter-4, часть 60а): срок той же меры у другой группы больных — антибиотик при септическом шоке
+   * в серии срока без шока; задание «N больных подряд» по сроку серии считает и этот
+   */
+  series?: Id;
   /** `from` и `after` — от чего срок: «от ЭКГ с подъёмом ST», «после ЭКГ с подъёмом ST» (у отсчёта от находки и правила) */
   texts: { hint: Text; from?: Text; after?: Text };
   sources: Source[];

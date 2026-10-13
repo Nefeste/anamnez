@@ -287,7 +287,7 @@ describe('глава между сменами', () => {
     expect(venues.filter(x => x.ok).map(x => x.venue)).toEqual(expect.arrayContaining(['preset.clinic', 'preset.village', 'preset.district']));
   });
 
-  // последняя глава выполнена — «в следующей версии»: с частью 45а это глава 3 (chapter3.test.ts)
+  // последняя глава выполнена — «Следующей главы пока нет»: с частью 60а это глава 4 (chapter4.test.ts)
   test('выполнена — дальше глава 3 в той же больнице; ход сроков стационара — со средним', async () => {
     const s = chapter2(45);
     s.campaign!.complete = 0;

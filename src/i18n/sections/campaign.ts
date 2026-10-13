@@ -41,15 +41,30 @@ export const campaign = {
   // глава 3 (spec 2026-10-chapter-3, часть 45а): срок у больных подряд, тромболизисы в окне
   deadlineProgress: (n: number, of: number) => `${n} из ${of}\u00a0${pluralRu(of, 'больного', 'больных', 'больных')} подряд`,
   lysisProgress: (n: number, of: number) => `${n} из ${of}`,
+  // глава 4 (spec 2026-10-chapter-4, часть 60а): приёмы специалистов; дни подряд со смертностью в стационаре не выше порога
+  staffProgress: (seen: number, of: number, accuracy: number, doctors: number, need: number) =>
+    `${seen} из ${of}, точность ${accuracy}\u00a0%, специалистов ${doctors} из ${need}`,
+  mortalityProgress: (days: number, of: number, x: { died: number; lying: number } | undefined, min: number) => {
+    if (days < of || !x) return `${days} из ${of}\u00a0${pluralRu(of, 'дня', 'дней', 'дней')}`;
+    const last = `за ${pluralRu(of, 'последний', 'последние', 'последние')} ${of}\u00a0${pluralRu(of, 'день', 'дня', 'дней')}`;
+    const lay = `${pluralRu(x.lying, 'лежал', 'лежали', 'лежали')} ${x.lying}`;
+    if (x.lying < min) return `${last} ${lay} — нужно не меньше ${min}`;
+    if (x.died === 0) return `${last} ${lay}, умерших нет`;
+    const pct = ((100 * x.died) / x.lying).toFixed(1).replace('.', ',');
+    const died = pluralRu(x.died, 'умер', 'умерли', 'умерли');
+    return `${last} ${died} ${x.died} из ${x.lying}\u00a0${pluralRu(x.lying, 'лежавшего', 'лежавших', 'лежавших')} — ${pct}\u00a0%`;
+  },
   notYet: 'пока нет',
   doneOn: (day: number) => `выполнено, день ${day}`,
-  completeLater: (next: number) => `Основные задания главы выполнены. Глава ${next} — в следующей версии; работать здесь можно и дальше.`,
+  // глава 4 — последняя (spec 2026-10-chapter-4, часть 60а): следующей не обещаем
+  completeLast: 'Основные задания главы выполнены. Следующей главы пока нет — работать здесь можно и дальше.',
   completeNext: 'Основные задания главы выполнены. Работать здесь можно и дальше — или перейти в следующую главу.',
   moveTo: (order: number) => `Перейти в главу ${order}`,
   moveHint: 'между сменами',
   moveTitle: (move: string) => `${move}?`,
-  moveText: (from: string) =>
-    `Больница, штат и касса будут новыми; врач, сложность, достижения и энциклопедия — прежними. Прежняя больница — ${from} — останется в «Смене» быстрой игры.`,
+  // лежащих при переезде долечат врачи прежней больницы (spec 2026-10-chapter-4, часть 61б)
+  moveText: (from: string, lying = 0) =>
+    `Больница, штат и касса будут новыми; врач, сложность, достижения и энциклопедия — прежними. Прежняя больница — ${from} — останется в «Смене» быстрой игры.${lying > 0 ? ` Лежащих в ней — ${lying} — долечат её врачи.` : ''}`,
   // глава с крылом (часть 45а): та же больница
   moveWingText: (budget: string) =>
     `Больница остаётся та же: штат, касса, построенное и лежащие — прежние. Участок прирастает крылом справа, а на стройку в кассу придёт ${budget}. Больница без крыла останется в «Смене» быстрой игры.`,

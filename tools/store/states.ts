@@ -3,6 +3,8 @@
 // движок детерминирован (ADR 0004). Изменится база — подберётся другое зерно, а если
 // условие не выполнится ни на одном, инструмент скажет об этом, а не снимет что попало.
 import type { ContentDb, Id } from '../../src/content/types';
+import { presetHospital } from '../../src/engine/hospital/build';
+import { presetStaff } from '../../src/engine/hospital/staff';
 import { choosePlan } from '../../src/engine/med/policy';
 import { apply, current, freeBeds, inpatientsOf, newCampaign, newSandbox, newShift, observationsOf } from '../../src/engine/shift/engine';
 import { type Command, DAY, SHIFT_END, SHIFT_SCHEMA_VERSION, type ShiftState } from '../../src/engine/shift/types';
@@ -193,4 +195,38 @@ export function strokeCtCase(db: ContentDb): ShiftState {
     if (ct && !ct.obs.some(o => o.shown) && own) return s;
   }
   throw new Error('strokeCtCase: не нашлось инсульта первой смены отделения, у которого КТ без находок');
+}
+
+/**
+ * Первая смена городской больницы с заведующей реанимацией (spec 2026-10-chapter-4, часть 60б; снимок — часть 61в): глава 4
+ * с начала, больница — вся, как в «Смене», эндоскопия и боксы работают. Пришёл сам со рвотой кровью — разрыв Мэллори–Вейсса,
+ * кровотечение продолжается: вызван, расспрос о животе, ЭГДС пришла — разрыв у входа в желудок, кровь поступает. Скорую с
+ * шоком, приехавшую раньше, рассортировали — она ждёт в смотровой. Письма прочитаны, подсказки показаны: их листа на снимке
+ * нет.
+ */
+export function egdCase(db: ContentDb): ShiftState {
+  const city = db.presets[db.chapters['chapter.city'].preset];
+  for (let seed = 1; seed <= SEEDS; seed++) {
+    const s = newCampaign(db, { seed, ...winter, career: 1, chapter: 'chapter.city' });
+    s.hospital = presetHospital(db, city, [s.hospital!.w, s.hospital!.h]).hospital;
+    s.staff = presetStaff(db, city);
+    s.campaign!.letters = s.campaign!.letters.map(l => ({ ...l, read: true }));
+    s.campaign!.tips = { shown: Object.values(db.tips).map(t => t.id) };
+    apply(db, s, { kind: 'nextDay' });
+    const tear = Object.values(s.patients).find(p => p.taught && truthOf(s, p.id) === 'cond.mallory_weiss');
+    if (!tear) continue;
+    for (let m = 0; m < 8 * 60 && tear.status === 'coming'; m++) {
+      apply(db, s, { kind: 'advance', seconds: MIN });
+      sortAll(db, s);
+    }
+    if (tear.status !== 'waiting' || current(s)) continue;
+    run(db, s, [{ kind: 'call', id: tear.id }, { kind: 'exam', exam: 'exam.ask_abdomen' }, { kind: 'exam', exam: 'exam.egd' }]);
+    const p = current(s);
+    if (p?.id !== tear.id) continue;
+    while (p.pending.length > 0) apply(db, s, { kind: 'waitResults' });
+    const egd = p.results.find(r => r.exam === 'exam.egd');
+    const shown = (f: Id) => !!egd?.obs.some(o => o.f === f && o.shown);
+    if (shown('img.egd_tear') && shown('img.egd_bleeding')) return s;
+  }
+  throw new Error('egdCase: не нашлось разрыва Мэллори–Вейсса, у которого ЭГДС показала кровотечение');
 }

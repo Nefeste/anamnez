@@ -12,7 +12,7 @@ import { type Browser, chromium, type Page } from 'playwright';
 import { buildDb } from '../content/load';
 import { BRAND, iconSvg, markSvg } from './art';
 import { CAPTIONS } from './captions';
-import { acsCase, districtState, envelope, pneumoniaCase, sandboxState, strokeCtCase } from './states';
+import { acsCase, districtState, egdCase, envelope, pneumoniaCase, sandboxState, strokeCtCase } from './states';
 
 const ROOT = join(import.meta.dir, '../..');
 const DIST = join(ROOT, 'dist-web');
@@ -210,7 +210,7 @@ async function shots(browser: Browser): Promise<Record<string, Buffer>> {
     raw['01-emergency.png'] = await snap(p);
     await p.context().close();
 
-    // 2, 5–7. пневмония: снимок пришёл; решение, лечение, итог
+    // 2, 6–7. пневмония: снимок пришёл; решение, лечение, итог
     p = await openShift(browser, base, envelope(pneumoniaCase(db)));
     await p.getByTestId('shift-continue').click();
     await p.getByTestId('result-xray').waitFor({ timeout: 20_000 });
@@ -220,9 +220,6 @@ async function shots(browser: Browser): Promise<Record<string, Buffer>> {
     raw['02-xray.png'] = await snap(p);
     await p.getByTestId('visit-decide').click();
     await p.getByTestId('hint-cond.pneumonia_cap').click();
-    await toTop(p);
-    await p.waitForTimeout(300);
-    raw['05-diagnosis.png'] = await snap(p);
     await p.getByTestId('decision-to-plan').click();
     await p.getByTestId('tx-tx.amoxicillin').click();
     await p.getByTestId('tx-tx.rest_fluids').click();
@@ -245,6 +242,17 @@ async function shots(browser: Browser): Promise<Record<string, Buffer>> {
     await p.getByTestId('visit-fresh').first().evaluate(el => el.scrollIntoView({ block: 'start' }));
     await p.waitForTimeout(700);
     raw['03-ct.png'] = await snap(p);
+    await p.context().close();
+
+    // 5. рвота кровью в первую смену городской больницы (глава 4): ЭГДС пришла — разрыв у входа в желудок, кровь поступает
+    // (открывают, как игрок: «Кампания» → «Карьера 1» → «Продолжить»)
+    p = await openCampaign(browser, base, envelope(egdCase(db)));
+    await p.getByTestId('shift-continue').click();
+    await p.getByTestId('result-egd').waitFor({ timeout: 20_000 });
+    // сверху — «Новое»: строка обследования со временем, поле зрения и строки находок
+    await p.getByTestId('visit-fresh').first().evaluate(el => el.scrollIntoView({ block: 'start' }));
+    await p.waitForTimeout(700);
+    raw['05-egd.png'] = await snap(p);
     await p.context().close();
 
     // 4. боль в груди: на ЭКГ подъём ST — в тёмной теме, как на мониторе; лист двенадцати

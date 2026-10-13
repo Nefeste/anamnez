@@ -18,8 +18,15 @@
 // И карьера с начала (критерии этапов 4 и 5: все главы проходятся от начала до конца): разумный в главе 1 открывает
 // лабораторию, как велит задание, в главе 3 строит крыло — кабинет КТ и ПИТ, как в готовой больнице главы, —
 // принимает, пока основные задания главы не выполнены, и переходит в следующую.
-// Флаги: --days 30, --runs 4 (зёрна), --season winter, --chapter hospital или vascular (одна глава), --no-career,
-// --json.
+// С 0.5.0 (spec 2026-10-chapter-4, часть 61б) — и городская больница главы 4: в начале главы разумный строит реанимацию,
+// три бокса, эндоскопический кабинет и кабинет терапевта на местах готовой больницы, кабинет МРТ — когда на него хватает
+// денег с запасом, и нанимает специалистов и людей в новые помещения, как только они есть среди кандидатов; ленивый
+// получает ту же стройку. Реанимация и боксы окупаются своими случаями, эндоскопия — обследованиями и стационаром больных
+// с кровотечением (без неё их переводят), смертность в стационаре — не выше порога задания главы. Карьера — через четыре
+// главы, 150 дней; из главы 3 в главу 4 переходят сразу: лежащих долечат врачи районной больницы.
+// Флаги: --days 30, --runs 8 (зёрна месяца), --career-runs 4 (зёрна карьеры), --season winter, --chapter hospital,
+// vascular или city (одна глава), --no-career, --jobs 4 (процессов; прогон зависит только от главы, врача и зерна), --json.
+import { availableParallelism } from 'node:os';
 import type { Id, Setting } from '../../src/content/types';
 import { nextChapterOf } from '../../src/engine/campaign/campaign';
 import { Rng } from '../../src/engine/core/rng';
@@ -30,7 +37,7 @@ import { contextOf, posterior } from '../../src/engine/med/infer';
 import { alsoSettings, recommendedSetting, settingFit, type Venue } from '../../src/engine/med/plan';
 import { choosePlan, decisionLimit, type DoctorPhase, MIN_GAIN, nextStep, runDoctor, type Strategy } from '../../src/engine/med/policy';
 import {
-  apply, bedsideEquipment, candidatesOf, careUnit, current, freeBeds, freeBoxBeds, freeIcuBeds, freeRicuBeds, hospitalCtx, inIcu, inpatientsOf, moreUrgent, newCampaign, observationsOf,
+  apply, bedDayOf, bedsideEquipment, candidatesOf, careUnit, current, freeBeds, freeBoxBeds, freeIcuBeds, freeRicuBeds, hospitalCtx, inBox, inIcu, inpatientsOf, inRicu, moreUrgent, newCampaign, observationsOf,
   operationOf, readyIn, targetPlace,
 } from '../../src/engine/shift/engine';
 import { minutesTo, targetsFor, targetStart } from '../../src/engine/shift/targets';
@@ -44,17 +51,19 @@ const arg = (name: string, def: string) => {
   return i >= 0 ? process.argv[i + 1] : def;
 };
 const DAYS = Number(arg('days', '30'));
-/** карьера: дней на все три главы — не больше */
-const CAREER_DAYS = 90;
-const RUNS = Number(arg('runs', '4'));
+/** карьера: дней на все четыре главы — не больше (с 0.5.0; на три — было 90) */
+const CAREER_DAYS = 150;
+const RUNS = Number(arg('runs', '8'));
+const CAREER_RUNS = Number(arg('career-runs', '4'));
 const season = arg('season', 'winter') as 'winter' | 'spring' | 'summer' | 'autumn';
 const asJson = process.argv.includes('--json');
 /**
  * Главы, которые живут месяц с начала: глава 2 «Приёмное» и глава 3 «Сердце и мозг» — та же больница с крылом
  * (кабинет КТ и ПИТ); `--chapter hospital` или `--chapter vascular` — одна из них
  */
-const MONTHS = process.argv.includes('--chapter') ? [`chapter.${arg('chapter', '')}`] : ['chapter.hospital', 'chapter.vascular'];
+const MONTHS = process.argv.includes('--chapter') ? [`chapter.${arg('chapter', '')}`] : ['chapter.hospital', 'chapter.vascular', 'chapter.city'];
 const VASCULAR = 'chapter.vascular';
+const CITY = 'chapter.city';
 /** карьера разумного с начала; `--no-career` — без неё */
 const CAREER = !process.argv.includes('--no-career');
 
@@ -63,14 +72,25 @@ if (errors.length) {
   console.error(errors.join('\n'));
   process.exit(1);
 }
-if (MONTHS.some(c => c !== 'chapter.hospital' && c !== VASCULAR)) {
-  console.error(`--chapter: hospital или vascular, а не ${MONTHS[0].replace('chapter.', '')}`);
+if (MONTHS.some(c => c !== 'chapter.hospital' && c !== VASCULAR && c !== CITY)) {
+  console.error(`--chapter: hospital, vascular или city, а не ${MONTHS[0].replace('chapter.', '')}`);
   process.exit(1);
 }
-/** помещения стационара, операционной и крыла главы 3 (кабинет КТ, ПИТ) — их содержание, аппараты и люди */
-type Unit = 'ward' | 'or' | 'ct' | 'icu';
-const UNITS: Record<string, Unit> = { 'room.ward': 'ward', 'room.or': 'or', 'room.ct': 'ct', 'room.icu': 'icu' };
+/**
+ * помещения стационара, операционной, крыла главы 3 (кабинет КТ, ПИТ) и городской больницы (реанимация, боксы,
+ * эндоскопия, МРТ) — их содержание, аппараты и люди
+ */
+type Unit = 'ward' | 'or' | 'ct' | 'icu' | 'ricu' | 'box' | 'endo' | 'mri';
+const UNIT_KEYS: readonly Unit[] = ['ward', 'or', 'ct', 'icu', 'ricu', 'box', 'endo', 'mri'];
+const UNITS: Record<string, Unit> = {
+  'room.ward': 'ward', 'room.or': 'or', 'room.ct': 'ct', 'room.icu': 'icu', 'room.ricu': 'ricu', 'room.box': 'box', 'room.endoscopy': 'endo', 'room.mri': 'mri',
+};
+const noUnits = (): Record<Unit, { upkeep: number; staff: number }> => Object.fromEntries(UNIT_KEYS.map(u => [u, { upkeep: 0, staff: 0 }])) as Record<Unit, { upkeep: number; staff: number }>;
 const isCt = (exam: Id) => db.exams[exam]?.room === 'room.ct';
+const isEndo = (exam: Id) => db.exams[exam]?.room === 'room.endoscopy';
+const isMri = (exam: Id) => db.exams[exam]?.room === 'room.mri';
+/** кровотечение из верхних отделов ЖКТ: без эндоскопии больного переводят (spec 2026-10-chapter-4, часть 53а) */
+const isBleeding = (cond: Id) => db.conditions[cond]?.group === 'grp.ugi_bleeding';
 
 type Player = Extract<Strategy, 'rational' | 'lazy'>;
 const PLAYERS: Player[] = ['rational', 'lazy'];
@@ -81,7 +101,7 @@ interface Run {
   /** по отделению болезни, которой болен на самом деле: принято и верно */
   departments: Record<Id, { seen: number; correct: number }>;
   ambulance: { arrived: number; sorted: number; under: number; over: number };
-  ward: { admitted: number; discharged: number; early: number; transferred: number; died: number; stayDays: number; stayNorm: number; returnsWorse: number };
+  ward: { admitted: number; discharged: number; early: number; transferred: number; died: number; severe: number; stayDays: number; stayNorm: number; returnsWorse: number };
   ops: { done: number; onTime: number; late: number; complicated: number; waited: number; complications: number; good: number };
   /**
    * стационар и операционная за все дни, ₽: оплата случаев (из неё прибавка за операции), койко-дни
@@ -102,6 +122,12 @@ interface Run {
    * их приём и палата тоже в счёт КТ. Другие больные в КТ и ПИТ (`other`) — для сведения
    */
   wing: { cn: WingUse; other: WingUse; neuroIncome: number; neuroCosts: number; neuroSeen: number };
+  /**
+   * городская больница главы 4 (spec 2026-10-chapter-4, часть 61б), ₽: закрытые случаи реанимации и боксов — сколько,
+   * оплата, койко-дни; обследования эндоскопии и МРТ — сколько, оплата, расходники; больные с кровотечением — сколько
+   * принято и их закрытые случаи стационара (без эндоскопии их переводят), оплата и койко-дни
+   */
+  city: CityUse;
   /** в какой день главы выполнено основное задание; нет — не выполнено */
   missions: Record<string, number | undefined>;
   /** стало хуже: вернулись хуже или с реакцией на лечение, умерли в стационаре */
@@ -111,13 +137,23 @@ interface Run {
   targets: { onTime: number; total: number; by: Record<Id, { onTime: number; total: number }> };
 }
 
+interface CityUse {
+  ricuStays: number; ricuIncome: number; ricuBedDays: number; boxStays: number; boxIncome: number; boxBedDays: number;
+  endoExams: number; endoFees: number; endoConsumables: number; bleedSeen: number; bleedIncome: number; bleedCosts: number;
+  mriExams: number; mriFees: number; mriConsumables: number;
+}
+const noCity = (): CityUse => ({
+  ricuStays: 0, ricuIncome: 0, ricuBedDays: 0, boxStays: 0, boxIncome: 0, boxBedDays: 0, endoExams: 0, endoFees: 0, endoConsumables: 0,
+  bleedSeen: 0, bleedIncome: 0, bleedCosts: 0, mriExams: 0, mriFees: 0, mriConsumables: 0,
+});
+
 /** КТ и ПИТ у группы больных: обследования КТ — сколько, оплата, расходники; закрытые случаи ПИТ — сколько, оплата, койко-дни. */
 interface WingUse { ctExams: number; ctFees: number; ctConsumables: number; icuStays: number; icuIncome: number; icuBedDays: number }
 const noWing = (): WingUse => ({ ctExams: 0, ctFees: 0, ctConsumables: 0, icuStays: 0, icuIncome: 0, icuBedDays: 0 });
 
 /** Что стоят за день палаты, операционная, кабинет КТ и ПИТ: содержание помещений и аппаратов и зарплаты людей в них. */
 function unitCosts(s: ShiftState): Record<Unit, { upkeep: number; staff: number }> {
-  const out: Record<Unit, { upkeep: number; staff: number }> = { ward: { upkeep: 0, staff: 0 }, or: { upkeep: 0, staff: 0 }, ct: { upkeep: 0, staff: 0 }, icu: { upkeep: 0, staff: 0 } };
+  const out = noUnits();
   for (const r of s.hospital!.rooms) {
     const unit = UNITS[r.type];
     if (!unit) continue;
@@ -167,7 +203,10 @@ function firstDue(s: ShiftState): string {
     const key = ok.length > 0 ? Math.min(...ok) : 1e6 + Math.min(...ms);
     if (!best || key < best.key) best = { id, key };
   }
-  return best?.id ?? s.queue[0];
+  // записанного к специалисту (spec 2026-10-chapter-4, часть 61б) оставить ему — кроме тех, кого он не берёт:
+  // «красных», повторных и отпущенных ждать результатов; иначе разумный забирал их, а свои уходили
+  const theirs = (p: ShiftPatient) => p.to !== undefined && p.calledT === undefined && p.kind !== 'return' && !(p.triaged !== false && p.triage === 'red');
+  return best?.id ?? s.queue.find(id => !theirs(s.patients[id])) ?? s.queue[0];
 }
 
 /**
@@ -234,6 +273,8 @@ function venueFor(s: ShiftState, p: ShiftPatient): Venue {
     ...(freeBeds(db, s).length > 0 ? { ward: true } : {}), or: true, ...(freeIcuBeds(db, s).length > 0 ? { icu: true } : {}),
     ...(freeRicuBeds(db, s).length > 0 ? { ricu: true } : {}), ...(freeBoxBeds(db, s).length > 0 ? { box: true } : {}),
     bedside: bedsideEquipment(db, s, p), minutes: Math.round((s.t - p.arriveT) / 60), ready: id => readyIn(db, s, p, id),
+    // и работающие кабинеты (spec 2026-10-chapter-4, часть 61б): с эндоскопией кровотечение лечат у себя, как в смене
+    rooms: hospitalCtx(db, s).rooms,
   };
 }
 
@@ -329,13 +370,14 @@ function run(seed: number, player: Player, chapter: Id): Run {
     profit: 0, minCash: s.economy!.cash, cash: 0, reputation: 0,
     arrived: 0, seen: 0, left: 0, unseen: 0, correct: 0, wrong: 0, departments: {},
     ambulance: { arrived: 0, sorted: 0, under: 0, over: 0 },
-    ward: { admitted: 0, discharged: 0, early: 0, transferred: 0, died: 0, stayDays: 0, stayNorm: 0, returnsWorse: 0 },
+    ward: { admitted: 0, discharged: 0, early: 0, transferred: 0, died: 0, severe: 0, stayDays: 0, stayNorm: 0, returnsWorse: 0 },
     ops: { done: 0, onTime: 0, late: 0, complicated: 0, waited: 0, complications: 0, good: 0 },
     money: {
       income: 0, opIncome: 0, bedDays: 0, opConsumables: 0, closedBedDays: 0, closedOpCost: 0, opCases: 0, opCasesBedDays: 0,
-      units: { ward: { upkeep: 0, staff: 0 }, or: { upkeep: 0, staff: 0 }, ct: { upkeep: 0, staff: 0 }, icu: { upkeep: 0, staff: 0 } }, ledgerWard: 0, stays: 0,
+      units: noUnits(), ledgerWard: 0, stays: 0,
     },
     wing: { cn: noWing(), other: noWing(), neuroIncome: 0, neuroCosts: 0, neuroSeen: 0 },
+    city: noCity(),
     missions: {}, harmed: 0, targets: { onTime: 0, total: 0, by: {} },
   };
   const operated = new Set<string>();
@@ -344,6 +386,8 @@ function run(seed: number, player: Player, chapter: Id): Run {
   const visits = new Set<string>();
   const examsCounted = new Map<string, number>();
   for (let d = 0; d < DAYS; d++) {
+    // глава 4 (часть 61б): городская больница достраивается и нанимает между сменами — та же стройка у обоих врачей
+    if (chapter === CITY) openCity(s);
     apply(db, s, { kind: 'nextDay' });
     if (!s.dayOpen) throw new Error(`${player}: смену не открыть`);
     playDay(s, player);
@@ -372,6 +416,7 @@ function run(seed: number, player: Player, chapter: Id): Run {
       out.ward.early += w.early;
       out.ward.transferred += w.transferred;
       out.ward.died += w.died ?? 0;
+      out.ward.severe += w.severe ?? 0;
       out.ward.stayDays += w.stayDays;
       out.ward.stayNorm += w.stayNorm;
     }
@@ -386,11 +431,11 @@ function run(seed: number, player: Player, chapter: Id): Run {
       out.ops.good += o.good ?? 0;
     }
     out.money.ledgerWard += l.ward?.income ?? 0;
-    // койко-дни всех, кто ночует, — и тех, кто ещё лежит (как в settle): в палате — у стационара, в ПИТ — у крыла
+    // койко-дни всех, кто ночует, — и тех, кто ещё лежит (как в settle): в палате — у стационара, в ПИТ — у крыла; в
+    // реанимации и боксах (часть 61б) — по своим ставкам (`bedDayOf`)
     const lying = inpatientsOf(s);
-    const icuLying = lying.filter(p => inIcu(db, s, p)).length;
-    if ((l.expenses.ward ?? 0) !== (lying.length - icuLying) * db.economy.ward.bedDay + icuLying * db.economy.icu.bedDay) throw new Error(`${player}: койко-дни дня ${s.day} не сходятся с кассой`);
-    out.money.bedDays += (lying.length - icuLying) * db.economy.ward.bedDay;
+    if ((l.expenses.ward ?? 0) !== lying.reduce((a, p) => a + bedDayOf(db, s, p), 0)) throw new Error(`${player}: койко-дни дня ${s.day} не сходятся с кассой`);
+    out.money.bedDays += lying.filter(p => !inIcu(db, s, p) && !inBox(db, s, p)).length * db.economy.ward.bedDay;
     const unit = unitCosts(s);
     for (const k of Object.keys(unit) as Unit[]) {
       out.money.units[k].upkeep += unit[k].upkeep;
@@ -403,27 +448,44 @@ function run(seed: number, player: Player, chapter: Id): Run {
         out.money.opConsumables += db.treatments[op.tx].cost;
       }
       // крыло главы 3: больные кардиологии и неврологии — по болезни, которой болен на самом деле
-      const group = profileOf(p.patient.truth.conditions[0].id);
+      const truth = p.patient.truth.conditions[0].id;
+      const group = profileOf(truth);
       const use = group ? out.wing.cn : out.wing.other;
-      // расходники обследований — каждого сделанного: КТ — у крыла; у больных неврологии — и остальных
+      const bleeding = chapter === CITY && isBleeding(truth);
+      const city = out.city;
+      // расходники обследований — каждого сделанного: КТ — у крыла; у больных неврологии — и остальных; в городской
+      // больнице — эндоскопия и МРТ (часть 61б)
       for (const id of p.done.slice(examsCounted.get(p.id) ?? 0)) {
         const cost = consumablesOf(db, db.exams[id]);
         if (isCt(id)) {
           use.ctExams++;
           use.ctConsumables += cost;
+        } else if (isEndo(id)) {
+          city.endoExams++;
+          city.endoConsumables += cost;
+        } else if (isMri(id)) {
+          city.mriExams++;
+          city.mriConsumables += cost;
         } else if (group === 'neurology') out.wing.neuroCosts += cost;
       }
       examsCounted.set(p.id, p.done.length);
-      // приём оплачен — обследования КТ, которые страховая оплатила (как в caseIncome); у больных неврологии — и сам приём
+      // приём оплачен — обследования КТ, которые страховая оплатила (как в caseIncome); у больных неврологии — и сам приём;
+      // эндоскопия и МРТ — так же. Больных с кровотечением — только считать: без эндоскопии их принимают так же, а переводят
       if (p.paid && !visits.has(p.id)) {
         visits.add(p.id);
         const price = priceOf(p.payer ?? 'oms');
-        const fees = p.done.filter(id => isCt(id) && !p.paid!.unindicated.includes(id)).reduce((a, id) => a + Math.round((db.exams[id].cost * price) / 100), 0);
+        const feesOf = (f: (id: Id) => boolean) => p.done.filter(id => f(id) && !p.paid!.unindicated.includes(id)).reduce((a, id) => a + Math.round((db.exams[id].cost * price) / 100), 0);
+        const fees = feesOf(isCt);
         use.ctFees += fees;
+        const endo = feesOf(isEndo);
+        const mri = feesOf(isMri);
+        city.endoFees += endo;
+        city.mriFees += mri;
         if (group === 'neurology') {
           out.wing.neuroIncome += p.paid.paid - fees;
           out.wing.neuroSeen++;
         }
+        if (bleeding) city.bleedSeen++;
       }
       // случай стационара закрыт — его оплата, койко-дни и расходники, прибавка за операцию и за ПИТ (как в closeStay)
       if (p.closed?.stay && p.stay && !closedStays.has(p.id)) {
@@ -437,7 +499,24 @@ function run(seed: number, player: Player, chapter: Id): Run {
         const close: WardClose = over ? 'unindicated' : p.afterEarly ? 'repeat' : end === 'discharged' || end === 'died' ? 'full' : 'interrupted';
         const paid = wardIncome(db, p.closed.diagnosis, p.closed.grades.defensibility, close, op?.done ? op.tx : undefined, careUnit(chosen, recommended));
         out.money.stays += paid;
-        if (inIcu(db, s, p)) {
+        // койко-день — по месту и тому, что делали (`bedDayOf`; план — последний)
+        const bedDays = p.closed.stay.days * bedDayOf(db, s, p);
+        // кровотечение (часть 61б): без эндоскопии его переводят — его стационар в счёт эндоскопии, как палата больных
+        // неврологии — в счёт КТ
+        if (bleeding) {
+          city.bleedIncome += paid;
+          city.bleedCosts += bedDays;
+        }
+        // реанимация и боксы городской больницы (часть 61б): их случаи и койко-дни
+        if (inRicu(db, s, p)) {
+          city.ricuStays++;
+          city.ricuIncome += paid;
+          city.ricuBedDays += bedDays;
+        } else if (inBox(db, s, p)) {
+          city.boxStays++;
+          city.boxIncome += paid;
+          city.boxBedDays += bedDays;
+        } else if (inIcu(db, s, p)) {
           use.icuStays++;
           use.icuIncome += paid;
           use.icuBedDays += p.closed.stay.days * db.economy.icu.bedDay;
@@ -534,6 +613,42 @@ function openWing(s: ShiftState) {
   }
 }
 
+/** запас в кассе сверх цены кабинета МРТ с томографом: столько разумный оставляет на зарплаты и содержание */
+const MRI_RESERVE = 1_000_000;
+
+/**
+ * Глава 4 (spec 2026-10-chapter-4, часть 61б): то, что в городской больнице строят заданием, — на местах готовой больницы,
+ * с её аппаратами: реанимация, три бокса, эндоскопический кабинет и кабинет терапевта — сразу, кабинет МРТ — когда в
+ * кассе хватает на него и ещё на `MRI_RESERVE`. Люди — по записи готовой больницы: в построенные помещения и в кабинеты
+ * специалистов — гастроэнтеролог, эндокринолог, инфекционист и терапевт, — как только они есть среди кандидатов. Строят и
+ * нанимают между сменами.
+ */
+function openCity(s: ShiftState) {
+  const preset = db.presets[db.chapters[CITY].preset];
+  const h = () => s.hospital!;
+  const [dx, dy] = [h().rooms[0].x - preset.rooms[0].x, h().rooms[0].y - preset.rooms[0].y];
+  const at = (r: (typeof preset.rooms)[number]) => h().rooms.find(x => x.type === r.type && x.x === r.x + dx && x.y === r.y + dy);
+  const price = (r: (typeof preset.rooms)[number]) => (sizeOf(db, r.type, r.size)?.cost ?? 0) + r.equipment.reduce((a, e) => a + (db.equipment[e]?.price ?? 0), 0);
+  let built = false;
+  for (const r of preset.rooms.filter(x => x.later)) {
+    if (at(r) || (r.type === 'room.mri' && s.economy!.cash < price(r) + MRI_RESERVE)) continue;
+    apply(db, s, { kind: 'build', cmd: { kind: 'room', type: r.type, size: r.size, x: r.x + dx, y: r.y + dy, rot: r.rot } });
+    const room = at(r);
+    if (!room) throw new Error(`глава 4: ${r.type} не встал на своё место`);
+    for (const e of r.equipment) apply(db, s, { kind: 'build', cmd: { kind: 'buy', room: room.id, equipment: e } });
+    built = true;
+  }
+  if (built) apply(db, s, { kind: 'buildEnd' });
+  for (const x of preset.staff.filter(y => y.later)) {
+    const room = at(preset.rooms[x.room]);
+    if (!room || (s.staff ?? []).some(m => m.room === room.id && m.role === x.role)) continue;
+    const c = s.candidates?.find(y => y.role === x.role);
+    if (!c) continue;
+    apply(db, s, { kind: 'hire', id: c.id });
+    apply(db, s, { kind: 'assign', id: c.id, room: room.id });
+  }
+}
+
 /** Карьера: за сколько дней выполнены основные задания каждой главы (по порядку глав); касса — не ниже. */
 interface Career { chapters: (number | undefined)[]; minCash: number; days: number }
 const CHAPTERS = Object.values(db.chapters).sort((a, b) => a.order - b.order).map(c => c.id);
@@ -552,6 +667,7 @@ function career(seed: number): Career {
     }
     if (s.campaign!.chapter === 'chapter.district') openLab(s);
     if (s.campaign!.chapter === 'chapter.vascular') openWing(s);
+    if (s.campaign!.chapter === CITY) openCity(s);
     apply(db, s, { kind: 'nextDay' });
     if (!s.dayOpen) throw new Error('карьера: смену не открыть');
     playDay(s, 'rational');
@@ -567,9 +683,46 @@ const sum = (rs: Run[], f: (r: Run) => number) => rs.reduce((a, r) => a + f(r), 
 const mean = (rs: Run[], f: (r: Run) => number) => sum(rs, f) / Math.max(1, rs.length);
 
 const t0 = performance.now();
-const monthOf = (c: Id, pl: Player) => Array.from({ length: RUNS }, (_, i) => run(3500 + i, pl, c));
-const results: Record<Id, Record<Player, Run[]>> = Object.fromEntries(MONTHS.map(c => [c, { rational: monthOf(c, 'rational'), lazy: monthOf(c, 'lazy') }]));
-const careers = CAREER ? Array.from({ length: RUNS }, (_, i) => career(3500 + i)) : [];
+/**
+ * Прогон месяца зависит только от главы, врача и зерна, карьера — только от зерна, поэтому их делят между процессами, как в
+ * экономике (0.4.5): с главой 4 месяцев шесть по восемь зёрен и карьеры на 150 дней. Помощник (`--worker k/n`) считает
+ * каждую n-ю задачу с k-й и печатает их строками JSON; итог тот же, что в одном процессе. Карьеры — первыми: они длиннее.
+ */
+type Task = { kind: 'career'; i: number } | { kind: 'month'; chapter: Id; player: Player; i: number };
+const TASKS: Task[] = [
+  ...(CAREER ? Array.from({ length: CAREER_RUNS }, (_, i): Task => ({ kind: 'career', i })) : []),
+  ...MONTHS.flatMap(chapter => PLAYERS.flatMap(player => Array.from({ length: RUNS }, (_, i): Task => ({ kind: 'month', chapter, player, i })))),
+];
+const WORKER = arg('worker', '');
+const JOBS = WORKER ? 1 : Math.max(1, Math.min(TASKS.length, Number(arg('jobs', String(Math.min(4, availableParallelism()))))));
+const doTask = (t: Task): Run | Career => (t.kind === 'career' ? career(3500 + t.i) : run(3500 + t.i, t.player, t.chapter));
+if (WORKER) {
+  const [k, n] = WORKER.split('/').map(Number);
+  TASKS.forEach((t, j) => {
+    if (j % n === k) console.log(JSON.stringify({ j, out: doTask(t) }));
+  });
+  process.exit(0);
+}
+const results: Record<Id, Record<Player, Run[]>> = Object.fromEntries(MONTHS.map(c => [c, { rational: [], lazy: [] }]));
+const careers: Career[] = [];
+const put = (t: Task, out: Run | Career) => {
+  if (t.kind === 'career') careers[t.i] = out as Career;
+  else results[t.chapter][t.player][t.i] = out as Run;
+};
+if (JOBS === 1) for (const t of TASKS) put(t, doTask(t));
+else {
+  const args = process.argv.slice(2).filter((a, j, all) => a !== '--jobs' && all[j - 1] !== '--jobs');
+  const workers = Array.from({ length: JOBS }, (_, k) => Bun.spawn([process.execPath, import.meta.path, ...args, '--worker', `${k}/${JOBS}`], { stdout: 'pipe', stderr: 'inherit' }));
+  const outs = await Promise.all(workers.map(async w => ({ text: await new Response(w.stdout).text(), code: await w.exited })));
+  for (const { text, code } of outs) {
+    if (code !== 0) throw new Error(`районная больница: помощник вышел с кодом ${code}`);
+    for (const line of text.split('\n').filter(Boolean)) {
+      const x = JSON.parse(line) as { j: number; out: Run | Career };
+      put(TASKS[x.j], x.out);
+    }
+  }
+  for (const [j, t] of TASKS.entries()) if (!(t.kind === 'career' ? careers[t.i] : results[t.chapter][t.player][t.i])) throw new Error(`районная больница: нет задачи ${j}`);
+}
 const seconds = Math.round((performance.now() - t0) / 1000);
 
 const unitOf = (r: Run, u: Unit) => r.money.units[u].upkeep + r.money.units[u].staff;
@@ -587,6 +740,25 @@ const ctCostsOf = (r: Run) => unitOf(r, 'ct') + r.wing.cn.ctConsumables + r.wing
 /** ПИТ (глава 3): закрытые случаи ПИТ больных кардиологии и неврологии против палаты с мониторами, людей и их койко-дней. */
 const icuIncomeOf = (r: Run) => r.wing.cn.icuIncome;
 const icuCostsOf = (r: Run) => unitOf(r, 'icu') + r.wing.cn.icuBedDays;
+/** Реанимация и боксы (глава 4): их закрытые случаи против помещений с аппаратами, людей в них и койко-дней. */
+const ricuIncomeOf = (r: Run) => r.city.ricuIncome;
+const ricuCostsOf = (r: Run) => unitOf(r, 'ricu') + r.city.ricuBedDays;
+const boxIncomeOf = (r: Run) => r.city.boxIncome;
+const boxCostsOf = (r: Run) => unitOf(r, 'box') + r.city.boxBedDays;
+/**
+ * Эндоскопия (глава 4): оплата обследований и стационар больных с кровотечением — без эндоскопии их переводят — против
+ * кабинета с эндоскопом и людей, расходников обследований и койко-дней больных с кровотечением. МРТ — обследования против
+ * кабинета с томографом, людей и расходников; для сведения.
+ */
+const endoIncomeOf = (r: Run) => r.city.endoFees + r.city.bleedIncome;
+const endoCostsOf = (r: Run) => unitOf(r, 'endo') + r.city.endoConsumables + r.city.bleedCosts;
+const mriIncomeOf = (r: Run) => r.city.mriFees;
+const mriCostsOf = (r: Run) => unitOf(r, 'mri') + r.city.mriConsumables;
+/** порог смертности в стационаре — из задания главы 4, % лежавших */
+const MORTALITY = (() => {
+  const m = db.chapters[CITY]?.missions.find(x => x.kind === 'mortality');
+  return m?.kind === 'mortality' ? m.percent : 0;
+})();
 function summarize(rs: Run[]) {
   return {
     profit: Math.round(mean(rs, r => r.profit)), profitMin: Math.min(...rs.map(r => r.profit)), profitMax: Math.max(...rs.map(r => r.profit)),
@@ -596,6 +768,13 @@ function summarize(rs: Run[]) {
     orIncome: Math.round(mean(rs, r => r.money.opCases)), orCosts: Math.round(mean(rs, orCostsOf)),
     ctIncome: Math.round(mean(rs, ctIncomeOf)), ctCosts: Math.round(mean(rs, ctCostsOf)),
     icuIncome: Math.round(mean(rs, icuIncomeOf)), icuCosts: Math.round(mean(rs, icuCostsOf)),
+    ricuIncome: Math.round(mean(rs, ricuIncomeOf)), ricuCosts: Math.round(mean(rs, ricuCostsOf)),
+    boxIncome: Math.round(mean(rs, boxIncomeOf)), boxCosts: Math.round(mean(rs, boxCostsOf)),
+    endoIncome: Math.round(mean(rs, endoIncomeOf)), endoCosts: Math.round(mean(rs, endoCostsOf)),
+    mriIncome: Math.round(mean(rs, mriIncomeOf)), mriCosts: Math.round(mean(rs, mriCostsOf)),
+    // смертность в стационаре (часть 61б) — как в задании главы 4: умерли и в «мягком режиме» переведены в тяжёлом
+    // состоянии, на положенных за месяц (в начале главы стационар пуст)
+    mortality: pct(sum(rs, r => r.ward.died + r.ward.severe), sum(rs, r => r.ward.admitted)),
     opsOnTime: pct(sum(rs, r => r.ops.onTime), sum(rs, r => r.ops.onTime + r.ops.late)),
     waited: pct(sum(rs, r => r.ops.waited), sum(rs, r => r.ops.done)),
     complicated: pct(sum(rs, r => r.ops.complicated), sum(rs, r => r.ops.done)),
@@ -612,18 +791,26 @@ function summarize(rs: Run[]) {
 const summary: Record<Id, Record<Player, ReturnType<typeof summarize>>> = Object.fromEntries(
   MONTHS.map(c => [c, { rational: summarize(results[c].rational), lazy: summarize(results[c].lazy) }]),
 );
-interface Criterion { ok: boolean; text: string }
-/** Критерии месяца главы: приёмка главы 2 — у обеих глав (больница та же), КТ и ПИТ — у главы 3. */
+/** `info` — для сведения: в итог не входит */
+interface Criterion { ok: boolean; text: string; info?: true }
+/**
+ * Критерии месяца главы: приёмка главы 2 — у всех глав (в главах 2 и 3 больница та же), КТ и ПИТ — у главы 3; у главы 4
+ * (spec 2026-10-chapter-4, приёмка 4) — реанимация, боксы и эндоскопия окупаются своими больными, смертность в стационаре
+ * не выше порога задания.
+ */
 function criteriaOf(chapter: Id): Record<string, Criterion> {
   const [ra, la] = [summary[chapter].rational, summary[chapter].lazy];
+  // у главы 4 операции — для сведения (часть 61б): в городской больнице их назначают и нанятые врачи, а с холециститом
+  // приходят и позже срока от начала болезни; в критериях главы операций нет
+  const ops: { info?: true } = chapter === CITY ? { info: true } : {};
   return {
     // критерий 4: касса и окупаемость стационара с операционной
     cashNeverNegative: { ok: ra.minCash >= 0, text: `у разумного касса ни разу не в минусе: не ниже ${rub(ra.minCash)}` },
     unitsPay: { ok: ra.unitIncome >= ra.unitCosts, text: `стационар и операционная окупают койко-дни, расходники, помещения и людей: ${rub(ra.unitIncome)} против ${rub(ra.unitCosts)}` },
-    orPays: { ok: ra.orIncome >= ra.orCosts, text: `случаи с операцией окупают операционную и бригаду: ${rub(ra.orIncome)} против ${rub(ra.orCosts)}` },
+    orPays: { ok: ra.orIncome >= ra.orCosts, text: `случаи с операцией окупают операционную и бригаду: ${rub(ra.orIncome)} против ${rub(ra.orCosts)}`, ...ops },
     // критерий 3: пороги стационара и операций у разумного
-    opsOnTime: { ok: ra.opsOnTime >= 90, text: `операции в срок — не меньше 90 %: ${ra.opsOnTime.toFixed(1)} %` },
-    waitedRare: { ok: ra.waited <= 5, text: `осложнились, пока ждали операции, — не больше 5 %: ${ra.waited.toFixed(1)} %` },
+    opsOnTime: { ok: ra.opsOnTime >= 90, text: `операции в срок — не меньше 90 %: ${ra.opsOnTime.toFixed(1)} %`, ...ops },
+    waitedRare: { ok: ra.waited <= 5, text: `осложнились, пока ждали операции, — не больше 5 %: ${ra.waited.toFixed(1)} %`, ...ops },
     stayWithinNorm: { ok: ra.stayRatio <= 1, text: `средний срок стационара — не выше обычного: ${(100 * ra.stayRatio).toFixed(0)} % обычного` },
     triageClean: { ok: ra.triageErrors <= 5, text: `ошибок сортировки скорой — не больше 5 %: ${ra.triageErrors.toFixed(1)} %` },
     // часть 37: ЭКГ при боли в груди в первые 10 минут; в главе 3 — и сроки инсульта
@@ -639,6 +826,20 @@ function criteriaOf(chapter: Id): Record<string, Criterion> {
         wingPays: {
           ok: ra.ctIncome + ra.icuIncome >= ra.ctCosts + ra.icuCosts,
           text: `кабинет КТ и ПИТ окупаются больными кардиологии и неврологии: ${rub(ra.ctIncome + ra.icuIncome)} против ${rub(ra.ctCosts + ra.icuCosts)}`,
+        },
+      }
+      : {}),
+    ...(chapter === CITY
+      ? {
+        ricuPays: { ok: ra.ricuIncome >= ra.ricuCosts, text: `реанимация окупается своими больными: ${rub(ra.ricuIncome)} против ${rub(ra.ricuCosts)}` },
+        boxesPay: { ok: ra.boxIncome >= ra.boxCosts, text: `боксы окупаются своими больными: ${rub(ra.boxIncome)} против ${rub(ra.boxCosts)}` },
+        endoPays: {
+          ok: ra.endoIncome >= ra.endoCosts,
+          text: `эндоскопия окупается обследованиями и стационаром больных с кровотечением: ${rub(ra.endoIncome)} против ${rub(ra.endoCosts)}`,
+        },
+        mortality: {
+          ok: ra.mortality <= MORTALITY,
+          text: `в стационаре умерли не больше ${MORTALITY} % положенных: ${ra.mortality.toFixed(1)} % (у ленивого ${la.mortality.toFixed(1)} %)`,
         },
       }
       : {}),
@@ -659,14 +860,14 @@ const criteria: Record<string, Criterion> = {
   ...Object.fromEntries(MONTHS.flatMap(c => Object.entries(monthCriteria[c]).map(([k, x]) => [`${c.replace('chapter.', '')}.${k}`, x]))),
   ...careerCriteria,
 };
-const passed = Object.values(criteria).every(c => c.ok);
+const passed = Object.values(criteria).every(c => c.ok || c.info);
 
 if (asJson) {
-  console.log(JSON.stringify({ days: DAYS, runs: RUNS, season, contentVersion: db.contentVersion, chapters: summary, careers, criteria: Object.fromEntries(Object.entries(criteria).map(([k, c]) => [k, c.ok])) }, null, 2));
+  console.log(JSON.stringify({ days: DAYS, runs: RUNS, careerRuns: CAREER_RUNS, season, contentVersion: db.contentVersion, chapters: summary, careers, criteria: Object.fromEntries(Object.entries(criteria).map(([k, c]) => [k, c.info ? `${c.ok} (для сведения)` : c.ok])) }, null, 2));
   process.exit(passed ? 0 : 1);
 }
 
-console.log(`Районная больница: ${DAYS} дней × ${RUNS} зёрен, сезон ${season}, база ${db.contentVersion}, ${seconds} с`);
+console.log(`${MONTHS.includes(CITY) ? 'Районная и городская больница' : 'Районная больница'}: ${DAYS} дней × ${RUNS} зёрен, сезон ${season}, база ${db.contentVersion}, ${seconds} с`);
 const names: Record<Player, string> = { rational: 'Разумный', lazy: 'Ленивый' };
 for (const chapter of MONTHS) {
   const ch = db.chapters[chapter];
@@ -695,6 +896,15 @@ for (const chapter of MONTHS) {
       console.log(`  ПИТ за ${DAYS} дней: случаи больных кардиологии и неврологии — ${rub(x.icuIncome)} (${avg(r => r.wing.cn.icuStays)}) против ${rub(x.icuCosts)}: палата с мониторами ${per(r => r.money.units.icu.upkeep)}, медсестра и анестезиолог-реаниматолог ${per(r => r.money.units.icu.staff)}, койко-дни ${per(r => r.wing.cn.icuBedDays)}`);
       console.log(`  другие больные (для сведения): КТ — ${avg(r => r.wing.other.ctExams)} обследований, оплата ${per(r => r.wing.other.ctFees)}, расходники ${per(r => r.wing.other.ctConsumables)}; ПИТ — ${avg(r => r.wing.other.icuStays)} случаев, оплата ${per(r => r.wing.other.icuIncome)}, койко-дни ${per(r => r.wing.other.icuBedDays)}`);
     }
+    if (chapter === CITY) {
+      const avg = (g: (r: Run) => number) => (f(g) / rs.length).toFixed(1);
+      const c = (g: (u: CityUse) => number) => per(r => g(r.city));
+      console.log(`  реанимация за ${DAYS} дней: случаи ${rub(x.ricuIncome)} (${avg(r => r.city.ricuStays)}) против ${rub(x.ricuCosts)} — помещение с мониторами и ИВЛ ${per(r => r.money.units.ricu.upkeep)}, люди ${per(r => r.money.units.ricu.staff)}, койко-дни ${c(u => u.ricuBedDays)}`);
+      console.log(`  боксы: случаи ${rub(x.boxIncome)} (${avg(r => r.city.boxStays)}) против ${rub(x.boxCosts)} — боксы ${per(r => r.money.units.box.upkeep)}, медсёстры ${per(r => r.money.units.box.staff)}, койко-дни ${c(u => u.boxBedDays)}`);
+      console.log(`  эндоскопия: ${rub(x.endoIncome)} против ${rub(x.endoCosts)} — обследования ${c(u => u.endoFees)} (${avg(r => r.city.endoExams)}), стационар больных с кровотечением ${c(u => u.bleedIncome)} (принято ${avg(r => r.city.bleedSeen)}); против — кабинет с эндоскопом ${per(r => r.money.units.endo.upkeep)}, эндоскопист и медсестра ${per(r => r.money.units.endo.staff)}, расходники ${c(u => u.endoConsumables)}, койко-дни больных с кровотечением ${c(u => u.bleedCosts)}`);
+      console.log(`  МРТ (для сведения): ${rub(x.mriIncome)} (${avg(r => r.city.mriExams)} обследований) против ${rub(x.mriCosts)} — кабинет с томографом ${per(r => r.money.units.mri.upkeep)}, люди ${per(r => r.money.units.mri.staff)}, расходники ${c(u => u.mriConsumables)}`);
+      console.log(`  смертность в стационаре: ${x.mortality.toFixed(1)} % положенных`);
+    }
     console.log(`  стало хуже (вернулись хуже или с реакцией, умерли): ${x.harmed.toFixed(1)} на 100 принятых`);
     console.log(`  прибыль за ${DAYS} дней: ${rub(x.profit)} (${rub(x.profitMin)} … ${rub(x.profitMax)}); касса не ниже ${rub(x.minCash)}; репутация ${x.reputation}`);
     const main = ch.missions.filter(m => m.main).map(m => m.id);
@@ -703,9 +913,11 @@ for (const chapter of MONTHS) {
   console.log(
     chapter === VASCULAR
       ? '\nКритерии главы 3 (spec 2026-10-chapter-3, приёмка 4: те же, что у главы 2, — больница та же, и КТ и ПИТ):'
-      : '\nКритерии главы 2 (spec 2026-09-chapter-2, приёмка 3 и 4; сроки — spec 2026-10-chapter-3, часть 37):',
+      : chapter === CITY
+        ? '\nКритерии главы 4 (spec 2026-10-chapter-4, приёмка 4: те же, что у главы 2, и реанимация, боксы, эндоскопия, смертность):'
+        : '\nКритерии главы 2 (spec 2026-09-chapter-2, приёмка 3 и 4; сроки — spec 2026-10-chapter-3, часть 37):',
   );
-  for (const c of Object.values(monthCriteria[chapter])) console.log(`  ${c.ok ? 'да ' : 'НЕТ'} ${c.text}`);
+  for (const c of Object.values(monthCriteria[chapter])) console.log(`  ${c.ok ? 'да ' : 'НЕТ'} ${c.text}${c.info ? ' — для сведения' : ''}`);
 }
 if (CAREER) {
   console.log(`\nКарьера разумного с начала: ${careers.map(c => `${c.chapters.map((x, i) => `глава ${i + 1} — ${x ?? '—'} дн.`).join(', ')}, касса не ниже ${rub(c.minCash)}`).join('; ')}`);

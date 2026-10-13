@@ -707,8 +707,8 @@ describe('кампания', () => {
     expect(scope.some(e => e.includes('tip.handover: подсказка «ambulance» — только с главой (chapter)'))).toBe(true);
     const old = broken(d => edit(d, 'campaign/chapters/hospital.yaml', 'age: [18, 40]', 'age: [5, 12]'));
     expect(old.some(e => e.includes('chapter.hospital: болезнь обучения cond.appendicitis: возраст 5–12 — мимо возраста болезни'))).toBe(true);
-    const lost = broken(d => edit(d, 'campaign/tips/rounds.yaml', 'chapter: chapter.hospital', 'chapter: chapter.city'));
-    expect(lost.some(e => e.includes('tip.rounds: глава chapter.city не найдена'))).toBe(true);
+    const lost = broken(d => edit(d, 'campaign/tips/rounds.yaml', 'chapter: chapter.hospital', 'chapter: chapter.capital'));
+    expect(lost.some(e => e.includes('tip.rounds: глава chapter.capital не найдена'))).toBe(true);
   });
 
   test('подсказка: от персонажа игры, о болезни, с которой приходят, со ссылками на статьи; порядок не повторяется', () => {
@@ -734,9 +734,16 @@ describe('кампания', () => {
     expect(target.some(e => e.includes('chapter.vascular: задание ct: срок target.stroke_mri не найден'))).toBe(true);
   });
 
-  test('помещение обучения (часть 45б) — из стройки главы или её готовой больницы', () => {
+  test('помещение обучения (часть 45б) — из стройки главы или её готовой больницы; с частью 60б — и несколько', () => {
     const room = broken(d => edit(d, 'campaign/chapters/district.yaml', 'tutorial: [cond.arvi,', 'tutorialRoom: room.ct\ntutorial: [cond.arvi,'));
     expect(room.some(e => e.includes('chapter.district: помещение обучения room.ct в главе не построить'))).toBe(true);
+    const two = broken(d => edit(d, 'campaign/chapters/district.yaml', 'tutorial: [cond.arvi,', 'tutorialRoom: [room.lab, room.mri]\ntutorial: [cond.arvi,'));
+    expect([two.some(e => e.includes('помещение обучения room.mri в главе не построить')), two.some(e => e.includes('помещение обучения room.lab'))]).toEqual([true, false]);
+  });
+
+  test('жалобы заданного пациента (часть 60б) — из признаков его болезни, с текстом жалобы', () => {
+    const bad = broken(d => edit(d, 'campaign/chapters/city.yaml', 'complaints: [sym.hematemesis]', 'complaints: [sym.chest_pain_pressing]'));
+    expect(bad.some(e => e.includes('chapter.city: болезнь обучения cond.mallory_weiss: жалобы sym.chest_pain_pressing у болезни нет'))).toBe(true);
   });
 
   test('промежуток обучения (часть 46в) — между заданными пациентами: их хотя бы двое', () => {
@@ -751,8 +758,8 @@ describe('достижения', () => {
   test('помещение, глава и отделение — существующие; порядок не повторяется; вид — известный', () => {
     const room = broken(d => edit(d, 'achievements/lab.yaml', 'room: room.lab', 'room: room.laboratory'));
     expect(room.some(e => e.includes('ach.lab: помещение room.laboratory не найдено'))).toBe(true);
-    const chapter = broken(d => edit(d, 'achievements/district.yaml', 'chapter: chapter.district', 'chapter: chapter.city'));
-    expect(chapter.some(e => e.includes('ach.district: глава chapter.city не найдена'))).toBe(true);
+    const chapter = broken(d => edit(d, 'achievements/district.yaml', 'chapter: chapter.district', 'chapter: chapter.capital'));
+    expect(chapter.some(e => e.includes('ach.district: глава chapter.capital не найдена'))).toBe(true);
     const dept = broken(d => edit(d, 'achievements/therapy.yaml', 'department: dept.therapy', 'department: dept.cardiology'));
     expect(dept.some(e => e.includes('ach.therapy: в отделении dept.cardiology нет болезней'))).toBe(true);
     const order = broken(d => edit(d, 'achievements/month.yaml', 'order: 5', 'order: 4'));
@@ -791,5 +798,41 @@ describe('врачи-специалисты (spec 2026-10-chapter-4, часть 
     has(broken(d => edit(d, roles, 'cond.constipation,', 'cond.ibs,')), 'role.gastroenterologist: болезни профиля повторяются');
     has(broken(d => edit(d, roles, /profile: \[[^\]]*\]/.exec(readFileSync(join(CONTENT_DIR, roles), 'utf8'))![0], 'profile: [cond.stroke_ischemic]')), 'role.gastroenterologist: к нему некому записаться — все болезни профиля привозит скорая');
     has(broken(d => edit(d, roles, 'dat: { ru: "гастроэнтерологу" }\n', '')), 'role.gastroenterologist: у специалиста нужен дательный падеж');
+  });
+});
+
+describe('глава 4 (spec 2026-10-chapter-4, часть 60а)', () => {
+  const has = (errors: string[], text: string) => expect({ text, found: errors.some(e => e.includes(text)) }).toEqual({ text, found: true });
+  const city = 'hospital/presets/city.yaml';
+  const chapter = 'campaign/chapters/city.yaml';
+
+  test('городская больница: что строят заданием — в конце записи, его штат нанимают в главе; специалистов — только в главе со специалистами', () => {
+    const or = '  - { type: room.or, size: M, x: 38, y: 20, rot: 2, equipment: [eq.or_table, eq.anesthesia] }';
+    const early = broken(d => edit(d, city, or, or.replace(' }', ', later: true }')));
+    has(early, 'preset.city: помещения, которые строят заданием, — не в конце записи');
+    has(early, 'preset.city: role.surgeon в помещении 19 — его строят заданием, а штат на месте с начала главы');
+    has(broken(d => edit(d, city, '  - { role: role.endoscopist, room: 25, later: true }', '  - { role: role.endoscopist, room: 25 }')),
+      'preset.city: role.endoscopist в помещении 25 — его строят заданием, а штат на месте с начала главы');
+    const plain = broken(d => edit(d, chapter, 'specialists: true\n', ''));
+    has(plain, 'chapter.city: role.gastroenterologist нанимают в главе, а специалистов в ней нет');
+    has(plain, 'chapter.city: задание staff: приёмы специалистов, а специалистов в главе нет');
+    const mri = broken(d => edit(d, chapter, ', room.mri]', ']'));
+    has(mri, 'chapter.city: room.mri строят заданием, а в главе его не построить');
+    has(mri, 'chapter.city: задание mri: room.mri нельзя построить в главе');
+    has(broken(d => edit(d, city, 'ambulance: [5, 9]', 'ambulance: [9, 5]')), 'preset.city: скорая 9–5 — без смотровой приёмного или от больше до');
+  });
+
+  test('серия срока: другой срок той же меры без своей серии; задание «подряд» — по сроку серии, а не по сроку в ней', () => {
+    const shock = 'targets/sepsis_abx_shock.yaml';
+    has(broken(d => edit(d, shock, 'series: target.sepsis_abx', 'series: target.sepsis_abx_shock')), 'target.sepsis_abx_shock: серия target.sepsis_abx_shock не найдена или это сам срок');
+    has(broken(d => edit(d, shock, 'series: target.sepsis_abx', 'series: target.egd_bleeding')), 'target.sepsis_abx_shock: серия target.egd_bleeding — другая мера');
+    has(broken(d => edit(d, chapter, 'target: target.sepsis_abx\n', 'target: target.sepsis_abx_shock\n')), 'chapter.city: задание sepsis: срок target.sepsis_abx_shock — в серии target.sepsis_abx, задание — по ней');
+  });
+
+  test('смертность — где есть койки стационара; смены без заразного в общей палате — где можно построить бокс', () => {
+    const mortality = '  - { id: deaths, main: false, kind: mortality, days: 7, percent: 2, lying: 30, text: { ru: "Неделя" } }\n';
+    has(broken(d => edit(d, 'campaign/chapters/district.yaml', 'missions:\n', `missions:\n${mortality}`)), 'chapter.district: задание deaths: смертность в стационаре, а коек в главе нет');
+    const isolation = '  - { id: contacts, main: false, kind: days, days: 5, day: noInfectiousInWard, text: { ru: "Пять смен" } }\n';
+    has(broken(d => edit(d, 'campaign/chapters/hospital.yaml', 'missions:\n', `missions:\n${isolation}`)), 'chapter.hospital: задание contacts: заразные в общей палате, а бокса в главе не построить');
   });
 });

@@ -4,7 +4,7 @@
 import { byParams, byValue, type ContentDb, type Exam, type Id, paramsOf, type Target } from '../../content/types';
 import { Rng } from '../core/rng';
 import { complaintObservations, examFits, runExam } from './exams';
-import { type Belief, contextOf, expectedGain, knownFacts, likelyParams, paramBeliefs, paramGain, posterior } from './infer';
+import { type Belief, contextOf, expectedGain, knownFacts, likelyParams, paramBeliefs, paramGain, posterior, type Prior } from './infer';
 import { choiceFor, companionsOf, type Plan, possibleFor, settingOf, tacticsFor, txAvailable, type Venue, verdictOf, whenHolds } from './plan';
 import { checkRule, harmCheck, knownOf, openRuleExams, ruleExams, ruleFindings, type Who } from './rules';
 import type { Observation, Patient } from './types';
@@ -36,6 +36,8 @@ export interface DoctorOptions {
   minGain?: number;
   /** пропустить вопрос перед лечением — нанятый врач невысокого навыка (spec 2026-09-hired-doctors) */
   skipAsk?: (exam: Id) => boolean;
+  /** специалист на записанных к нему (spec 2026-10-chapter-4, часть 60а): болезни его профиля вероятнее */
+  prior?: Prior;
 }
 
 /** Польза ниже этой (биты) — обследование не показано: мерка разумного врача и экспертизы страховой. */
@@ -407,6 +409,8 @@ export interface StepOptions {
   skipAsk?: (exam: Id) => boolean;
   /** что есть в больнице: своя палата со свободной койкой — стационар в ней (часть 26) */
   venue?: Venue;
+  /** специалист (spec 2026-10-chapter-4, часть 60а): у записанного к нему болезни его профиля вероятнее */
+  prior?: Prior;
 }
 
 /** Самое полезное на единицу цены из несделанных; польза ниже `minGain` — не назначается. */
@@ -525,7 +529,7 @@ function nextStepFor(db: ContentDb, patient: Patient, obs: readonly Observation[
   let limit = decisionLimit(db, obs, patient.complaints, elapsed, since, patient);
   // срок, который ничего не решает (часть 46а): подъём ST на ЭКГ у больного с ТИА, которого инфарктом
   // не объяснить, — болезни, которую этим лечат, вероятнее `RULE_IN` нет, и обследование он не торопит
-  if (limit !== undefined && !ruleIn(db, posterior(db, options.candidates, obs, contextOf(db, patient, obs)), obs, patient, options.venue)) limit = undefined;
+  if (limit !== undefined && !ruleIn(db, posterior(db, options.candidates, obs, contextOf(db, patient, obs, options.prior)), obs, patient, options.venue)) limit = undefined;
   const safety = limit === undefined ? [] : safetyExams(db, obs, patient, options.exams, options.venue).filter(id => !done.includes(id));
   const reserve = safety.reduce((a, id) => a + examMinutes(db.exams[id]), 0);
   const opt = {
@@ -537,7 +541,7 @@ function nextStepFor(db: ContentDb, patient: Patient, obs: readonly Observation[
   // вместо КТ, если окклюзия её решает
   let lead: Belief | undefined | null = null;
   const leadOf = (): Belief | undefined => {
-    if (lead === null) lead = posterior(db, opt.candidates, obs, contextOf(db, patient, obs))[0];
+    if (lead === null) lead = posterior(db, opt.candidates, obs, contextOf(db, patient, obs, opt.prior))[0];
     return lead;
   };
   const preferTactic = (e: Id) => {
@@ -587,7 +591,7 @@ function nextStepFor(db: ContentDb, patient: Patient, obs: readonly Observation[
     // повышенный ведёт на УЗИ
     const open = openRuleExams(db, patient, obs, id => examCost(db, id)).find(id => opt.exams.includes(id) && !done.includes(id));
     if (open) return { step: { kind: 'exam', exam: open }, phase: now };
-    const ctx = contextOf(db, patient, obs);
+    const ctx = contextOf(db, patient, obs, opt.prior);
     const beliefs = posterior(db, opt.candidates, obs, ctx);
     if (beliefs[0].p < opt.threshold) {
       const best = bestExam(db, beliefs, ctx, obs, done, opt);
@@ -624,7 +628,7 @@ export function runDoctor(db: ContentDb, patient: Patient, strategy: Strategy, r
   const minGain = opt.minGain ?? MIN_GAIN;
   const obs: Observation[] = complaintObservations(patient);
   const done: Id[] = [];
-  const ctxOf = () => contextOf(db, patient, obs);
+  const ctxOf = () => contextOf(db, patient, obs, opt.prior);
   const doExam = (id: Id) => {
     obs.push(...runExam(db, patient, id, rng.fork(`exam:${done.length}:${id}`)));
     done.push(id);
@@ -637,7 +641,9 @@ export function runDoctor(db: ContentDb, patient: Patient, strategy: Strategy, r
     for (;;) {
       // сколько прошло с прихода (часть 41а): окно тромболизиса закрывается, пока идёт обследование
       const minutes = done.reduce((a, id) => a + examMinutes(db.exams[id]), 0);
-      const r = nextStep(db, patient, obs, done, phase, { candidates: opt.candidates, exams: opt.exams, threshold, minGain, ...(opt.skipAsk ? { skipAsk: opt.skipAsk } : {}), venue: { minutes } });
+      const r = nextStep(db, patient, obs, done, phase, {
+        candidates: opt.candidates, exams: opt.exams, threshold, minGain, ...(opt.skipAsk ? { skipAsk: opt.skipAsk } : {}), ...(opt.prior ? { prior: opt.prior } : {}), venue: { minutes },
+      });
       phase = r.phase;
       if (r.step.kind === 'decide') {
         decision = r.step;
