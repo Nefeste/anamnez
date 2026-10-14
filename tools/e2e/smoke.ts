@@ -995,6 +995,18 @@ try {
   await page.getByTestId('source').first().waitFor({ timeout: 5000 });
   const sources = await page.getByTestId('source').count();
   check(sources > 50, `«Об игре»: источники медицинской базы — ${sources}`);
+  // лицензии открытых компонентов (spec 2026-10-licenses, 0.5.6): шрифты, код JS, библиотеки Android; строка Skia
+  // раскрывается текстом лицензии
+  await page.goBack();
+  await page.getByTestId('about-licenses').click();
+  await page.getByTestId('licenses-android').waitFor({ timeout: 5000 });
+  const licenseList = JSON.parse(readFileSync(join(ROOT, 'src/licenses/licenses.json'), 'utf8'));
+  const skia = licenseList.groups.find((g: { key: string }) => g.key === 'android').items.findIndex((i: { name: string }) => i.name === 'Skia');
+  const rows = await page.locator('[data-testid^="license-"]:not([data-testid$="-text"])').count();
+  await page.getByTestId(`license-android-${skia}`).click();
+  const skiaText = await text(page, `license-android-${skia}-text`);
+  check(rows > 100 && await page.getByTestId('licenses-fonts').isVisible() && await page.getByTestId('licenses-js').isVisible() && skiaText.includes('Google Inc.'),
+    `«Об игре»: лицензии — ${rows} строк в трёх разделах, у Skia — текст лицензии`);
 
   // энциклопедия: оговорка вверху; раздел → статья → ссылка в статью обследования; поиск
   await page.goto(base);

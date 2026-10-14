@@ -1,14 +1,15 @@
 // «Об игре» (11-publishing.md §3, 03-game-design.md §12): версия и что нового, полная
-// медицинская оговорка, медицинская база и её источники, разработчик и письмо ему, данные и
-// политика конфиденциальности. Ссылки открываются в браузере и почте телефона: у самой игры
-// доступа в интернет нет. Студия — по брендбуку (ADR 0017): знак, строка «Игра студии „Горница“»,
-// сайт и почта, внизу — полоса-рушник.
+// медицинская оговорка, медицинская база и её источники, лицензии открытых компонентов (с 0.5.6),
+// разработчик и письмо ему, данные и политика конфиденциальности. Ссылки открываются в браузере и
+// почте телефона: у самой игры доступа в интернет нет. Студия — по брендбуку (ADR 0017): знак,
+// строка «Игра студии „Горница“», сайт и почта, внизу — полоса-рушник.
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { Linking, View } from 'react-native';
 import { db } from '@/content';
 import { T } from '@/i18n';
 import { PRIVACY_URL, SITE_URL, SUPPORT_EMAIL, VERSION } from '@/info';
+import { licenseCount } from '@/licenses';
 import { Rushnik, StudioMark } from '@/render/Studio';
 import { sourceGroups } from '@/state/sources';
 import { Button, Card, H, P, Screen } from '@/ui/components';
@@ -57,6 +58,11 @@ export default function About() {
       <Card>
         <H>{t.soundTitle}</H>
         <P testID="about-sound">{t.sound}</P>
+      </Card>
+      <Card>
+        <H>{t.openTitle}</H>
+        <P>{t.open}</P>
+        <Button testID="about-licenses" kind="plain" title={t.licenses(licenseCount)} onPress={() => router.push('/licenses')} />
       </Card>
       <Card>
         <H>{t.developerTitle}</H>
