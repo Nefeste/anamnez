@@ -428,10 +428,12 @@ export function posterior(db: ContentDb, candidates: readonly Id[], observations
       return { id, p: w };
     }
     if (prior === 0) return { id, p: 0 };
-    // фон признака без самого кандидата — от сочетания не зависит, считается один раз
+    // фон признака без самого кандидата — от сочетания не зависит, считается один раз; без «без чего не бывает» и со
+    // своими долями, которые признака не касаются, — общий фон (0.5.11): те же действия, и число то же
     const others = [...(c.requires ?? []), ...ctx.knownConditions];
+    const hit = c.requires && c.requires.length > 0 ? null : sharedOf(shares, ctx.unknowns);
     const bg = grouped.map(({ f, e }) => {
-      const other = findingProbability(db, f, others, ctx.knownRisks, unknownMiss(ctx, f, shares), ctx);
+      const other = hit && !hit.has(f) ? background(f) : findingProbability(db, f, others, ctx.knownRisks, unknownMiss(ctx, f, shares), ctx);
       // сочетание, которое признака не вызывает, — с тем же множителем: он один на все такие сочетания (0.5.11)
       return { f, e, other, fixed: mix(e, 1 - (1 - other) * (1 - 0)) };
     });
@@ -515,11 +517,21 @@ function ownFindings(db: ContentDb, c: Condition, shares: ReadonlyMap<Id, number
   if (c.requires && c.requires.length > 0) return null;
   if (shares.size === 0) return plainOwn(c);
   let out = ownCache.get(shares);
+  if (!out) ownCache.set(shares, (out = new Set([...plainOwn(c), ...sharedOf(shares, unknowns)])));
+  return out;
+}
+
+/** Признаки неизвестного, доля которого у кандидата своя (`sharesFor`): их вероятность у него не фоновая. */
+const sharedCache = new WeakMap<ReadonlyMap<Id, number>, ReadonlySet<Id>>();
+const NO_FINDINGS: ReadonlySet<Id> = new Set();
+function sharedOf(shares: ReadonlyMap<Id, number>, unknowns: Unknowns): ReadonlySet<Id> {
+  if (shares.size === 0) return NO_FINDINGS;
+  let out = sharedCache.get(shares);
   if (!out) {
-    const set = new Set(plainOwn(c));
+    const set = new Set<Id>();
     const caused = causedBy(unknowns);
     for (const id of shares.keys()) for (const f of caused.get(id) ?? []) set.add(f);
-    ownCache.set(shares, (out = set));
+    sharedCache.set(shares, (out = set));
   }
   return out;
 }
