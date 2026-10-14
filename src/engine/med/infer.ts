@@ -7,6 +7,7 @@
 import { byParams, byPresence, byRule, byValue, crosses, paramsOf, type Condition, type ContentDb, type DerivedByParams, type DerivedByValue, type ExamCheck, type Id, type Link, type Rule, type Season } from '../../content/types';
 import { log2 } from '../core/math';
 import { P_ONE } from '../core/rng';
+import { expectedFindings, falseRate } from './exams';
 import { chronicChance, presentingWeight } from './generate';
 import { checkRule, type Known, knownOf, type RuleVerdict, type Who } from './rules';
 import type { Observation, Sex } from './types';
@@ -27,6 +28,8 @@ export interface InferContext {
    * приходят с жалобой, исключена
    */
   checkup?: boolean;
+  /** жалобы, как пациент их назвал, — по ним ждут находки осмотра, снимков и ЭКГ (вопрос 33); нет — жалоб нет */
+  complaints?: readonly Id[];
 }
 
 /** Болезни, которые у этого пациента вероятнее во столько раз, — профиль специалиста, к которому он записан. */
@@ -155,8 +158,21 @@ export function unknownMiss(ctx: InferContext, f: Id, shares: ReadonlyMap<Id, nu
 export function contextOf(db: ContentDb, patient: { sex: Sex; age: number; season: Season; complaints?: readonly Id[] }, observations: readonly Observation[], prior?: Prior): InferContext {
   const known = knownFacts(db, observations);
   const base = { sex: patient.sex, age: patient.age, season: patient.season, knownRisks: known.risks, knownConditions: known.conditions };
-  return { ...base, unknowns: unknownsOf(db, observations, base), ...(prior ? { prior } : {}), ...(patient.complaints?.length === 0 ? { checkup: true } : {}) };
+  const told = complaintsOf(observations);
+  return {
+    ...base,
+    unknowns: unknownsOf(db, observations, base),
+    ...(prior ? { prior } : {}),
+    ...(patient.complaints?.length === 0 ? { checkup: true } : {}),
+    ...(told.length > 0 ? { complaints: told } : {}),
+  };
 }
+
+/** Жалобы среди наблюдений — по порядку, как пациент их назвал (`complaintObservations`). */
+const complaintsOf = (observations: readonly Observation[]): Id[] => observations.filter(o => o.exam === 'complaint').map(o => o.f);
+
+/** Находки, которых ждут по жалобам среди наблюдений (вопрос 33): у движка — по жалобам пациента, здесь — по тем же. */
+const expectedOf = (db: ContentDb, observations: readonly Observation[]) => expectedFindings(db, complaintsOf(observations));
 
 /**
  * Неизвестные хронические болезни и факторы риска: доля у такого человека — как при рождении
@@ -166,6 +182,7 @@ export function contextOf(db: ContentDb, patient: { sex: Sex; age: number; seaso
  */
 export function unknownsOf(db: ContentDb, observations: readonly Observation[], ctx: Omit<InferContext, 'unknowns'>): Unknowns {
   const grouped = byFinding(observations);
+  const expected = expectedOf(db, observations);
   const share = new Map<Id, number>();
   const causes = new Map<Id, { id: Id; p: number }[]>();
   const add = (id: Id, p: number, links: Link[], cond?: Condition) => {
@@ -177,8 +194,8 @@ export function unknownsOf(db: ContentDb, observations: readonly Observation[], 
       if (f.startsWith('hx.')) {
         if (!obs) continue;
         const leak = (db.findings[f]?.leak ?? 0) / P_ONE;
-        const yes = observationsLikelihood(db, obs, 1 - (1 - leak) * (1 - cause));
-        const no = observationsLikelihood(db, obs, leak);
+        const yes = observationsLikelihood(db, obs, 1 - (1 - leak) * (1 - cause), expected);
+        const no = observationsLikelihood(db, obs, leak, expected);
         q = (q * yes) / (q * yes + (1 - q) * no);
       } else {
         const list = causes.get(f);
@@ -207,11 +224,15 @@ export function unknownsOf(db: ContentDb, observations: readonly Observation[], 
   return { share, causes };
 }
 
-/** Чувствительность и специфичность, с которыми наблюдение получено. Жалоба — без ошибок. */
-function accuracy(db: ContentDb, o: Observation): { sens: number; spec: number } {
+/**
+ * Чувствительность и специфичность, с которыми наблюдение получено. Жалоба — без ошибок. Ложная находка осмотра, снимка
+ * и ЭКГ, которой по жалобам не ждут (`expected`), — реже, как у движка (`falseRate`, вопрос 33).
+ */
+function accuracy(db: ContentDb, o: Observation, expected: ReadonlySet<Id>): { sens: number; spec: number } {
   if (o.exam === 'complaint') return { sens: 1, spec: 1 };
-  const check = db.exams[o.exam]?.checks.find(c => c.f === o.f);
-  return check ? { sens: check.sens / P_ONE, spec: check.spec / P_ONE } : { sens: 1, spec: 1 };
+  const exam = db.exams[o.exam];
+  const check = exam?.checks.find(c => c.f === o.f);
+  return check ? { sens: check.sens / P_ONE, spec: 1 - falseRate(exam, o.f, check.spec, expected) / P_ONE } : { sens: 1, spec: 1 };
 }
 
 /**
@@ -220,8 +241,8 @@ function accuracy(db: ContentDb, o: Observation): { sens: number; spec: number }
  * суммируется один раз на признак: иначе два совпавших ответа об одном признаке считались бы
  * двумя уликами.
  */
-function observationsLikelihood(db: ContentDb, obs: readonly Observation[], p: number): number {
-  return mix(evidenceOf(db, obs), p);
+function observationsLikelihood(db: ContentDb, obs: readonly Observation[], p: number, expected: ReadonlySet<Id>): number {
+  return mix(evidenceOf(db, obs, expected), p);
 }
 
 /** Наблюдения одного признака: насколько они вероятны, если он есть и если его нет, — от кандидата не зависит. */
@@ -230,11 +251,11 @@ interface Evidence {
   ifAbsent: number;
 }
 
-function evidenceOf(db: ContentDb, obs: readonly Observation[]): Evidence {
+function evidenceOf(db: ContentDb, obs: readonly Observation[], expected: ReadonlySet<Id>): Evidence {
   let ifPresent = 1;
   let ifAbsent = 1;
   for (const o of obs) {
-    const { sens, spec } = accuracy(db, o);
+    const { sens, spec } = accuracy(db, o, expected);
     ifPresent *= o.shown ? sens : 1 - sens;
     ifAbsent *= o.shown ? 1 - spec : spec;
   }
@@ -340,7 +361,8 @@ const UNTOLD = 0.01;
  */
 export function posterior(db: ContentDb, candidates: readonly Id[], observations: readonly Observation[], ctx: InferContext): Belief[] {
   // не улика (часть 39а): «плохо стало N ч назад» о болезни не говорит — только число для окна
-  const grouped = [...byFinding(observations)].filter(([f]) => db.findings[f]?.evidence !== false).map(([f, obs]) => ({ f, e: evidenceOf(db, obs) }));
+  const expected = expectedOf(db, observations);
+  const grouped = [...byFinding(observations)].filter(([f]) => db.findings[f]?.evidence !== false).map(([f, obs]) => ({ f, e: evidenceOf(db, obs, expected) }));
   // с чем пришёл (часть 61а): с болезнью профосмотра приходят без жалоб или со своей (`pickComplaints`); пришёл с жалобами, и
   // ни одна не от неё — она в 100 раз реже: давление, случайно высокое на приёме у человека с изжогой, — не гипертензия.
   // Тот же довод верен и для остальных болезней (`ensureManifest`), но у них он делал разумного врача увереннее раньше
@@ -421,8 +443,12 @@ function candidateP(db: ContentDb, beliefs: readonly Belief[], ctx: InferContext
 export function expectedGain(db: ContentDb, examId: Id, beliefs: readonly Belief[], ctx: InferContext, observed: ReadonlySet<Id>): number {
   const exam = db.exams[examId];
   const h0 = entropy(beliefs);
-  // P(«есть» | кандидат) для каждого кандидата
-  const yesOf = (check: ExamCheck) => candidateP(db, beliefs, ctx, check.f).map(p => (check.sens / P_ONE) * p + (1 - check.spec / P_ONE) * (1 - p));
+  // P(«есть» | кандидат) для каждого кандидата; ложная находка, которой по жалобам не ждут, — реже (вопрос 33)
+  const expected = expectedFindings(db, ctx.complaints ?? []);
+  const yesOf = (check: ExamCheck) => {
+    const fp = falseRate(exam, check.f, check.spec, expected) / P_ONE;
+    return candidateP(db, beliefs, ctx, check.f).map(p => (check.sens / P_ONE) * p + fp * (1 - p));
+  };
   const shownP = (yes: readonly number[]) => beliefs.reduce((a, b, i) => a + b.p * yes[i], 0);
   let gain = 0;
   for (const check of exam.checks) {
@@ -493,10 +519,11 @@ export function paramBeliefs(db: ContentDb, condId: Id, name: string, observatio
   const seen = attrParam(c, name, observations);
   if (seen !== undefined && seen in dist) return Object.keys(dist).map(value => ({ value, p: value === seen ? 1 : 0 }));
   const grouped = byFinding(observations);
+  const expected = expectedOf(db, observations);
   const telling = tellingOf(c, name).filter(f => grouped.has(f));
   const weighted = Object.entries(dist).map(([value, share]) => {
     let w = share;
-    for (const f of telling) w *= mix(evidenceOf(db, grouped.get(f)!), findingGivenParam(db, c, f, name, value));
+    for (const f of telling) w *= mix(evidenceOf(db, grouped.get(f)!, expected), findingGivenParam(db, c, f, name, value));
     return { value, p: w };
   });
   const total = weighted.reduce((a, b) => a + b.p, 0);
@@ -626,15 +653,16 @@ export function paramGain(db: ContentDb, condId: Id, name: string, examId: Id, o
   if (byPresence(derived)) return exam.checks.some(k => k.f === derived.has) ? entropy(beliefs.map(b => ({ id: b.value, p: b.p }))) : 0;
   const observed = new Set(observations.map(o => o.f));
   const telling = new Set(tellingOf(c, name));
+  const expected = expectedOf(db, observations);
   const h0 = entropy(beliefs.map(b => ({ id: b.value, p: b.p })));
   let gain = 0;
   for (const check of exam.checks) {
     if (observed.has(check.f) || !telling.has(check.f)) continue;
     const sens = check.sens / P_ONE;
-    const spec = check.spec / P_ONE;
+    const fp = falseRate(exam, check.f, check.spec, expected) / P_ONE;
     const yes = beliefs.map(b => {
       const q = findingGivenParam(db, c, check.f, name, b.value);
-      return sens * q + (1 - spec) * (1 - q);
+      return sens * q + fp * (1 - q);
     });
     let pYes = 0;
     beliefs.forEach((b, i) => (pYes += b.p * yes[i]));

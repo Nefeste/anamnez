@@ -6,14 +6,15 @@ import type { Condition, ContentDb, Exam, Finding } from '../../src/content/type
 import { contextOf, entropy, expectedGain, NO_UNKNOWNS, posterior } from '../../src/engine/med/infer';
 import type { Observation } from '../../src/engine/med/types';
 
+// кашель и температура — у всех четырёх: жалобы вывод не сдвигают, а крепитацию и инфильтрат по ним ждут (вопрос 33)
 const cond = (id: string, weight: number, crackles: number, infiltrate: number): Condition => ({
   id, name: { ru: id }, department: 'dept.test', kind: 'disease', severity: 'minor', presenting: true,
   weight, age: { min: 18, max: 100 }, stages: [{ id: 'all', days: [0, 30] }],
-  findings: [{ f: 'sign.crackles', p: crackles }, { f: 'img.infiltrate', p: infiltrate }],
+  findings: [{ f: 'sym.cough', p: 10000 }, { f: 'sym.fever', p: 10000 }, { f: 'sign.crackles', p: crackles }, { f: 'img.infiltrate', p: infiltrate }],
   confirm: 'clinical', texts: { summary: { ru: id } }, sources: [], review: 'draft',
 });
 const finding = (id: string, leak: number): Finding => ({
-  id, name: { ru: id }, kind: id.startsWith('img') ? 'img' : 'sign', leak, salience: 0, texts: { present: [{ ru: id }] }, review: 'draft',
+  id, name: { ru: id }, kind: id.startsWith('img') ? 'img' : id.startsWith('sym') ? 'sym' : 'sign', leak, salience: 0, texts: { present: [{ ru: id }] }, review: 'draft',
 });
 const exam = (id: string, f: string, sens: number, spec: number): Exam => ({
   id, name: { ru: id }, kind: 'physical', time: { procedure: 1 }, cost: 0, discomfort: 0,
@@ -29,27 +30,29 @@ const db: ContentDb = {
     'cond.pneumonia': cond('cond.pneumonia', 15, 7500, 9500),
     'cond.copd': cond('cond.copd', 15, 1500, 500),
   },
-  findings: { 'sign.crackles': finding('sign.crackles', 200), 'img.infiltrate': finding('img.infiltrate', 100) },
+  findings: { 'sym.cough': finding('sym.cough', 0), 'sym.fever': finding('sym.fever', 0), 'sign.crackles': finding('sign.crackles', 200), 'img.infiltrate': finding('img.infiltrate', 100) },
   exams: {
     'exam.auscultation': exam('exam.auscultation', 'sign.crackles', 8000, 9500),
     'exam.xray': exam('exam.xray', 'img.infiltrate', 8500, 9500),
   },
 };
 const candidates = Object.keys(db.conditions);
-const ctx = { sex: 'm' as const, age: 67, season: 'winter' as const, knownRisks: [], knownConditions: [], unknowns: NO_UNKNOWNS };
+const ctx = { sex: 'm' as const, age: 67, season: 'winter' as const, knownRisks: [], knownConditions: [], unknowns: NO_UNKNOWNS, complaints: ['sym.cough', 'sym.fever'] };
+/** жалобы мужчины из примера — на кашель и температуру */
+const told: Observation[] = [{ f: 'sym.cough', shown: true, exam: 'complaint' }, { f: 'sym.fever', shown: true, exam: 'complaint' }];
 const p = (beliefs: { id: string; p: number }[], id: string) => beliefs.find(b => b.id === id)!.p;
 const crackles = (shown: boolean): Observation => ({ f: 'sign.crackles', shown, exam: 'exam.auscultation' });
 const infiltrate = (shown: boolean): Observation => ({ f: 'img.infiltrate', shown, exam: 'exam.xray' });
 
 describe('пример из 04-medical-model.md §12', () => {
   test('априорные вероятности — 45/25/15/15', () => {
-    const b = posterior(db, candidates, [], ctx);
+    const b = posterior(db, candidates, told, ctx);
     expect(p(b, 'cond.arvi')).toBeCloseTo(0.45, 6);
     expect(p(b, 'cond.pneumonia')).toBeCloseTo(0.15, 6);
   });
 
   test('крепитация есть: пневмония 49 %', () => {
-    const b = posterior(db, candidates, [crackles(true)], ctx);
+    const b = posterior(db, candidates, [...told, crackles(true)], ctx);
     expect(p(b, 'cond.pneumonia')).toBeCloseTo(0.4885, 3);
     expect(p(b, 'cond.arvi')).toBeCloseTo(0.1895, 3);
     expect(p(b, 'cond.bronchitis')).toBeCloseTo(0.1830, 3);
@@ -57,21 +60,21 @@ describe('пример из 04-medical-model.md §12', () => {
   });
 
   test('крепитации нет: пневмония падает до 7 %, но не до нуля', () => {
-    const b = posterior(db, candidates, [crackles(false)], ctx);
+    const b = posterior(db, candidates, [...told, crackles(false)], ctx);
     expect(p(b, 'cond.pneumonia')).toBeCloseTo(0.0710, 3);
     expect(p(b, 'cond.arvi')).toBeCloseTo(0.5108, 3);
     expect(p(b, 'cond.pneumonia')).toBeGreaterThan(0);
   });
 
   test('крепитация и инфильтрат: пневмония 91 %', () => {
-    const b = posterior(db, candidates, [crackles(true), infiltrate(true)], ctx);
+    const b = posterior(db, candidates, [...told, crackles(true), infiltrate(true)], ctx);
     expect(p(b, 'cond.pneumonia')).toBeCloseTo(0.9091, 3);
     expect(b[0].id).toBe('cond.pneumonia');
   });
 
   test('польза: рентген после крепитации информативнее повторной аускультации', () => {
-    const b = posterior(db, candidates, [crackles(true)], ctx);
-    const observed = new Set(['sign.crackles']);
+    const b = posterior(db, candidates, [...told, crackles(true)], ctx);
+    const observed = new Set(['sym.cough', 'sym.fever', 'sign.crackles']);
     const xray = expectedGain(db, 'exam.xray', b, ctx, observed);
     const again = expectedGain(db, 'exam.auscultation', b, ctx, observed);
     expect(xray).toBeGreaterThan(0.3);
@@ -87,7 +90,7 @@ describe('пример из 04-medical-model.md §12', () => {
       return [id, prior[id] * (pf * 0.8 ** 2 + (1 - pf) * 0.05 ** 2)];
     }));
     const total = Object.values(joint).reduce((a, b) => a + b, 0);
-    const twice = posterior(db, candidates, [crackles(true), crackles(true)], ctx);
+    const twice = posterior(db, candidates, [...told, crackles(true), crackles(true)], ctx);
     for (const id of candidates) expect(p(twice, id)).toBeCloseTo(joint[id] / total, 9);
     // сильнее одного ответа, но слабее «двух улик»
     expect(p(twice, 'cond.pneumonia')).toBeGreaterThan(0.4885);
