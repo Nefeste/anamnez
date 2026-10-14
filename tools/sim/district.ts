@@ -37,8 +37,8 @@ import { contextOf, posterior } from '../../src/engine/med/infer';
 import { alsoSettings, recommendedSetting, settingFit, type Venue } from '../../src/engine/med/plan';
 import { choosePlan, decisionLimit, type DoctorPhase, MIN_GAIN, nextStep, runDoctor, type Strategy } from '../../src/engine/med/policy';
 import {
-  apply, bedDayOf, bedsideEquipment, candidatesOf, careUnit, current, freeBeds, freeBoxBeds, freeIcuBeds, freeRicuBeds, hospitalCtx, inBox, inIcu, inpatientsOf, inRicu, moreUrgent, newCampaign, observationsOf,
-  operationOf, readyIn, targetPlace,
+  apply, bedDayOf, bedsideEquipment, brokenOf, candidatesOf, careUnit, current, freeBeds, freeBoxBeds, freeIcuBeds, freeRicuBeds, hospitalCtx, inBox, inIcu, inpatientsOf, inRicu, meetIn, moreUrgent, newCampaign,
+  observationsOf, operationOf, readyIn, targetPlace,
 } from '../../src/engine/shift/engine';
 import { minutesTo, targetsFor, targetStart } from '../../src/engine/shift/targets';
 import { type Command, DAY, SHIFT_END, type ShiftPatient, type ShiftState } from '../../src/engine/shift/types';
@@ -197,7 +197,8 @@ function margins(s: ShiftState, p: ShiftPatient, walk: number): number[] {
 function firstDue(s: ShiftState): string {
   let best: { id: string; key: number } | undefined;
   for (const id of s.queue) {
-    const ms = margins(s, s.patients[id], 1);
+    // позвать — встретиться с ним (FR-HOS-4): минута или дорога к нему, если она дольше
+    const ms = margins(s, s.patients[id], meetIn(db, s, s.patients[id]) / 60);
     if (ms.length === 0) continue;
     const ok = ms.filter(m => m >= 0);
     const key = ok.length > 0 ? Math.min(...ok) : 1e6 + Math.min(...ms);
@@ -218,7 +219,8 @@ function keep(s: ShiftState, p: ShiftPatient): boolean {
   const own = margins(s, p, 0).filter(m => m >= 0);
   if (own.length === 0) return false;
   const mine = Math.min(...own);
-  return !s.queue.some(id => margins(s, s.patients[id], 2).some(m => m >= 0 && m < mine));
+  // попросить подождать — минута, и встретиться с тем, кто ждёт
+  return !s.queue.some(id => margins(s, s.patients[id], 1 + meetIn(db, s, s.patients[id]) / 60).some(m => m >= 0 && m < mine));
 }
 
 function beliefsOf(s: ShiftState, p: ShiftPatient) {
@@ -282,7 +284,8 @@ function playDay(s: ShiftState, player: Player) {
   const step = (cmd: Command) => apply(db, s, cmd);
   rounds(s, player, step);
   const ctx = hospitalCtx(db, s);
-  const exams = Object.keys(db.exams).sort().filter(id => !('block' in examWhere(db, ctx.plan, ctx.working, ctx.staffed, id)));
+  // сломанное с утра (FR-EQ-3) — до завтра: врач его не назначает
+  const exams = Object.keys(db.exams).sort().filter(id => !('block' in examWhere(db, ctx.plan, ctx.working, ctx.staffed, id, brokenOf(s))));
   /** ленивый: что ещё сделает у пациента — его план при первом вызове */
   const todo = new Map<string, Id[]>();
   /** разумный: где он в решении (вопросы перед назначением) и что назначить не вышло */
