@@ -85,27 +85,43 @@ function causeProbability(links: Link[], f: Id, cond?: Condition, who?: LinkWho)
 
 /**
  * То же по таблице: связи записи не меняются, а вывод спрашивает о них на каждом признаке каждого кандидата. У записи с
- * множителями пола и возраста (FR-MED-1) — своя таблица на пол и возраст, у остальных — одна.
+ * множителями пола и возраста (FR-MED-1) — своя таблица на пол и возраст, у остальных — одна. Всё о записи — в одном
+ * месте: таблицу спрашивают десятки тысяч раз за шаг врача, и лишний поиск в словаре там заметен (0.5.11, NFR-PRF-1).
  */
-const causeTables = new WeakMap<readonly Link[], Map<string, Map<Id, number>>>();
-const matters = new WeakMap<readonly Link[], boolean>();
-const whoKey = (links: readonly Link[], who: LinkWho | undefined): string => {
-  if (!who) return '';
-  let m = matters.get(links);
-  if (m === undefined) matters.set(links, (m = whoMatters(links)));
-  return m ? `${who.sex}${who.age}` : '';
-};
+interface CauseTables {
+  /** есть ли у связей множители пола и возраста */
+  matters: boolean;
+  /** одна на всех — без множителей или без человека */
+  plain?: Map<Id, number>;
+  /** с множителями — на пол и возраст */
+  byWho?: Map<string, Map<Id, number>>;
+}
+const causeTables = new WeakMap<readonly Link[], CauseTables>();
+
+function tablesOf(links: readonly Link[]): CauseTables {
+  let t = causeTables.get(links);
+  if (!t) causeTables.set(links, (t = { matters: whoMatters(links) }));
+  return t;
+}
+
+/** Ключ пола и возраста — у связей с множителями; у остальных и без человека — пустой. */
+const whoKey = (links: readonly Link[], who: LinkWho | undefined): string => (who && tablesOf(links).matters ? `${who.sex}${who.age}` : '');
+
+function causeTable(links: Link[], cond: Condition | undefined, who: LinkWho | undefined): Map<Id, number> {
+  const table = new Map<Id, number>();
+  for (const l of links) if (!table.has(l.f)) table.set(l.f, causeProbability(links, l.f, cond, who));
+  return table;
+}
 
 function causeOf(links: Link[], f: Id, cond?: Condition, who?: LinkWho): number {
-  const key = whoKey(links, who);
-  let byWho = causeTables.get(links);
-  if (!byWho) causeTables.set(links, (byWho = new Map()));
-  let table = byWho.get(key);
-  if (!table) {
-    table = new Map();
-    for (const l of links) if (!table.has(l.f)) table.set(l.f, causeProbability(links, l.f, cond, key ? who : undefined));
-    byWho.set(key, table);
-  }
+  const t = tablesOf(links);
+  let table: Map<Id, number> | undefined;
+  if (t.matters && who) {
+    const key = `${who.sex}${who.age}`;
+    const byWho = (t.byWho ??= new Map());
+    table = byWho.get(key);
+    if (!table) byWho.set(key, (table = causeTable(links, cond, who)));
+  } else table = t.plain ??= causeTable(links, cond, undefined);
   return table.get(f) ?? 0;
 }
 
@@ -389,6 +405,13 @@ export function posterior(db: ContentDb, candidates: readonly Id[], observations
   // Тот же довод верен и для остальных болезней (`ensureManifest`), но у них он делал разумного врача увереннее раньше
   // времени — меньше обследований, и ЭКГ при тахикардии оставалась несделанной; поэтому — только у болезней профосмотра
   const told = observations.filter(o => o.exam === 'complaint' && o.shown).map(o => o.f);
+  // признак, которого кандидат не меняет, — с фоном, посчитанным один раз на все кандидаты (0.5.11): числа те же
+  const bases = new Map<Id, number>();
+  const background = (f: Id): number => {
+    let x = bases.get(f);
+    if (x === undefined) bases.set(f, (x = findingProbability(db, f, ctx.knownConditions, ctx.knownRisks, unknownMiss(ctx, f, NO_SHARES), ctx)));
+    return x;
+  };
   const scored = candidates.map(id => {
     const c = db.conditions[id];
     const shares = sharesFor(db, id, ctx);
@@ -396,23 +419,29 @@ export function posterior(db: ContentDb, candidates: readonly Id[], observations
     const combos = combosOf(c, ctx);
     if (combos.length === 1) {
       const set = [id, ...(c.requires ?? []), ...ctx.knownConditions];
+      const own = prior === 0 ? null : ownFindings(db, c, shares, ctx.unknowns);
       let w = prior;
       for (const { f, e } of grouped) {
         if (w === 0) break;
-        w *= mix(e, findingProbability(db, f, set, ctx.knownRisks, unknownMiss(ctx, f, shares), ctx));
+        w *= mix(e, own && !own.has(f) ? background(f) : findingProbability(db, f, set, ctx.knownRisks, unknownMiss(ctx, f, shares), ctx));
       }
       return { id, p: w };
     }
     if (prior === 0) return { id, p: 0 };
     // фон признака без самого кандидата — от сочетания не зависит, считается один раз
     const others = [...(c.requires ?? []), ...ctx.knownConditions];
-    const bg = grouped.map(({ f, e }) => ({ f, e, other: findingProbability(db, f, others, ctx.knownRisks, unknownMiss(ctx, f, shares), ctx) }));
+    const bg = grouped.map(({ f, e }) => {
+      const other = findingProbability(db, f, others, ctx.knownRisks, unknownMiss(ctx, f, shares), ctx);
+      // сочетание, которое признака не вызывает, — с тем же множителем: он один на все такие сочетания (0.5.11)
+      return { f, e, other, fixed: mix(e, 1 - (1 - other) * (1 - 0)) };
+    });
     let w = 0;
     for (const k of combos) {
       let x = prior * k.share;
-      for (const { f, e, other } of bg) {
+      for (const { f, e, other, fixed } of bg) {
         if (x === 0) break;
-        x *= mix(e, 1 - (1 - other) * (1 - (k.causes.get(f) ?? 0)));
+        const cause = k.causes.get(f);
+        x *= cause === undefined ? fixed : mix(e, 1 - (1 - other) * (1 - cause));
       }
       w += x;
     }
@@ -438,7 +467,11 @@ interface StepCache {
   ctx: InferContext;
   sets: Id[][];
   shares: ReadonlyMap<Id, number>[];
+  /** признаки, которые кандидат меняет против фона (`ownFindings`); null — все: у него есть «без чего не бывает» */
+  own: (ReadonlySet<Id> | null)[];
   byFinding: Map<Id, readonly number[]>;
+  /** фон признака — как у кандидата, который его не меняет */
+  base: Map<Id, number>;
 }
 const stepCache = new WeakMap<readonly Belief[], StepCache>();
 
@@ -446,14 +479,89 @@ function candidateP(db: ContentDb, beliefs: readonly Belief[], ctx: InferContext
   let c = stepCache.get(beliefs);
   if (!c || c.db !== db || c.ctx !== ctx) {
     const sets = beliefs.map(b => [b.id, ...(db.conditions[b.id].requires ?? []), ...ctx.knownConditions]);
-    stepCache.set(beliefs, (c = { db, ctx, sets, shares: beliefs.map(b => sharesFor(db, b.id, ctx)), byFinding: new Map() }));
+    const shares = beliefs.map(b => sharesFor(db, b.id, ctx));
+    const own = beliefs.map((b, i) => ownFindings(db, db.conditions[b.id], shares[i], ctx.unknowns));
+    stepCache.set(beliefs, (c = { db, ctx, sets, shares, own, byFinding: new Map(), base: new Map() }));
   }
   let ps = c.byFinding.get(f);
   if (!ps) {
-    const { sets, shares } = c;
-    c.byFinding.set(f, (ps = sets.map((set, i) => findingProbability(db, f, set, ctx.knownRisks, unknownMiss(ctx, f, shares[i]), ctx))));
+    const { sets, shares, own, base } = c;
+    // гипотеза с уверенностью ровно 0 в пользу не входит — её вероятность признака не нужна; кандидат, который признака
+    // не меняет, — с фоном, посчитанным один раз: те же действия в том же порядке, и числа те же (0.5.11, NFR-PRF-1)
+    const background = (): number => {
+      let x = base.get(f);
+      if (x === undefined) base.set(f, (x = findingProbability(db, f, ctx.knownConditions, ctx.knownRisks, unknownMiss(ctx, f, NO_SHARES), ctx)));
+      return x;
+    };
+    c.byFinding.set(f, (ps = sets.map((set, i) => {
+      if (beliefs[i].p === 0) return 0;
+      const mine = own[i];
+      if (mine && !mine.has(f)) return background();
+      return findingProbability(db, f, set, ctx.knownRisks, unknownMiss(ctx, f, shares[i]), ctx);
+    })));
   }
   return ps;
+}
+
+const NO_SHARES: ReadonlyMap<Id, number> = new Map();
+
+/**
+ * Признаки, вероятность которых кандидат меняет против фона: его связи, маски и признаки неизвестного, доля которого у
+ * него своя (`sharesFor`). У кандидата с «без чего не бывает» меняется всё — null: такой считается без сокращений. Доли
+ * кандидата запоминаются на то, что известно о пациенте, — по ним и набор.
+ */
+const ownCache = new WeakMap<ReadonlyMap<Id, number>, ReadonlySet<Id>>();
+function ownFindings(db: ContentDb, c: Condition, shares: ReadonlyMap<Id, number>, unknowns: Unknowns): ReadonlySet<Id> | null {
+  if (c.requires && c.requires.length > 0) return null;
+  if (shares.size === 0) return plainOwn(c);
+  let out = ownCache.get(shares);
+  if (!out) {
+    const set = new Set(plainOwn(c));
+    const caused = causedBy(unknowns);
+    for (const id of shares.keys()) for (const f of caused.get(id) ?? []) set.add(f);
+    ownCache.set(shares, (out = set));
+  }
+  return out;
+}
+
+/** Признаки, с которыми у болезни есть связь, и те, которых при ней не бывает (маски). */
+const plainOwnCache = new WeakMap<Condition, ReadonlySet<Id>>();
+function plainOwn(c: Condition): ReadonlySet<Id> {
+  let out = plainOwnCache.get(c);
+  if (!out) plainOwnCache.set(c, (out = new Set([...c.findings.map(l => l.f), ...(c.masks ?? [])])));
+  return out;
+}
+
+/** Обратное к `unknowns.causes`: какие признаки вызывает каждое неизвестное. */
+const causedCache = new WeakMap<Unknowns, ReadonlyMap<Id, readonly Id[]>>();
+function causedBy(unknowns: Unknowns): ReadonlyMap<Id, readonly Id[]> {
+  let out = causedCache.get(unknowns);
+  if (!out) {
+    const m = new Map<Id, Id[]>();
+    for (const [f, list] of unknowns.causes) for (const u of list) (m.get(u.id) ?? m.set(u.id, []).get(u.id)!).push(f);
+    causedCache.set(unknowns, (out = m));
+  }
+  return out;
+}
+
+/** Номера гипотез с уверенностью больше нуля — одни на все обследования шага (0.5.11). */
+const lives = new WeakMap<readonly Belief[], readonly number[]>();
+function liveOf(beliefs: readonly Belief[]): readonly number[] {
+  let out = lives.get(beliefs);
+  if (!out) {
+    const list: number[] = [];
+    for (let i = 0; i < beliefs.length; i++) if (beliefs[i].p > 0) list.push(i);
+    lives.set(beliefs, (out = list));
+  }
+  return out;
+}
+
+/** Энтропия уверенности шага — одна на все обследования шага (0.5.11). */
+const entropies = new WeakMap<readonly Belief[], number>();
+function entropyOf(beliefs: readonly Belief[]): number {
+  let h = entropies.get(beliefs);
+  if (h === undefined) entropies.set(beliefs, (h = entropy(beliefs)));
+  return h;
 }
 
 /**
@@ -463,14 +571,20 @@ function candidateP(db: ContentDb, beliefs: readonly Belief[], ctx: InferContext
  */
 export function expectedGain(db: ContentDb, examId: Id, beliefs: readonly Belief[], ctx: InferContext, observed: ReadonlySet<Id>): number {
   const exam = db.exams[examId];
-  const h0 = entropy(beliefs);
+  const h0 = entropyOf(beliefs);
   // P(«есть» | кандидат) для каждого кандидата; ложная находка, которой по жалобам не ждут, — реже (вопрос 33)
   const expected = expectedFindings(db, ctx.complaints ?? []);
   const yesOf = (check: ExamCheck) => {
     const fp = falseRate(exam, check.f, check.spec, expected) / P_ONE;
     return candidateP(db, beliefs, ctx, check.f).map(p => (check.sens / P_ONE) * p + fp * (1 - p));
   };
-  const shownP = (yes: readonly number[]) => beliefs.reduce((a, b, i) => a + b.p * yes[i], 0);
+  // гипотезы с уверенностью ровно 0 ничего не прибавляют — их и не перебирать (0.5.11): числа те же
+  const live = liveOf(beliefs);
+  const shownP = (yes: readonly number[]) => {
+    let a = 0;
+    for (const i of live) a += beliefs[i].p * yes[i];
+    return a;
+  };
   let gain = 0;
   for (const check of exam.checks) {
     if (observed.has(check.f) || db.findings[check.f]?.evidence === false) continue;
@@ -481,7 +595,7 @@ export function expectedGain(db: ContentDb, examId: Id, beliefs: readonly Belief
       const norm = shown ? pYes : 1 - pYes;
       if (norm <= 0) return 0;
       let h = 0;
-      for (let i = 0; i < beliefs.length; i++) {
+      for (const i of live) {
         const p = (beliefs[i].p * (shown ? yes[i] : 1 - yes[i])) / norm;
         if (p > 0) h -= p * log2(p);
       }
