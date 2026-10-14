@@ -1463,7 +1463,8 @@ try {
     `песочница: регистратура есть, регистратора нет — ${await text(page, 'sandbox-open-needs')}`);
   // персонал: кандидат-регистратор → нанять → назначить в регистратуру
   await page.getByTestId('sandbox-staff').click();
-  await page.locator('[data-testid^="candidate-"]').first().waitFor({ timeout: 5000 });
+  // у каждого кандидата — портрет (0.5.7): в вебе два десятка холстов Skia рисует CanvasKit, на занятой машине — дольше 5 с
+  await page.locator('[data-testid^="candidate-"]').first().waitFor({ timeout: 15_000 });
   const registrar = page.locator('[data-testid^="candidate-"]', { hasText: 'Регистратор' }).first();
   await registrar.click();
   await page.getByTestId('assign-r1').click();
@@ -1653,6 +1654,11 @@ try {
   await page.getByTestId('staff-total').waitFor({ timeout: 10_000 });
   const staffTexts = await page.locator('[data-testid^="staff-s"]').allInnerTexts();
   check(staffTexts.some(x => x.includes('Терапевт') && x.includes('работает: кабинет врача №\u00a02')), `нанятый врач в «Персонале»: ${staffTexts.find(x => x.includes('Терапевт'))?.replace(/\n/g, ' · ')}`);
+  // портреты персонала (0.5.7): у каждого нанятого и кандидата — свой рисунок
+  const people = page.locator('[data-testid^="staff-s"]:not([data-testid="staff-sheet"]), [data-testid^="candidate-"]');
+  const faces = await people.locator('canvas').count();
+  check(faces > 0 && faces === await people.count(), `«Персонал»: портреты у ${faces} из ${await people.count()}`);
+  await page.screenshot({ path: join(OUT, '14-staff.png'), fullPage: true });
 
   // стационар (spec 2026-09-chapter-2, часть 26): утро дня 2 — вчерашний пациент в палате,
   // «Обход · 1»; на обходе — сутки, как идёт болезнь, температура по суткам; в решении

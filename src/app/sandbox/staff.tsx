@@ -1,16 +1,23 @@
 // Персонал своей больницы (spec 2026-09-own-hospital, часть 8): кто работает и где, свободные
 // места, кандидаты дня. Нанятый — сначала в резерве; касание — назначить в помещение (прежний
-// с этого места — в резерв), в резерв или уволить. Всё — между сменами (ADR 0016).
+// с этого места — в резерв), в резерв или уволить. Всё — между сменами (ADR 0016). У каждого — портрет в форме
+// должности (FR-AV-4, 0.5.7): кандидат и нанятый на одно лицо.
 import { Stack } from 'expo-router';
 import { useState } from 'react';
+import { View } from 'react-native';
 import { T } from '@/i18n';
+import { Portrait } from '@/render/Portrait';
 import { assign, fire, hire, type PersonView, useStaff } from '@/state/session';
 import { Button, Card, H, P, Screen, Sheet } from '@/ui/components';
+import { makeStyles, space } from '@/ui/theme';
 
 const rub = (n: number) => T.common.rub(n);
+// портретов в списке больше 16 — все `still`: в вебе холст с живым контекстом WebGL их не вместит (spikes/imaging.tsx)
+const face = (m: PersonView, size = 40) => <Portrait {...m.portrait} size={size} still />;
 
 export default function StaffScreen() {
   const v = useStaff();
+  const styles = useStyles();
   const t = T.sandbox;
   const [chosen, setChosen] = useState<string>();
   const [firing, setFiring] = useState(false);
@@ -38,7 +45,7 @@ export default function StaffScreen() {
         <P muted testID="staff-total">{t.salaries(rub(v.salaries))}</P>
         {v.staff.length === 0 && <P muted>{t.noStaff}</P>}
         {v.staff.map(m => (
-          <Button key={m.id} testID={`staff-${m.id}`} kind="plain" title={m.name}
+          <Button key={m.id} testID={`staff-${m.id}`} kind="plain" title={m.name} picture={face(m)}
             hint={`${hint(m)} · ${m.roomName ? t.worksIn(m.roomName) : t.reserve}${m.problem ? ` · ${m.problem}` : ''}`} onPress={() => setChosen(m.id)} />
         ))}
       </Card>
@@ -53,15 +60,20 @@ export default function StaffScreen() {
         <P muted>{t.candidatesHint}</P>
         {v.candidates.length === 0 && <P muted>{t.noCandidates}</P>}
         {v.candidates.map(c => (
-          <Button key={c.id} testID={`candidate-${c.id}`} kind="plain" title={c.name} hint={`${hint(c)} · ${t.hireHint}`} onPress={() => { hire(c.id); setChosen(c.id); }} />
+          <Button key={c.id} testID={`candidate-${c.id}`} kind="plain" title={c.name} picture={face(c)} hint={`${hint(c)} · ${t.hireHint}`} onPress={() => { hire(c.id); setChosen(c.id); }} />
         ))}
       </Card>
 
       <Sheet visible={!!person} onClose={close} closeTitle={t.close} testID="staff-sheet">
         {person && !firing && (
           <>
-            <H>{t.assignTitle(person.name)}</H>
-            <P muted>{hint(person)}</P>
+            <View style={styles.who}>
+              {face(person, 56)}
+              <View style={styles.fill}>
+                <H>{t.assignTitle(person.name)}</H>
+                <P muted>{hint(person)}</P>
+              </View>
+            </View>
             {v.posts.filter(x => x.roles.includes(person.role)).map(x => {
               const holder = v.staff.find(m => m.id === x.who);
               const here = x.who === person.id;
@@ -86,3 +98,8 @@ export default function StaffScreen() {
     </Screen>
   );
 }
+
+const useStyles = makeStyles(() => ({
+  who: { flexDirection: 'row', alignItems: 'center', gap: space.m },
+  fill: { flex: 1 },
+}));

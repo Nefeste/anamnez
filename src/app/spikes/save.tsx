@@ -36,6 +36,7 @@ export default function SaveSpike() {
         <Button kind="plain" title={T.spikes.save.ready} onPress={() => { play('ready'); buzz('ready'); }} />
         <Button kind="plain" title={T.spikes.save.urgent} onPress={() => { play('urgent'); buzz('urgent'); }} />
         <Button kind="plain" title={T.spikes.save.arrived} onPress={() => play('arrived')} />
+        <Button kind="plain" title={T.spikes.save.alarm} onPress={() => { play('alarm'); buzz('alarm'); }} />
         <Button kind="plain" title={ambient ? T.spikes.save.ambientOn : T.spikes.save.ambientOff} onPress={() => { setAmbient(!ambient); setAmbientOn(!ambient); }} />
       </Card>
     </Screen>

@@ -17,6 +17,7 @@ import type { Observation, Patient } from '@/engine/med/types';
 import type { TargetResult } from '@/engine/shift/targets';
 import type { Difficulty } from '@/engine/shift/types';
 import type { EcgFindings, Wall } from '@/render/ecg/model';
+import type { StaffPortrait } from '@/render/look';
 import type { ChestCtFindings } from '@/render/ct/chestGeometry';
 import type { HeadFindings } from '@/render/ct/geometry';
 import type { EgdFindings } from '@/render/egd/geometry';
@@ -164,6 +165,8 @@ export interface VisitView {
   meanwhile: string[];
   /** смена: за это время пришёл срочный пациент — звук «срочно», а не «готово» */
   urgent?: boolean;
+  /** смена: за это время у больного в смотровой остановилось сердце — тревога монитора (FR-AV-1) */
+  alarm?: boolean;
   done: Id[];
   /** обследования, которых в этой больнице не сделать, — и почему */
   unavailable: Record<Id, string>;
@@ -213,7 +216,7 @@ export interface VisitView {
   /** «Случай дня», повтор: чем засчитана первая попытка */
   firstTry?: string;
   /** приём ведёт нанятый врач — карта только для чтения, внизу «Забрать себе» (spec 2026-09-hired-doctors, часть 19) */
-  colleague?: { id: string; doctor: string; away?: boolean };
+  colleague?: { id: string; doctor: string; away?: boolean; portrait?: StaffPortrait };
   /** закрытый приём нанятого врача — строка «Приём вёл…»; есть — на экране итога и «лечение врача» */
   byDoctor?: string;
   decision?: Decision;
@@ -246,6 +249,7 @@ export interface CaseInput {
   pending: { exam: Id; readyAt: number; repeat?: true }[];
   meanwhile: string[];
   urgent?: boolean;
+  alarm?: boolean;
   done: Id[];
   draft: Draft;
   decision?: Decision;
@@ -271,7 +275,7 @@ export interface CaseInput {
   payerNote?: string;
   payment?: string[];
   achievements?: string[];
-  colleague?: { id: string; doctor: string; away?: boolean };
+  colleague?: { id: string; doctor: string; away?: boolean; portrait?: StaffPortrait };
   byDoctor?: string;
 }
 
@@ -791,6 +795,7 @@ export function makeCaseView(c: CaseInput): VisitView {
     pending: c.pending.map(x => ({ exam: x.exam, name: resultName(x.exam, x.repeat), at: hhmm(x.readyAt) })),
     meanwhile: c.meanwhile,
     ...(c.urgent ? { urgent: true } : {}),
+    ...(c.alarm ? { alarm: true } : {}),
     done: c.done,
     unavailable: c.unavailable ?? {},
     settings: c.settings ?? (['home', 'ward', 'ambulance'] as const).map(key => ({ key, title: T.spikes.patient.setting[key] })),

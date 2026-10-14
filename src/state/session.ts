@@ -35,7 +35,8 @@ import {
   type Arrival, type Decision, decisionOf, hhmm, makeCaseView, outcomeText, patientName, resultName, type SettingOption, treatmentGroupsFor, type VisitView,
 } from './caseView';
 import { daysIn, stayNorm, vitalOn, WARD_VITALS, type WardState, wardState } from '@/engine/shift/ward';
-import { CLINIC, type Doing, type Placement, placements } from './clinicMap';
+import { staffAge, type StaffPortrait } from '@/render/look';
+import { CLINIC, type Doing, type Placement, placements, uniformOfRole } from './clinicMap';
 import { type RoomSign, roomSigns } from './roomSigns';
 import { achievementsBy, archivedCase, caseKey, type DayRecord, profile, recordCases, recordDay, recordSingle } from './profile';
 import { dateText } from './profileView';
@@ -121,7 +122,7 @@ export interface SummaryView {
   returnsToday: number;
   cases: CaseRow[];
   /** нанятые врачи за день (spec 2026-09-hired-doctors): кто, его приёмы одной строкой и списком — к разбору */
-  colleagues: { id: string; title: string; line: string; cases: CaseRow[] }[];
+  colleagues: { id: string; title: string; line: string; cases: CaseRow[]; portrait?: StaffPortrait }[];
   /** принято нанятыми врачами; прежние строки итогов — ваши приёмы */
   theirs: number;
   /** исходы отпущенных домой, ставшие известными в этот день */
@@ -228,6 +229,8 @@ interface Session {
   meanwhile: string[];
   /** среди них — срочный пациент */
   urgent: boolean;
+  /** среди них — остановка сердца в смотровой: тревога монитора (FR-AV-1) */
+  alarm: boolean;
   /** чей итог показывать: только что закрытый или выбранный в итогах дня */
   focus?: string;
   savedT: number;
@@ -389,7 +392,7 @@ export function saved(): Promise<unknown> {
 
 function fresh(s: ShiftState, restored: boolean): Session {
   tipHold = undefined;
-  return { s, speed: 1, paused: false, log: [], logSeq: 0, meanwhile: [], urgent: false, savedT: s.t, restored };
+  return { s, speed: 1, paused: false, log: [], logSeq: 0, meanwhile: [], urgent: false, alarm: false, savedT: s.t, restored };
 }
 
 export function seasonOf(d: Date): Season {
@@ -611,6 +614,7 @@ export function callPatient(id: string): boolean {
   run(sess, { kind: 'call', id });
   sess.meanwhile = [];
   sess.urgent = false;
+  sess.alarm = false;
   sess.focus = undefined;
   // автопауза сделала своё: позвали того, из-за кого встали часы, или другого
   if (sess.pauseReason) {
@@ -628,6 +632,7 @@ function doctor(cmd: Command, justDone?: Id) {
   const notices = run(sess, cmd);
   sess.meanwhile = meanwhileOf(sess.s, p, notices, justDone);
   sess.urgent = notices.some(n => (n.kind === 'arrived' && n.triage === 'red') || n.kind === 'ambulance');
+  sess.alarm = notices.some(n => n.kind === 'arrest');
   changed();
 }
 
@@ -645,6 +650,7 @@ export function sendAway() {
   run(sess, { kind: 'sendAway' });
   sess.meanwhile = [];
   sess.urgent = false;
+  sess.alarm = false;
   save();
   changed();
 }
@@ -678,6 +684,7 @@ export function finishCase() {
   sess.focus = p.id;
   sess.meanwhile = [];
   sess.urgent = false;
+  sess.alarm = false;
   save();
   changed();
 }
@@ -720,6 +727,12 @@ function doctorOfCase(s: ShiftState, by: string): string {
   return m ? T.shift.colleagueCase.doctor(lowerFirst(db.roles[m.role]?.name.ru ?? ''), personName(m.sex, m.seed)) : T.shift.colleagueCase.someone;
 }
 
+/** Приём нанятого врача: кто ведёт — строкой и портретом (0.5.7); ушёл на обследования — «away». */
+function colleagueOf(s: ShiftState, p: ShiftPatient): { id: string; doctor: string; away?: boolean; portrait?: StaffPortrait } {
+  const m = s.staff?.find(x => x.id === p.by);
+  return { id: p.id, doctor: doctorOfCase(s, p.by!), ...(p.status === 'away' ? { away: true } : {}), ...(m ? { portrait: portraitOf(m) } : {}) };
+}
+
 /** Кто вёл закрытый приём — для экрана итога: глагол по полу врача; уволен — без имени. */
 function byDoctorLine(s: ShiftState, by: string): string {
   const m = s.staff?.find(x => x.id === by);
@@ -745,6 +758,7 @@ export function closeDay() {
   sess.focus = undefined;
   sess.meanwhile = [];
   sess.urgent = false;
+  sess.alarm = false;
   save();
   changed();
 }
@@ -845,6 +859,7 @@ export interface PersonView {
   roomName?: string;
   /** назначен, но не работает: нет места в ординаторской (spec 2026-09-hired-doctors) */
   problem?: string;
+  portrait: StaffPortrait;
 }
 
 /** Место в помещении, где нужен человек: занято ли и кем. */
@@ -879,12 +894,16 @@ function roomNames(rooms: readonly { id: string; type: Id }[]): Record<string, s
   }));
 }
 
+/** Портрет сотрудника (FR-AV-4, 0.5.7): с навыком и местом работы не меняется — кандидат и нанятый на одно лицо. */
+const portraitOf = (m: StaffMember): StaffPortrait => ({ seed: m.seed, sex: m.sex, age: staffAge(m.seed, m.trait), uniform: uniformOfRole(m.role) });
+
 function personOf(m: StaffMember, names: Record<string, string>, problem?: string): PersonView {
   return {
     id: m.id, name: personName(m.sex, m.seed), role: m.role, roleName: db.roles[m.role]?.name.ru ?? m.role, skill: m.skill,
     ...(m.trait ? { trait: T.sandbox.traits[m.trait] } : {}), salary: m.salary,
     ...(m.room && names[m.room] ? { room: m.room, roomName: names[m.room] } : {}),
     ...(problem ? { problem } : {}),
+    portrait: portraitOf(m),
   };
 }
 
@@ -1307,12 +1326,13 @@ function record(sess: Session, notices: Notice[]) {
 }
 
 /**
- * «За это время» в карте пациента: срочный — первым (spec, «Неудачные случаи»), затем
- * результаты этого пациента, затем остальная очередь.
+ * «За это время» в карте пациента: остановка сердца в смотровой — первой, она и звучит тревогой монитора (0.5.7);
+ * затем срочный (spec, «Неудачные случаи»), результаты этого пациента, остальная очередь.
  */
 function meanwhileOf(s: ShiftState, p: ShiftPatient, notices: Notice[], justDone?: Id): string[] {
   const out: string[] = [];
   const arrived = notices.filter((n): n is Extract<Notice, { kind: 'arrived' }> => n.kind === 'arrived');
+  for (const n of notices) if (n.kind === 'arrest' && s.patients[n.id]) out.push(T.shift.notice.arrest(nameOf(s.patients[n.id])));
   for (const n of notices) if (n.kind === 'ambulance') out.push(T.shift.notice.ambulance(nameOf(s.patients[n.id]), complaintOf(s.patients[n.id])));
   for (const n of arrived) if (n.triage === 'red') out.push(T.shift.notice.red(nameOf(s.patients[n.id]), complaintOf(s.patients[n.id])));
   for (const r of p.results) if (r.step === p.step && r.exam !== justDone) out.push(T.spikes.patient.ready(resultName(r.exam, r.repeat)));
@@ -1321,7 +1341,6 @@ function meanwhileOf(s: ShiftState, p: ShiftPatient, notices: Notice[], justDone
   for (const n of notices) {
     const q = n.kind === 'shiftEnd' ? undefined : s.patients[n.id];
     if (n.kind === 'left' && q) out.push(T.shift.notice.left(nameOf(q), female(q)));
-    if (n.kind === 'arrest' && q) out.push(T.shift.notice.arrest(nameOf(q)));
     if (n.kind === 'resultsReady' && q && q.id !== p.id && q.status === 'waiting') out.push(T.shift.notice.results(nameOf(q), female(q)));
     if (n.kind === 'shiftEnd') out.push(T.shift.notice.end);
   }
@@ -1371,6 +1390,7 @@ function summaryOf(s: ShiftState): SummaryView | undefined {
       line: T.shift.summary.colleagueLine(c.seen, c.correct, c.partly, c.wrong, c.grades, c.taken ?? 0),
       // его приёмы — к разбору, как ваши (часть 19)
       cases: all.filter(p => p.closed?.by === id && closedDay(p) === h.day).sort((a, b) => a.closed!.at - b.closed!.at).map(caseRow),
+      ...(m ? { portrait: portraitOf(m) } : {}),
     };
   });
   // умер в стационаре или переведён в тяжёлом состоянии этой ночью (часть 28б) — той же спокойной строкой
@@ -1995,6 +2015,7 @@ function buildCaseView(): VisitView | undefined {
     pending: [...asking, ...p.pending.map(x => ({ exam: x.exam, readyAt: minuteOfDay(x.readyAt), ...(x.repeat ? { repeat: x.repeat } : {}) }))],
     meanwhile: p.id === s.current ? sess.meanwhile : [],
     urgent: p.id === s.current && sess.urgent,
+    alarm: p.id === s.current && sess.alarm,
     done: p.done,
     draft: p.draft,
     decision: p.closed ? decisionFor(s.meta, p, arrived, outcomeKnown(s, p)) : undefined,
@@ -2021,7 +2042,7 @@ function buildCaseView(): VisitView | undefined {
     ...(p.paid && p.closed ? { payment: paymentText(db, p.payer ?? 'oms', p.paid, p.closed) } : {}),
     ...(p.closed ? { achievements: achievementNames(caseKey(s.meta.seed, p.id)) } : {}),
     // нанятый врач: его приём идёт — только для чтения; закрыт — кто вёл (часть 19)
-    ...(p.by && !p.closed ? { colleague: { id: p.id, doctor: doctorOfCase(s, p.by), ...(p.status === 'away' ? { away: true } : {}) } } : {}),
+    ...(p.by && !p.closed ? { colleague: colleagueOf(s, p) } : {}),
     ...(p.closed?.by ? { byDoctor: byDoctorLine(s, p.closed.by) } : {}),
   });
 }

@@ -37,7 +37,7 @@ export interface ClinicLayout extends HospitalLayout {
 }
 
 /** Должность в помещении → фигурка карты смены: подпись и «зачем он» — в i18n (`shift.map`). */
-const FIGURE: Record<string, StaffRole> = {
+export const FIGURE: Record<string, StaffRole> = {
   'room.reception|role.registrar': 'registrar',
   'room.triage|role.nurse': 'nurse',
   'room.office|role.doctor': 'doctor',

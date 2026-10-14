@@ -1,5 +1,5 @@
 // bun tools/audio/gen.ts — звуки, синтезированные кодом (ADR 0013: только CC0 или свои):
-// касание, «готов результат», «срочный». Гул вентиляции (makeAmbient) — основа фона
+// касание, «готов результат», «срочный», тревога монитора. Гул вентиляции (makeAmbient) — основа фона
 // амбулатории: сам фон с шагами и дверями из наборов CC0 собирает tools/audio/clinic.ts.
 // Детерминированы: шум — из генератора игры с фиксированным зерном.
 //
@@ -128,6 +128,41 @@ export function makeUrgent(): Float32Array {
   return normalize(out, 0.55);
 }
 
+/** Ноты тревоги монитора, Гц: до, ми, соль второй октавы и до третьей. */
+export const ALARM_NOTES = [523.25, 659.26, 783.99, 1046.5];
+/** Номер ноты на каждый из десяти импульсов: «до ми соль — соль до», пауза, ещё раз. */
+export const ALARM_MELODY = [0, 1, 2, 2, 3, 0, 1, 2, 2, 3];
+/** Импульс — 0,13 с, промежуток — 0,05 с; между третьим и четвёртым — два промежутка и импульс тишины, между половинами — 0,45 с. */
+export const ALARM_PULSE = 0.13;
+export const ALARM_STARTS = (() => {
+  const step = ALARM_PULSE + 0.05;
+  const half = [0, step, 2 * step, 4 * step, 5 * step];
+  return [...half, ...half.map(at => at + 5 * step + ALARM_PULSE + 0.45)];
+})();
+
+/**
+ * Тревога монитора при остановке сердца (FR-AV-1): мелодия «сердечной» тревоги высокого приоритета из приложения F
+ * стандарта IEC 60601-1-8 (издание 2006 года с поправкой 2012-го) — до, ми, соль, пауза, соль и до октавой выше;
+ * пачка из десяти импульсов, тембр — как у «срочного». Поправка 2020 года советует вместо мелодий звуковые образы,
+ * но мелодию узнают, и от «срочного» — одной ноты — она отличается с первого импульса.
+ */
+export function makeAlarm(): Float32Array {
+  const out = len(ALARM_STARTS[ALARM_STARTS.length - 1] + ALARM_PULSE + 0.05);
+  const harmonics = [1, 0.7, 0.5, 0.35, 0.22];
+  ALARM_STARTS.forEach((at, k) => {
+    const f0 = ALARM_NOTES[ALARM_MELODY[k]];
+    const s0 = Math.round(at * RATE), n = Math.round(ALARM_PULSE * RATE);
+    for (let i = 0; i < n && s0 + i < out.length; i++) {
+      const t = i / RATE;
+      const env = Math.max(0, Math.min(1, t / 0.012, (ALARM_PULSE - t) / 0.02));
+      let v = 0;
+      harmonics.forEach((amp, h) => (v += amp * Math.sin(2 * Math.PI * f0 * (h + 1) * t)));
+      out[s0 + i] += env * v;
+    }
+  });
+  return normalize(out, 0.55);
+}
+
 /**
  * Фон: вентиляция и далёкий гул приборов в полосе, которую слышно из телефона. Петля 8 с:
  * модуляция и гул укладываются в неё целым числом периодов, шум сводится перекрёстным
@@ -156,5 +191,6 @@ if (import.meta.main) {
   writeFileSync(join(OUT, 'tap.wav'), wav(makeTap()));
   writeFileSync(join(OUT, 'ready.wav'), wav(makeReady()));
   writeFileSync(join(OUT, 'urgent.wav'), wav(makeUrgent()));
+  writeFileSync(join(OUT, 'alarm.wav'), wav(makeAlarm()));
   console.log('звуки записаны в assets/audio; фон амбулатории — tools/audio/clinic.ts');
 }
