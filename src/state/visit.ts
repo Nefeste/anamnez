@@ -59,6 +59,8 @@ export interface Visit {
   chooseDiagnosis(id: Id): void;
   toggleTreatment(tx: Id): void;
   chooseSetting(setting: Setting): void;
+  /** дифференциальный ряд (spec 2026-10-differential): добавить гипотезу или убрать её */
+  toggleHypothesis(id: Id): void;
   finish(): void;
   view(): VisitView;
   subscribe(cb: () => void): () => void;
@@ -163,6 +165,13 @@ export function createVisit(first: number, opts: { season?: Season; onFinish?: (
       state.draft = { ...state.draft, setting };
       changed();
     },
+    // гипотеза — в конец ряда; уже в ряду — убрать
+    toggleHypothesis(id) {
+      if (state.decision || !db.conditions[id]?.presenting) return;
+      const row = state.draft.hypotheses ?? [];
+      state.draft = { ...state.draft, hypotheses: row.includes(id) ? row.filter(x => x !== id) : [...row, id] };
+      changed();
+    },
     // завершить приём: диагноз и план проверяются по правде, болезнь проматывается на неделю
     finish() {
       const s = state;
@@ -209,6 +218,7 @@ export const waitForResults = proto.waitForResults;
 export const chooseDiagnosis = proto.chooseDiagnosis;
 export const toggleTreatment = proto.toggleTreatment;
 export const chooseSetting = proto.chooseSetting;
+export const toggleHypothesis = proto.toggleHypothesis;
 export const finish = proto.finish;
 
 export function nextPatient() {

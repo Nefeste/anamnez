@@ -7,7 +7,8 @@ import { type BodySystem, type Condition, type Id, membersOf, type Rule, type Se
 import { fnv1a } from '@/engine/core/hash';
 import type { Outcome } from '@/engine/med/course';
 import { complaintObservations, examFits, expectedFindings, falseRate } from '@/engine/med/exams';
-import { type Belief, contextOf, knownFacts, posterior } from '@/engine/med/infer';
+import { evidenceFor } from '@/engine/med/differential';
+import { type Belief, contextOf, type InferContext, knownFacts, posterior } from '@/engine/med/infer';
 import { bedsideLack, type PlanEval, STAYS } from '@/engine/med/plan';
 import type { ReviewData } from '@/engine/med/review';
 import { type CaseScore, type Grade, type ScoreNote, worstGrade } from '@/engine/med/score';
@@ -143,6 +144,8 @@ export interface Draft {
   diagnosis?: Id;
   treatments: Id[];
   setting: Setting;
+  /** дифференциальный ряд игрока (spec 2026-10-differential) — по порядку добавления */
+  hypotheses?: Id[];
 }
 
 export interface VisitView {
@@ -172,7 +175,10 @@ export interface VisitView {
   unavailable: Record<Id, string>;
   /** где лечить: варианты этой больницы */
   settings: SettingOption[];
-  hints: { id: Id; name: string; outOf10: number }[];
+  /** `word` — у «Ординатора» вместо числа (spec 2026-10-resident) */
+  hints: { id: Id; name: string; outOf10: number; word?: string }[];
+  /** дифференциальный ряд игрока (FR-DX-7, spec 2026-10-differential): гипотезы с доводами — по порядку добавления */
+  differential: HypothesisView[];
   /** «Студенту» — правила решения к жалобе (часть 32): что говорят по уже проверенному */
   rules: { id: Id; name: string; text: string }[];
   /** из чего выбирают диагноз — болезни отделений этой больницы по системам органов */
@@ -727,6 +733,17 @@ const BONE_EXAMS: Record<Id, { view: BoneFindings['view']; fractures: [Id, BoneF
 
 /** «Студенту» — до пяти гипотез с частотой (03-game-design.md §14). */
 const HINTS = 5;
+/** «Ординатор» (spec 2026-10-resident): «Похоже на» — до трёх, словами (03-game-design.md §14). */
+const RESIDENT_HINTS = 3;
+
+/**
+ * Уверенность словами (FR-DX-8, spec 2026-10-resident): пять слов шкалы, как в «Words of Estimative Probability»
+ * Шермана Кента (1964), — от «едва ли» до «почти наверняка»; границы 1, 3, 6 и 9 из 10 — игровая оценка.
+ */
+export function confidenceWord(p: number): string {
+  const w = T.spikes.differential.words;
+  return p >= 0.9 ? w[4] : p >= 0.6 ? w[3] : p >= 0.3 ? w[2] : p >= 0.1 ? w[1] : w[0];
+}
 
 /**
  * Правила решения к жалобе пациента (часть 32): есть признак правила — что оно велит («Снимок
@@ -762,6 +779,50 @@ function rulesOf(p: Patient, obs: readonly Observation[]): VisitView['rules'] {
   });
 }
 
+/** Гипотеза дифференциального ряда игрока (FR-DX-7, spec 2026-10-differential): доводы — строками, по убыванию частоты. */
+export interface HypothesisView {
+  id: Id;
+  name: string;
+  /** «7 из 10» — у «Практиканта» и «Студента»; у «Ординатора» — словом (`word`); у «Врача» уверенности нет (§14) */
+  outOf10?: number;
+  word?: string;
+  pro: string[];
+  con: string[];
+  unchecked: string[];
+  /** чем подтвердить: обследования из записи болезни — сделано ли; пусто и `clinical` — по расспросу и осмотру */
+  confirm: { name: string; done: boolean }[];
+  clinical?: true;
+}
+
+/**
+ * Доводы за каждую гипотезу ряда и против неё (`evidenceFor`): что найдено, чего нет, что типичное не проверено и чем
+ * подтвердить. Уверенность — из того же вывода, что «Похоже на».
+ */
+function differentialOf(p: Patient, obs: readonly Observation[], c: CaseInput, context: () => InferContext, beliefs?: readonly Belief[]): HypothesisView[] {
+  const ids = (c.draft.hypotheses ?? []).filter(id => db.conditions[id]);
+  if (ids.length === 0) return [];
+  const t = T.spikes.differential;
+  const ctx = context();
+  const share = new Map(beliefs?.map(b => [b.id, b.p]));
+  const name = (f: Id) => db.findings[f]?.name.ru ?? f;
+  // «у 10 из 10» — только почти у всех: 95 из 100 — это «у 9 из 10», а не «всегда»
+  const n = (x: number) => (x >= 0.995 ? 10 : Math.min(9, Math.round(x * 10)));
+  return ids.map(id => {
+    const cond = db.conditions[id];
+    const ev = evidenceFor(db, id, obs, ctx, p, c.done);
+    return {
+      id,
+      name: cond.name.ru,
+      ...(beliefs ? (c.difficulty === 'resident' ? { word: confidenceWord(share.get(id) ?? 0) } : { outOf10: n(share.get(id) ?? 0) }) : {}),
+      pro: ev.pro.map(x => t.pro(name(x.f), n(x.p))),
+      con: ev.con.map(x => (x.kind === 'absent' ? t.absent(name(x.f), n(x.p)) : t.unexplained(name(x.f)))),
+      unchecked: ev.unchecked.map(x => t.unchecked(name(x.f), n(x.p), x.exam ? lowerFirst(db.exams[x.exam].name.ru) : undefined, x.exam ? c.unavailable?.[x.exam] : undefined)),
+      confirm: cond.confirm === 'clinical' ? [] : cond.confirm.map(e => ({ name: db.exams[e]?.name.ru ?? e, done: c.done.includes(e) })),
+      ...(cond.confirm === 'clinical' ? { clinical: true as const } : {}),
+    };
+  });
+}
+
 export function makeCaseView(c: CaseInput): VisitView {
   const p = c.patient;
   const line = (o: Observation): Line => ({
@@ -776,6 +837,11 @@ export function makeCaseView(c: CaseInput): VisitView {
   const obs = observationsOfCase(p, c.arrived);
   const treatments = treatmentChoices(obs, c.bedsideEquipment, c.ricu, c.rooms);
   const suggested = suggestedTreatments(c.draft.diagnosis, c.draft.treatments);
+  // вывод для «Похоже на» и уверенности в гипотезах — у «Практиканта» и «Студента»; у «Врача» их нет (§14). Контекст
+  // вывода — один на вид и только когда нужен: у «Врача» без гипотез его не считают
+  let ctx: InferContext | undefined;
+  const context = () => (ctx ??= contextOf(db, p, obs));
+  const beliefs = c.difficulty === 'doctor' ? undefined : posterior(db, candidates(c.departments), obs, context());
   return {
     version: c.version,
     title: `${patientName(p)}, ${T.spikes.patient.years(p.age)}, ${p.sex === 'm' ? T.spikes.patient.male : T.spikes.patient.female}`,
@@ -801,9 +867,10 @@ export function makeCaseView(c: CaseInput): VisitView {
     settings: c.settings ?? (['home', 'ward', 'ambulance'] as const).map(key => ({ key, title: T.spikes.patient.setting[key] })),
     // «0 из 10» ничего не подсказывает — такие не показываем, первую — всегда
     diagnoses: diagnosisGroups(c.departments),
-    hints: c.difficulty === 'doctor' ? [] : beliefsOf(p, obs, c.departments).slice(0, HINTS)
-      .map(b => ({ id: b.id, name: db.conditions[b.id].name.ru, outOf10: Math.round(b.p * 10) }))
-      .filter((h, i) => i === 0 || h.outOf10 > 0),
+    hints: beliefs ? beliefs.slice(0, c.difficulty === 'resident' ? RESIDENT_HINTS : HINTS)
+      .map(b => ({ id: b.id, name: db.conditions[b.id].name.ru, outOf10: Math.round(b.p * 10), ...(c.difficulty === 'resident' ? { word: confidenceWord(b.p) } : {}) }))
+      .filter((h, i) => i === 0 || h.outOf10 > 0) : [],
+    differential: differentialOf(p, obs, c, context, beliefs),
     rules: c.difficulty === 'doctor' ? [] : rulesOf(p, obs),
     treatments,
     treatmentGroups: groupTreatments(treatments),

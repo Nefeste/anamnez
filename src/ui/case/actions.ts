@@ -11,6 +11,8 @@ export interface CaseActions {
   chooseDiagnosis(id: Id): void;
   toggleTreatment(id: Id): void;
   chooseSetting(setting: Setting): void;
+  /** дифференциальный ряд (spec 2026-10-differential): добавить гипотезу или убрать её */
+  toggleHypothesis(id: Id): void;
   finish(): void;
   routes: { decision: Href; outcome: Href };
 }

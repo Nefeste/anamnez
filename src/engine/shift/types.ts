@@ -36,10 +36,11 @@ export type Triage = 'red' | 'yellow' | 'green';
  * Сложность (03-game-design.md §14): «Студент» — обследования не ошибаются, пациенты ждут
  * в полтора раза дольше, подсказки «Похоже на» с частотой; «Практикант» (spec 2026-10-trainee,
  * с 0.5.4) — то же, и в карте пациента сверху — то, что относится к жалобе, а разбор мягче;
- * «Врач» — всё как в жизни. Медицина — болезни, частоты, точность обследований в базе — одна на
- * всех уровнях.
+ * «Ординатор» (spec 2026-10-resident, с 0.5.8) — обследования ошибаются, как у «Врача», пациенты ждут в 1,2 раза
+ * дольше, «Похоже на» — до трёх и уверенность словами; «Врач» — всё как в жизни. Медицина — болезни, частоты,
+ * точность обследований в базе — одна на всех уровнях.
  */
-export type Difficulty = 'trainee' | 'student' | 'doctor';
+export type Difficulty = 'trainee' | 'student' | 'resident' | 'doctor';
 
 /** «Практикант» и «Студент»: обследования не ошибаются, пациенты ждут дольше, подсказки — на виду. */
 export const easyLevel = (d: Difficulty | undefined): boolean => d === 'trainee' || d === 'student';
@@ -117,7 +118,8 @@ export interface ShiftPatient {
   paid?: CaseIncome;
   step: number;
   spent: { seconds: number; money: number };
-  draft: { diagnosis?: Id; treatments: Id[]; setting: Setting };
+  /** `hypotheses` — дифференциальный ряд игрока (FR-DX-7, spec 2026-10-differential): болезни, которые он подозревает */
+  draft: { diagnosis?: Id; treatments: Id[]; setting: Setting; hypotheses?: Id[] };
   closed?: ClosedCase;
   /** ведёт нанятый врач — номер человека из штата (spec 2026-09-hired-doctors); нет — вы */
   by?: string;
@@ -214,6 +216,8 @@ export type Command =
   | { kind: 'diagnose'; id: Id }
   | { kind: 'toggleTreatment'; id: Id }
   | { kind: 'setting'; setting: Setting }
+  /** дифференциальный ряд (spec 2026-10-differential): добавить гипотезу или убрать её — времени не тратит */
+  | { kind: 'hypothesis'; id: Id }
   | { kind: 'finish' }
   /** время на карте: часы идут сами (ADR 0005) */
   | { kind: 'advance'; seconds: number }

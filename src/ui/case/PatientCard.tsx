@@ -15,6 +15,7 @@ import { Button, Card, Chip, Chips, H, P, RULE, Ruled, Screen, Tabs } from '@/ui
 import { TermSheet } from '@/ui/TermSheet';
 import { makeStyles, space, useTheme } from '@/ui/theme';
 import type { CaseActions, FooterAction } from './actions';
+import { Differential } from './Differential';
 import { ResultPicture } from './ResultPicture';
 
 type Tab = 'ask' | 'examine' | 'order';
@@ -163,9 +164,21 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
           {v.hints.length > 0 && (
             <Card>
               <Text style={styles.label}>{t.likely}</Text>
-              {v.hints.map(h => <P key={h.id} testID={`likely-${h.id}`}>{`${h.name} — ${t.similar(h.outOf10)}`}</P>)}
+              {/* из подсказки — в дифференциальный ряд (spec 2026-10-differential) */}
+              {v.hints.map(h => {
+                const inRow = v.differential.some(x => x.id === h.id);
+                return (
+                  <View key={h.id} style={styles.hint}>
+                    <View style={styles.headText}>
+                      <P testID={`likely-${h.id}`}>{`${h.name} — ${h.word ?? t.similar(h.outOf10)}`}</P>
+                    </View>
+                    <Chip testID={`likely-add-${h.id}`} strong={inRow} text={inRow ? T.spikes.differential.inRow : T.spikes.differential.toRow} onPress={() => actions.toggleHypothesis(h.id)} />
+                  </View>
+                );
+              })}
             </Card>
           )}
+          <Differential v={v} actions={actions} />
           {/* правила решения (часть 32): оттавские — нужен ли снимок по уже проверенному */}
           {v.rules.length > 0 && (
             <Card>
@@ -261,6 +274,7 @@ const useStyles = makeStyles(t => ({
   row: { flexDirection: 'row', gap: space.m, alignItems: 'center' },
   headText: { flex: 1, gap: 2 },
   colleague: { flexDirection: 'row', gap: space.m, alignItems: 'center', marginTop: space.s },
+  hint: { flexDirection: 'row', gap: space.s, alignItems: 'center' },
   label: { fontSize: 13, fontWeight: '700', letterSpacing: 1.2, color: t.colors.muted, textTransform: 'uppercase', marginTop: space.s },
   clock: { fontSize: 15, lineHeight: 21, color: t.shape.ruled ? t.colors.muted : t.colors.info },
   said: { fontFamily: t.fonts.title, fontStyle: 'italic', fontSize: 17, lineHeight: RULE, color: t.colors.ink },

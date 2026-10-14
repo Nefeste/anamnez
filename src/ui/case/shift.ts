@@ -2,14 +2,14 @@
 // очереди (или к итогам дня, если разбор открыт из них).
 import { router } from 'expo-router';
 import { T } from '@/i18n';
-import { chooseDiagnosis, chooseSetting, examine, finishCase, sendAway, toggleTreatment, waitForResults } from '@/state/session';
+import { chooseDiagnosis, chooseSetting, examine, finishCase, sendAway, toggleHypothesis, toggleTreatment, waitForResults } from '@/state/session';
 import type { CaseActions, FooterAction } from './actions';
 
 /** К экрану смены: всё, что открыто поверх него, закрывается. */
 export const toShift = () => router.dismissTo('/shift');
 
 export const shiftActions: CaseActions = {
-  act: examine, waitForResults, chooseDiagnosis, toggleTreatment, chooseSetting, finish: finishCase,
+  act: examine, waitForResults, chooseDiagnosis, toggleTreatment, chooseSetting, toggleHypothesis, finish: finishCase,
   sendAway: () => {
     sendAway();
     toShift();

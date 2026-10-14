@@ -1,11 +1,11 @@
 // Действия прототипа П4 для общих экранов приёма: один пациент, «Следующий пациент».
 import { router } from 'expo-router';
 import { T } from '@/i18n';
-import { act, chooseDiagnosis, chooseSetting, finish, nextPatient, toggleTreatment, waitForResults } from '@/state/visit';
+import { act, chooseDiagnosis, chooseSetting, finish, nextPatient, toggleHypothesis, toggleTreatment, waitForResults } from '@/state/visit';
 import type { CaseActions, FooterAction } from './actions';
 
 export const visitActions: CaseActions = {
-  act, waitForResults, chooseDiagnosis, toggleTreatment, chooseSetting, finish,
+  act, waitForResults, chooseDiagnosis, toggleTreatment, chooseSetting, toggleHypothesis, finish,
   routes: { decision: '/spikes/decision', outcome: '/spikes/outcome' },
 };
 
