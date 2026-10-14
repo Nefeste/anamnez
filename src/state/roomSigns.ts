@@ -15,6 +15,8 @@ export interface RoomSign {
   queue: number;
   /** не работает: нет нужной должности (своя больница) */
   noStaff: boolean;
+  /** аппарат помещения с утра сломан (FR-EQ-3, spec 2026-10-walk-breakdowns): починят к завтра */
+  broken: boolean;
 }
 
 /** У каких помещений лампа над дверью: туда входят к врачу или медсестре на приём и процедуру. */
@@ -27,10 +29,12 @@ const EXAM_ROOMS: ReadonlySet<string> = new Set(['ecg', 'xray', 'ultrasound', 'c
  * - свет лаборатории — анализы из неё ещё не готовы, а кровь уже взяли;
  * - очередь — к вашему кабинету: ждущие вас (новые и ваши с результатами); к кабинету нанятого
  *   врача — его пациенты с результатами; к аппарату — кто ждёт его на скамье;
- * - нет персонала — помещения из `down` (своя больница: не работает без должности).
+ * - нет персонала — помещения из `down` (своя больница: не работает без должности);
+ * - в ремонте — аппарат помещения сломался с утра (`broken` смены: «помещение:место»).
  */
 export function roomSigns(layout: ClinicLayout, s: ShiftState, down: ReadonlySet<string> = new Set()): RoomSign[] {
-  const signs = new Map(layout.rooms.map(r => [r.id, { id: r.id, lit: false, queue: 0, noStaff: down.has(r.id) }]));
+  const broken = new Set((s.broken ?? []).map(k => k.split(':')[0]));
+  const signs = new Map(layout.rooms.map(r => [r.id, { id: r.id, lit: false, queue: 0, noStaff: down.has(r.id), broken: broken.has(r.id) }]));
   const typeOf = new Map(layout.rooms.map(r => [r.id, r.type]));
   const all = Object.values(s.patients);
   for (const p of all) {

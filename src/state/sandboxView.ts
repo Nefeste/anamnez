@@ -8,6 +8,8 @@ import type { ClosedCase, DaySummary } from '@/engine/shift/types';
 import { type BuildError, canPlace, dims, type HospitalState, type Plan, sizeOf, turn } from '@/engine/hospital/build';
 import type { Block, Problem } from '@/engine/hospital/requirements';
 import { fnv1a } from '@/engine/core/hash';
+import { P_ONE } from '@/engine/core/rng';
+import { breaks } from '@/engine/shift/engine';
 import { T } from '@/i18n';
 
 export function problemText(db: ContentDb, p: Problem): string {
@@ -27,6 +29,7 @@ export function blockText(db: ContentDb, b: Block): string {
   const name = db.rooms[b.room]?.name.ru ?? b.room;
   if (b.kind === 'noRoom') return name;
   if (b.kind === 'down') return `${name}: ${problemText(db, b.problem)}`;
+  if (b.kind === 'broken') return `${name}: ${T.sandbox.problem.broken}`;
   return `${name}: ${T.sandbox.problem.noEquipment}`;
 }
 
@@ -97,7 +100,25 @@ export function examBlockText(db: ContentDb, b: Block): string {
   const room = db.rooms[b.room];
   if (b.kind === 'noRoom') return t.none(room?.gen.ru ?? b.room);
   if (b.kind === 'down') return t.down(room?.name.ru ?? b.room, problemText(db, b.problem));
+  if (b.kind === 'broken') return t.broken(db.equipment[b.equipment[0]]?.name.ru ?? b.equipment[0]);
   return t.none(db.equipment[b.equipment[0]]?.gen.ru ?? b.equipment[0]);
+}
+
+/**
+ * Строка каталога аппаратов (FR-EQ-1, spec 2026-10-walk-breakdowns): цена, обслуживание, скорость и точность, если они
+ * не как записано, и надёжность — как часто ломается; монитор, наркозный и дыхательный аппараты и стол — с запасным.
+ */
+export function equipmentLine(db: ContentDb, id: Id): string {
+  const t = T.sandbox;
+  const eq = db.equipment[id];
+  const comma = (x: number) => String(x).replace('.', ',');
+  const signed = (x: number) => (x > 0 ? `+${x}` : x < 0 ? `−${-x}` : '0');
+  return [
+    t.eqLine(T.common.rub(eq.price), T.common.rub(eq.upkeep)),
+    ...(eq.speed !== 1 ? [t.eqSpeed(comma(eq.speed))] : []),
+    ...(eq.quality.sens !== 0 || eq.quality.spec !== 0 ? [t.eqQuality(signed(eq.quality.sens), signed(eq.quality.spec))] : []),
+    breaks(eq) && eq.breakdown > 0 ? t.eqReliability(Math.round(P_ONE / eq.breakdown)) : t.eqBackup,
+  ].join(' · ');
 }
 
 /** Имя сотрудника — из того же словаря, что имена пациентов: пол и зерно. */
@@ -174,8 +195,8 @@ export function cashView(db: ContentDb, e: NonNullable<DaySummary['economy']>): 
       : {}),
     ...(l.audit.cut > 0 ? { audit: { sum: t.audit(rub(l.audit.cut)), why: t.auditWhy(l.audit.weak, l.audit.unconfirmed, l.audit.unindicated) } } : {}),
     level: levelText(db, e.level),
-    expenses: (['salaries', 'equipment', 'rooms', 'consumables', 'ward', 'interest'] as const)
-      .filter(k => (k !== 'interest' && k !== 'ward') || (l.expenses[k] ?? 0) > 0)
+    expenses: (['salaries', 'equipment', 'rooms', 'consumables', 'ward', 'interest', 'repairs'] as const)
+      .filter(k => (k !== 'interest' && k !== 'ward' && k !== 'repairs') || (l.expenses[k] ?? 0) > 0)
       .map(k => ({ key: k, title: t.expense[k], sum: rub(l.expenses[k] ?? 0) })),
     net: t.net(signed(net)),
     cash: t.cashNow(rub(e.cash)),

@@ -269,16 +269,18 @@ export function ClinicMap({ layout, people, signs = [], width, active, label, se
             </Text>
           );
         })}
-        {signs.filter(x => x.queue > 0 || x.noStaff).map(x => {
+        {signs.filter(x => x.queue > 0 || x.noStaff || x.broken).map(x => {
           const r = layout.rooms.find(q => q.id === x.id);
           if (!r) return null;
           const at = badgeAt(r, cell, doorOnTop(r, [r.door]), r.door);
-          const label = x.noStaff ? T.shift.map.signs.noStaff : T.shift.map.signs.queue(x.queue);
+          // нет персонала важнее ремонта: без людей помещение не работает совсем
+          const repair = x.broken && !x.noStaff;
+          const label = x.noStaff ? T.shift.map.signs.noStaff : repair ? T.shift.map.signs.broken : T.shift.map.signs.queue(x.queue);
           return (
             <View key={x.id} testID={`sign-${x.id}`} accessible accessibilityLabel={label}
               style={[styles.badge, at.side === 'left' ? { left: at.x } : { right: width - at.x }, { top: at.top, height: at.size, borderRadius: at.size / 2, paddingHorizontal: at.size * 0.22 }]}>
-              <Person size={at.size * 0.66} crossed={x.noStaff} />
-              {!x.noStaff && <Text allowFontScaling={false} style={[styles.badgeText, { fontSize: at.size * 0.62, lineHeight: at.size * 0.8 }]}>{x.queue}</Text>}
+              {repair ? <Device size={at.size * 0.66} /> : <Person size={at.size * 0.66} crossed={x.noStaff} />}
+              {!x.noStaff && !repair && <Text allowFontScaling={false} style={[styles.badgeText, { fontSize: at.size * 0.62, lineHeight: at.size * 0.8 }]}>{x.queue}</Text>}
             </View>
           );
         })}
@@ -320,6 +322,18 @@ function Person({ size, crossed }: { size: number; crossed: boolean }) {
       <View style={{ width: size * 0.44, height: size * 0.44, borderRadius: size, backgroundColor: PLAN_INK }} />
       <View style={{ width: size * 0.84, height: size * 0.42, marginTop: size * 0.06, borderTopLeftRadius: size * 0.42, borderTopRightRadius: size * 0.42, backgroundColor: PLAN_INK }} />
       {crossed && <View style={{ position: 'absolute', top: size * 0.44, width: size * 1.15, height: size * 0.13, borderRadius: size, backgroundColor: PLAN_RED, transform: [{ rotate: '-45deg' }] }} />}
+    </View>
+  );
+}
+
+/** Знак «в ремонте» (FR-EQ-3): аппарат с экраном, перечёркнутый красным, — как человек у «нет персонала». */
+function Device({ size }: { size: number }) {
+  return (
+    <View style={{ width: size * 0.84, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ width: size * 0.84, height: size * 0.6, borderRadius: size * 0.1, backgroundColor: PLAN_INK, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ width: size * 0.5, height: size * 0.3, borderRadius: size * 0.04, backgroundColor: PLAN_CARD }} />
+      </View>
+      <View style={{ position: 'absolute', top: size * 0.44, width: size * 1.15, height: size * 0.13, borderRadius: size, backgroundColor: PLAN_RED, transform: [{ rotate: '-45deg' }] }} />
     </View>
   );
 }

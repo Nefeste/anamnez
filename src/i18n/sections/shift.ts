@@ -68,6 +68,8 @@ export const shift = {
     left: (name: string, female: boolean) => `${name} ${ago(female, 'ушёл', 'ушла')}, не дождавшись приёма`,
     // фибрилляция желудочков в смотровой (spec 2026-10-chapter-3, часть 39б): под монитором её снимают разрядом
     arrest: (name: string) => `${name}: фибрилляция желудочков — разряд под монитором, ритм восстановлен`,
+    // с утра сломался аппарат (FR-EQ-3, spec 2026-10-walk-breakdowns): до завтра его нет
+    broken: (equipment: string, room: string) => `Не работает: ${lowerFirst(equipment)}${room ? ` (${lowerFirst(room)})` : ''} — починят к завтра`,
     end: '14:00 — приём по записи окончен, новых пациентов не будет',
     more: (n: number) => `${pluralRu(n, 'Пришёл', 'Пришли', 'Пришли')} ещё ${patients(n)}`,
   },
@@ -192,6 +194,8 @@ export const shift = {
     signs: {
       queue: (n: number) => `Ждут: ${n}`,
       noStaff: 'Нет персонала',
+      // аппарат сломался с утра (FR-EQ-3, spec 2026-10-walk-breakdowns)
+      broken: 'Аппарат в ремонте',
     },
     // коснулись человека на карте: кто это и что делает
     staff: {

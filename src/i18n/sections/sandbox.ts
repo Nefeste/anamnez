@@ -74,6 +74,7 @@ export const sandbox = {
     noDoor: 'нет двери в коридор',
     noPath: 'нет прохода от входа',
     noEquipment: 'нет аппарата',
+    broken: 'аппарат в ремонте',
     noStaff: (gen: string) => `нет ${gen}`,
     // «нет места в ординаторской»: у этого слова родительный и предложный совпадают
     noPlace: (gen: string) => `нет места в ${gen}`,
@@ -86,12 +87,19 @@ export const sandbox = {
   buy: 'Купить аппарат',
   sell: (rub: string) => `Продать · ${rub}`,
   eqLine: (price: string, upkeep: string) => `${price} · обслуживание ${upkeep} в день`,
+  // каталог аппаратов (FR-EQ-1, spec 2026-10-walk-breakdowns): скорость, точность, надёжность
+  eqSpeed: (k: string) => `время обследования ×${k}`,
+  eqQuality: (sens: string, spec: string) => `чувствительность ${sens}, специфичность ${spec}\u00a0п.\u00a0п.`,
+  eqReliability: (days: number) => `ломается в среднем раз в ${days}\u00a0${pluralRu(days, 'рабочий день', 'рабочих дня', 'рабочих дней')}`,
+  eqBackup: 'не встаёт: есть запасной',
   demolish: (rub: string) => `Снести · вернётся ${rub}`,
   demolishTitle: (name: string) => `Снести: ${lowerFirst(name)}?`,
   demolishText: 'Вернётся половина цены помещения и аппаратов. Отменить можно, пока открыт экран стройки.',
   examBlock: {
     none: (gen: string) => `нет ${gen}`,
     down: (name: string, why: string) => `${lowerFirst(name)} не работает: ${why}`,
+    // с утра сломался (FR-EQ-3): починят к завтра
+    broken: (name: string) => `${lowerFirst(name)} в ремонте — починят к завтра`,
   },
 
   // персонал
@@ -170,6 +178,8 @@ export const sandbox = {
     consumables: 'Расходники',
     ward: 'Стационар: койко-дни',
     interest: 'Проценты по долгу',
+    // аппараты, сломавшиеся с утра (FR-EQ-3, spec 2026-10-walk-breakdowns)
+    repairs: 'Ремонт аппаратов',
   },
   net: (rub: string) => `Итог дня: ${rub}`,
   cashNow: (rub: string) => `В кассе: ${rub}`,

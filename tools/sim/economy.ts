@@ -22,7 +22,7 @@ import { examWhere } from '../../src/engine/hospital/requirements';
 import { contextOf, expectedGain, posterior } from '../../src/engine/med/infer';
 import { choosePlan, examCost, runDoctor, type Strategy } from '../../src/engine/med/policy';
 import type { Grade } from '../../src/engine/med/score';
-import { apply, candidatesOf, current, hospitalCtx, newSandbox, observationsOf } from '../../src/engine/shift/engine';
+import { apply, brokenOf, candidatesOf, current, hospitalCtx, newSandbox, observationsOf } from '../../src/engine/shift/engine';
 import { type Command, DAY, SHIFT_END, type ShiftPatient, type ShiftState } from '../../src/engine/shift/types';
 import { buildDb } from '../content/load';
 
@@ -170,7 +170,8 @@ function confirmFor(s: ShiftState, p: ShiftPatient, exams: Id[]): boolean {
 
 function playDay(s: ShiftState, strategy: Strategy, prefetch = false) {
   const ctx = hospitalCtx(db, s);
-  const exams = Object.keys(db.exams).sort().filter(id => !('block' in examWhere(db, ctx.plan, ctx.working, ctx.staffed, id)));
+  // сломанное с утра (FR-EQ-3) — до завтра: врач его не назначает
+  const exams = Object.keys(db.exams).sort().filter(id => !('block' in examWhere(db, ctx.plan, ctx.working, ctx.staffed, id, brokenOf(s))));
   const started = new Set<string>();
   const step = (cmd: Command) => apply(db, s, cmd);
   for (let guard = 0; guard < 5000; guard++) {

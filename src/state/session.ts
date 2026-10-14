@@ -21,7 +21,7 @@ import { memberAt, type StaffMember, staffingOf } from '@/engine/hospital/staff'
 import { type MissionProgress, missionProgress, nextChapterOf, tutorialDayOf } from '@/engine/campaign/campaign';
 import { levelOf } from '@/engine/economy/economy';
 import {
-  apply, atDoorOf, bedsideEquipment, bedsideOf, boxBeds, current, freeBeds, freeBoxBeds, freeIcuBeds, freeRicuBeds, type HospitalCtx, hospitalCtx, icuBeds, inBox, inIcu, inpatientsOf, inRicu,
+  apply, atDoorOf, bedsideEquipment, bedsideOf, boxBeds, brokenOf, current, freeBeds, freeBoxBeds, freeIcuBeds, freeRicuBeds, type HospitalCtx, hospitalCtx, icuBeds, inBox, inIcu, inpatientsOf, inRicu,
   moreUrgent, newCampaign, newSandbox, ricuBeds,
   newShift, newSingle, observationsOf, operationOf, type OrBlock, orBlock, orQueueOf, reviewFor, SANDBOX_VENUE, stayEquipment, targetPlace, wardBeds,
 } from '@/engine/shift/engine';
@@ -392,7 +392,9 @@ export function saved(): Promise<unknown> {
 
 function fresh(s: ShiftState, restored: boolean): Session {
   tipHold = undefined;
-  return { s, speed: 1, paused: false, log: [], logSeq: 0, meanwhile: [], urgent: false, alarm: false, savedT: s.t, restored };
+  // открыли сохранение посреди дня — что сломалось с утра (FR-EQ-3), в журнале снова первым
+  const log = s.dayOpen ? brokenLines(s).map((text, key) => ({ key, t: s.t, kind: 'end' as const, text })) : [];
+  return { s, speed: 1, paused: false, log, logSeq: log.length, meanwhile: [], urgent: false, alarm: false, savedT: s.t, restored };
 }
 
 export function seasonOf(d: Date): Season {
@@ -777,12 +779,25 @@ export function nextDay() {
     changed();
     return;
   }
-  sess.log = [];
+  // с утра сломался аппарат (FR-EQ-3) — первой строкой журнала дня
+  sess.log = brokenLines(sess.s).map(text => ({ key: sess.logSeq++, t: sess.s.t, kind: 'end', text }));
   sess.focus = undefined;
   sess.paused = false;
   sess.pauseReason = undefined;
   save();
   changed();
+}
+
+/** Что сломалось с утра (FR-EQ-3): «Не работает: рентгеновский аппарат (рентген-кабинет) — починят к завтра». */
+function brokenLines(s: ShiftState): string[] {
+  if (!s.broken || s.broken.length === 0) return [];
+  const ctx = hospitalCtx(db, s);
+  const names = roomNames(ctx.plan.rooms);
+  return s.broken.map(k => {
+    const [room, slot] = k.split(':');
+    const id = ctx.plan.rooms.find(r => r.id === room)?.equipment[Number(slot)];
+    return T.shift.notice.broken(id ? db.equipment[id].name.ru : '', names[room] ?? '');
+  });
 }
 
 /** Ключ закрытого дня: партия и день — день засчитывается достижениям один раз. */
@@ -962,19 +977,27 @@ function sandboxLayout(s: ShiftState): ClinicLayout {
   return l;
 }
 
-// обследования, которых в этой больнице не сделать, — и почему: в своей и в амбулатории практики
-const blocked = new WeakMap<HospitalCtx, Record<Id, string>>();
+// обследования, которых в этой больнице не сделать, — и почему: в своей и в амбулатории практики; сломанные с утра
+// аппараты (FR-EQ-3) — свои на каждый день
+const blocked = new WeakMap<HospitalCtx, Map<string, Record<Id, string>>>();
 
 function unavailableOf(s: ShiftState): Record<Id, string> {
   const ctx = hospitalCtx(db, s);
-  let out = blocked.get(ctx);
+  const key = (s.broken ?? []).join(',');
+  let byDay = blocked.get(ctx);
+  if (!byDay) {
+    byDay = new Map();
+    blocked.set(ctx, byDay);
+  }
+  let out = byDay.get(key);
   if (!out) {
     out = {};
+    const broken = brokenOf(s);
     for (const id of Object.keys(db.exams)) {
-      const w = examWhere(db, ctx.plan, ctx.working, ctx.staffed, id);
+      const w = examWhere(db, ctx.plan, ctx.working, ctx.staffed, id, broken);
       if ('block' in w) out[id] = examBlockText(db, w.block);
     }
-    blocked.set(ctx, out);
+    byDay.set(key, out);
   }
   return out;
 }

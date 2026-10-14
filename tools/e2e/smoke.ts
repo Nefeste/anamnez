@@ -5,6 +5,7 @@ import { extname, join } from 'node:path';
 import { chromium, type Page } from 'playwright';
 import { presetHospital } from '../../src/engine/hospital/build';
 import { clinicLayout } from '../../src/engine/hospital/clinic';
+import { slotKey } from '../../src/engine/hospital/requirements';
 import { presetStaff } from '../../src/engine/hospital/staff';
 import { generatePatient } from '../../src/engine/med/generate';
 import { apply, newCampaign, newSandbox, newShift, newSingle } from '../../src/engine/shift/engine';
@@ -135,6 +136,19 @@ function sandboxEndOfDaySave(): string {
   apply(db, s, { kind: 'advance', seconds: 6 * 3600 });
   while (s.queue.length > 0) see();
   return JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s });
+}
+
+/**
+ * Песочница (FR-EQ-3, spec 2026-10-walk-breakdowns): день 1, с утра сломан рентген; первый пришедший — в очереди.
+ */
+function brokenSave(): { save: string; id: string; xray: string } {
+  const { db } = buildDb();
+  const s = newSandbox(db, { seed: 43, season: 'winter', difficulty: 'doctor', start: 'clinic', budget: db.economy.sandbox.budgets.normal });
+  apply(db, s, { kind: 'nextDay' });
+  const xray = s.hospital!.rooms.find(r => r.type === 'room.xray')!.id;
+  s.broken = [slotKey(xray, 0)];
+  for (let i = 0; i < 600 && s.queue.length === 0; i++) apply(db, s, { kind: 'advance', seconds: 60 });
+  return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s }), id: s.queue[0], xray };
 }
 
 /**
@@ -1598,6 +1612,32 @@ try {
   check(!(await page.getByTestId('exam-exam.cbc').isDisabled()), 'песочница: общий анализ крови — можно');
   await page.screenshot({ path: join(OUT, '13-sandbox-card.png') });
   check(/^(ОМС|ДМС|Платно): /.test(await visibleText(page, 'visit-payer')), `песочница: кто платит — ${await visibleText(page, 'visit-payer')}`);
+
+  // поломка (FR-EQ-3, spec 2026-10-walk-breakdowns): с утра сломан рентген — у рентген-кабинета на карте знак «Аппарат в
+  // ремонте», в журнале смены — строка о нём, в карте пациента снимок серым с причиной
+  const broken = brokenSave();
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', broken.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId(`sign-${broken.xray}`).waitFor({ timeout: 15_000 });
+  await page.getByTestId('tab-pause').click();
+  const repairSign = (await page.getByTestId(`sign-${broken.xray}`).getAttribute('aria-label')) ?? '';
+  const brokenLog = await page.getByText('Не работает: цифровой рентгеновский аппарат (рентген-кабинет) — починят к завтра').count();
+  check(repairSign === 'Аппарат в ремонте' && brokenLog > 0, `поломка: у рентген-кабинета — «${repairSign}», строка в журнале — ${brokenLog}`);
+  await page.waitForTimeout(1500); // лист меню «Продолжить» ещё уезжает вниз (веб)
+  await page.screenshot({ path: join(OUT, '13-sandbox-broken.png') });
+  await page.getByTestId(`queue-${broken.id}`).click();
+  await page.getByTestId('exam-exam.ask_complaints').waitFor({ timeout: 10_000 });
+  await page.getByTestId('tab-order').click();
+  if ((await page.getByTestId('exam-exam.xray_chest').count()) === 0) await page.getByTestId('visit-rest-order').click();
+  const brokenXray = page.getByTestId('exam-exam.xray_chest');
+  await brokenXray.waitFor({ timeout: 5000 });
+  check(await brokenXray.isDisabled() && (await brokenXray.innerText()).includes('цифровой рентгеновский аппарат в ремонте — починят к завтра'),
+    `поломка: снимок — «${(await brokenXray.innerText()).replace(/\n/g, ' · ')}»`);
 
   // конец дня в песочнице из сохранения: итоги — касса по плательщикам и статьям, репутация;
   // у приёма — оплата после экспертизы

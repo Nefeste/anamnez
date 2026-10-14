@@ -4,7 +4,7 @@
 // Две точки входа, как в `06-architecture.md` §2: `apply(state, command)` — действие врача,
 // которое двигает часы на свою цену, и команда `advance` — время на карте. Состояние
 // меняется на месте; случайность — только из именованных ветвей зерна смены (ADR 0004).
-import type { Chapter, ContentDb, Exam, Id, Preset, Season, Setting, TutorialPatient } from '../../content/types';
+import type { Chapter, ContentDb, Equipment, Exam, Id, Preset, Season, Setting, TutorialPatient } from '../../content/types';
 import { fnv1a } from '../core/hash';
 import {
   caseIncome, consumablesOf, emptyLedger, expensesOf, flowOf, incomeOf, interestOf, type Ledger, levelOf, payerOf, reputationAfter, salariesOf, upkeepOf,
@@ -12,8 +12,9 @@ import {
 } from '../economy/economy';
 import { type CampaignProgress, campaignEvening, chapterOf, nextChapterOf, startChapter, tutorialDayOf } from '../campaign/campaign';
 import { build, emptyPlot, type HospitalState, type Plan, planOf, presetHospital, sizeOf, UNDO_DEPTH, widenPlot } from '../hospital/build';
-import { bedsideIn, DOCTOR, doctorRoom, examWhere, openBlocks, type Problem, problemsOf, type Staffing, workingRooms } from '../hospital/requirements';
+import { bedsideIn, DOCTOR, doctorRoom, examWhere, NONE_BROKEN, openBlocks, type Problem, problemsOf, slotKey, type Staffing, workingRooms } from '../hospital/requirements';
 import { applicantsOf, doctorOf, grow, memberAt, presetStaff, PROFILE_PRIOR, readingOf, type StaffMember, speedOf, staffingOf } from '../hospital/staff';
+import { walkSeconds } from '../hospital/walk';
 import { log2 } from '../core/math';
 import { P_ONE, RNG_VERSION, Rng } from '../core/rng';
 import { examHarmOutcome, observe, type Outcome, rscOutcome } from '../med/course';
@@ -812,6 +813,9 @@ function settle(db: ContentDb, s: ShiftState) {
   const upkeep = upkeepOf(db, s.hospital!);
   ledger.expenses.salaries = salariesOf(s.staff ?? []);
   ledger.expenses.equipment = upkeep.equipment;
+  // ремонт сломанного с утра (FR-EQ-3)
+  const repairs = repairsOf(db, s);
+  if (repairs > 0) ledger.expenses.repairs = repairs;
   ledger.expenses.rooms = upkeep.rooms;
   // лежащие ночуют в палате: койко-день у каждого (часть 26), по месту и тому, что с ними делают (`bedDayOf`)
   ledger.expenses.ward = inpatientsOf(s).reduce((a, p) => a + bedDayOf(db, s, p), 0);
@@ -860,10 +864,54 @@ function nextDay(db: ContentDb, s: ShiftState) {
   s.summary = emptySummary(s.day);
   s.journal = [];
   s.dayOpen = true;
+  // утром врач — в своём кабинете (FR-HOS-4)
+  delete s.doctorAt;
+  // аппараты, сломавшиеся с утра (FR-EQ-3): до конца дня их нет, к завтра починят
+  const broken = breakdowns(db, s);
+  if (broken.length > 0) s.broken = broken;
+  else delete s.broken;
   planDay(db, s);
   prune(s);
   // ночью операционная не работала — утром бригада берёт очередь (часть 28)
   startOperations(db, s);
+}
+
+/**
+ * Что ломается (FR-EQ-3): аппараты обследований в кабинетах; монитор у постели, наркозный и дыхательный аппараты и
+ * стол — нет: у них в больнице есть запасной.
+ */
+export const breaks = (eq: Equipment): boolean => eq.exams.length > 0;
+/** Ремонт за счёт больницы — процент цены аппарата (игровая оценка: выезд сервиса и деталь). */
+export const REPAIR_PCT = 2;
+
+/**
+ * С утра (FR-EQ-3, spec 2026-10-walk-breakdowns): у каждого аппарата обследований — свой жребий по «надёжности»
+ * каталога (`breakdown`, доля за рабочий день) из ветви `breakdown:<день>:<помещение>:<место>`. В учебный день главы — нет:
+ * его пациенты ждут работающих кабинетов.
+ */
+export function breakdowns(db: ContentDb, s: ShiftState): string[] {
+  if (tutorialDay(db, s) === s.day) return [];
+  const out: string[] = [];
+  for (const r of hospitalCtx(db, s).plan.rooms) {
+    r.equipment.forEach((id, slot) => {
+      const eq = id ? db.equipment[id] : undefined;
+      if (eq && breaks(eq) && eq.breakdown > 0 && branch(s, `breakdown:${s.day}:${r.id}:${slot}`).chance(eq.breakdown)) out.push(slotKey(r.id, slot));
+    });
+  }
+  return out;
+}
+
+/** Сломанные сегодня аппараты — для `examWhere`. */
+export const brokenOf = (s: ShiftState): ReadonlySet<string> => (s.broken && s.broken.length > 0 ? new Set(s.broken) : NONE_BROKEN);
+
+/** Сколько стоит починить сломанное сегодня, ₽: процент цены каждого аппарата. */
+function repairsOf(db: ContentDb, s: ShiftState): number {
+  const plan = hospitalCtx(db, s).plan;
+  return (s.broken ?? []).reduce((sum, key) => {
+    const [room, slot] = key.split(':');
+    const id = plan.rooms.find(r => r.id === room)?.equipment[Number(slot)];
+    return sum + (id ? Math.round((db.equipment[id].price * REPAIR_PCT) / 100) : 0);
+  }, 0);
 }
 
 /**
@@ -892,7 +940,35 @@ function call(db: ContentDb, s: ShiftState, id: string): Notice[] {
   p.calledT ??= s.t;
   p.wait++; // прежняя проверка терпения недействительна
   s.current = id;
-  return spend(db, s, p, MIN);
+  // к привезённому скорой врач идёт в смотровую приёмного, к пришедшему сам — в свой кабинет (FR-HOS-4)
+  const meet = meetIn(db, s, p);
+  goTo(s, p);
+  return spend(db, s, p, meet);
+}
+
+/**
+ * Сколько секунд врачу идти к больному (FR-HOS-4, spec 2026-10-walk-breakdowns): от того места, где он был у прошлого, —
+ * до смотровой, где лежит привезённый скорой, или до своего кабинета; от одного лежащего в смотровой к другому — без
+ * дороги.
+ */
+export function walkTo(db: ContentDb, s: ShiftState, p: ShiftPatient): number {
+  const plan = hospitalCtx(db, s).plan;
+  const office = doctorRoom(plan);
+  return walkSeconds(plan, s.doctorAt ?? office, p.bay?.room ?? office);
+}
+
+/**
+ * Через сколько секунд врач и больной встретятся (FR-HOS-4): позвать — минута, как и прежде, а врач тем временем идёт к
+ * нему в смотровую или обратно в кабинет; дорога дольше минуты — столько, сколько идти.
+ */
+export function meetIn(db: ContentDb, s: ShiftState, p: ShiftPatient): number {
+  return Math.max(MIN, walkTo(db, s, p));
+}
+
+/** Врач — у этого больного: в смотровой, где он лежит, или в своём кабинете. */
+function goTo(s: ShiftState, p: ShiftPatient) {
+  if (p.bay) s.doctorAt = p.bay.room;
+  else delete s.doctorAt;
 }
 
 /**
@@ -940,7 +1016,7 @@ export function targetPlace(db: ContentDb, s: ShiftState, p: ShiftPatient): Targ
   return {
     roomType: room => ctx.plan.rooms.find(r => r.id === room)?.type,
     bedside,
-    can: exam => bedside(exam) || !('block' in examWhere(db, ctx.plan, ctx.working, ctx.staffed, exam)),
+    can: exam => bedside(exam) || !('block' in examWhere(db, ctx.plan, ctx.working, ctx.staffed, exam, brokenOf(s))),
   };
 }
 
@@ -952,7 +1028,7 @@ export function targetPlace(db: ContentDb, s: ShiftState, p: ShiftPatient): Targ
 function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pct = 100): number | null {
   const how = examSetup(db, s, p, examId);
   if (!how) return null;
-  const { e, ctx, bed, queued, room, eqId, roomPct } = how;
+  const { e, ctx, bed, queued, room, eqId, roomPct, walk } = how;
   const skill = room && e.kind === 'imaging' ? imagingSkill(db, ctx.staff, room, eqId) : NORMAL_SKILL;
 
   // песочница: показано ли — по тому, что известно сейчас; показанные оплачивают ОМС и ДМС
@@ -971,7 +1047,8 @@ function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pc
   const after = (e.time.report ?? 0) + (e.time.turnaround ?? 0);
   if (queued && room) {
     const order = ORDER_MINUTES * MIN;
-    const start = Math.max(s.t + order, s.rooms[room.id] ?? 0);
+    // к аппарату — назначить и дойти до кабинета
+    const start = Math.max(s.t + order + walk, s.rooms[room.id] ?? 0);
     const end = start + Math.round((e.time.procedure * MIN * roomPct) / 100);
     s.rooms[room.id] = end;
     addPending(s, p, examId, end + after * MIN, obs, { room: room.id, start, end });
@@ -985,10 +1062,11 @@ function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pc
   const again = e.repeat?.checks ?? [];
   const first = obs.filter(o => !again.includes(o.f));
   const second = obs.filter(o => again.includes(o.f));
-  if (after > 0) addPending(s, p, examId, s.t + cost + wait, first, room ? { room: room.id, start: s.t, end: s.t + cost } : undefined);
+  // анализ: кровь берут в процедурном — пациент до него доходит (FR-HOS-4); результат — на столько позже
+  if (after > 0) addPending(s, p, examId, s.t + walk + cost + wait, first, room ? { room: room.id, start: s.t + walk, end: s.t + walk + cost } : undefined);
   else p.results.push({ exam: examId, obs: first, at: s.t + cost, step: p.step });
   if (e.repeat && second.length > 0) {
-    const draw = s.t + e.repeat.minutes * MIN;
+    const draw = s.t + e.repeat.minutes * MIN + walk;
     addPending(s, p, examId, draw + cost + wait, second, room ? { room: room.id, start: draw, end: draw + cost } : undefined, true);
   }
   return cost;
@@ -1002,16 +1080,37 @@ function examSetup(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id) {
   // у постели (spec 2026-10-chapter-3, часть 37): лежащему в смотровой приёмного с монитором ЭКГ
   // снимают на месте — врач, без очереди в кабинет и без описания
   const bed = bedsideOf(db, s, p, examId);
-  const where = bed ? { rooms: [] } : examWhere(db, ctx.plan, ctx.working, ctx.staffed, examId);
+  const where = bed ? { rooms: [] } : examWhere(db, ctx.plan, ctx.working, ctx.staffed, examId, brokenOf(s));
   if ('block' in where) return null;
   const queued = !bed && (e.kind === 'imaging' || e.kind === 'functional');
   const rooms = e.room && !bed ? where.rooms.map(id => ctx.plan.rooms.find(r => r.id === id)!) : [];
   const room = queued ? rooms.reduce((a, b) => ((s.rooms[b.id] ?? 0) < (s.rooms[a.id] ?? 0) ? b : a)) : rooms[0];
-  const eqId = room?.equipment.find(x => x !== null && (e.equipment ?? []).includes(x)) ?? undefined;
+  const broken = brokenOf(s);
+  const eqId = room?.equipment.find((x, slot) => x !== null && (e.equipment ?? []).includes(x) && !broken.has(slotKey(room.id, slot))) ?? undefined;
   const eq = eqId ? db.equipment[eqId] : undefined;
   // время: аппарат и тот, кто делает (первая должность помещения), — в процентах записанного
   const roomPct = room ? Math.round((eq?.speed ?? 1) * speedOf(db, memberAt(ctx.staff, room.id, db.rooms[room.type].staff[0]))) : 100;
-  return { e, ctx, bed, queued, room, eqId, roomPct };
+  // дорога (FR-HOS-4, spec 2026-10-walk-breakdowns): снимок и функциональное — в своём кабинете, материал берут там, где
+  // записано (кровь — в процедурном, тропонин и пункцию — в смотровой приёмного)
+  const to = queued ? room?.id : e.collect && !bed ? collectRoom(ctx, p, e.collect) : undefined;
+  const walk = to ? walkSeconds(ctx.plan, fromRoom(ctx, p), to) : 0;
+  return { e, ctx, bed, queued, room, eqId, roomPct, walk };
+}
+
+/** Где берут материал (FR-HOS-4): лежит в помещении этого вида — там же, иначе — в первом работающем. */
+function collectRoom(ctx: HospitalCtx, p: ShiftPatient, type: Id): string | undefined {
+  if (p.bay && ctx.plan.rooms.find(r => r.id === p.bay!.room)?.type === type) return p.bay.room;
+  return ctx.plan.rooms.find(r => r.type === type && ctx.working.has(r.id))?.id;
+}
+
+/**
+ * Откуда пациент идёт на обследование (FR-HOS-4): лежит в смотровой приёмного — оттуда, его ведёт нанятый врач — из
+ * кабинета врача, иначе — из вашего кабинета.
+ */
+function fromRoom(ctx: HospitalCtx, p: ShiftPatient): string | undefined {
+  if (p.bay) return p.bay.room;
+  if (p.by) return ctx.staff.find(m => m.id === p.by)?.room;
+  return doctorRoom(ctx.plan);
 }
 
 /**
@@ -1023,11 +1122,11 @@ function examSetup(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id) {
 export function readyIn(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id): number | undefined {
   const how = examSetup(db, s, p, examId);
   if (!how) return undefined;
-  const { e, bed, queued, room, roomPct } = how;
+  const { e, bed, queued, room, roomPct, walk } = how;
   if (bed) return bed.time.procedure;
   const after = (e.time.report ?? 0) + (e.time.turnaround ?? 0);
-  if (queued && room) return (Math.max(s.t + ORDER_MINUTES * MIN, s.rooms[room.id] ?? 0) - s.t) / MIN + (e.time.procedure * roomPct) / 100 + after;
-  return e.time.procedure + (room ? (after * roomPct) / 100 : after) + (e.repeat?.minutes ?? 0);
+  if (queued && room) return (Math.max(s.t + ORDER_MINUTES * MIN + walk, s.rooms[room.id] ?? 0) - s.t) / MIN + (e.time.procedure * roomPct) / 100 + after;
+  return walk / MIN + e.time.procedure + (room ? (after * roomPct) / 100 : after) + (e.repeat?.minutes ?? 0);
 }
 
 function addPending(s: ShiftState, p: ShiftPatient, examId: Id, readyAt: number, obs: Observation[], at?: { room: string; start: number; end: number }, repeat?: true) {
@@ -2168,8 +2267,10 @@ function takeOver(db: ContentDb, s: ShiftState, id: string): Notice[] {
       p.status = 'inRoom';
       p.wait++;
       s.current = p.id;
-      // дослушать ответ у врача и дойти до вас
-      notices = [...advanceBy(db, s, busy - s.t), ...spend(db, s, p, MIN)];
+      // дослушать ответ у врача и дойти до вас; вы — из смотровой приёмного, если были там (FR-HOS-4)
+      const meet = meetIn(db, s, p);
+      goTo(s, p);
+      notices = [...advanceBy(db, s, busy - s.t), ...spend(db, s, p, meet)];
     } else {
       // впереди — по времени прихода, как вернувшийся с обследований
       enqueue(s, p, p.arriveT);
@@ -2179,14 +2280,23 @@ function takeOver(db: ContentDb, s: ShiftState, id: string): Notice[] {
   return notices;
 }
 
-/** Обследования, которые в этой больнице можно сделать, — из них выбирает нанятый врач. */
-const examLists = new WeakMap<HospitalCtx, Id[]>();
-function examsHere(db: ContentDb, s: ShiftState): Id[] {
+/**
+ * Обследования, которые в этой больнице можно сделать, — из них выбирает нанятый врач. Больница днями та же, а сломанное
+ * с утра — своё у каждого дня (FR-EQ-3): список — по больнице и сломанному.
+ */
+const examLists = new WeakMap<HospitalCtx, Map<string, Id[]>>();
+export function examsHere(db: ContentDb, s: ShiftState): Id[] {
   const ctx = hospitalCtx(db, s);
-  let list = examLists.get(ctx);
+  let byBroken = examLists.get(ctx);
+  if (!byBroken) {
+    byBroken = new Map();
+    examLists.set(ctx, byBroken);
+  }
+  const key = (s.broken ?? []).join(',');
+  let list = byBroken.get(key);
   if (!list) {
-    list = Object.keys(db.exams).sort().filter(id => !('block' in examWhere(db, ctx.plan, ctx.working, ctx.staffed, id)));
-    examLists.set(ctx, list);
+    list = Object.keys(db.exams).sort().filter(id => !('block' in examWhere(db, ctx.plan, ctx.working, ctx.staffed, id, brokenOf(s))));
+    byBroken.set(key, list);
   }
   return list;
 }

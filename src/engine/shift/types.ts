@@ -414,6 +414,16 @@ export interface ShiftState {
   seq: number;
   /** когда освободится помещение с очередью к аппарату (рентген, ЭКГ): номер помещения → время */
   rooms: Record<string, number>;
+  /**
+   * аппараты, сломавшиеся с утра (FR-EQ-3, spec 2026-10-walk-breakdowns): «помещение:место»; до конца дня их будто нет, к
+   * завтра починят; нет — всё работает
+   */
+  broken?: string[];
+  /**
+   * где врач (FR-HOS-4): смотровая приёмного, где он был у последнего больного; к следующему он идёт оттуда; нет — в своём
+   * кабинете
+   */
+  doctorAt?: string;
   returns: PlannedReturn[];
   summary: DaySummary;
   history: DaySummary[];

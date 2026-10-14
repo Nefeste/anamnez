@@ -13,7 +13,7 @@ import { T } from '@/i18n';
 import { useSettings } from '@/state/settings';
 import { BuildMap, type Tool } from '@/render/map/BuildMap';
 import { buildAction, type BuildView, endBuild, undoBuild, useBuild, useStaff } from '@/state/session';
-import { buildErrorText, centered, type GhostSpec, ghostOf, rotated, statusText } from '@/state/sandboxView';
+import { buildErrorText, centered, equipmentLine, type GhostSpec, ghostOf, rotated, statusText } from '@/state/sandboxView';
 import { Button, Card, H, P, Screen, Sheet } from '@/ui/components';
 import { Text } from '@/ui/text';
 import { makeStyles, space, touch } from '@/ui/theme';
@@ -226,7 +226,7 @@ function RoomCard({ b, id, onClose, onDemolish, act }: {
           {buying && type.equipment.map(e => {
             const eq = db.equipment[e];
             return (
-              <Button key={e} testID={`eq-${e}`} kind="plain" title={eq.name.ru} hint={`${t.eqLine(rub(eq.price), rub(eq.upkeep))} · ${eq.texts.hint.ru}`}
+              <Button key={e} testID={`eq-${e}`} kind="plain" title={eq.name.ru} hint={`${equipmentLine(db, e)} · ${eq.texts.hint.ru}`}
                 onPress={() => { if (act({ kind: 'buy', room: id, equipment: e })) setBuying(false); }} />
             );
           })}

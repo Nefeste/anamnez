@@ -73,7 +73,13 @@ export function workingRooms(db: ContentDb, plan: Plan, staffed: Staffing): Set<
 export type Block =
   | { kind: 'noRoom'; room: Id }
   | { kind: 'down'; room: Id; problem: Problem }
-  | { kind: 'noEquipment'; room: Id; equipment: Id[] };
+  | { kind: 'noEquipment'; room: Id; equipment: Id[] }
+  /** аппарат есть, но с утра сломан (FR-EQ-3, spec 2026-10-walk-breakdowns): починят к завтра; `equipment` — сломанные */
+  | { kind: 'broken'; room: Id; equipment: Id[] };
+
+/** Сломанные сегодня аппараты: «помещение:место» (FR-EQ-3); пусто — всё работает. */
+export const NONE_BROKEN: ReadonlySet<string> = new Set();
+export const slotKey = (room: string, slot: number) => `${room}:${slot}`;
 
 function roomBlock(db: ContentDb, plan: Plan, working: Set<string>, staffed: Staffing, type: Id): Block | null {
   const rooms = plan.rooms.filter(r => r.type === type);
@@ -84,9 +90,10 @@ function roomBlock(db: ContentDb, plan: Plan, working: Set<string>, staffed: Sta
 
 /**
  * Можно ли сделать обследование и где: помещения, где его сделают (работают и с подходящим
- * аппаратом), или причина, почему нельзя. Без помещения в записи — у врача в кабинете.
+ * аппаратом), или причина, почему нельзя. Без помещения в записи — у врача в кабинете. `broken` — сломанные сегодня
+ * аппараты (FR-EQ-3): их будто нет, а если других нет — «в ремонте».
  */
-export function examWhere(db: ContentDb, plan: Plan, working: Set<string>, staffed: Staffing, examId: Id): { rooms: string[] } | { block: Block } {
+export function examWhere(db: ContentDb, plan: Plan, working: Set<string>, staffed: Staffing, examId: Id, broken: ReadonlySet<string> = NONE_BROKEN): { rooms: string[] } | { block: Block } {
   const e = db.exams[examId];
   const type = e?.room ?? OFFICE;
   const down = roomBlock(db, plan, working, staffed, type);
@@ -94,8 +101,11 @@ export function examWhere(db: ContentDb, plan: Plan, working: Set<string>, staff
   let rooms = plan.rooms.filter(r => r.type === type && working.has(r.id));
   if (e?.equipment) {
     const fits = e.equipment;
-    rooms = rooms.filter(r => r.equipment.some(id => id !== null && fits.includes(id)));
-    if (rooms.length === 0) return { block: { kind: 'noEquipment', room: type, equipment: fits } };
+    const placed = rooms.filter(r => r.equipment.some(id => id !== null && fits.includes(id)));
+    rooms = placed.filter(r => r.equipment.some((id, slot) => id !== null && fits.includes(id) && !broken.has(slotKey(r.id, slot))));
+    if (placed.length === 0) return { block: { kind: 'noEquipment', room: type, equipment: fits } };
+    // в ремонте — те, что стоят: их и назвать
+    if (rooms.length === 0) return { block: { kind: 'broken', room: type, equipment: [...new Set(placed.flatMap(r => r.equipment.filter((id): id is Id => id !== null && fits.includes(id))))] } };
   }
   if (e?.collect) {
     const collect = roomBlock(db, plan, working, staffed, e.collect);

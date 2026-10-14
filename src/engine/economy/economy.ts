@@ -20,7 +20,8 @@ export interface Ledger {
   /** сколько приёмов закрыто — по плательщикам */
   cases: Record<Payer, number>;
   /** `ward` — койко-дни лежащих (spec 2026-09-chapter-2, часть 26); нет — сохранение до 0.0.43 */
-  expenses: { salaries: number; equipment: number; rooms: number; consumables: number; interest: number; ward?: number };
+  /** `repairs` — ремонт аппаратов, сломавшихся с утра (FR-EQ-3, spec 2026-10-walk-breakdowns); нет — ничего не ломалось */
+  expenses: { salaries: number; equipment: number; rooms: number; consumables: number; interest: number; ward?: number; repairs?: number };
   /**
    * стационар: сколько случаев закрыто (выписка, перевод), что за них заплатили, ₽; из них
    * прерванных, без показаний и повторных после ранней выписки (часть 35; нет — таких не было)
@@ -39,7 +40,7 @@ export const emptyLedger = (): Ledger => ({
 });
 
 export const incomeOf = (l: Ledger) => l.income.oms + l.income.dms + l.income.self + (l.ward?.income ?? 0);
-export const expensesOf = (l: Ledger) => l.expenses.salaries + l.expenses.equipment + l.expenses.rooms + l.expenses.consumables + l.expenses.interest + (l.expenses.ward ?? 0);
+export const expensesOf = (l: Ledger) => l.expenses.salaries + l.expenses.equipment + l.expenses.rooms + l.expenses.consumables + l.expenses.interest + (l.expenses.ward ?? 0) + (l.expenses.repairs ?? 0);
 
 /**
  * Как закрыт случай стационара — для оплаты: до выписки в срок, прерван (перевод, выписка раньше
