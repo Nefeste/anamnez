@@ -3,13 +3,9 @@
 Не длиннее 30 строк; правится в том же PR, что меняет версию, этап или вопросы владельцу
 ([устав, `docs/04-process.md`](https://github.com/Nefeste/gornitsa/blob/main/docs/04-process.md)).
 
-**Версия:** 0.5.4 «Практикант» — `versionCode` 103, медицинская база 75; выпущена
-([v0.5.4](https://github.com/Nefeste/anamnez/releases/tag/v0.5.4), PR Nefeste/anamnez#88). Прежний выпуск —
-0.5.3 ([v0.5.3](https://github.com/Nefeste/anamnez/releases/tag/v0.5.3)): первый APK после 0.5.0, в нём и музыка 0.5.1,
-и список назначений 0.5.2. Что изменилось — [`README.md`](README.md).
-**Версия:** 0.5.5 «Ложные находки по жалобам» — `versionCode` 104, медицинская база 75; PR Nefeste/anamnez#89, выйдет
-тегом `v0.5.5` после слияния. Выпущена 0.5.4 ([v0.5.4](https://github.com/Nefeste/anamnez/releases/tag/v0.5.4)) —
-«Практикант». Что изменилось — [`README.md`](README.md).
+**Версия:** 0.5.5 «Ложные находки по жалобам» — `versionCode` 104, медицинская база 75; PR Nefeste/anamnez#89 слит,
+выйдет тегом `v0.5.5`. Выпущена 0.5.4 ([v0.5.4](https://github.com/Nefeste/anamnez/releases/tag/v0.5.4), PR
+Nefeste/anamnez#88) — «Практикант». Что изменилось — [`README.md`](README.md).
 
 **Этап:** 7 — выход в магазины ([дорожная карта](docs/10-roadmap.md), «Путь к 1.0»): музыка — 0.5.1, список назначений
 — 0.5.2, сборка и брендбук студии — 0.5.3, «Практикант» — 0.5.4, ложные находки по жалобам — 0.5.5. Этапы 5 и 6 —
