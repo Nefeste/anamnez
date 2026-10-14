@@ -26,6 +26,9 @@
 // главы, 150 дней; из главы 3 в главу 4 переходят сразу: лежащих долечат врачи районной больницы.
 // Флаги: --days 30, --runs 8 (зёрна месяца), --career-runs 4 (зёрна карьеры), --season winter, --chapter hospital,
 // vascular или city (одна глава), --no-career, --jobs 4 (процессов; прогон зависит только от главы, врача и зерна), --json.
+// С 0.5.11 — --stall (NFR-PRF-1): сколько длится каждая команда движка у разумного врача — по видам; перед командой —
+// пауза, в которую разбор считается заранее, как в игре, пока игрок думает; порог — худшая команда смены и 99 % команд
+// (spec 2026-10-performance), не выполнен — выход с кодом 1; без ленивого и карьеры, в одном процессе.
 import { availableParallelism } from 'node:os';
 import type { Id, Setting } from '../../src/content/types';
 import { nextChapterOf } from '../../src/engine/campaign/campaign';
@@ -38,7 +41,7 @@ import { alsoSettings, recommendedSetting, settingFit, type Venue } from '../../
 import { choosePlan, decisionLimit, type DoctorPhase, MIN_GAIN, nextStep, runDoctor, type Strategy } from '../../src/engine/med/policy';
 import {
   apply, bedDayOf, bedsideEquipment, brokenOf, candidatesOf, careUnit, current, freeBeds, freeBoxBeds, freeIcuBeds, freeRicuBeds, hospitalCtx, inBox, inIcu, inpatientsOf, inRicu, meetIn, moreUrgent, newCampaign,
-  observationsOf, operationOf, readyIn, targetPlace,
+  observationsOf, operationOf, prepareReview, readyIn, targetPlace,
 } from '../../src/engine/shift/engine';
 import { minutesTo, targetsFor, targetStart } from '../../src/engine/shift/targets';
 import { type Command, DAY, SHIFT_END, type ShiftPatient, type ShiftState } from '../../src/engine/shift/types';
@@ -65,7 +68,7 @@ const MONTHS = process.argv.includes('--chapter') ? [`chapter.${arg('chapter', '
 const VASCULAR = 'chapter.vascular';
 const CITY = 'chapter.city';
 /** карьера разумного с начала; `--no-career` — без неё */
-const CAREER = !process.argv.includes('--no-career');
+const CAREER = !process.argv.includes('--no-career') && !process.argv.includes('--stall');
 
 const { db, errors } = buildDb();
 if (errors.length) {
@@ -93,7 +96,43 @@ const isMri = (exam: Id) => db.exams[exam]?.room === 'room.mri';
 const isBleeding = (cond: Id) => db.conditions[cond]?.group === 'grp.ugi_bleeding';
 
 type Player = Extract<Strategy, 'rational' | 'lazy'>;
-const PLAYERS: Player[] = ['rational', 'lazy'];
+/** замер быстродействия (0.5.11, NFR-PRF-1): только разумный, в одном процессе, без карьеры и критериев */
+const STALL = process.argv.includes('--stall');
+const PLAYERS: Player[] = STALL ? ['rational'] : ['rational', 'lazy'];
+/** сколько длилась каждая команда движка (`--stall`) */
+const stalls: { ms: number; kind: string }[] = [];
+/** порог проверок релиза (`--stall`, 0.5.11): худшая команда смены и 99 % команд, мс на сервере без нагрузки */
+const STALL_WORST = 250;
+const STALL_P99 = 100;
+
+/**
+ * Пауза перед командой (`--stall`): пока игрок думает, игра считает разбор заранее — секунду, по 8 мс из каждых 100
+ * (`prepareIdle` в session.ts); пока идут часы — между тиками, по 250 мс.
+ */
+const THINK_MS = 80;
+const TICK_PREPARE_MS = 20;
+/** Тик часов в игре — срезами по 15 игровых секунд (`TICK_SLICE` в session.ts): минута симулятора — четыре среза. */
+const SLICE = 15;
+/** сколько посчитано заранее в паузах: мс */
+let prepared = 0;
+
+/** Команда движка; с `--stall` — с замером, а перед ней — пауза, в которую разбор считается заранее, как в игре. */
+function timed(s: ShiftState, cmd: Command) {
+  if (!STALL) return apply(db, s, cmd);
+  const p0 = performance.now();
+  while (performance.now() - p0 < (cmd.kind === 'advance' ? TICK_PREPARE_MS : THINK_MS) && prepareReview(db, s)) {
+    // пока игрок думает
+  }
+  prepared += performance.now() - p0;
+  const slices = cmd.kind === 'advance' ? Array.from({ length: Math.ceil(cmd.seconds / SLICE) }, (_, i) => Math.min(SLICE, cmd.seconds - i * SLICE)) : [];
+  const out: ReturnType<typeof apply> = [];
+  for (const one of slices.length > 0 ? slices.map((seconds): Command => ({ kind: 'advance', seconds })) : [cmd]) {
+    const t0 = performance.now();
+    out.push(...apply(db, s, one));
+    stalls.push({ ms: performance.now() - t0, kind: one.kind });
+  }
+  return out;
+}
 
 interface Run {
   profit: number; minCash: number; cash: number; reputation: number;
@@ -253,7 +292,7 @@ function rounds(s: ShiftState, player: Player, step: (cmd: Command) => void) {
 
 /** Закрыть приём: диагноз, назначения и место; своя палата, ПИТ или операционная не берёт — скорая. */
 function decide(s: ShiftState, p: ShiftPatient, diagnosis: Id, plan: { treatments: readonly Id[]; setting: Setting }) {
-  const step = (cmd: Command) => apply(db, s, cmd);
+  const step = (cmd: Command) => timed(s, cmd);
   step({ kind: 'diagnose', id: diagnosis });
   for (const id of plan.treatments) step({ kind: 'toggleTreatment', id });
   step({ kind: 'setting', setting: plan.setting });
@@ -281,7 +320,7 @@ function venueFor(s: ShiftState, p: ShiftPatient): Venue {
 }
 
 function playDay(s: ShiftState, player: Player) {
-  const step = (cmd: Command) => apply(db, s, cmd);
+  const step = (cmd: Command) => timed(s, cmd);
   rounds(s, player, step);
   const ctx = hospitalCtx(db, s);
   // сломанное с утра (FR-EQ-3) — до завтра: врач его не назначает
@@ -391,7 +430,7 @@ function run(seed: number, player: Player, chapter: Id): Run {
   for (let d = 0; d < DAYS; d++) {
     // глава 4 (часть 61б): городская больница достраивается и нанимает между сменами — та же стройка у обоих врачей
     if (chapter === CITY) openCity(s);
-    apply(db, s, { kind: 'nextDay' });
+    timed(s, { kind: 'nextDay' });
     if (!s.dayOpen) throw new Error(`${player}: смену не открыть`);
     playDay(s, player);
     const h = s.history[s.history.length - 1];
@@ -697,7 +736,7 @@ const TASKS: Task[] = [
   ...MONTHS.flatMap(chapter => PLAYERS.flatMap(player => Array.from({ length: RUNS }, (_, i): Task => ({ kind: 'month', chapter, player, i })))),
 ];
 const WORKER = arg('worker', '');
-const JOBS = WORKER ? 1 : Math.max(1, Math.min(TASKS.length, Number(arg('jobs', String(Math.min(4, availableParallelism()))))));
+const JOBS = WORKER || process.argv.includes('--stall') ? 1 : Math.max(1, Math.min(TASKS.length, Number(arg('jobs', String(Math.min(4, availableParallelism()))))));
 const doTask = (t: Task): Run | Career => (t.kind === 'career' ? career(3500 + t.i) : run(3500 + t.i, t.player, t.chapter));
 if (WORKER) {
   const [k, n] = WORKER.split('/').map(Number);
@@ -727,6 +766,27 @@ else {
   for (const [j, t] of TASKS.entries()) if (!(t.kind === 'career' ? careers[t.i] : results[t.chapter][t.player][t.i])) throw new Error(`районная больница: нет задачи ${j}`);
 }
 const seconds = Math.round((performance.now() - t0) / 1000);
+if (STALL) {
+  // NFR-PRF-1: ни одного подвисания дольше 100 мс; на телефоне без JIT те же команды — в разы дольше (09-testing.md §3)
+  const by = new Map<string, number[]>();
+  for (const x of stalls) (by.get(x.kind) ?? by.set(x.kind, []).get(x.kind)!).push(x.ms);
+  const q = (xs: number[], f: number) => xs.slice().sort((a, b) => a - b)[Math.min(xs.length - 1, Math.floor(xs.length * f))];
+  console.log(`Быстродействие движка (${MONTHS.map(c => c.replace('chapter.', '')).join(', ')}; ${RUNS} × ${DAYS} дн.; команд ${stalls.length}; ${seconds} с; в паузах перед командами — ${(prepared / stalls.length).toFixed(1)} мс в среднем из ${THINK_MS}):`);
+  for (const [k, xs] of [...by.entries()].sort((a, b) => Math.max(...b[1]) - Math.max(...a[1]))) {
+    console.log(`  ${k.padEnd(16)} ${String(xs.length).padStart(6)}   медиана ${q(xs, 0.5).toFixed(1).padStart(6)}   99 % ${q(xs, 0.99).toFixed(1).padStart(7)}   худшая ${Math.max(...xs).toFixed(1).padStart(7)} мс`);
+  }
+  // порог проверок релиза (0.5.11): команды смены — без начала и конца дня, это переход между сменами
+  const shift = stalls.filter(x => x.kind !== 'nextDay' && x.kind !== 'closeDay').map(x => x.ms);
+  const worst = Math.max(...shift);
+  const p99 = q(shift, 0.99);
+  const checks = [
+    { ok: worst <= STALL_WORST, text: `худшая команда смены — не дольше ${STALL_WORST} мс: ${worst.toFixed(0)} мс` },
+    { ok: p99 <= STALL_P99, text: `99 % команд смены — не дольше ${STALL_P99} мс: ${p99.toFixed(0)} мс` },
+  ];
+  console.log('\nПорог быстродействия (spec 2026-10-performance; на сервере без нагрузки):');
+  for (const c of checks) console.log(`  ${c.ok ? 'да ' : 'НЕТ'} ${c.text}`);
+  process.exit(checks.every(c => c.ok) ? 0 : 1);
+}
 
 const unitOf = (r: Run, u: Unit) => r.money.units[u].upkeep + r.money.units[u].staff;
 /** траты палат и операционной: у закрытых случаев — их койко-дни и расходники; `all` — все, и тех, кто ещё лежит */

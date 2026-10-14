@@ -20,11 +20,11 @@ import { P_ONE, RNG_VERSION, Rng } from '../core/rng';
 import { examHarmOutcome, observe, type Outcome, rscOutcome } from '../med/course';
 import { complaintObservations, type ExamSkill, examFits, NORMAL_SKILL, runExam } from '../med/exams';
 import { freezeClock, generatePatient, patientAt, typicalPatient } from '../med/generate';
-import { contextOf, likelyParams, posterior } from '../med/infer';
+import { type Belief, contextOf, likelyParams, posterior } from '../med/infer';
 import { scaleTriage } from '../med/news2';
 import { alsoSettings, choiceFor, evaluatePlan, primaryOf, recommendedSetting, selfLimits, settingFit, settingRoomsOf, STAYS, surgeriesOf, treatable, txAvailable, type Venue, verdictOf, whenHolds } from '../med/plan';
-import { examCost, indicated, nextStep, ORDER_MINUTES } from '../med/policy';
-import { buildReview, type ReviewData } from '../med/review';
+import { type DoctorRun, examCost, indicated, nextStep, ORDER_MINUTES, startRational } from '../med/policy';
+import { buildReview, type ReviewData, reviewBeliefs } from '../med/review';
 import { scoreCase } from '../med/score';
 import type { Observation } from '../med/types';
 import {
@@ -1280,7 +1280,8 @@ function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
   const cond = db.conditions[truth];
   const obs = observationsOf(p);
   const candidates = candidatesOf(db, p.departments ?? s.meta.department);
-  const beliefs = posterior(db, candidates, obs, contextOf(db, patient, obs));
+  // у ваших приёмов — уверенность разбора, посчитанная заранее (0.5.11): тот же вывод по тем же наблюдениям
+  const beliefs = p.by ? posterior(db, candidates, obs, contextOf(db, patient, obs)) : reviewTimeline(db, s.meta, p)[p.results.length];
   const confidence = beliefs.find(b => b.id === dx)?.p ?? 0;
   // в операционную — операцией поставленного диагноза (часть 28): по тому, что видно на снимке (часть 32б)
   const op = p.draft.setting === 'surgery' ? operationFor(db, dx, likelyParams(db, dx, obs, patient)) : undefined;
@@ -1298,7 +1299,10 @@ function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
   // обследования (часть 50а) — раньше всего
   const soft = s.meta.soft === true;
   const outcome = examHarmOutcome(db, plan, ev, branch(s, `outcome:${p.id}`), soft) ?? rscFor(db, s, p, plan) ?? observe(db, patient, plan, ev, branch(s, `outcome:${p.id}`), soft);
-  const review = reviewOf(db, s, p, dx);
+  // разумный врач разбора — посчитанный заранее (0.5.11, NFR-PRF-1): у вашего приёма — пока вы думаете, у приёма нанятого
+  // врача — в паузах игры (`prepareReview`); не готов — досчитывается здесь. Цена и деньги — те же, что в разборе
+  const r = reviewEntry(db, s.meta, p).run.result();
+  const rational = { cost: r.exams.reduce((a, id) => a + examCost(db, id), 0), money: r.money };
   const present = new Set(patient.truth.findings.map(f => f.f));
   // та же группа — частично; с частью 48а — и источник сепсиса (пневмония вместо сепсиса из неё)
   const verdict = verdictOf(db, dx, patient);
@@ -1306,7 +1310,7 @@ function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
   // с частью 39б — и решения: тромболизис и перевод сделаны в минуту, когда врач закрыл приём
   const targets = targetResults(db, p, targetPlace(db, s, p), { t: s.t, plan });
   const score = scoreCase({
-    verdict, confidence, cost: p.done.reduce((a, id) => a + examCost(db, id), 0), rationalCost: review.rational.cost,
+    verdict, confidence, cost: p.done.reduce((a, id) => a + examCost(db, id), 0), rationalCost: rational.cost,
     plan: ev, outcome, selfLimiting: selfLimits(db, primaryOf(patient)), ...(cond.settles ? { settles: true } : {}),
     redFlags: (cond.redFlags ?? []).filter(f => present.has(f)).map(f => ({ f, seen: obs.some(o => o.f === f && o.shown) })),
     // что было правильно выбрать здесь: со своей палатой — положить в неё, со своей операционной — оперировать
@@ -1317,7 +1321,7 @@ function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
   });
   const { notes, targets: _worst, ...grades } = score;
   return {
-    at: s.t, diagnosis: dx, verdict, confidence, plan, outcome, grades, notes, rationalCost: review.rational.cost, rationalMoney: review.rational.money,
+    at: s.t, diagnosis: dx, verdict, confidence, plan, outcome, grades, notes, rationalCost: rational.cost, rationalMoney: rational.money,
     ...(targets.length > 0 ? { targets } : {}), ...(bedside.length > 0 ? { bedside } : {}), ...(rooms.length > 0 ? { rooms: [...rooms] } : {}),
     ...(p.arrest !== undefined ? { arrest: true as const } : {}),
   };
@@ -1373,8 +1377,100 @@ export function reviewOf(db: ContentDb, s: ShiftState, p: ShiftPatient, diagnosi
  * архив профиля; отделения, с какими больница его приняла (часть 30), — в самой записи.
  */
 export function reviewFor(db: ContentDb, meta: Pick<ShiftState['meta'], 'seed' | 'department'>, p: ShiftPatient, diagnosis: Id): ReviewData {
-  const rng = Rng.seeded(meta.seed).fork(`review:${p.id}`);
-  return buildReview(db, p.patient, p.results.map(r => ({ exam: r.exam, obs: r.obs })), diagnosis, candidatesOf(db, p.departments ?? meta.department), Object.keys(db.exams).sort(), rng);
+  // разбор один на приём (0.5.11): экран разбора и архив профиля его не пересчитывают
+  const entry = reviewEntry(db, meta, p);
+  const key = `${diagnosis}|${p.results.length}`;
+  let out = entry.reviews.get(key);
+  if (!out) {
+    const beliefs = reviewTimeline(db, meta, p);
+    out = buildReview(db, p.patient, p.results.map(r => ({ exam: r.exam, obs: r.obs })), diagnosis, entry.candidates, entry.exams, entry.rng, entry.run.result(), beliefs);
+    entry.reviews.set(key, out);
+  }
+  return out;
+}
+
+/**
+ * Разумный врач разбора этого приёма и уверенность после каждого результата — по шагу (0.5.11, NFR-PRF-1): их считают
+ * заранее, пока игрок думает над пациентом (`prepareReview`), и закрытие приёма не ждёт. Зерно, кандидаты, обследования
+ * и наблюдения — те же, что у разбора подряд, поэтому и разбор тот же. В памяти, не в сохранении: после открытия
+ * сохранения — заново.
+ */
+interface ReviewEntry {
+  rng: Rng;
+  candidates: Id[];
+  exams: Id[];
+  run: DoctorRun;
+  reviews: Map<string, ReviewData>;
+  /** уверенность после жалоб и после каждого результата приёма — по порядку, по одному (`reviewBeliefs`) */
+  beliefs: Belief[][];
+  /** наблюдения, по которым посчитана последняя из них */
+  obs: Observation[];
+}
+const reviewEntries = new WeakMap<ContentDb, WeakMap<ShiftPatient['patient'], Map<string, ReviewEntry>>>();
+
+function reviewEntry(db: ContentDb, meta: Pick<ShiftState['meta'], 'seed' | 'department'>, p: ShiftPatient): ReviewEntry {
+  let byDb = reviewEntries.get(db);
+  if (!byDb) reviewEntries.set(db, (byDb = new WeakMap()));
+  let byPatient = byDb.get(p.patient);
+  if (!byPatient) byDb.set(p.patient, (byPatient = new Map()));
+  const departments = p.departments ?? meta.department;
+  const key = `${meta.seed}|${p.id}|${typeof departments === 'string' ? departments : departments.join(',')}`;
+  let entry = byPatient.get(key);
+  if (!entry) {
+    const rng = Rng.seeded(meta.seed).fork(`review:${p.id}`);
+    const candidates = candidatesOf(db, departments);
+    const exams = Object.keys(db.exams).sort();
+    entry = {
+      rng, candidates, exams, run: startRational(db, p.patient, rng, { candidates: [...candidates], exams: [...exams] }), reviews: new Map(),
+      beliefs: [], obs: complaintObservations(p.patient),
+    };
+    byPatient.set(key, entry);
+  }
+  return entry;
+}
+
+/**
+ * Посчитать заранее шаг разумного врача разбора (0.5.11, NFR-PRF-1) — у того, кто у вас в кабинете, а когда он готов —
+ * уверенность разбора после очередного пришедшего результата; затем — у приёмов нанятых врачей и у ждущих в очереди.
+ * Интерфейс зовёт это в паузах игры, по шагу за раз, и закрытие приёма берёт готовое. Состояния смены не меняет. Вернёт
+ * false, когда считать нечего.
+ */
+export function prepareReview(db: ContentDb, s: ShiftState): boolean {
+  const p = s.current ? s.patients[s.current] : undefined;
+  if (p && !p.by && !p.closed) {
+    const entry = reviewEntry(db, s.meta, p);
+    if (!entry.run.step()) return true;
+    // разумный врач готов — уверенность после пришедших результатов, по одному за раз
+    if (entry.beliefs.length <= p.results.length) {
+      nextBelief(db, entry, p);
+      return true;
+    }
+  }
+  // затем — у приёмов нанятых врачей и у тех, кто ждёт в очереди: разумный врач разбора нужен при закрытии каждого
+  for (const q of ahead(s)) if (!reviewEntry(db, s.meta, q).run.step()) return true;
+  return false;
+}
+
+/** Кого закроют следом: приёмы нанятых врачей — по времени прихода, затем очередь — по порядку. */
+function ahead(s: ShiftState): ShiftPatient[] {
+  const theirs = Object.values(s.patients)
+    .filter(p => p.by !== undefined && !p.closed && (p.status === 'inRoom' || p.status === 'away' || p.status === 'waiting'))
+    .sort((a, b) => a.arriveT - b.arriveT || (a.id < b.id ? -1 : 1));
+  return [...theirs, ...s.queue.map(id => s.patients[id]).filter(p => p && !p.closed && p.by === undefined)];
+}
+
+/** Уверенность после следующего результата приёма (после жалоб — первая). */
+function nextBelief(db: ContentDb, entry: ReviewEntry, p: ShiftPatient) {
+  const i = entry.beliefs.length;
+  if (i > 0) entry.obs.push(...p.results[i - 1].obs);
+  entry.beliefs.push(reviewBeliefs(db, p.patient, entry.candidates, entry.obs));
+}
+
+/** Уверенность разбора после жалоб и после каждого результата — что не посчитано заранее, досчитывается. */
+function reviewTimeline(db: ContentDb, meta: Pick<ShiftState['meta'], 'seed' | 'department'>, p: ShiftPatient): Belief[][] {
+  const entry = reviewEntry(db, meta, p);
+  while (entry.beliefs.length <= p.results.length) nextBelief(db, entry, p);
+  return entry.beliefs.slice(0, p.results.length + 1);
 }
 
 // --- стационар (spec 2026-09-chapter-2, часть 26) ---------------------------------------------

@@ -18,7 +18,7 @@ import { CLINIC } from '@/state/clinicMap';
 import { blockText, type CashView } from '@/state/sandboxView';
 import {
   type AmbulanceRow, callPatient, closeDay, leaveCase, loadShift, nextDay, openCase, openColleagueCase, pauseClock, type QueueRow, type ShiftView, SPEEDS, type Speed, type SummaryView,
-  type RoomView, saveNow, setSpeed, skipIdle, sortAmbulance, startSandbox, startShift, TICK_MS, tick, useBuild, useCampaign, useShift, type WhoView,
+  type RoomView, saveNow, setSpeed, skipIdle, sortAmbulance, startSandbox, startShift, TICK_MS, tick, useBuild, useCampaign, usePrepareIdle, useShift, type WhoView,
 } from '@/state/session';
 import { CaseRow } from '@/ui/case/CaseRow';
 import { gradeColor } from '@/ui/case/OutcomeScreen';
@@ -34,6 +34,8 @@ export default function ShiftScreen() {
   useEffect(() => {
     loadShift();
   }, []);
+  // в паузах игры — разбор приёмов заранее: и нанятых врачей, пока идут часы (0.5.11, NFR-PRF-1)
+  usePrepareIdle();
 
   if (v.status === 'idle' || v.status === 'loading') {
     return (

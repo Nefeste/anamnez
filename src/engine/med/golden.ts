@@ -4,8 +4,10 @@
 import type { ContentDb } from '../../content/types';
 import { fingerprint } from '../core/hash';
 import { Rng } from '../core/rng';
-import { runExam } from './exams';
+import { complaintObservations, runExam } from './exams';
 import { generatePatient } from './generate';
+import { contextOf, expectedGain, posterior } from './infer';
+import { runDoctor } from './policy';
 
 export interface GoldenRun {
   hash: string;
@@ -29,4 +31,31 @@ export function goldenRun(db: ContentDb, count: number): GoldenRun {
   const sorted: Record<string, number> = {};
   for (const k of Object.keys(primaries).sort()) sorted[k] = primaries[k];
   return { hash: fingerprint(parts), primaries: sorted };
+}
+
+/**
+ * Отпечаток вывода (0.5.11, NFR-PRF-1): разумный врач у `count` пациентов терапии — его обследования и диагноз, а на
+ * каждом его шаге — уверенность во всех болезнях и польза каждого обследования. Ускорения вывода не меняют ни одного
+ * числа: поменялось — тест падает, как у золотых случаев; меняется база — отпечаток пересоздают вместе с ними.
+ */
+export function inferenceRun(db: ContentDb, count: number): string {
+  const seasons = ['winter', 'spring', 'summer', 'autumn'] as const;
+  const exams = Object.keys(db.exams).sort();
+  const candidates = Object.keys(db.conditions).sort().filter(id => db.conditions[id].presenting && db.conditions[id].department === 'dept.therapy');
+  const parts: string[] = [];
+  for (let i = 0; i < count; i++) {
+    const p = generatePatient(db, 7_100_000 + i, { department: 'dept.therapy', season: seasons[i % 4] });
+    const r = runDoctor(db, p, 'rational', Rng.seeded(p.seed).fork('inference'), { candidates, exams });
+    const obs = complaintObservations(p);
+    const steps: unknown[] = [];
+    for (const e of [undefined, ...r.exams]) {
+      if (e) obs.push(...runExam(db, p, e, Rng.seeded(p.seed).fork(`inference:${e}`)));
+      const ctx = contextOf(db, p, obs);
+      const beliefs = posterior(db, candidates, obs, ctx);
+      const seen = new Set(obs.map(o => o.f));
+      steps.push({ b: beliefs.map(x => [x.id, x.p]), g: exams.map(x => expectedGain(db, x, beliefs, ctx, seen)) });
+    }
+    parts.push(fingerprint({ d: r.diagnosis, e: r.exams, steps }));
+  }
+  return fingerprint(parts);
 }
