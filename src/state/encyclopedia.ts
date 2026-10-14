@@ -499,11 +499,18 @@ function riskArticle(db: ContentDb, r: Risk): Article {
   const e = T.encyclopedia;
   const blocks: Block[] = [];
   if (r.findings.length > 0) blocks.push({ key: 'shows', title: e.shows, rows: byBand(db, strongest(r.findings).map(l => ({ id: l.f, p: l.p }))) });
+  // и хронические (0.5.10): курение и пыль на работе — ХОБЛ
   const raises = Object.values(db.conditions).flatMap(c => {
-    const x = c.risks?.find(k => k.id === r.id);
+    const x = c.risks?.find(k => k.id === r.id) ?? c.chronic?.risks?.find(k => k.id === r.id);
     return x ? [ref(db, c.id, e.times(x.x))] : [];
   }).sort(byTitle);
   if (raises.length > 0) blocks.push({ key: 'raises', title: e.raises, refs: raises });
+  // у кого по работе (spec 2026-10-occupation): профессии с этой вредностью и у скольких из ста
+  const jobs = Object.values(db.jobs).flatMap(j => {
+    const h = j.hazards.find(x => x.id === r.id);
+    return h ? [e.jobShare(j.female ? `${j.name.ru}, ${lowerFirst(j.female.ru)}` : j.name.ru, Math.round(h.p / 100))] : [];
+  }).sort((a, b) => a.localeCompare(b, 'ru'));
+  if (jobs.length > 0) blocks.push({ key: 'jobs', title: e.jobs, text: jobs });
   const limits = Object.values(db.treatments).flatMap(x => {
     const k = x.contraindications.find(y => y.id === r.id);
     return k ? [ref(db, x.id, e.level[k.level])] : [];

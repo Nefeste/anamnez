@@ -8,7 +8,9 @@ presenting: false
 epidemiology:
   prevalence: common
   age: { min: 40 }
-  chronic: { band: { pct: 3 }, ageMin: 40, risks: [ { id: risk.smoking, x: 6 } ] }
+  # пыль, газы и пары на работе (spec 2026-10-occupation, 0.5.10): «работа в условиях воздействия токсичных газов,
+  # ирритантов, пыли» (603_3, раздел 1.2); ×2 — игровая оценка, слабее курения
+  chronic: { band: { pct: 3 }, ageMin: 40, risks: [ { id: risk.smoking, x: 6 }, { id: risk.dust_work, x: 2 } ] }
 course:
   stages:
     - { id: stable, days: [0, 36500] }

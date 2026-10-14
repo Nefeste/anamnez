@@ -566,6 +566,23 @@ export const riskSchema = z.strictObject({
   review,
 });
 
+/**
+ * Профессия пациента (spec 2026-10-occupation, 0.5.10): доли по полу, возраст, вес среди работающих, вредности — фактор
+ * риска и у скольких из ста; у пенсионера — доля на пенсии по возрасту.
+ */
+export const professionSchema = z.strictObject({
+  id: z.string().regex(/^job\.[a-z0-9_]+$/),
+  name: text,
+  female: text.optional(),
+  sex: z.strictObject({ m: z.number().min(0), f: z.number().min(0) }),
+  age: z.strictObject({ min: z.number().int().min(18), max: z.number().int().max(100) }),
+  weight: z.number().min(0),
+  retired: z.array(z.strictObject({ from: z.number().int().min(18), pct: z.number().min(0).max(100) })).optional(),
+  hazards: z.array(z.strictObject({ id: z.string().regex(/^risk\.[a-z0-9_]+$/), pct: z.number().min(0).max(100) })).optional(),
+  sources: z.array(source).min(1),
+  review,
+});
+
 // --- каталог больницы (spec 2026-09-own-hospital, `docs/07-data-model.md` §1) ---------------
 // Помещения, аппараты и должности — игровые предметы: цены и размеры — баланс игры. Что
 // каким аппаратом делают — медицинский факт, он записан в записях обследований с источниками.
@@ -1120,6 +1137,7 @@ export type TreatmentSrc = z.infer<typeof treatmentSchema>;
 export type FindingSrc = z.infer<typeof findingSchema>;
 export type ExamSrc = z.infer<typeof examSchema>;
 export type RiskSrc = z.infer<typeof riskSchema>;
+export type ProfessionSrc = z.infer<typeof professionSchema>;
 export type RoomSrc = z.infer<typeof roomSchema>;
 export type EquipmentSrc = z.infer<typeof equipmentSchema>;
 export type RoleSrc = z.infer<typeof roleSchema>;

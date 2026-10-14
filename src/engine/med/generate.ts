@@ -5,6 +5,7 @@
 // меняются только там, где изменилась медицина.
 import { byParams, byPresence, byRule, byValue, crosses, paramsHold, type Condition, type ContentDb, type Id, type Link, type Onset, type Risk, type Season } from '../../content/types';
 import { P_ONE, Rng } from '../core/rng';
+import { pickJob, riskShare } from './jobs';
 import { checkRule, type Who as RuleWho } from './rules';
 import type { ActiveCondition, Patient, Sex, TrueFinding } from './types';
 
@@ -97,12 +98,14 @@ export function generatePatient(db: ContentDb, seed: number, ctx: GenContext): P
   const sex: Sex = demo.chance(MALE_SHARE) ? 'm' : 'f';
   const band = demo.weighted(AGE_BANDS, b => b[2]);
   const age = demo.range(band[0], band[1]);
+  // профессия (FR-PAT-2, spec 2026-10-occupation): своя ветвь — прежние ветви её не замечают
+  const job = pickJob(db, root.fork('job'), sex, age);
 
-  // Факторы риска: у каждого своя ветвь.
+  // Факторы риска: у каждого своя ветвь; доля — профессии, если она его называет (вредности), иначе — записи.
   const riskRng = root.fork('risks');
   const risks = sortedKeys(db.risks).filter(id => {
     const r = db.risks[id];
-    const roll = riskRng.fork(id).chance(r.p[sex]);
+    const roll = riskRng.fork(id).chance(riskShare(db, id, sex, job));
     return roll && age >= (r.ageMin ?? 18) && age <= (r.ageMax ?? 200);
   });
 
@@ -147,7 +150,7 @@ export function generatePatient(db: ContentDb, seed: number, ctx: GenContext): P
   const complaints = pickComplaints(db, findings, primary);
 
   // отделение пациента — его основного заболевания: в больнице с приёмным это и хирургия
-  return { seed, sex, age, season: ctx.season, department: primary.department, truth: { conditions, risks, findings, values }, complaints };
+  return { seed, sex, age, ...(job ? { job } : {}), season: ctx.season, department: primary.department, truth: { conditions, risks, findings, values }, complaints };
 }
 
 /**

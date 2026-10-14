@@ -9,6 +9,7 @@ import type { Outcome } from '@/engine/med/course';
 import { complaintObservations, examFits, expectedFindings, falseRate } from '@/engine/med/exams';
 import { evidenceFor } from '@/engine/med/differential';
 import { type Belief, contextOf, type InferContext, knownFacts, posterior } from '@/engine/med/infer';
+import { jobName } from '@/engine/med/jobs';
 import { bedsideLack, type PlanEval, STAYS } from '@/engine/med/plan';
 import type { ReviewData } from '@/engine/med/review';
 import { type CaseScore, type Grade, type ScoreNote, worstGrade } from '@/engine/med/score';
@@ -151,6 +152,8 @@ export interface Draft {
 export interface VisitView {
   version: number;
   title: string;
+  /** кем работает (spec 2026-10-occupation, 0.5.10): «Строитель», «Пенсионерка»; нет — пациент из старого сохранения */
+  job?: string;
   /** для портрета: пол и возраст видны врачу, ключ портрета — не зерно генерации */
   /** кто пациент; жалобы — кому какой расспрос (часть 32г: о травме головы — при травме головы) */
   portrait: { key: number; sex: 'm' | 'f'; age: number; complaints: Id[] };
@@ -845,6 +848,7 @@ export function makeCaseView(c: CaseInput): VisitView {
   return {
     version: c.version,
     title: `${patientName(p)}, ${T.spikes.patient.years(p.age)}, ${p.sex === 'm' ? T.spikes.patient.male : T.spikes.patient.female}`,
+    ...(p.job ? { job: jobName(db, p.job, p.sex) } : {}),
     portrait: { key: fnv1a(`${p.seed}:portrait`), sex: p.sex, age: p.age, complaints: p.complaints },
     clock: hhmm(c.clock),
     minutesSpent: c.minutesSpent,

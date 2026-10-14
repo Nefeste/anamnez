@@ -9,6 +9,7 @@ import { log2 } from '../core/math';
 import { P_ONE } from '../core/rng';
 import { expectedFindings, falseRate } from './exams';
 import { chronicChance, presentingWeight } from './generate';
+import { riskShare } from './jobs';
 import { checkRule, type Known, knownOf, type RuleVerdict, type Who } from './rules';
 import type { Observation, Sex } from './types';
 
@@ -16,6 +17,8 @@ export interface InferContext {
   sex: Sex;
   age: number;
   season: Season;
+  /** кем работает (spec 2026-10-occupation): знают с регистратуры — доли вредностей по профессии; нет — по записям */
+  job?: Id;
   /** что известно о пациенте наверняка: факторы риска и хронические болезни, о которых он сказал */
   knownRisks: Id[];
   knownConditions: Id[];
@@ -155,9 +158,9 @@ export function unknownMiss(ctx: InferContext, f: Id, shares: ReadonlyMap<Id, nu
  * Всё, что вывод знает о пациенте: пол, возраст, сезон, что он сказал о себе, и доли того, чего не сказал; у специалиста
  * — ещё и к кому записан (`prior`, часть 60а).
  */
-export function contextOf(db: ContentDb, patient: { sex: Sex; age: number; season: Season; complaints?: readonly Id[] }, observations: readonly Observation[], prior?: Prior): InferContext {
+export function contextOf(db: ContentDb, patient: { sex: Sex; age: number; season: Season; job?: Id; complaints?: readonly Id[] }, observations: readonly Observation[], prior?: Prior): InferContext {
   const known = knownFacts(db, observations);
-  const base = { sex: patient.sex, age: patient.age, season: patient.season, knownRisks: known.risks, knownConditions: known.conditions };
+  const base = { sex: patient.sex, age: patient.age, season: patient.season, ...(patient.job ? { job: patient.job } : {}), knownRisks: known.risks, knownConditions: known.conditions };
   const told = complaintsOf(observations);
   return {
     ...base,
@@ -208,7 +211,8 @@ export function unknownsOf(db: ContentDb, observations: readonly Observation[], 
   for (const id of Object.keys(db.risks).sort()) {
     const r = db.risks[id];
     if (ctx.knownRisks.includes(id) || ctx.age < (r.ageMin ?? 18) || ctx.age > (r.ageMax ?? 200)) continue;
-    add(id, r.p[ctx.sex] / P_ONE, r.findings);
+    // доля — как при рождении пациента: у профессии, что его называет (spec 2026-10-occupation), — её
+    add(id, riskShare(db, id, ctx.sex, ctx.job) / P_ONE, r.findings);
   }
   for (const id of Object.keys(db.conditions).sort()) {
     const c = db.conditions[id];

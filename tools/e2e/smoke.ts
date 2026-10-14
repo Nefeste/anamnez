@@ -1342,6 +1342,9 @@ try {
   await page.getByTestId('exam-exam.ask_complaints').waitFor({ timeout: 10_000 });
   const walked = Date.now() - invited;
   check(walked > 800, `смена: приглашённый дошёл до кабинета — карта пациента через ${walked} мс`);
+  // кем работает — под именем, с регистратуры (0.5.10)
+  const job = await visibleText(page, 'visit-job');
+  check(/^[А-ЯЁ][а-яё]+( [а-яё]+)?$/.test(job), `смена: в карте пациента — профессия «${job}»`);
   const likely = page.locator('[data-testid^="likely-cond."]');
   check((await likely.count()) > 0 && (await likely.first().innerText()).includes('из 10 похожих пациентов'), `смена: «Студент» — «Похоже на»: ${(await likely.first().innerText()).trim()}`);
   // из «Похоже на» — в ряд гипотез (0.5.8)

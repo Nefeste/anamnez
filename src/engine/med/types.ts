@@ -38,6 +38,8 @@ export interface Patient {
   seed: number;
   sex: Sex;
   age: number;
+  /** кем работает (spec 2026-10-occupation, 0.5.10); нет — пациент из сохранения до 0.5.10 */
+  job?: Id;
   season: Season;
   department: Id;
   truth: PatientTruth;

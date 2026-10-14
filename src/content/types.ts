@@ -673,6 +673,27 @@ export interface Risk {
   review: Review;
 }
 
+/**
+ * Профессия пациента (FR-PAT-2, spec 2026-10-occupation, 0.5.10): её знают с регистратуры. Вредности — какие факторы
+ * риска у скольких в этой профессии; фактор, которого она не называет, — с долей своей записи.
+ */
+export interface Profession {
+  id: Id;
+  name: Text;
+  /** женская форма: «Учительница», «Медсестра»; нет — как у мужчин */
+  female?: Text;
+  /** доли по полу: строитель — 9 : 1; 0 — не бывает */
+  sex: { m: number; f: number };
+  age: { min: number; max: number };
+  /** вес среди работающих этого пола и возраста */
+  weight: number;
+  /** только у пенсионера: доля на пенсии с этого возраста, долей 1/10 000 — по возрастанию */
+  retired?: { from: number; p: P }[];
+  hazards: { id: Id; p: P }[];
+  sources: Source[];
+  review: Review;
+}
+
 export type Season = 'winter' | 'spring' | 'summer' | 'autumn';
 
 // --- каталог больницы (spec 2026-09-own-hospital) ------------------------------------------
@@ -1213,6 +1234,8 @@ export interface ContentDb {
   findings: Record<Id, Finding>;
   exams: Record<Id, Exam>;
   risks: Record<Id, Risk>;
+  /** профессии пациентов (spec 2026-10-occupation) */
+  jobs: Record<Id, Profession>;
   treatments: Record<Id, Treatment>;
   rooms: Record<Id, RoomType>;
   equipment: Record<Id, Equipment>;
