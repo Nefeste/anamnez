@@ -1,0 +1,12 @@
+id: job.miner
+name: { ru: "Шахтёр" }
+sex: { m: 1, f: 0 }
+age: { min: 20, max: 55 }
+weight: 1
+# угольная и рудная пыль и тяжёлый труд под землёй (603_3; 777_1, раздел 1.2)
+hazards:
+  - { id: risk.heavy_labor, pct: 100 }
+  - { id: risk.dust_work, pct: 100 }
+sources:
+  - { kind: dataset, title: "Рабочая сила, занятость и безработица в России", org: "Росстат", note: "доли по полу, возраст и вес среди работающих — игровая оценка по составу занятых" }
+review: draft

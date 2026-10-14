@@ -3,8 +3,9 @@
 // Каждый бросок берётся из своей именованной ветви зерна (`fork`), поэтому добавление
 // новой записи в базу не сдвигает случайность у остальных признаков и золотые случаи
 // меняются только там, где изменилась медицина.
-import { byParams, byPresence, byRule, byValue, crosses, paramsHold, type Condition, type ContentDb, type Id, type Link, type Onset, type Risk, type Season } from '../../content/types';
+import { byParams, byPresence, byRule, byValue, crosses, linkP, type LinkWho, paramsHold, type Condition, type ContentDb, type Id, type Link, type Onset, type Risk, type Season } from '../../content/types';
 import { P_ONE, Rng } from '../core/rng';
+import { pickJob, riskShare } from './jobs';
 import { checkRule, type Who as RuleWho } from './rules';
 import type { ActiveCondition, Patient, Sex, TrueFinding } from './types';
 
@@ -97,12 +98,14 @@ export function generatePatient(db: ContentDb, seed: number, ctx: GenContext): P
   const sex: Sex = demo.chance(MALE_SHARE) ? 'm' : 'f';
   const band = demo.weighted(AGE_BANDS, b => b[2]);
   const age = demo.range(band[0], band[1]);
+  // профессия (FR-PAT-2, spec 2026-10-occupation): своя ветвь — прежние ветви её не замечают
+  const job = pickJob(db, root.fork('job'), sex, age);
 
-  // Факторы риска: у каждого своя ветвь.
+  // Факторы риска: у каждого своя ветвь; доля — профессии, если она его называет (вредности), иначе — записи.
   const riskRng = root.fork('risks');
   const risks = sortedKeys(db.risks).filter(id => {
     const r = db.risks[id];
-    const roll = riskRng.fork(id).chance(r.p[sex]);
+    const roll = riskRng.fork(id).chance(riskShare(db, id, sex, job));
     return roll && age >= (r.ageMin ?? 18) && age <= (r.ageMax ?? 200);
   });
 
@@ -137,7 +140,7 @@ export function generatePatient(db: ContentDb, seed: number, ctx: GenContext): P
     return { id, role: id === primaryId ? 'primary' : 'comorbid', day, stage, params };
   });
 
-  const findings = oneMeasure(db, followers(db, unmasked(db, conditions, realizeFindings(db, again('findings'), conditions, risks))));
+  const findings = oneMeasure(db, followers(db, unmasked(db, conditions, realizeFindings(db, again('findings'), conditions, risks, { sex, age }))));
   deriveParams(db, conditions, { age, sex }, findings);
   const values = realizeValues(db, again('values'), findings);
   // часы от начала (часть 39а): число признака — по долям записи, из своей ветви зерна
@@ -147,7 +150,7 @@ export function generatePatient(db: ContentDb, seed: number, ctx: GenContext): P
   const complaints = pickComplaints(db, findings, primary);
 
   // отделение пациента — его основного заболевания: в больнице с приёмным это и хирургия
-  return { seed, sex, age, season: ctx.season, department: primary.department, truth: { conditions, risks, findings, values }, complaints };
+  return { seed, sex, age, ...(job ? { job } : {}), season: ctx.season, department: primary.department, truth: { conditions, risks, findings, values }, complaints };
 }
 
 /**
@@ -349,7 +352,7 @@ function linkApplies(link: Link, cond: ActiveCondition | undefined): boolean {
  * Бросаются **все** монеты — так расход случайности не зависит от исхода, — а причиной
  * записывается первая сработавшая: основное заболевание, затем остальные, затем фон.
  */
-function realizeFindings(db: ContentDb, rng: Rng, conditions: ActiveCondition[], risks: Id[]): TrueFinding[] {
+function realizeFindings(db: ContentDb, rng: Rng, conditions: ActiveCondition[], risks: Id[], who: LinkWho): TrueFinding[] {
   type Cause = { id: Id; links: Link[]; cond?: ActiveCondition };
   const causes: Cause[] = [
     ...conditions.map(c => ({ id: c.id, links: db.conditions[c.id].findings, cond: c })),
@@ -368,7 +371,8 @@ function realizeFindings(db: ContentDb, rng: Rng, conditions: ActiveCondition[],
       for (const i of linksOf(c.links, f)) {
         const link = c.links[i];
         if (!linkApplies(link, c.cond)) continue;
-        const hit = rng.fork(`${c.id}>${f}#${i}`).chance(link.p);
+        // пол и возраст (FR-MED-1): у пожилых и у женщин частоты бывают другими
+        const hit = rng.fork(`${c.id}>${f}#${i}`).chance(linkP(link, who));
         if (hit && cause === undefined) {
           cause = c.id;
           causeLink = link;
@@ -382,7 +386,7 @@ function realizeFindings(db: ContentDb, rng: Rng, conditions: ActiveCondition[],
     const attrs = realizeAttrs(db, rng.fork(`attrs>${f}`), f, causeLink, causeCond);
     out.push(attrs ? { f, cause, attrs } : { f, cause });
   }
-  return ensureManifest(db, rng, out, conditions[0]);
+  return ensureManifest(db, rng, out, conditions[0], who);
 }
 
 /**
@@ -393,7 +397,7 @@ function realizeFindings(db: ContentDb, rng: Rng, conditions: ActiveCondition[],
  * (`checkup`): там достаточно любого признака. Новых бросков для остальных признаков
  * нет — золотые случаи меняются только у таких пациентов.
  */
-function ensureManifest(db: ContentDb, rng: Rng, out: TrueFinding[], primary: ActiveCondition): TrueFinding[] {
+function ensureManifest(db: ContentDb, rng: Rng, out: TrueFinding[], primary: ActiveCondition, who: LinkWho): TrueFinding[] {
   const cond = db.conditions[primary.id];
   const salient = (f: Id) => db.findings[f]?.kind === 'sym' && db.findings[f].salience >= 2;
   const need = cond.checkup ? () => true : salient;
@@ -401,7 +405,8 @@ function ensureManifest(db: ContentDb, rng: Rng, out: TrueFinding[], primary: Ac
   let links = cond.findings.filter(l => l.p > 0 && linkApplies(l, primary) && need(l.f));
   if (links.length === 0) links = cond.findings.filter(l => l.p > 0 && linkApplies(l, primary));
   if (links.length === 0 || out.some(x => x.cause === primary.id && links.some(l => l.f === x.f))) return out;
-  const link = links.reduce((best, l) => (l.p > best.p ? l : best));
+  // самая частая — у этого человека (FR-MED-1): у пожилого с пневмонией это может быть уже не кашель
+  const link = links.reduce((best, l) => (linkP(l, who) > linkP(best, who) ? l : best));
   const existing = out.find(x => x.f === link.f);
   if (existing) {
     existing.cause = primary.id;

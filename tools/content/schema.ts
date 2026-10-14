@@ -65,6 +65,9 @@ const link = z.strictObject({
   stages: z.array(z.string()).optional(),
   when: z.record(z.string(), z.array(z.string())).optional(),
   attrs: z.record(z.string(), attrSpec).optional(),
+  /** возраст и пол (FR-MED-1, spec 2026-10-age-sex, 0.5.10): с этого возраста — в столько раз; у пола — в столько раз */
+  older: z.strictObject({ from: z.number().int().min(19).max(95), x: z.number().positive().max(10) }).optional(),
+  sex: z.strictObject({ m: z.number().positive().max(10).optional(), f: z.number().positive().max(10).optional() }).optional(),
 });
 const riskMultiplier = z.strictObject({ id: z.string(), x: z.number().positive() });
 const txId = z.string().regex(/^tx\.[a-z0-9_]+$/);
@@ -562,6 +565,23 @@ export const riskSchema = z.strictObject({
   ageMin: z.number().int().optional(),
   ageMax: z.number().int().optional(),
   findings: z.array(link),
+  sources: z.array(source).min(1),
+  review,
+});
+
+/**
+ * Профессия пациента (spec 2026-10-occupation, 0.5.10): доли по полу, возраст, вес среди работающих, вредности — фактор
+ * риска и у скольких из ста; у пенсионера — доля на пенсии по возрасту.
+ */
+export const professionSchema = z.strictObject({
+  id: z.string().regex(/^job\.[a-z0-9_]+$/),
+  name: text,
+  female: text.optional(),
+  sex: z.strictObject({ m: z.number().min(0), f: z.number().min(0) }),
+  age: z.strictObject({ min: z.number().int().min(18), max: z.number().int().max(100) }),
+  weight: z.number().min(0),
+  retired: z.array(z.strictObject({ from: z.number().int().min(18), pct: z.number().min(0).max(100) })).optional(),
+  hazards: z.array(z.strictObject({ id: z.string().regex(/^risk\.[a-z0-9_]+$/), pct: z.number().min(0).max(100) })).optional(),
   sources: z.array(source).min(1),
   review,
 });
@@ -1120,6 +1140,7 @@ export type TreatmentSrc = z.infer<typeof treatmentSchema>;
 export type FindingSrc = z.infer<typeof findingSchema>;
 export type ExamSrc = z.infer<typeof examSchema>;
 export type RiskSrc = z.infer<typeof riskSchema>;
+export type ProfessionSrc = z.infer<typeof professionSchema>;
 export type RoomSrc = z.infer<typeof roomSchema>;
 export type EquipmentSrc = z.infer<typeof equipmentSchema>;
 export type RoleSrc = z.infer<typeof roleSchema>;

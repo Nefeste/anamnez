@@ -31,15 +31,21 @@ course:
   # в стационаре при действенном лечении: критерии клинической стабильности — в среднем через
   # 3–5 суток от начала лечения (654_2, раздел 3.2), а стабильность — первый критерий выписки (раздел 6)
   stay: [3, 5]
+# возраст (FR-MED-1, spec 2026-10-age-sex, 0.5.10): «у лиц пожилого и старческого возраста типичные жалобы могут
+# отсутствовать, а на первый план в клинической картине заболевания выходит синдром интоксикации (сонливость или
+# беспокойство, спутанность сознания, анорексия, тошнота, рвота)» (654_2, раздел 1.6); пожилой — с 60 лет; множители —
+# игровая оценка
 findings:
-  - { f: sym.cough, band: usually, attrs: { character: { productive: 70, dry: 30 } } }
-  - { f: sym.fever_hx, band: usually }
-  - { f: vital.fever, band: often }
-  - { f: sym.chills, band: often }
+  - { f: sym.cough, band: usually, attrs: { character: { productive: 70, dry: 30 } }, older: { from: 60, x: 0.8 } }
+  - { f: sym.fever_hx, band: usually, older: { from: 60, x: 0.7 } }
+  - { f: vital.fever, band: often, older: { from: 60, x: 0.7 } }
+  - { f: sym.chills, band: often, older: { from: 60, x: 0.6 } }
   - { f: sym.dyspnea, band: often }
-  - { f: sym.purulent_sputum, band: often }
+  - { f: sym.purulent_sputum, band: often, older: { from: 60, x: 0.8 } }
   - { f: sym.cough_long, band: rarely }
-  - { f: sym.pleuritic_pain, band: sometimes, attrs: { side: $side } }
+  - { f: sym.pleuritic_pain, band: sometimes, attrs: { side: $side }, older: { from: 60, x: 0.7 } }
+  - { f: sym.confusion, band: very_rarely, older: { from: 60, x: 6 } }
+  - { f: sym.nausea, band: rarely, older: { from: 60, x: 2 } }
   - { f: sign.crackles_local, band: often, attrs: { side: $side } }
   - { f: sign.dullness, band: sometimes, attrs: { side: $side } }
   - { f: vital.tachycardia, band: often }

@@ -84,6 +84,8 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
           <Portrait seed={v.portrait.key} sex={v.portrait.sex} age={v.portrait.age} size={64} />
           <View style={styles.headText}>
             <H>{v.title}</H>
+            {/* кем работает — с регистратуры (0.5.10) */}
+            {v.job ? <P muted testID="visit-job">{v.job}</P> : null}
             <Text testID="visit-clock" style={styles.clock}>{`${t.clock(v.clock)} · ${t.spent(v.minutesSpent, T.common.rub(v.money))}`}</Text>
             {/* срок по рекомендации (часть 37) — справка: ЭКГ при боли в груди в первые 10 минут */}
             {v.targets?.map((line, i) => <P key={i} muted testID={`visit-target-${i}`}>{line}</P>)}

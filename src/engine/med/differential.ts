@@ -46,8 +46,9 @@ export function evidenceFor(
   const out: Evidence = { pro: [], con: [], unchecked: [] };
   if (!c) return out;
   const known = ctx.knownConditions.filter(x => x !== h);
-  const withH = (f: Id) => findingProbability(db, f, [h, ...(c.requires ?? []), ...known], ctx.knownRisks);
-  const without = (f: Id) => findingProbability(db, f, known, ctx.knownRisks);
+  // у этого пациента (FR-MED-1): пол и возраст меняют частоты
+  const withH = (f: Id) => findingProbability(db, f, [h, ...(c.requires ?? []), ...known], ctx.knownRisks, 1, ctx);
+  const without = (f: Id) => findingProbability(db, f, known, ctx.knownRisks, 1, ctx);
   // одно наблюдение на признак: показано ли «есть» хоть раз
   const seen = new Map<Id, boolean>();
   for (const o of observations) {

@@ -5,7 +5,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, join, relative } from 'node:path';
 import { parse } from 'yaml';
 import type { z } from 'zod';
-import { type AttrSpec, beyond, byParams, type Cell, type Condition, type ContentDb, type Equipment, type Exam, type Finding, type Link, membersOf, type Preset, type Risk, type RoomType, type RulePoints, type StaffRole, type Treatment } from '../../src/content/types';
+import { type AttrSpec, beyond, byParams, type Cell, type Condition, type ContentDb, type Equipment, type Exam, type Finding, type Link, membersOf, type Preset, type Profession, type Risk, type RoomType, type RulePoints, type StaffRole, type Treatment } from '../../src/content/types';
 import { planOf, presetHospital } from '../../src/engine/hospital/build';
 import { presetStaff, staffingOf } from '../../src/engine/hospital/staff';
 import { problemsOf } from '../../src/engine/hospital/requirements';
@@ -16,7 +16,7 @@ import { SETTING_ORDER } from '../../src/engine/med/plan';
 import { findBrand } from './brands';
 import {
   BANDS, type ChapterSrc, chapterSchema, type CharacterSrc, characterSchema, type ConditionSrc, conditionSchema, type EconomySrc, economySchema, type EquipmentSrc, equipmentSchema, type ExamSrc, examSchema, type FindingSrc, findingSchema,
-  type LinkSrc, PREVALENCE, type PresetSrc, presetSchema, type ProbabilitySrc, type RiskSrc, type RoleSrc, riskSchema, roleSchema, type RoomSrc, roomSchema,
+  type LinkSrc, PREVALENCE, type PresetSrc, presetSchema, type ProbabilitySrc, type ProfessionSrc, professionSchema, type RiskSrc, type RoleSrc, riskSchema, roleSchema, type RoomSrc, roomSchema,
   type TipSrc, tipSchema, type TreatmentSrc, treatmentSchema, versionSchema, type AchievementSrc, achievementSchema, type ScoreSrc, scoreSchema,
   type RuleSrc, ruleSchema, type TargetSrc, targetSchema,
 } from './schema';
@@ -89,6 +89,8 @@ function compileLink(l: LinkSrc): Link {
   const out: Link = { f: l.f, p: prob(l.band) };
   if (l.stages) out.stages = l.stages;
   if (l.when) out.when = l.when;
+  if (l.older) out.older = l.older;
+  if (l.sex) out.sex = l.sex;
   if (l.attrs) {
     out.attrs = {};
     for (const [name, spec] of Object.entries(l.attrs)) {
@@ -137,6 +139,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   const findings: Record<string, FindingSrc> = {};
   const exams: Record<string, ExamSrc> = {};
   const risks: Record<string, RiskSrc> = {};
+  const jobs: Record<string, ProfessionSrc> = {};
   const treatments: Record<string, TreatmentSrc> = {};
   const rooms: Record<string, RoomSrc> = {};
   const equipment: Record<string, EquipmentSrc> = {};
@@ -191,6 +194,9 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     } else if (top === 'risks') {
       const r = check(riskSchema);
       if (r) { expectId(r.id, 'risk'); put(risks, r); }
+    } else if (top === 'people' && rel.split('/')[1] === 'professions') {
+      const j = check(professionSchema);
+      if (j) { expectId(j.id, 'job'); put(jobs, j); }
     } else if (top === 'treatments') {
       const t = check(treatmentSchema);
       if (t) { expectId(t.id, 'tx'); put(treatments, t); }
@@ -230,7 +236,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       const x = check(targetSchema);
       if (x) { expectId(x.id, 'target'); put(targets, x); }
     } else {
-      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/economy.yaml, campaign/characters, campaign/chapters, campaign/tips, achievements, scores, rules, targets)`);
+      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, people/professions, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/economy.yaml, campaign/characters, campaign/chapters, campaign/tips, achievements, scores, rules, targets)`);
     }
   }
   if (!contentVersion) errors.push('version.yaml: нет contentVersion');
@@ -627,6 +633,30 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     }
   }
   for (const r of Object.values(risks)) checkLinks(r.id, r.findings);
+
+  // профессии (spec 2026-10-occupation): вредности — известные факторы риска; фактор без доли в записи бывает только через
+  // профессию — его называет хоть одна; пенсионер один; в каждом возрасте у каждого пола есть кем работать или пенсия
+  const jobList = Object.values(jobs).sort((a, b) => (a.id < b.id ? -1 : 1));
+  for (const j of jobList) {
+    if (j.age.min > j.age.max) errors.push(`${j.id}: возраст ${j.age.min}–${j.age.max}`);
+    if (j.sex.m + j.sex.f <= 0) errors.push(`${j.id}: доли по полу — обе нулевые`);
+    for (const h of j.hazards ?? []) if (!(h.id in risks)) errors.push(`${j.id}: вредность ${h.id} — нет такого фактора риска`);
+    if (j.retired && j.retired.some((r, i) => i > 0 && r.from <= j.retired![i - 1].from)) errors.push(`${j.id}: доли на пенсии — не по возрастанию возраста`);
+  }
+  if (jobList.length > 0) {
+    const retired = jobList.filter(j => j.retired);
+    if (retired.length !== 1) errors.push(`профессии: пенсионер должен быть один, а их ${retired.length}`);
+    const pension = (age: number) => [...(retired[0]?.retired ?? [])].reverse().find(r => age >= r.from)?.pct ?? 0;
+    for (const sex of ['m', 'f'] as const) {
+      for (let age = 18; age <= 100; age++) {
+        if (pension(age) >= 100) continue;
+        if (!jobList.some(j => !j.retired && j.weight > 0 && j.sex[sex] > 0 && age >= j.age.min && age <= j.age.max)) errors.push(`профессии: в ${age} лет у ${sex === 'm' ? 'мужчин' : 'женщин'} не на пенсии работать некем`);
+      }
+    }
+    for (const r of Object.values(risks)) {
+      if (r.prevalence.m === 0 && r.prevalence.f === 0 && !jobList.some(j => j.hazards?.some(h => h.id === r.id))) errors.push(`${r.id}: доли нет, и ни одна профессия его не называет — такого не бывает`);
+    }
+  }
   const revealedBy: Record<string, string[]> = {};
   for (const e of Object.values(exams)) {
     for (const [i, ch] of e.checks.entries()) {
@@ -831,7 +861,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   const rects = (list: [number, number, number, number][]): Cell[] =>
     list.flatMap(([x0, y0, x1, y1]) => Array.from({ length: (y1 - y0 + 1) * (x1 - x0 + 1) }, (_, i) => [x0 + (i % (x1 - x0 + 1)), y0 + Math.floor(i / (x1 - x0 + 1))] as Cell));
   const db: ContentDb = {
-    contentVersion, hash: '', conditions: {}, findings: {}, exams: {}, risks: {}, treatments: {}, rooms: {}, equipment: {}, roles: {}, presets: {},
+    contentVersion, hash: '', conditions: {}, findings: {}, exams: {}, risks: {}, jobs: {}, treatments: {}, rooms: {}, equipment: {}, roles: {}, presets: {},
     characters: Object.fromEntries(Object.values(characters).sort((a, b) => (a.id < b.id ? -1 : 1)).map(c => [c.id, c])),
     // заданный пациент строкой — пришедший сам с этой болезнью
     chapters: Object.fromEntries(Object.values(chapters).sort((a, b) => a.order - b.order).map(({ tutorialRoom, ...c }) => [c.id, {
@@ -958,6 +988,16 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (r.ageMin) out.ageMin = r.ageMin;
     if (r.ageMax) out.ageMax = r.ageMax;
     db.risks[r.id] = out;
+  }
+  // профессии (spec 2026-10-occupation): доли — в долях 1/10 000, как у факторов риска
+  for (const j of Object.values(jobs).sort((a, b) => (a.id < b.id ? -1 : 1))) {
+    const out: Profession = {
+      id: j.id, name: j.name, sex: j.sex, age: j.age, weight: j.weight,
+      hazards: (j.hazards ?? []).map(h => ({ id: h.id, p: Math.round(h.pct * 100) })), sources: j.sources, review: j.review,
+    };
+    if (j.female) out.female = j.female;
+    if (j.retired) out.retired = j.retired.map(r => ({ from: r.from, p: Math.round(r.pct * 100) }));
+    db.jobs[j.id] = out;
   }
   for (const t of Object.values(treatments).sort((a, b) => (a.id < b.id ? -1 : 1))) {
     const out: Treatment = {
