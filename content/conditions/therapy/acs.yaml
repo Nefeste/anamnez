@@ -91,9 +91,12 @@ course:
 findings:
   # давящая боль в покое дольше 20 минут — у инфаркта и у нестабильной стенокардии в покое; у нестабильной по
   # нагрузке её нет (часть 39г): связи не пересекаются, у каждого сочетания — одна
-  - { f: sym.chest_pain_pressing, band: usually, when: { pain: [rest] } }
-  - { f: sym.chest_pain_pressing, band: usually, when: { pain: [exertion], type: [stemi] } }
-  - { f: sym.chest_pain_pressing, band: usually, when: { pain: [exertion], type: [nste], mi: [yes] } }
+  # пол и возраст (FR-MED-1, spec 2026-10-age-sex, 0.5.10): «атипичная симптоматика чаще отмечается у пожилых лиц,
+  # женщин, больных сахарным диабетом» (154_4, раздел 2.1, комментарий): давящая боль реже, одышка, тошнота и слабость —
+  # чаще; пожилой — с 60 лет; множители — игровая оценка
+  - { f: sym.chest_pain_pressing, band: usually, when: { pain: [rest] }, older: { from: 60, x: 0.85 }, sex: { f: 0.85 } }
+  - { f: sym.chest_pain_pressing, band: usually, when: { pain: [exertion], type: [stemi] }, older: { from: 60, x: 0.85 }, sex: { f: 0.85 } }
+  - { f: sym.chest_pain_pressing, band: usually, when: { pain: [exertion], type: [nste], mi: [yes] }, older: { from: 60, x: 0.85 }, sex: { f: 0.85 } }
   # нестабильная по нагрузке (часть 39г; 154_4, раздел 1.5): боль при нагрузке, как у стенокардии напряжения,
   # но впервые меньше месяца назад или стала чаще и сильнее — этим их и различают (опросник Роуза, 155_2,
   # приложение Г1)
@@ -107,10 +110,10 @@ findings:
     note: "впервые возникшая или утяжелившаяся — по определению (154_4, раздел 1.5)"
   - { f: sym.pain_radiation, band: often }
   - { f: sym.sweating, band: often }
-  - { f: sym.dyspnea, band: sometimes }
-  - { f: sym.nausea, band: sometimes }
-  - { f: sym.epigastric_pain, band: rarely }
-  - { f: sym.fatigue, band: rarely }
+  - { f: sym.dyspnea, band: sometimes, older: { from: 60, x: 1.5 }, sex: { f: 1.3 } }
+  - { f: sym.nausea, band: sometimes, sex: { f: 1.5 } }
+  - { f: sym.epigastric_pain, band: rarely, sex: { f: 1.5 } }
+  - { f: sym.fatigue, band: rarely, older: { from: 60, x: 2 }, sex: { f: 1.5 } }
   - { f: vital.tachycardia, band: sometimes }
   - { f: vital.bp_high, band: sometimes }
   - { f: vital.spo2_low, band: rarely }

@@ -41,7 +41,38 @@ export interface Link {
   /** условие по скрытым параметрам случая: параметр → допустимые значения */
   when?: Record<string, string[]>;
   attrs?: Record<string, AttrSpec>;
+  /** возраст (FR-MED-1, spec 2026-10-age-sex, 0.5.10): с этого возраста вероятность — в столько раз */
+  older?: { from: number; x: number };
+  /** пол (там же): у этого пола — в столько раз */
+  sex?: { m?: number; f?: number };
 }
+
+/** Пол и возраст человека — для множителей связи (FR-MED-1). */
+export interface LinkWho {
+  sex: 'm' | 'f';
+  age: number;
+}
+
+/** Самая большая вероятность связи с множителями — «почти всегда»: множитель не делает признак обязательным. */
+const LINK_MAX: P = 9500;
+
+/**
+ * Вероятность связи у этого человека (FR-MED-1): множители возраста и пола, не выше «почти всегда»; связь без множителей
+ * или без человека — как записано. Одна на генератор и вывод.
+ */
+export function linkP(l: Link, who?: LinkWho): P {
+  if (!who || (!l.older && !l.sex)) return l.p;
+  let x = 1;
+  if (l.older && who.age >= l.older.from) x *= l.older.x;
+  x *= l.sex?.[who.sex] ?? 1;
+  if (x === 1) return l.p;
+  const q = l.p * x;
+  // чаще — не выше «почти всегда» (если записано выше — не ниже записанного), реже — во сколько записано
+  return Math.round(x > 1 ? Math.min(q, Math.max(l.p, LINK_MAX)) : q);
+}
+
+/** Есть ли у связей записи множители пола и возраста — тогда вывод считает их у каждого человека отдельно. */
+export const whoMatters = (links: readonly Link[]): boolean => links.some(l => l.older || l.sex);
 
 /** Где лечить: дома, направить в стационар, вызвать скорую (перевод). */
 /**

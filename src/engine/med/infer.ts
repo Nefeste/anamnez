@@ -4,13 +4,13 @@
 // По пользе обследования решают страховая песочницы и нанятые врачи — а это меняет состояние
 // партии, поэтому логарифм здесь свой, из `core/math.ts` (ADR 0004): одинаковый в Hermes, V8 и
 // JavaScriptCore.
-import { byParams, byPresence, byRule, byValue, crosses, paramsOf, type Condition, type ContentDb, type DerivedByParams, type DerivedByValue, type ExamCheck, type Id, type Link, type Rule, type Season } from '../../content/types';
+import { byParams, byPresence, byRule, byValue, crosses, linkP, type LinkWho, paramsOf, type Condition, type ContentDb, type DerivedByParams, type DerivedByValue, type ExamCheck, type Id, type Link, type Rule, type Season, whoMatters } from '../../content/types';
 import { log2 } from '../core/math';
 import { P_ONE } from '../core/rng';
 import { expectedFindings, falseRate } from './exams';
 import { chronicChance, presentingWeight } from './generate';
 import { riskShare } from './jobs';
-import { checkRule, type Known, knownOf, type RuleVerdict, type Who } from './rules';
+import { checkRule, type Known, knownOf, type RuleVerdict, type Who, whoOf } from './rules';
 import type { Observation, Sex } from './types';
 
 export interface InferContext {
@@ -76,22 +76,35 @@ function linkWeight(cond: Condition | undefined, link: Link): number {
   return share;
 }
 
-/** Вероятность вызвать признак хотя бы одной связью причины (без учёта стадии). */
-function causeProbability(links: Link[], f: Id, cond?: Condition): number {
+/** Вероятность вызвать признак хотя бы одной связью причины (без учёта стадии) — у человека этого пола и возраста. */
+function causeProbability(links: Link[], f: Id, cond?: Condition, who?: LinkWho): number {
   let miss = 1;
-  for (const l of links) if (l.f === f) miss *= 1 - (l.p / P_ONE) * linkWeight(cond, l);
+  for (const l of links) if (l.f === f) miss *= 1 - (linkP(l, who) / P_ONE) * linkWeight(cond, l);
   return 1 - miss;
 }
 
-/** То же по таблице: связи записи не меняются, а вывод спрашивает о них на каждом признаке каждого кандидата. */
-const causeTables = new WeakMap<readonly Link[], Map<Id, number>>();
+/**
+ * То же по таблице: связи записи не меняются, а вывод спрашивает о них на каждом признаке каждого кандидата. У записи с
+ * множителями пола и возраста (FR-MED-1) — своя таблица на пол и возраст, у остальных — одна.
+ */
+const causeTables = new WeakMap<readonly Link[], Map<string, Map<Id, number>>>();
+const matters = new WeakMap<readonly Link[], boolean>();
+const whoKey = (links: readonly Link[], who: LinkWho | undefined): string => {
+  if (!who) return '';
+  let m = matters.get(links);
+  if (m === undefined) matters.set(links, (m = whoMatters(links)));
+  return m ? `${who.sex}${who.age}` : '';
+};
 
-function causeOf(links: Link[], f: Id, cond?: Condition): number {
-  let table = causeTables.get(links);
+function causeOf(links: Link[], f: Id, cond?: Condition, who?: LinkWho): number {
+  const key = whoKey(links, who);
+  let byWho = causeTables.get(links);
+  if (!byWho) causeTables.set(links, (byWho = new Map()));
+  let table = byWho.get(key);
   if (!table) {
     table = new Map();
-    for (const l of links) if (!table.has(l.f)) table.set(l.f, causeProbability(links, l.f, cond));
-    causeTables.set(links, table);
+    for (const l of links) if (!table.has(l.f)) table.set(l.f, causeProbability(links, l.f, cond, key ? who : undefined));
+    byWho.set(key, table);
   }
   return table.get(f) ?? 0;
 }
@@ -100,17 +113,17 @@ function causeOf(links: Link[], f: Id, cond?: Condition): number {
  * P(признак есть | набор состояний и факторов риска) — noisy-OR с фоном. `unknown` — P(признака
  * нет) от того, чего о пациенте не знают (`unknownMiss`); нет — только известное.
  */
-export function findingProbability(db: ContentDb, f: Id, conditions: readonly Id[], risks: readonly Id[], unknown = 1): number {
+export function findingProbability(db: ContentDb, f: Id, conditions: readonly Id[], risks: readonly Id[], unknown = 1, who?: LinkWho): number {
   let miss = (1 - (db.findings[f]?.leak ?? 0) / P_ONE) * unknown;
   for (const id of conditions) {
     const c = db.conditions[id];
     // чего при состоянии не бывает (часть 39а), того нет, откуда бы оно ни шло
     if (c?.masks?.includes(f)) return 0;
-    if (c) miss *= 1 - causeOf(c.findings, f, c);
+    if (c) miss *= 1 - causeOf(c.findings, f, c, who);
   }
   for (const id of risks) {
     const r = db.risks[id];
-    if (r) miss *= 1 - causeOf(r.findings, f);
+    if (r) miss *= 1 - causeOf(r.findings, f, undefined, who);
   }
   return 1 - miss;
 }
@@ -192,7 +205,7 @@ export function unknownsOf(db: ContentDb, observations: readonly Observation[], 
     if (p <= 0) return;
     let q = p;
     for (const f of new Set(links.map(l => l.f))) {
-      const cause = causeOf(links, f, cond);
+      const cause = causeOf(links, f, cond, ctx);
       const obs = grouped.get(f);
       if (f.startsWith('hx.')) {
         if (!obs) continue;
@@ -321,7 +334,7 @@ interface Combo {
   causes: ReadonlyMap<Id, number>;
 }
 
-const comboCache = new WeakMap<Condition, Combo[]>();
+const comboCache = new WeakMap<Condition, Map<string, Combo[]>>();
 
 /**
  * Сочетания значений тех скрытых параметров, от которых зависят признаки болезни (часть 33а), — с
@@ -329,8 +342,12 @@ const comboCache = new WeakMap<Condition, Combo[]>();
  * тяж, и тромб в подкожной вене, и её ствол; в среднем по долям каждый из них по отдельности
  * говорил бы против тромбоза, хотя вместе они — его картина. Без таких параметров — одно сочетание.
  */
-function combosOf(c: Condition): Combo[] {
-  const cached = comboCache.get(c);
+function combosOf(c: Condition, who?: LinkWho): Combo[] {
+  // у болезни с множителями пола и возраста (FR-MED-1) — свои сочетания на пол и возраст
+  const key = whoKey(c.findings, who);
+  let byWho = comboCache.get(c);
+  if (!byWho) comboCache.set(c, (byWho = new Map()));
+  const cached = byWho.get(key);
   if (cached) return cached;
   const names = [...new Set(c.findings.flatMap(l => Object.keys(l.when ?? {})))].filter(n => c.params?.[n]).sort();
   let combos: { values: Record<string, string>; share: number }[] = [{ values: {}, share: 1 }];
@@ -343,11 +360,11 @@ function combosOf(c: Condition): Combo[] {
     const causes = new Map<Id, number>();
     for (const l of c.findings) {
       if (l.when && !Object.entries(l.when).every(([p, allowed]) => !c.params?.[p] || allowed.includes(k.values[p]))) continue;
-      causes.set(l.f, 1 - (1 - (causes.get(l.f) ?? 0)) * (1 - l.p / P_ONE));
+      causes.set(l.f, 1 - (1 - (causes.get(l.f) ?? 0)) * (1 - linkP(l, key ? who : undefined) / P_ONE));
     }
     return { share: k.share, causes };
   });
-  comboCache.set(c, out);
+  byWho.set(key, out);
   return out;
 }
 
@@ -376,20 +393,20 @@ export function posterior(db: ContentDb, candidates: readonly Id[], observations
     const c = db.conditions[id];
     const shares = sharesFor(db, id, ctx);
     const prior = priorWeight(db, id, ctx) * (told.length > 0 && c.checkup && !c.findings.some(l => l.p > 0 && told.includes(l.f)) ? UNTOLD : 1);
-    const combos = combosOf(c);
+    const combos = combosOf(c, ctx);
     if (combos.length === 1) {
       const set = [id, ...(c.requires ?? []), ...ctx.knownConditions];
       let w = prior;
       for (const { f, e } of grouped) {
         if (w === 0) break;
-        w *= mix(e, findingProbability(db, f, set, ctx.knownRisks, unknownMiss(ctx, f, shares)));
+        w *= mix(e, findingProbability(db, f, set, ctx.knownRisks, unknownMiss(ctx, f, shares), ctx));
       }
       return { id, p: w };
     }
     if (prior === 0) return { id, p: 0 };
     // фон признака без самого кандидата — от сочетания не зависит, считается один раз
     const others = [...(c.requires ?? []), ...ctx.knownConditions];
-    const bg = grouped.map(({ f, e }) => ({ f, e, other: findingProbability(db, f, others, ctx.knownRisks, unknownMiss(ctx, f, shares)) }));
+    const bg = grouped.map(({ f, e }) => ({ f, e, other: findingProbability(db, f, others, ctx.knownRisks, unknownMiss(ctx, f, shares), ctx) }));
     let w = 0;
     for (const k of combos) {
       let x = prior * k.share;
@@ -434,7 +451,7 @@ function candidateP(db: ContentDb, beliefs: readonly Belief[], ctx: InferContext
   let ps = c.byFinding.get(f);
   if (!ps) {
     const { sets, shares } = c;
-    c.byFinding.set(f, (ps = sets.map((set, i) => findingProbability(db, f, set, ctx.knownRisks, unknownMiss(ctx, f, shares[i])))));
+    c.byFinding.set(f, (ps = sets.map((set, i) => findingProbability(db, f, set, ctx.knownRisks, unknownMiss(ctx, f, shares[i]), ctx))));
   }
   return ps;
 }
@@ -481,15 +498,21 @@ export function expectedGain(db: ContentDb, examId: Id, beliefs: readonly Belief
  * P(признак | болезнь, параметр `name` = `value`) — связи с этим значением, остальные параметры —
  * в среднем по долям; плюс фон признака.
  */
-function findingGivenParam(db: ContentDb, c: Condition, f: Id, name: string, value: string): number {
+function findingGivenParam(db: ContentDb, c: Condition, f: Id, name: string, value: string, who?: LinkWho): number {
   let miss = 1 - (db.findings[f]?.leak ?? 0) / P_ONE;
   for (const l of c.findings) {
     if (l.f !== f || (l.when?.[name] && !l.when[name].includes(value))) continue;
     const others = l.when && Object.fromEntries(Object.entries(l.when).filter(([k]) => k !== name));
-    miss *= 1 - (l.p / P_ONE) * linkWeight(c, others ? { ...l, when: others } : l);
+    miss *= 1 - (linkP(l, who) / P_ONE) * linkWeight(c, others ? { ...l, when: others } : l);
   }
   return 1 - miss;
 }
+
+/** Пол и возраст из `Who` правил — для множителей связи; без пола — без множителей. */
+const linkWhoOf = (age: Who): LinkWho | undefined => {
+  const w = whoOf(age);
+  return w.sex ? { sex: w.sex, age: w.age } : undefined;
+};
 
 /** Признаки болезни, связи которых зависят от параметра, — только они различают его значения. */
 const tellingOf = (c: Condition, name: string): Id[] => [...new Set(c.findings.filter(l => l.when?.[name]).map(l => l.f))];
@@ -527,7 +550,7 @@ export function paramBeliefs(db: ContentDb, condId: Id, name: string, observatio
   const telling = tellingOf(c, name).filter(f => grouped.has(f));
   const weighted = Object.entries(dist).map(([value, share]) => {
     let w = share;
-    for (const f of telling) w *= mix(evidenceOf(db, grouped.get(f)!, expected), findingGivenParam(db, c, f, name, value));
+    for (const f of telling) w *= mix(evidenceOf(db, grouped.get(f)!, expected), findingGivenParam(db, c, f, name, value, linkWhoOf(age)));
     return { value, p: w };
   });
   const total = weighted.reduce((a, b) => a + b.p, 0);
@@ -665,7 +688,7 @@ export function paramGain(db: ContentDb, condId: Id, name: string, examId: Id, o
     const sens = check.sens / P_ONE;
     const fp = falseRate(exam, check.f, check.spec, expected) / P_ONE;
     const yes = beliefs.map(b => {
-      const q = findingGivenParam(db, c, check.f, name, b.value);
+      const q = findingGivenParam(db, c, check.f, name, b.value, linkWhoOf(age));
       return sens * q + fp * (1 - q);
     });
     let pYes = 0;

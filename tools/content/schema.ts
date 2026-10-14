@@ -65,6 +65,9 @@ const link = z.strictObject({
   stages: z.array(z.string()).optional(),
   when: z.record(z.string(), z.array(z.string())).optional(),
   attrs: z.record(z.string(), attrSpec).optional(),
+  /** возраст и пол (FR-MED-1, spec 2026-10-age-sex, 0.5.10): с этого возраста — в столько раз; у пола — в столько раз */
+  older: z.strictObject({ from: z.number().int().min(19).max(95), x: z.number().positive().max(10) }).optional(),
+  sex: z.strictObject({ m: z.number().positive().max(10).optional(), f: z.number().positive().max(10).optional() }).optional(),
 });
 const riskMultiplier = z.strictObject({ id: z.string(), x: z.number().positive() });
 const txId = z.string().regex(/^tx\.[a-z0-9_]+$/);

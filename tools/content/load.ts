@@ -89,6 +89,8 @@ function compileLink(l: LinkSrc): Link {
   const out: Link = { f: l.f, p: prob(l.band) };
   if (l.stages) out.stages = l.stages;
   if (l.when) out.when = l.when;
+  if (l.older) out.older = l.older;
+  if (l.sex) out.sex = l.sex;
   if (l.attrs) {
     out.attrs = {};
     for (const [name, spec] of Object.entries(l.attrs)) {
