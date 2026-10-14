@@ -58,17 +58,18 @@ project — charter `docs/04-process.md`. In addition here: new diseases, findin
   `never`); an exact number only with its source.
 - Treatments are drug classes or INN (международные непатентованные названия). **No doses, no
   regimens, no brand names** anywhere (ADR 0012).
-- Every new record is `review: draft`. Only a human raises it to `checked` or `reviewed`.
+- Every new record is `review: draft`; only a human raises it to `checked` or `reviewed` (charter
+  [`docs/05-rules.md`](https://github.com/Nefeste/gornitsa/blob/main/docs/05-rules.md), «Контент»).
 - Medical texts are paraphrased in your own words; never copy paragraphs from guidelines,
   textbooks, Wikipedia or drug leaflets.
-- Content IDs are eternal: never delete or rename a released ID; deprecate with `replacedBy`
-  (ADR 0011).
+- Content IDs are eternal (charter [`docs/05-rules.md`](https://github.com/Nefeste/gornitsa/blob/main/docs/05-rules.md), «Код»): here a released ID is
+  deprecated with `replacedBy` (ADR 0011).
 - After a batch of records run the content build/validator and the "virtual doctor" and put the
   report in the commit message (`docs/05-content.md` §6).
 
 ## Engine rules
 
-- `src/engine/` is pure TypeScript: no React, React Native, Expo, `Date`, `Math.random`; no
+- `src/engine/` is pure ([charter rule](https://github.com/Nefeste/gornitsa/blob/main/docs/05-rules.md), «Код»); in this project also no
   `Math.exp/log/pow`/trigonometry in state-changing code (ADR 0004). Randomness only from the
   seeded generator and its named forks.
 - The UI never reads a patient's truth: screens get the player's view from
@@ -110,11 +111,11 @@ Studio-wide hard rules — generated `ios/`/`android/`, no React Native `Alert`,
 only in `src/i18n/` and `content/`, a permanent signing key, no generated images — are in the
 charter's `docs/05-rules.md` and are not repeated here. Project rules:
 
-- Merging and releases (studio ADR 0018, 0019): agents act through the owner's GitHub account,
-  so branch protection and its bypass cannot tell an agent from the owner. Never merge, never
-  enable auto-merge by hand (API, MCP tool or UI) and never create a `vX.Y.Z` tag: classes 1–2
-  are merged by `automerge.yml` after the Reviewer's `ревью: ок`; PRs touching
-  `.github/CODEOWNERS` paths and release tags are the owner's (`docs/08-process.md`, «Слияние»).
+- Merging and releases follow studio ADR [0018](https://github.com/Nefeste/gornitsa/blob/main/adr/0018-change-classes-automerge.md) and
+  [0019](https://github.com/Nefeste/gornitsa/blob/main/adr/0019-ci-on-pr.md); here, because agents act through the owner's GitHub account
+  and branch protection cannot tell an agent from the owner: never merge, never enable
+  auto-merge by hand (API, MCP tool or UI) and never create a `vX.Y.Z` tag (`docs/08-process.md`,
+  «Слияние»).
 - The release build has **no `INTERNET` permission** (ADR 0006); it is removed from the release
   manifest by a config plugin, debug keeps it for Metro. Any new permission must be added to the
   CI whitelist consciously.
