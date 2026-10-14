@@ -1282,6 +1282,9 @@ try {
   // «Практикант» (spec 2026-10-trainee) — первым, самый простой; подпись — его
   await page.getByTestId('difficulty-trainee').click();
   check((await text(page, 'difficulty-text')).startsWith('Как «Студент»'), `смена: «Практикант» — «${(await text(page, 'difficulty-text')).slice(0, 80)}»`);
+  // «Ординатор» (0.5.8) — четвёртая вкладка, между «Студентом» и «Врачом»
+  await page.getByTestId('difficulty-resident').click();
+  check((await text(page, 'difficulty-text')).includes('уверенность словами'), `смена: «Ординатор» — «${(await text(page, 'difficulty-text')).slice(0, 80)}»`);
   await page.getByTestId('difficulty-student').click();
   await page.getByTestId('shift-start').click();
   // в очереди никого — «промотать до следующего» (отзыв на 0.0.7: ждали 40 секунд)

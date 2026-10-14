@@ -16,7 +16,7 @@ import type { CaseActions } from './actions';
 /** Строка ряда: уверенность (если уровень её показывает) и сколько доводов за и против. */
 function rowHint(h: HypothesisView): string {
   const t = T.spikes.differential;
-  return [h.outOf10 !== undefined ? t.outOf10(h.outOf10) : undefined, t.count(h.pro.length, h.con.length)].filter(Boolean).join(' · ');
+  return [h.outOf10 !== undefined ? t.outOf10(h.outOf10) : h.word, t.count(h.pro.length, h.con.length)].filter(Boolean).join(' · ');
 }
 
 function Lines({ title, lines, testID }: { title: string; lines: readonly string[]; testID: string }) {
@@ -35,7 +35,7 @@ function HypothesisCard({ h, actions, close }: { h: HypothesisView; actions: Cas
   return (
     <>
       <H>{h.name}</H>
-      {h.outOf10 !== undefined ? <P muted testID="hyp-confidence">{t.outOf10(h.outOf10)}</P> : null}
+      {h.outOf10 !== undefined || h.word ? <P muted testID="hyp-confidence">{h.outOf10 !== undefined ? t.outOf10(h.outOf10) : h.word}</P> : null}
       <Lines title={t.proTitle} lines={h.pro} testID="hyp-pro" />
       <Lines title={t.conTitle} lines={h.con} testID="hyp-con" />
       <Lines title={t.uncheckedTitle} lines={h.unchecked} testID="hyp-unchecked" />

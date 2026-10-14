@@ -77,7 +77,8 @@ export function DecisionScreen({ view: v, actions }: { view: VisitView; actions:
               <Text style={styles.label}>{T.spikes.differential.fromRow}</Text>
               <Chips>
                 {v.differential.map(h => (
-                  <Chip key={h.id} testID={`row-${h.id}`} strong={v.draft.diagnosis === h.id} text={h.outOf10 !== undefined ? `${h.name} · ${t.outOf10(h.outOf10)}` : h.name}
+                  <Chip key={h.id} testID={`row-${h.id}`} strong={v.draft.diagnosis === h.id}
+                    text={h.outOf10 !== undefined ? `${h.name} · ${t.outOf10(h.outOf10)}` : h.word ? `${h.name} · ${h.word}` : h.name}
                     onPress={() => actions.chooseDiagnosis(h.id)} />
                 ))}
               </Chips>
@@ -88,7 +89,7 @@ export function DecisionScreen({ view: v, actions }: { view: VisitView; actions:
               <Text style={styles.label}>{d.likely}</Text>
               <Chips>
                 {v.hints.map(h => (
-                  <Chip key={h.id} testID={`hint-${h.id}`} strong={v.draft.diagnosis === h.id} text={`${h.name} · ${t.outOf10(h.outOf10)}`} onPress={() => actions.chooseDiagnosis(h.id)} />
+                  <Chip key={h.id} testID={`hint-${h.id}`} strong={v.draft.diagnosis === h.id} text={`${h.name} · ${h.word ?? t.outOf10(h.outOf10)}`} onPress={() => actions.chooseDiagnosis(h.id)} />
                 ))}
               </Chips>
             </Card>

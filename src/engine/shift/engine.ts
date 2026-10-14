@@ -110,6 +110,9 @@ export function hospitalCtx(db: ContentDb, s: ShiftState): HospitalCtx {
 /** «Студент»: обследования не ошибаются, пациенты ждут в полтора раза дольше (03-game-design.md §14). */
 const exact = (s: ShiftState) => easyLevel(s.meta.difficulty);
 const STUDENT_PATIENCE = 1.5;
+/** «Ординатор» (spec 2026-10-resident): обследования ошибаются, как у «Врача», а ждут в 1,2 раза дольше (§14). */
+const RESIDENT_PATIENCE = 1.2;
+const patienceOf = (d: Difficulty | undefined) => (easyLevel(d) ? STUDENT_PATIENCE : d === 'resident' ? RESIDENT_PATIENCE : 1);
 
 /** Как пришли бы больные (spec 2026-10-variety): `variety` — «разнообразие» из настроек; нет — как в жизни. */
 interface Variety {
@@ -1934,7 +1937,7 @@ function arrive(db: ContentDb, s: ShiftState, p: ShiftPatient, notices: Notice[]
   p.triage = triageOf(db, p);
   if (!ctx.triage) p.triaged = false;
   const [lo, hi] = p.triage === 'red' ? [0, 0] : PATIENCE[p.triage];
-  p.patience = Math.round(branch(s, `patience:${p.id}`).range(lo, hi) * MIN * (easyLevel(s.meta.difficulty) ? STUDENT_PATIENCE : 1));
+  p.patience = Math.round(branch(s, `patience:${p.id}`).range(lo, hi) * MIN * patienceOf(s.meta.difficulty));
   // своя больница: пришёл в полную зону ожидания — стоит, и ждать готов вдвое меньше
   if (s.hospital && p.patience > 0 && s.queue.length >= ctx.seats) p.patience = Math.round(p.patience / 2);
   s.summary.arrived++;

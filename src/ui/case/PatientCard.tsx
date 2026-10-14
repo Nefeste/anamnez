@@ -170,7 +170,7 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
                 return (
                   <View key={h.id} style={styles.hint}>
                     <View style={styles.headText}>
-                      <P testID={`likely-${h.id}`}>{`${h.name} — ${t.similar(h.outOf10)}`}</P>
+                      <P testID={`likely-${h.id}`}>{`${h.name} — ${h.word ?? t.similar(h.outOf10)}`}</P>
                     </View>
                     <Chip testID={`likely-add-${h.id}`} strong={inRow} text={inRow ? T.spikes.differential.inRow : T.spikes.differential.toRow} onPress={() => actions.toggleHypothesis(h.id)} />
                   </View>

@@ -175,7 +175,8 @@ export interface VisitView {
   unavailable: Record<Id, string>;
   /** где лечить: варианты этой больницы */
   settings: SettingOption[];
-  hints: { id: Id; name: string; outOf10: number }[];
+  /** `word` — у «Ординатора» вместо числа (spec 2026-10-resident) */
+  hints: { id: Id; name: string; outOf10: number; word?: string }[];
   /** дифференциальный ряд игрока (FR-DX-7, spec 2026-10-differential): гипотезы с доводами — по порядку добавления */
   differential: HypothesisView[];
   /** «Студенту» — правила решения к жалобе (часть 32): что говорят по уже проверенному */
@@ -732,6 +733,17 @@ const BONE_EXAMS: Record<Id, { view: BoneFindings['view']; fractures: [Id, BoneF
 
 /** «Студенту» — до пяти гипотез с частотой (03-game-design.md §14). */
 const HINTS = 5;
+/** «Ординатор» (spec 2026-10-resident): «Похоже на» — до трёх, словами (03-game-design.md §14). */
+const RESIDENT_HINTS = 3;
+
+/**
+ * Уверенность словами (FR-DX-8, spec 2026-10-resident): пять слов шкалы, как в «Words of Estimative Probability»
+ * Шермана Кента (1964), — от «едва ли» до «почти наверняка»; границы 1, 3, 6 и 9 из 10 — игровая оценка.
+ */
+export function confidenceWord(p: number): string {
+  const w = T.spikes.differential.words;
+  return p >= 0.9 ? w[4] : p >= 0.6 ? w[3] : p >= 0.3 ? w[2] : p >= 0.1 ? w[1] : w[0];
+}
 
 /**
  * Правила решения к жалобе пациента (часть 32): есть признак правила — что оно велит («Снимок
@@ -771,8 +783,9 @@ function rulesOf(p: Patient, obs: readonly Observation[]): VisitView['rules'] {
 export interface HypothesisView {
   id: Id;
   name: string;
-  /** «7 из 10» — у «Практиканта» и «Студента»; у «Врача» уверенности нет (03-game-design.md §14) */
+  /** «7 из 10» — у «Практиканта» и «Студента»; у «Ординатора» — словом (`word`); у «Врача» уверенности нет (§14) */
   outOf10?: number;
+  word?: string;
   pro: string[];
   con: string[];
   unchecked: string[];
@@ -800,7 +813,7 @@ function differentialOf(p: Patient, obs: readonly Observation[], c: CaseInput, c
     return {
       id,
       name: cond.name.ru,
-      ...(beliefs ? { outOf10: n(share.get(id) ?? 0) } : {}),
+      ...(beliefs ? (c.difficulty === 'resident' ? { word: confidenceWord(share.get(id) ?? 0) } : { outOf10: n(share.get(id) ?? 0) }) : {}),
       pro: ev.pro.map(x => t.pro(name(x.f), n(x.p))),
       con: ev.con.map(x => (x.kind === 'absent' ? t.absent(name(x.f), n(x.p)) : t.unexplained(name(x.f)))),
       unchecked: ev.unchecked.map(x => t.unchecked(name(x.f), n(x.p), x.exam ? lowerFirst(db.exams[x.exam].name.ru) : undefined, x.exam ? c.unavailable?.[x.exam] : undefined)),
@@ -854,8 +867,8 @@ export function makeCaseView(c: CaseInput): VisitView {
     settings: c.settings ?? (['home', 'ward', 'ambulance'] as const).map(key => ({ key, title: T.spikes.patient.setting[key] })),
     // «0 из 10» ничего не подсказывает — такие не показываем, первую — всегда
     diagnoses: diagnosisGroups(c.departments),
-    hints: beliefs ? beliefs.slice(0, HINTS)
-      .map(b => ({ id: b.id, name: db.conditions[b.id].name.ru, outOf10: Math.round(b.p * 10) }))
+    hints: beliefs ? beliefs.slice(0, c.difficulty === 'resident' ? RESIDENT_HINTS : HINTS)
+      .map(b => ({ id: b.id, name: db.conditions[b.id].name.ru, outOf10: Math.round(b.p * 10), ...(c.difficulty === 'resident' ? { word: confidenceWord(b.p) } : {}) }))
       .filter((h, i) => i === 0 || h.outOf10 > 0) : [],
     differential: differentialOf(p, obs, c, context, beliefs),
     rules: c.difficulty === 'doctor' ? [] : rulesOf(p, obs),
