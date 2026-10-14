@@ -71,6 +71,18 @@ export function DecisionScreen({ view: v, actions }: { view: VisitView; actions:
 
       {step === 'diagnosis' ? (
         <>
+          {/* дифференциальный ряд игрока (spec 2026-10-differential) — первым: из него и выбирают */}
+          {v.differential.length > 0 && (
+            <Card testID="decision-row">
+              <Text style={styles.label}>{T.spikes.differential.fromRow}</Text>
+              <Chips>
+                {v.differential.map(h => (
+                  <Chip key={h.id} testID={`row-${h.id}`} strong={v.draft.diagnosis === h.id} text={h.outOf10 !== undefined ? `${h.name} · ${t.outOf10(h.outOf10)}` : h.name}
+                    onPress={() => actions.chooseDiagnosis(h.id)} />
+                ))}
+              </Chips>
+            </Card>
+          )}
           {v.hints.length > 0 && (
             <Card>
               <Text style={styles.label}>{d.likely}</Text>

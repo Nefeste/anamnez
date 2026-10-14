@@ -674,6 +674,11 @@ export function chooseSetting(setting: Setting) {
   draft({ kind: 'setting', setting });
 }
 
+/** Дифференциальный ряд (spec 2026-10-differential): добавить гипотезу или убрать её. */
+export function toggleHypothesis(id: Id) {
+  draft({ kind: 'hypothesis', id });
+}
+
 /** Завершить приём: случай закрыт, его итог — на экране итога (фокус). */
 export function finishCase() {
   const sess = session;

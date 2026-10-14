@@ -416,6 +416,15 @@ export function apply(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
       }
       return [];
     }
+    case 'hypothesis': {
+      // дифференциальный ряд игрока (spec 2026-10-differential): из тех же болезней, что диагноз; новая — в конец
+      const p = current(s);
+      if (p && db.conditions[cmd.id]?.presenting && (p.departments ?? [s.meta.department]).includes(db.conditions[cmd.id].department)) {
+        const row = p.draft.hypotheses ?? [];
+        p.draft.hypotheses = row.includes(cmd.id) ? row.filter(x => x !== cmd.id) : [...row, cmd.id];
+      }
+      return [];
+    }
     case 'toggleTreatment': {
       const p = current(s);
       // операцию выбирают «В операционную», а не в списке лечения (часть 28)

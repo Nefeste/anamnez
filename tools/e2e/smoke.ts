@@ -1121,10 +1121,29 @@ try {
     `П4: обзорный снимок живота в карте — рисунком ${Math.round(abdBox?.width ?? 0)} × ${Math.round(abdBox?.height ?? 0)}`);
   await page.screenshot({ path: join(OUT, '04-xray-abdomen.png') });
   await page.screenshot({ path: join(OUT, '04-patient-exams.png'), fullPage: true });
+  // дифференциальный ряд (spec 2026-10-differential, 0.5.8): пневмония — поиском в ряд; в карточке — за, против, не
+  // проверено и чем подтвердить; на экране решения «Ваш ряд» — первым
+  await page.getByTestId('hyp-add').click();
+  await page.getByTestId('hyp-search').fill('пневмон');
+  await page.getByTestId('hyp-pick-cond.pneumonia_cap').click();
+  await page.getByTestId('hyp-add-sheet-close').click();
+  const hypRow = await text(page, 'hyp-cond.pneumonia_cap');
+  // уверенность «Студента» — числом: «похоже у N из 10», а меньше половины десятой — «реже 1 из 10»
+  check(/(похоже у \d+ из 10|реже 1 из 10) · за — \d+, против — \d+/.test(hypRow), `ряд гипотез: ${hypRow.replace(/\n/g, ' · ')}`);
+  await page.getByTestId('hyp-cond.pneumonia_cap').click();
+  await page.getByTestId('hyp-confirm').waitFor({ timeout: 5000 });
+  const hypConfirm = await text(page, 'hyp-confirm');
+  const hypPro = await text(page, 'hyp-pro');
+  check(hypConfirm.includes('— сделано') && hypPro.includes('из 10 с этой болезнью'), `карточка гипотезы: ${hypPro.split('\n')[1] ?? ''} · ${hypConfirm.replace(/\n/g, ' · ')}`);
+  // лист поиска ещё уезжает вниз — снимок после его анимации
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(OUT, '04-hypothesis.png'), fullPage: true });
+  await page.getByTestId('hyp-sheet-close').click();
   // решение — отдельный экран в два шага, а не четвёртая вкладка (отзыв на 0.0.5)
   check((await page.locator('[data-testid^="tab-"]').count()) === 3 && (await page.getByTestId('visit-decide').isVisible()), 'П4: три вкладки действий, «Решение» — отдельной кнопкой внизу');
   await page.getByTestId('visit-decide').click();
   await page.getByTestId('dx-cond.pneumonia_cap').waitFor({ timeout: 5000 });
+  check((await page.getByTestId('row-cond.pneumonia_cap').count()) === 1, 'решение: «Ваш ряд» — пневмония из ряда гипотез');
   check(await page.getByTestId('decision-to-plan').isDisabled(), 'решение, шаг 1: без диагноза дальше не пройти');
   await page.getByTestId('dx-cond.pneumonia_cap').click();
   await page.screenshot({ path: join(OUT, '05-decision-diagnosis.png') });
@@ -1306,8 +1325,12 @@ try {
   await page.getByTestId('exam-exam.ask_complaints').waitFor({ timeout: 10_000 });
   const walked = Date.now() - invited;
   check(walked > 800, `смена: приглашённый дошёл до кабинета — карта пациента через ${walked} мс`);
-  const likely = page.locator('[data-testid^="likely-"]');
+  const likely = page.locator('[data-testid^="likely-cond."]');
   check((await likely.count()) > 0 && (await likely.first().innerText()).includes('из 10 похожих пациентов'), `смена: «Студент» — «Похоже на»: ${(await likely.first().innerText()).trim()}`);
+  // из «Похоже на» — в ряд гипотез (0.5.8)
+  const firstLikely = ((await likely.first().getAttribute('data-testid')) ?? '').slice('likely-'.length);
+  await page.getByTestId(`likely-add-${firstLikely}`).click();
+  check((await page.getByTestId(`hyp-${firstLikely}`).count()) === 1 && (await text(page, `likely-add-${firstLikely}`)) === '✓ в ряду', `смена: из «Похоже на» в ряд — ${firstLikely}`);
   const roomClock = await text(page, 'visit-clock');
   await page.waitForTimeout(1500);
   check((await text(page, 'visit-clock')) === roomClock, 'смена: в кабинете часы идут только делами');

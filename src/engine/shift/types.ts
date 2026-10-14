@@ -117,7 +117,8 @@ export interface ShiftPatient {
   paid?: CaseIncome;
   step: number;
   spent: { seconds: number; money: number };
-  draft: { diagnosis?: Id; treatments: Id[]; setting: Setting };
+  /** `hypotheses` — дифференциальный ряд игрока (FR-DX-7, spec 2026-10-differential): болезни, которые он подозревает */
+  draft: { diagnosis?: Id; treatments: Id[]; setting: Setting; hypotheses?: Id[] };
   closed?: ClosedCase;
   /** ведёт нанятый врач — номер человека из штата (spec 2026-09-hired-doctors); нет — вы */
   by?: string;
@@ -214,6 +215,8 @@ export type Command =
   | { kind: 'diagnose'; id: Id }
   | { kind: 'toggleTreatment'; id: Id }
   | { kind: 'setting'; setting: Setting }
+  /** дифференциальный ряд (spec 2026-10-differential): добавить гипотезу или убрать её — времени не тратит */
+  | { kind: 'hypothesis'; id: Id }
   | { kind: 'finish' }
   /** время на карте: часы идут сами (ADR 0005) */
   | { kind: 'advance'; seconds: number }

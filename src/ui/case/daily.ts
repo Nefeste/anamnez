@@ -10,6 +10,7 @@ export const dailyActions: CaseActions = {
   chooseDiagnosis: dailyVisit.chooseDiagnosis,
   toggleTreatment: dailyVisit.toggleTreatment,
   chooseSetting: dailyVisit.chooseSetting,
+  toggleHypothesis: dailyVisit.toggleHypothesis,
   finish: dailyVisit.finish,
   routes: { decision: '/daily/decision', outcome: '/daily/outcome' },
 };
