@@ -624,40 +624,69 @@ function nextStepFor(db: ContentDb, patient: Patient, obs: readonly Observation[
 }
 
 export function runDoctor(db: ContentDb, patient: Patient, strategy: Strategy, rng: Rng, opt: DoctorOptions): DoctorResult {
+  // шаги подряд — те же, что у нанятого врача по одному, и у разбора, который считают заранее (`startRational`)
+  if (strategy === 'rational') return startRational(db, patient, rng, opt).result();
+  const obs: Observation[] = complaintObservations(patient);
+  const done: Id[] = [];
+  const doExam = examining(db, patient, rng, obs, done);
+  // «всё подряд» спрашивает и назначает всё; ленивый решает по жалобам
+  if (strategy === 'shotgun') for (const id of opt.exams) if (examFits(db.exams[id], patient)) doExam(id);
+  const top = posterior(db, opt.candidates, obs, contextOf(db, patient, obs, opt.prior))[0];
+  return resultOf(db, patient, { diagnosis: top.id, confidence: top.p, plan: choosePlan(db, top.id, obs, patient) }, done, obs);
+}
+
+/**
+ * Разумный врач по шагу (0.5.11, NFR-PRF-1): `step` — один шаг, как у нанятого врача; `result` — итог, досчитав
+ * оставшиеся. Так разбор приёма считают заранее, пока игрок думает, — тем же зерном и теми же шагами, что подряд.
+ */
+export interface DoctorRun {
+  /** сделать шаг; true — решение уже принято */
+  step(): boolean;
+  result(): DoctorResult;
+}
+
+export function startRational(db: ContentDb, patient: Patient, rng: Rng, opt: DoctorOptions): DoctorRun {
   const threshold = opt.threshold ?? 0.9;
   const minGain = opt.minGain ?? MIN_GAIN;
   const obs: Observation[] = complaintObservations(patient);
   const done: Id[] = [];
-  const ctxOf = () => contextOf(db, patient, obs, opt.prior);
-  const doExam = (id: Id) => {
+  const doExam = examining(db, patient, rng, obs, done);
+  let phase: DoctorPhase = {};
+  let decision: { diagnosis: Id; confidence: number; plan: Plan } | undefined;
+  let out: DoctorResult | undefined;
+  const step = (): boolean => {
+    if (decision) return true;
+    // сколько прошло с прихода (часть 41а): окно тромболизиса закрывается, пока идёт обследование
+    const minutes = done.reduce((a, id) => a + examMinutes(db.exams[id]), 0);
+    const r = nextStep(db, patient, obs, done, phase, {
+      candidates: opt.candidates, exams: opt.exams, threshold, minGain, ...(opt.skipAsk ? { skipAsk: opt.skipAsk } : {}), ...(opt.prior ? { prior: opt.prior } : {}), venue: { minutes },
+    });
+    phase = r.phase;
+    if (r.step.kind === 'decide') {
+      decision = r.step;
+      return true;
+    }
+    doExam(r.step.exam);
+    return false;
+  };
+  return {
+    step,
+    result: () => {
+      while (!step());
+      return (out ??= resultOf(db, patient, decision!, done, obs));
+    },
+  };
+}
+
+/** Обследование врача: наблюдения — своей ветвью зерна по номеру и обследованию. */
+function examining(db: ContentDb, patient: Patient, rng: Rng, obs: Observation[], done: Id[]) {
+  return (id: Id) => {
     obs.push(...runExam(db, patient, id, rng.fork(`exam:${done.length}:${id}`)));
     done.push(id);
   };
+}
 
-  let decision: { diagnosis: Id; confidence: number; plan: Plan };
-  if (strategy === 'rational') {
-    // шаги подряд — те же, что у нанятого врача по одному
-    let phase: DoctorPhase = {};
-    for (;;) {
-      // сколько прошло с прихода (часть 41а): окно тромболизиса закрывается, пока идёт обследование
-      const minutes = done.reduce((a, id) => a + examMinutes(db.exams[id]), 0);
-      const r = nextStep(db, patient, obs, done, phase, {
-        candidates: opt.candidates, exams: opt.exams, threshold, minGain, ...(opt.skipAsk ? { skipAsk: opt.skipAsk } : {}), ...(opt.prior ? { prior: opt.prior } : {}), venue: { minutes },
-      });
-      phase = r.phase;
-      if (r.step.kind === 'decide') {
-        decision = r.step;
-        break;
-      }
-      doExam(r.step.exam);
-    }
-  } else {
-    // «всё подряд» спрашивает и назначает всё; ленивый решает по жалобам
-    if (strategy === 'shotgun') for (const id of opt.exams) if (examFits(db.exams[id], patient)) doExam(id);
-    const top = posterior(db, opt.candidates, obs, ctxOf())[0];
-    decision = { diagnosis: top.id, confidence: top.p, plan: choosePlan(db, top.id, obs, patient) };
-  }
-
+function resultOf(db: ContentDb, patient: Patient, decision: { diagnosis: Id; confidence: number; plan: Plan }, done: Id[], obs: Observation[]): DoctorResult {
   const primary = patient.truth.conditions.find(c => c.role === 'primary')!.id;
   const money = done.reduce((a, id) => a + db.exams[id].cost, 0);
   const minutes = done.reduce((a, id) => a + db.exams[id].time.procedure + (db.exams[id].time.report ?? 0) + (db.exams[id].time.turnaround ?? 0), 0);

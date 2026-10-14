@@ -6,7 +6,7 @@
 //
 // Хранилище приходит снаружи (setStore): на телефоне — файлы, в вебе — localStorage, в
 // тестах — память. Модуль, как и saves.ts, не знает про платформу.
-import { useSyncExternalStore } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { db } from '@/content';
 import type { Id, Mission, Season, Setting } from '@/content/types';
 import { complaintObservations } from '@/engine/med/exams';
@@ -23,7 +23,8 @@ import { levelOf } from '@/engine/economy/economy';
 import {
   apply, atDoorOf, bedsideEquipment, bedsideOf, boxBeds, brokenOf, current, freeBeds, freeBoxBeds, freeIcuBeds, freeRicuBeds, type HospitalCtx, hospitalCtx, icuBeds, inBox, inIcu, inpatientsOf, inRicu,
   moreUrgent, newCampaign, newSandbox, ricuBeds,
-  newShift, newSingle, observationsOf, operationOf, type OrBlock, orBlock, orQueueOf, reviewFor, SANDBOX_VENUE, stayEquipment, targetPlace, wardBeds,
+  newShift, newSingle, observationsOf, operationOf, type OrBlock, orBlock, orQueueOf, prepareReview, reviewFor, SANDBOX_VENUE, stayEquipment, targetPlace,
+  wardBeds,
 } from '@/engine/shift/engine';
 import { minutesTo, targetStart, targetsFor } from '@/engine/shift/targets';
 import {
@@ -552,7 +553,17 @@ function allDone(s: ShiftState) {
 export function tick(ms: number = TICK_MS): Notice[] {
   const sess = session;
   if (!sess || sess.paused || !sess.s.dayOpen || sess.s.current || allDone(sess.s)) return [];
-  const notices = run(sess, { kind: 'advance', seconds: Math.round((ms / 1000) * sess.speed * 60) });
+  // по срезам и не дольше `TICK_BUDGET_MS` (0.5.11, NFR-PRF-1): много работы у нанятых врачей — остаток тика пропускается,
+  // часы идут чуть медленнее, а экран не замирает; события те же — время проматывается по ним
+  const total = Math.round((ms / 1000) * sess.speed * 60);
+  const t0 = performance.now();
+  const notices: Notice[] = [];
+  for (let done = 0; done < total; ) {
+    const step = Math.min(TICK_SLICE, total - done);
+    notices.push(...run(sess, { kind: 'advance', seconds: step }));
+    done += step;
+    if (performance.now() - t0 > TICK_BUDGET_MS) break;
+  }
   const { pauseOnRed, pauseOnResults } = settings();
   const red = pauseOnRed ? notices.find(n => (n.kind === 'arrived' && n.triage === 'red') || n.kind === 'ambulance') : undefined;
   const back = pauseOnResults ? notices.find(n => n.kind === 'resultsReady' && sess.s.patients[n.id].status === 'waiting') : undefined;
@@ -561,6 +572,48 @@ export function tick(ms: number = TICK_MS): Notice[] {
   else if (back && back.kind === 'resultsReady') pause(sess, T.shift.pause.results(nameOf(sess.s.patients[back.id])));
   changed();
   return notices;
+}
+
+/** Игровых секунд в срезе тика (0.5.11): на ×4 тик — 60 секунд, четыре среза. */
+const TICK_SLICE = 15;
+/** Дольше этого тик срезов не добавляет (0.5.11, NFR-PRF-1): кадр на телефоне — 16 мс, подвисание — от 100. */
+const TICK_BUDGET_MS = 40;
+
+/** Сколько миллисекунд за раз считать разбор заранее (0.5.11, NFR-PRF-1). */
+const PREPARE_MS = 8;
+
+/**
+ * Посчитать заранее разбор того, кто у вас в кабинете, а затем приёмов нанятых врачей и ждущих в очереди
+ * (`prepareReview`), — по шагу, пока не кончится `budget`: экраны смены зовут это в паузах игры, и закрытие приёма не
+ * ждёт разумного врача разбора. Состояния не меняет.
+ */
+export function prepareIdle(budget: number = PREPARE_MS) {
+  const sess = session;
+  if (!sess || !sess.s.dayOpen) return;
+  const t0 = performance.now();
+  while (prepareReview(db, sess.s) && performance.now() - t0 < budget) {
+    // шаг за шагом: один шаг на телефоне может быть дольше бюджета — тогда один
+  }
+}
+
+/** Как часто считать разбор заранее, пока смена на экране (0.5.11). */
+const PREPARE_EVERY_MS = 100;
+
+/** Сколько экранов смены просят считать заранее; счёт один на всех. */
+let preparing = 0;
+let prepareTimer: ReturnType<typeof setInterval> | null = null;
+
+/** Пока экран смены на виду — считать разбор заранее (`prepareIdle`); экранов несколько — счёт один. */
+export function usePrepareIdle() {
+  useEffect(() => {
+    if (preparing++ === 0) prepareTimer = setInterval(() => prepareIdle(), PREPARE_EVERY_MS);
+    return () => {
+      if (--preparing === 0 && prepareTimer) {
+        clearInterval(prepareTimer);
+        prepareTimer = null;
+      }
+    };
+  }, []);
 }
 
 function pause(sess: Session, reason?: string) {
