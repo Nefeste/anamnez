@@ -1,0 +1,354 @@
+# Что в сборке для Android, кроме кода JS, и под какими лицензиями (spec 2026-10-licenses, 0.5.6): нативные библиотеки
+# React Native, модулей Expo и Skia — и шрифты. Код JS в сборке и его лицензии собирает `tools/licenses/build.ts` из
+# карты кода сборки. Тексты лицензий — в `texts/`, дословно из источника по ссылке `source`; общий текст Apache 2.0 —
+# с apache.org, а правообладатель — в `holder`. `maven` — группы и артефакты Gradle, которые запись покрывает
+# (`licenses.test.ts` сверяет их с `android/build.gradle` модулей); `version` сверяется с тем, что стоит в node_modules.
+
+android:
+  # React Native: движок Hermes и библиотеки, собранные в react-android (ReactAndroid/src/main/jni/third-party)
+  - name: Hermes
+    version: 0.17.0
+    versionFrom: hermes
+    via: React Native
+    license: MIT
+    holder: Copyright (c) Meta Platforms, Inc. and affiliates.
+    texts: [hermes.txt]
+    source: https://github.com/facebook/hermes/blob/main/LICENSE
+  - name: Folly
+    version: 2024.11.18.00
+    versionFrom: toml:folly
+    via: React Native
+    license: Apache-2.0
+    holder: Copyright (c) Meta Platforms, Inc. and affiliates.
+    texts: [apache-2.0.txt]
+    source: https://github.com/facebook/folly/blob/v2024.11.18.00/LICENSE
+  - name: glog
+    version: 0.3.5
+    versionFrom: toml:glog
+    via: React Native
+    license: BSD-3-Clause
+    holder: Copyright (c) 2008, Google Inc.
+    texts: [glog.txt]
+    source: https://github.com/google/glog/blob/v0.3.5/COPYING
+  - name: double-conversion
+    version: 1.1.6
+    versionFrom: toml:doubleconversion
+    via: React Native
+    license: BSD-3-Clause
+    holder: Copyright 2006-2011, the V8 project authors.
+    texts: [double-conversion.txt]
+    source: https://github.com/google/double-conversion/blob/v1.1.6/LICENSE
+  - name: '{fmt}'
+    version: 12.1.0
+    versionFrom: toml:fmt
+    via: React Native
+    license: MIT
+    holder: Copyright (c) 2012 - present, Victor Zverovich and {fmt} contributors
+    texts: [fmt.txt]
+    source: https://github.com/fmtlib/fmt/blob/12.1.0/LICENSE
+  - name: fast_float
+    version: 8.0.0
+    versionFrom: toml:fastFloat
+    via: React Native
+    license: MIT
+    holder: Copyright (c) 2021 The fast_float authors
+    texts: [fast-float.txt]
+    source: https://github.com/fastfloat/fast_float/blob/v8.0.0/LICENSE-MIT
+  - name: Boost
+    version: 1.83.0
+    versionFrom: toml:boost
+    via: React Native
+    license: BSL-1.0
+    holder: Boost Software License, Version 1.0
+    texts: [boost.txt]
+    source: https://github.com/boostorg/boost/blob/boost-1.83.0/LICENSE_1_0.txt
+  - name: fbjni
+    version: 0.7.0
+    versionFrom: toml:fbjni
+    via: React Native, модули Expo
+    license: Apache-2.0
+    holder: Copyright Facebook, Inc. and its affiliates
+    texts: [apache-2.0.txt]
+    source: https://github.com/facebookincubator/fbjni/blob/v0.7.0/LICENSE
+    maven: [com.facebook.fbjni]
+  - name: SoLoader
+    version: 0.12.1
+    versionFrom: toml:soloader
+    via: React Native
+    license: Apache-2.0
+    holder: Copyright (c) Meta Platforms, Inc. and affiliates.
+    texts: [apache-2.0.txt]
+    source: https://github.com/facebook/SoLoader/blob/v0.12.1/LICENSE
+    maven: [com.facebook.soloader]
+  - name: Fresco
+    version: 3.6.0
+    versionFrom: toml:fresco
+    via: React Native
+    license: MIT
+    holder: Copyright (c) Meta Platforms, Inc. and affiliates.
+    texts: [fresco.txt]
+    source: https://github.com/facebook/fresco/blob/v3.6.0/LICENSE
+    maven: [com.facebook.fresco]
+  - name: Infer annotations
+    version: 0.18.0
+    versionFrom: toml:infer-annotation
+    via: React Native
+    license: MIT
+    holder: Copyright (c) Facebook, Inc. and its affiliates.
+    texts: [infer-annotation.txt]
+    source: https://github.com/facebook/infer/blob/main/LICENSE
+    maven: [com.facebook.infer.annotation]
+  - name: JSR 305 (аннотации)
+    version: 3.0.2
+    versionFrom: toml:jsr305
+    via: React Native
+    license: Apache-2.0
+    holder: FindBugs (com.google.code.findbugs:jsr305), лицензия — по Maven Central
+    texts: [apache-2.0.txt]
+    source: https://repo1.maven.org/maven2/com/google/code/findbugs/jsr305/3.0.2/jsr305-3.0.2.pom
+    maven: [com.google.code.findbugs]
+  - name: javax.inject
+    version: '1'
+    versionFrom: toml:javax-inject
+    via: React Native
+    license: Apache-2.0
+    holder: The JSR-330 Expert Group
+    texts: [apache-2.0.txt]
+    source: https://github.com/javax-inject/javax-inject
+    maven: [javax.inject]
+  - name: OkHttp
+    version: 4.9.2
+    versionFrom: toml:okhttp
+    via: React Native, модули Expo
+    license: Apache-2.0
+    holder: Copyright Square, Inc.
+    texts: [apache-2.0.txt]
+    source: https://github.com/square/okhttp/blob/parent-4.9.2/LICENSE.txt
+    maven: [com.squareup.okhttp3]
+  - name: Okio
+    version: 2.9.0, 3.16.0
+    versionFrom: toml:okio
+    via: React Native, модули Expo
+    license: Apache-2.0
+    holder: Copyright Square, Inc.
+    texts: [apache-2.0.txt]
+    source: https://github.com/square/okio/blob/master/LICENSE.txt
+    maven: [com.squareup.okio]
+  - name: zstd-kmp
+    version: 0.4.0
+    via: Expo
+    license: Apache-2.0
+    holder: Copyright Square, Inc.
+    texts: [apache-2.0.txt]
+    source: https://repo1.maven.org/maven2/com/squareup/zstd/zstd-kmp-android/0.4.0/zstd-kmp-android-0.4.0.pom
+    maven: [com.squareup.zstd]
+  - name: Zstandard
+    version: в составе zstd-kmp 0.4.0
+    via: Expo (zstd-kmp)
+    license: BSD-3-Clause
+    holder: Copyright (c) Meta Platforms, Inc. and affiliates. All rights reserved.
+    texts: [zstd.txt]
+    source: https://github.com/facebook/zstd/blob/dev/LICENSE
+  - name: Brotli (декодер)
+    version: 0.1.2
+    via: Expo
+    license: MIT
+    holder: Copyright (c) 2009, 2010, 2013-2016 by the Brotli Authors.
+    texts: [brotli.txt]
+    source: https://github.com/google/brotli/blob/master/LICENSE
+    maven: [org.brotli]
+  - name: Apache Commons Codec
+    version: '1.10'
+    via: expo-file-system
+    license: Apache-2.0
+    holder: Copyright 2002-2014 The Apache Software Foundation
+    texts: [apache-2.0.txt, commons-codec-notice.txt]
+    source: https://repo1.maven.org/maven2/commons-codec/commons-codec/1.10/commons-codec-1.10.jar (META-INF/NOTICE.txt)
+    maven: [commons-codec]
+  - name: Apache Commons IO
+    version: '1.4'
+    via: expo-file-system
+    license: Apache-2.0
+    holder: Copyright 2001-2008 The Apache Software Foundation
+    texts: [apache-2.0.txt, commons-io-notice.txt]
+    source: https://repo1.maven.org/maven2/commons-io/commons-io/1.4/commons-io-1.4.jar (META-INF/NOTICE.txt)
+    maven: [commons-io]
+  - name: Kotlin (стандартная библиотека)
+    version: по сборке
+    via: React Native, модули Expo
+    license: Apache-2.0
+    holder: Copyright 2010-2025 JetBrains s.r.o. and Kotlin Programming Language contributors.
+    texts: [apache-2.0.txt]
+    source: https://github.com/JetBrains/kotlin/blob/master/license/LICENSE.txt
+    maven: [org.jetbrains.kotlin]
+  - name: kotlinx.coroutines
+    version: 1.10.2
+    via: модули Expo
+    license: Apache-2.0
+    holder: Copyright 2000-2020 JetBrains s.r.o. and Kotlin Programming Language contributors.
+    texts: [apache-2.0.txt]
+    source: https://github.com/Kotlin/kotlinx.coroutines/blob/1.10.2/LICENSE.txt
+    maven: [org.jetbrains.kotlinx]
+  - name: AndroidX, Jetpack Compose и Media3
+    version: по сборке
+    via: React Native, модули Expo
+    license: Apache-2.0
+    holder: Copyright The Android Open Source Project
+    texts: [apache-2.0.txt]
+    source: https://github.com/androidx/androidx/blob/androidx-main/LICENSE.txt
+    maven: [androidx]
+  - name: Material Components for Android
+    version: 1.13.0
+    via: expo-router, react-native-screens
+    license: Apache-2.0
+    holder: Copyright Google LLC
+    texts: [apache-2.0.txt]
+    source: https://github.com/material-components/material-components-android/blob/master/LICENSE
+    maven: [com.google.android.material]
+  - name: Pika
+    version: 0.3.2
+    via: expo-modules-core
+    license: MIT
+    holder: Copyright (c) Łukasz Kosmaty — лицензия и автор по Maven Central
+    texts: [pika.txt]
+    source: https://repo1.maven.org/maven2/io/github/lukmccall/pika/pika-api/0.3.2/pika-api-0.3.2.pom
+    maven: [io.github.lukmccall.pika]
+  - name: libc++ (LLVM)
+    version: из Android NDK
+    via: React Native
+    license: Apache-2.0 WITH LLVM-exception
+    holder: LLVM Project
+    texts: [libcxx.txt]
+    source: https://github.com/llvm/llvm-project/blob/main/libcxx/LICENSE.TXT
+  # React Native — из Maven, без групп выше: сам он MIT, как пакет react-native (список кода JS)
+  - name: React Native для Android
+    version: 0.86.3
+    versionFrom: react-native
+    via: React Native
+    license: MIT
+    holder: Copyright (c) Meta Platforms, Inc. and affiliates.
+    texts: [react-native.txt]
+    source: https://github.com/facebook/react-native/blob/main/LICENSE
+    maven: [com.facebook.react, com.facebook.yoga]
+  # Skia: готовые библиотеки react-native-skia-android, ветка Skia chrome/m147; сторонний код внутри — по DEPS этой
+  # ветки (коммит каждой библиотеки — в `source`)
+  - name: Skia
+    version: m147
+    versionFrom: skia
+    via: React Native Skia
+    license: BSD-3-Clause
+    holder: Copyright (c) 2011 Google Inc. All rights reserved.
+    texts: [skia.txt]
+    source: https://skia.googlesource.com/skia/+/refs/heads/chrome/m147/LICENSE
+    archive: [libskia, libskshaper, libskparagraph, libskunicode_core, libskunicode_icu, libsvg, libsksg, libskottie, libjsonreader, libskresources, libskcms, core, gpu, gpu_shared, pathops, xml, jpeg_decode, jpeg_encode, png_decode_libpng, png_decode_common, png_encode_libpng, png_encode_common, typeface_freetype, typeface_proxy, webp_decode, webp_encode, pdf, raw, hsw, skx, fontmgr_android, fontmgr_android_ndk, fontmgr_android_parser, fontmgr_custom, fontmgr_custom_directory, fontmgr_custom_embedded, fontmgr_custom_empty]
+  - name: FreeType
+    version: Skia m147
+    via: React Native Skia
+    license: FTL
+    holder: Portions of this software are copyright © The FreeType Project (www.freetype.org). All rights reserved.
+    texts: [freetype.txt, freetype-ftl.txt]
+    source: https://chromium.googlesource.com/chromium/src/third_party/freetype2.git/+/b91f75bd02db43b06d634591eb286d3eb0ce3b65
+    archive: [libfreetype2]
+  - name: HarfBuzz
+    version: Skia m147
+    via: React Native Skia
+    license: MIT-Modern-Variant
+    holder: Copyright © 2010-2022 Google, Inc. и другие авторы HarfBuzz
+    texts: [harfbuzz.txt]
+    source: https://chromium.googlesource.com/external/github.com/harfbuzz/harfbuzz.git/+/31695252eb6ed25096893aec7f848889dad874bc/COPYING
+    archive: [libharfbuzz]
+  - name: libpng
+    version: Skia m147
+    via: React Native Skia
+    license: Libpng-2.0
+    holder: Copyright (c) 1995-2025 The PNG Reference Library Authors
+    texts: [libpng.txt]
+    source: https://skia.googlesource.com/third_party/libpng.git/+/4e3f57d50f552841550a36eabbb3fbcecacb7750/LICENSE
+    archive: [libpng]
+  - name: zlib (Chromium)
+    version: Skia m147
+    via: React Native Skia
+    license: Zlib
+    holder: Copyright (C) 1995-2022 Jean-loup Gailly and Mark Adler
+    texts: [zlib.txt]
+    source: https://chromium.googlesource.com/chromium/src/third_party/zlib/+/646b7f569718921d7d4b5b8e22572ff6c76f2596/LICENSE
+    archive: [libzlib, zlib_inflate_chunk_simd, zlib_arm_crc32, zlib_adler32_simd, zlib_crc32_simd]
+  - name: libjpeg-turbo
+    version: Skia m147
+    via: React Native Skia
+    license: IJG AND BSD-3-Clause AND Zlib
+    holder: This software is based in part on the work of the Independent JPEG Group.
+    texts: [libjpeg-turbo.txt, libjpeg-ijg.txt]
+    source: https://chromium.googlesource.com/chromium/deps/libjpeg_turbo.git/+/e14cbfaa85529d47f9f55b0f104a579c1061f9ad
+    archive: [libjpeg, libjpeg12, libjpeg16]
+  - name: libwebp
+    version: Skia m147
+    via: React Native Skia
+    license: BSD-3-Clause
+    holder: Copyright (c) 2010, Google Inc. All rights reserved.
+    texts: [libwebp.txt, libwebp-patents.txt]
+    source: https://chromium.googlesource.com/webm/libwebp.git/+/845d5476a866141ba35ac133f856fa62f0b7445f
+    archive: [libwebp, libwebp_sse41]
+  - name: Expat
+    version: Skia m147
+    via: React Native Skia
+    license: MIT
+    holder: Copyright (c) 1998-2000 Thai Open Source Software Center Ltd and Clark Cooper; Copyright (c) 2001-2025 Expat maintainers
+    texts: [expat.txt]
+    source: https://chromium.googlesource.com/external/github.com/libexpat/libexpat.git/+/8e49998f003d693213b538ef765814c7d21abada/expat/COPYING
+    archive: [libexpat]
+  - name: Wuffs
+    version: Skia m147
+    via: React Native Skia
+    license: Apache-2.0
+    holder: Copyright The Wuffs Authors
+    texts: [apache-2.0.txt]
+    source: https://skia.googlesource.com/external/github.com/google/wuffs-mirror-release-c.git/+/e3f919ccfe3ef542cfc983a82146070258fb57f8/LICENSE
+    archive: [wuffs, libwuffs]
+  - name: piex
+    version: Skia m147
+    via: React Native Skia
+    license: Apache-2.0
+    holder: Copyright Google Inc.
+    texts: [apache-2.0.txt]
+    source: https://android.googlesource.com/platform/external/piex.git/+/bb217acdca1cc0c16b704669dd6f91a1b509c406/LICENSE
+    archive: [libpiex]
+  - name: DNG SDK
+    version: '1.4'
+    via: React Native Skia
+    license: Adobe-DNG-SDK
+    holder: This product includes DNG technology under license by Adobe Systems Incorporated.
+    texts: [dng-sdk.txt]
+    source: https://android.googlesource.com/platform/external/dng_sdk/+/dbe0a676450d9b8c71bf00688bb306409b779e90/LICENSE
+    archive: [libdng_sdk]
+  - name: cpu-features (Android NDK)
+    version: из Android NDK
+    via: React Native Skia
+    license: BSD-2-Clause
+    holder: Copyright (C) 2010 The Android Open Source Project
+    texts: [cpu-features.txt]
+    source: https://android.googlesource.com/platform/ndk/+/refs/heads/main/sources/android/cpufeatures/cpu-features.c
+    archive: [libcpu-features]
+
+# Шрифты интерфейса — в сборке, под SIL Open Font License 1.1 (assets/fonts/LICENSES.md); текст — файл рядом со шрифтом
+fonts:
+  - name: PT Serif
+    files: [PTSerif-Regular.ttf, PTSerif-Italic.ttf, PTSerif-Bold.ttf]
+    holder: ParaType Ltd.
+    text: OFL-PTSerif.txt
+  - name: PT Sans
+    files: [PTSans-Regular.ttf, PTSans-Bold.ttf]
+    holder: ParaType Ltd.
+    text: OFL-PTSans.txt
+  - name: PT Mono
+    files: [PTMono-Regular.ttf]
+    holder: ParaType Ltd.
+    text: OFL-PTMono.txt
+  - name: Golos Text
+    files: [GolosText-Regular.ttf, GolosText-Medium.ttf, GolosText-SemiBold.ttf, GolosText-Bold.ttf]
+    holder: The Golos Text Project Authors
+    text: OFL-GolosText.txt
+  - name: JetBrains Mono
+    files: [JetBrainsMono-Medium.ttf, JetBrainsMono-Bold.ttf]
+    holder: The JetBrains Mono Project Authors
+    text: OFL-JetBrainsMono.txt

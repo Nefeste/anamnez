@@ -18,6 +18,7 @@
     "export:web": "npm run content && setup-skia-web public && expo export --platform web --output-dir dist-web --clear",
     "e2e": "bun tools/e2e/smoke.ts",
     "store": "bun tools/store/render.ts",
+    "licenses": "bun tools/licenses/build.ts",
     "imaging": "bun tools/imaging/render.ts"
   },
   "dependencies": {
