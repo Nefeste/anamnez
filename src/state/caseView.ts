@@ -6,7 +6,7 @@ import { db } from '@/content';
 import { type BodySystem, type Condition, type Id, membersOf, type Rule, type Setting, SYSTEMS, type Tactics, type TacticsByParam } from '@/content/types';
 import { fnv1a } from '@/engine/core/hash';
 import type { Outcome } from '@/engine/med/course';
-import { complaintObservations, examFits } from '@/engine/med/exams';
+import { complaintObservations, examFits, expectedFindings, falseRate } from '@/engine/med/exams';
 import { type Belief, contextOf, knownFacts, posterior } from '@/engine/med/infer';
 import { bedsideLack, type PlanEval, STAYS } from '@/engine/med/plan';
 import type { ReviewData } from '@/engine/med/review';
@@ -841,9 +841,12 @@ export function decisionOf(x: {
     truthName: cond.name.ru,
     outOf10: outOf10(x.confidence),
     pearls: (cond.pearls ?? []).map(v => v.ru),
-    causes: p.truth.findings
-      .filter(f => seen.some(o => o.f === f.f && o.shown) || p.complaints.includes(f.f))
-      .map(f => ({ finding: db.findings[f.f].name.ru, cause: f.cause === 'leak' ? t.causeLeak : (db.conditions[f.cause]?.name.ru ?? db.risks[f.cause]?.name.ru ?? f.cause) })),
+    causes: [
+      ...p.truth.findings
+        .filter(f => seen.some(o => o.f === f.f && o.shown) || p.complaints.includes(f.f))
+        .map(f => ({ finding: db.findings[f.f].name.ru, cause: f.cause === 'leak' ? t.causeLeak : (db.conditions[f.cause]?.name.ru ?? db.risks[f.cause]?.name.ru ?? f.cause) })),
+      ...falseFindings(p, seen),
+    ],
     outcome: `${x.arrest ? `${t.outcome.arrest}. ` : ''}${outcomeText(x.outcome, x.plan.setting, p.sex === 'f')}`,
     grades: keys.map(k => ({ key: k, label: t.grade[k], grade: x.score[k] })),
     overall: x.score.overall,
@@ -860,6 +863,26 @@ export function decisionOf(x: {
     idle: x.review.idle.map(e => db.exams[e].name.ru),
     timeline: x.review.timeline.map(v => ({ label: v.exam === 'complaint' ? t.timelineComplaints : db.exams[v.exam].name.ru, truth: outOf10(v.truth), chosen: outOf10(v.chosen) })),
   };
+}
+
+/**
+ * Ложные находки в разборе (вопрос 33): обследование показало то, чего нет, — и как часто так бывает без болезни: у N из
+ * 100, реже одного — из 1000; осмотр, снимок и ЭКГ, не показанные по жалобам, ошибаются реже (`falseRate`). Ответы на
+ * вопросы — не находки: их здесь нет.
+ */
+export function falseFindings(p: Patient, seen: readonly Observation[]): { finding: string; cause: string }[] {
+  const t = T.spikes.patient;
+  const present = new Set(p.truth.findings.map(x => x.f));
+  const expected = expectedFindings(db, p.complaints);
+  const out = new Map<Id, string>();
+  for (const o of seen) {
+    const exam = db.exams[o.exam];
+    const check = exam?.checks.find(k => k.f === o.f);
+    if (!o.shown || present.has(o.f) || out.has(o.f) || !check || exam.kind === 'ask') continue;
+    const rate = falseRate(exam, o.f, check.spec, expected);
+    out.set(o.f, rate >= 50 ? t.causeFalse(Math.round(rate / 100), 100) : t.causeFalse(Math.max(1, Math.round(rate / 10)), 1000));
+  }
+  return [...out].map(([f, cause]) => ({ finding: db.findings[f].name.ru, cause }));
 }
 
 /** Строка срока в разборе: от прихода или (часть 39б) от находки — словами записи. */

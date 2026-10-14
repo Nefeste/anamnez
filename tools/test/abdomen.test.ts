@@ -350,15 +350,19 @@ describe('идеальный врач: неизвестное о пациент�
 
   test('камни на УЗИ — довод за колику примерно в 6 раз, а не в 19: у каждого восьмого они есть и без неё', () => {
     const us: Observation = { f: 'img.us_gallstones', shown: true, exam: 'exam.us_abdomen' };
+    // болит живот: камни ищут при колике, которая боль объясняет, — ложные с частотой из записи (вопрос 33)
+    const pain: Observation = { f: 'sym.abdominal_pain', shown: true, exam: 'complaint' };
     const pair = ['cond.appendicitis', 'cond.biliary_colic'];
     const odds = (obs: Observation[]) => {
       const b = posterior(db, pair, obs, contextOf(db, woman, obs));
       return b.find(x => x.id === 'cond.biliary_colic')!.p / b.find(x => x.id === 'cond.appendicitis')!.p;
     };
-    const lr = odds([us]) / odds([]);
+    const lr = odds([pain, us]) / odds([pain]);
     expect(lr).toBeCloseTo(0.95 / (0.95 * pStones + 0.05 * (1 - pStones)), 6);
     expect(lr).toBeGreaterThan(5);
     expect(lr).toBeLessThan(7);
+    // без жалоб камней не ждут: ложные — в 5 раз реже, и довод чуть сильнее
+    expect(odds([us]) / odds([])).toBeCloseTo(0.95 / (0.95 * pStones + 0.01 * (1 - pStones)), 6);
   });
 });
 

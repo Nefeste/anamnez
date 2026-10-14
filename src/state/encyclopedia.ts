@@ -6,6 +6,7 @@ import {
   type Condition, type ContentDb, type Equipment, type Exam, type Finding, type Id, type Link, membersOf, type P, type Risk, type RoomType, type Rule, type RulePoints, type Score, type StaffRole, SYSTEMS,
   type Tactics, type Tip, type Treatment,
 } from '@/content/types';
+import { BY_COMPLAINT, UNEXPECTED_FALSE } from '@/engine/med/exams';
 import { surgeriesOf } from '@/engine/med/plan';
 import { pointsFrom } from '@/engine/med/rules';
 import { formatNumber } from '@/engine/med/text';
@@ -414,7 +415,8 @@ function examArticle(db: ContentDb, x: Exam): Article {
       key: 'checks',
       title: e.checks,
       refs: x.checks.map(k => ref(db, k.f, e.accuracy(Math.round(k.sens / 100), Math.round(k.spec / 100)))),
-      note: e.accuracyNote,
+      // осмотр, снимки и ЭКГ (вопрос 33): специфичность из рекомендации — у тех, кому они показаны по жалобам
+      note: BY_COMPLAINT.has(x.kind) ? `${e.accuracyNote} ${e.accuracyByComplaint(UNEXPECTED_FALSE)}` : e.accuracyNote,
     });
   }
   // только при жалобе (часть 32г): расспрос о травме головы — при травме головы
