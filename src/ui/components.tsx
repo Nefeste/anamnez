@@ -92,17 +92,30 @@ export function P({ children, muted, testID }: { children: ReactNode; muted?: bo
 
 /**
  * Кнопка; `onInfo` добавляет справа «?» — справку «Что это?» (нажимается отдельно). `lamp` —
- * лампа вызова перед подписью, как над дверями на плане: у «Пригласить».
+ * лампа вызова перед подписью, как над дверями на плане: у «Пригласить». `picture` — картинка слева от подписи и
+ * пояснения: портрет сотрудника (0.5.7).
  */
-export function Button({ title, onPress, hint, kind = 'primary', disabled, testID, onInfo, infoLabel, lamp, hintMono }: {
+export function Button({ title, onPress, hint, kind = 'primary', disabled, testID, onInfo, infoLabel, lamp, hintMono, picture }: {
   title: string; onPress: () => void; hint?: string; kind?: 'primary' | 'plain'; disabled?: boolean; testID?: string;
   onInfo?: () => void; infoLabel?: string; lamp?: boolean;
   /** пояснение — минуты и рубли: моноширинным, в «Мониторе» — цветом времени */
   hintMono?: boolean;
+  picture?: ReactNode;
 }) {
   const styles = useStyles();
   const t = useTheme();
   const primary = kind === 'primary';
+  const label = (
+    <>
+      {lamp ? (
+        <View style={styles.lampRow}>
+          <Lamp />
+          <Text style={[styles.btnText, styles.fill, !primary && styles.btnTextPlain]}>{title}</Text>
+        </View>
+      ) : <Text style={[styles.btnText, !primary && styles.btnTextPlain]}>{title}</Text>}
+      {hint ? <Text style={[styles.btnHint, !primary && styles.muted, hintMono && styles.btnHintMono]}>{hint}</Text> : null}
+    </>
+  );
   return (
     <View style={styles.btnRow}>
       <Pressable
@@ -113,13 +126,12 @@ export function Button({ title, onPress, hint, kind = 'primary', disabled, testI
         style={({ pressed }) => [styles.btn, styles.fill, !primary && styles.btnPlain, disabled && styles.btnDisabled, pressed && styles.btnPressed]}>
         {/* оттиск штампа: тонкая светлая рамка внутри главной кнопки «Медкарты» */}
         {primary && t.shape.stamp ? <View style={styles.stamp} /> : null}
-        {lamp ? (
-          <View style={styles.lampRow}>
-            <Lamp />
-            <Text style={[styles.btnText, styles.fill, !primary && styles.btnTextPlain]}>{title}</Text>
+        {picture ? (
+          <View style={styles.pictureRow}>
+            {picture}
+            <View style={styles.fill}>{label}</View>
           </View>
-        ) : <Text style={[styles.btnText, !primary && styles.btnTextPlain]}>{title}</Text>}
-        {hint ? <Text style={[styles.btnHint, !primary && styles.muted, hintMono && styles.btnHintMono]}>{hint}</Text> : null}
+        ) : label}
       </Pressable>
       {onInfo ? (
         <Pressable
@@ -317,6 +329,7 @@ const useStyles = makeStyles(t => ({
   btnHintMono: { fontFamily: t.fonts.mono, color: t.shape.ruled ? t.colors.muted : t.colors.info },
   btnRow: { flexDirection: 'row', alignItems: 'center', gap: space.s },
   lampRow: { flexDirection: 'row', alignItems: 'center', gap: space.s },
+  pictureRow: { flexDirection: 'row', alignItems: 'center', gap: space.m },
   lamp: { width: 14, height: 14, borderRadius: 7, backgroundColor: t.colors.lamp, borderWidth: 2, borderColor: t.colors.onAccent },
   info: { width: 36, height: 36, borderRadius: 18, borderWidth: 1.5, borderColor: t.colors.info, backgroundColor: t.colors.card, alignItems: 'center', justifyContent: 'center' },
   infoText: { fontFamily: t.fonts.title, fontSize: 17, fontWeight: '700', color: t.colors.info },

@@ -7,7 +7,7 @@
 import { db } from '@/content';
 import type { ContentDb, Exam, Id } from '@/content/types';
 import { fnv1a } from '@/engine/core/hash';
-import { type Cell, type ClinicLayout, clinicLayout, type StaffRole } from '@/engine/hospital/clinic';
+import { type Cell, type ClinicLayout, clinicLayout, FIGURE, type StaffRole } from '@/engine/hospital/clinic';
 import { inBox, inIcu, inRicu } from '@/engine/shift/engine';
 import type { ShiftPatient, ShiftState } from '@/engine/shift/types';
 import { lookOf } from '@/render/look';
@@ -95,6 +95,18 @@ function figureOf(p: ShiftPatient): Figure {
 }
 
 const UNIFORM_OF: Record<Figure, Uniform | undefined> = { doctor: 'doctor', nurse: 'nurse', staff: 'staff', patient: undefined, patientYellow: undefined, patientRed: undefined };
+
+/** Форма фигурки на карте: врач — белый халат, медсестра — голубой костюм, остальные — сиреневая блуза. */
+export const uniformOfFigure = (r: StaffRole): Uniform => UNIFORM_OF[STAFF_FIGURE[r]] ?? 'staff';
+
+/**
+ * Форма на портрете сотрудника (FR-AV-4, 0.5.7) — как у его фигурки на карте: должность в разных помещениях одета
+ * одинаково (portraits.test). Должности нет на карте — врач.
+ */
+export function uniformOfRole(role: Id): Uniform {
+  const post = Object.keys(FIGURE).find(k => k.endsWith(`|${role}`));
+  return post ? uniformOfFigure(FIGURE[post]) : 'doctor';
+}
 
 /** Пациент на карте — с тем же лицом, что на портрете в карте пациента (caseView). */
 function lookOfPatient(p: ShiftPatient): Look {

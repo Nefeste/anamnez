@@ -558,5 +558,6 @@ export const spikes = {
     ambientOn: 'Фон: вкл',
     ambientOff: 'Фон: выкл',
     vibrate: 'Вибрация',
+    alarm: 'Тревога монитора',
   },
 };

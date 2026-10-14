@@ -13,6 +13,7 @@ import type { Difficulty } from '@/engine/shift/types';
 import { T } from '@/i18n';
 import { BuildMap } from '@/render/map/BuildMap';
 import { ClinicMap } from '@/render/map/ClinicMap';
+import { Portrait } from '@/render/Portrait';
 import { CLINIC } from '@/state/clinicMap';
 import { blockText, type CashView } from '@/state/sandboxView';
 import {
@@ -186,7 +187,11 @@ function Queue({ v }: { v: ShiftView }) {
       let door = 0;
       const id = setInterval(() => {
         const notices = tick(TICK_MS);
-        if (notices.some(n => (n.kind === 'arrived' && n.triage === 'red') || n.kind === 'ambulance')) {
+        // остановка сердца в смотровой — тревога монитора: она важнее остальных сигналов (FR-AV-1)
+        if (notices.some(n => n.kind === 'arrest')) {
+          play('alarm');
+          buzz('alarm');
+        } else if (notices.some(n => (n.kind === 'arrived' && n.triage === 'red') || n.kind === 'ambulance')) {
           play('urgent');
           buzz('urgent');
         } else if (notices.some(n => n.kind === 'resultsReady')) {
@@ -213,7 +218,10 @@ function Queue({ v }: { v: ShiftView }) {
 
   const skip = () => {
     const notices = skipIdle();
-    if (notices.some(n => (n.kind === 'arrived' && n.triage === 'red') || n.kind === 'ambulance')) {
+    if (notices.some(n => n.kind === 'arrest')) {
+      play('alarm');
+      buzz('alarm');
+    } else if (notices.some(n => (n.kind === 'arrived' && n.triage === 'red') || n.kind === 'ambulance')) {
       play('urgent');
       buzz('urgent');
     } else if (notices.some(n => n.kind === 'resultsReady' || n.kind === 'arrived')) {
@@ -524,8 +532,15 @@ function Summary({ v }: { v: ShiftView }) {
           <Text style={styles.label}>{t.colleagues}</Text>
           {s.colleagues.map(c => (
             <View key={c.id} style={styles.colleague}>
-              <P>{c.title}</P>
-              <P muted>{c.line}</P>
+              {/* портрет — у нанятого (0.5.7); уволенного — только строкой. Не `still`: под разбором и «Персоналом» итоги в
+                  вебе скрыты, вид сообщает размер 0, и неподвижный холст рисовал бы картинку нулевого размера — ошибка Skia */}
+              <View style={styles.colleagueHead}>
+                {c.portrait ? <Portrait {...c.portrait} size={40} /> : null}
+                <View style={styles.colleagueTitle}>
+                  <P>{c.title}</P>
+                  <P muted>{c.line}</P>
+                </View>
+              </View>
               {/* его приёмы — к разбору, как ваши (часть 19) */}
               {c.cases.map(r => (
                 <CaseRow key={r.id} testID={`case-${r.id}`} verdict={r.verdict} title={r.name} subtitle={r.diagnosis} grade={r.overall} onPress={() => open(r.id)} />
@@ -692,6 +707,8 @@ const useStyles = makeStyles(t => ({
   label: { fontSize: 13, fontWeight: '700', letterSpacing: 1.2, color: t.colors.muted, textTransform: 'uppercase', marginTop: space.s },
   room: { backgroundColor: t.colors.accentSoft },
   colleague: { gap: 2 },
+  colleagueHead: { flexDirection: 'row', alignItems: 'center', gap: space.s },
+  colleagueTitle: { flex: 1, gap: 2 },
   item: { borderLeftWidth: 5, borderRadius: t.shape.radius, backgroundColor: t.colors.bg, paddingHorizontal: space.m },
   entry: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: t.colors.line },
   entryMargin: { width: 28, alignItems: 'center', paddingTop: space.s + 2, borderRightWidth: 1.5, borderRightColor: t.colors.margin },

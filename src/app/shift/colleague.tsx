@@ -27,6 +27,7 @@ export default function ColleagueCase() {
       actions={shiftActions}
       readOnly={{
         note: t.note(v.colleague.doctor),
+        ...(v.colleague.portrait ? { portrait: v.colleague.portrait } : {}),
         footer: { title: `${t.take} ▶`, hint: t.takeHint(v.colleague.away ? 'away' : shift.inRoom ? 'busy' : 'free'), testID: 'colleague-take', run: take },
       }}
     />

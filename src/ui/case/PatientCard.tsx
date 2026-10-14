@@ -8,6 +8,7 @@ import { Text } from '../text';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { buzz, play } from '@/audio/sounds';
 import { T } from '@/i18n';
+import type { StaffPortrait } from '@/render/look';
 import { Portrait } from '@/render/Portrait';
 import { examInfo, examsByAction, examTerm, findingInfo, type Line, type ResultGroup, type TermInfo, type VisitView } from '@/state/caseView';
 import { Button, Card, Chip, Chips, H, P, RULE, Ruled, Screen, Tabs } from '@/ui/components';
@@ -20,9 +21,9 @@ type Tab = 'ask' | 'examine' | 'order';
 
 /**
  * `readOnly` — приём ведёт нанятый врач (spec 2026-09-hired-doctors, часть 19): видно, что он
- * узнал, но действий и решения нет; внизу — своя кнопка («Забрать себе»).
+ * узнал, но действий и решения нет; внизу — своя кнопка («Забрать себе»); рядом с его строкой — его портрет (0.5.7).
  */
-export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; actions: CaseActions; readOnly?: { note: string; footer: FooterAction & { hint?: string } } }) {
+export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; actions: CaseActions; readOnly?: { note: string; portrait?: StaffPortrait; footer: FooterAction & { hint?: string } } }) {
   const styles = useStyles();
   const theme = useTheme();
   // вкладка привязана к пациенту: новый начинается с «Спросить»
@@ -51,11 +52,11 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
 
   useEffect(() => {
     if (v.meanwhile.length > 0) {
-      const kind = v.urgent ? 'urgent' : 'ready';
+      const kind = v.alarm ? 'alarm' : v.urgent ? 'urgent' : 'ready';
       play(kind);
       buzz(kind);
     }
-  }, [v.meanwhile, v.urgent]);
+  }, [v.meanwhile, v.urgent, v.alarm]);
 
   // касание — вибрацией: звук касания на телефоне не понравился (отзыв на 0.0.2)
   const doExam = (id: string) => {
@@ -86,10 +87,18 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
             {/* срок по рекомендации (часть 37) — справка: ЭКГ при боли в груди в первые 10 минут */}
             {v.targets?.map((line, i) => <P key={i} muted testID={`visit-target-${i}`}>{line}</P>)}
             {v.returnNote ? <P testID="visit-return">{v.returnNote}</P> : null}
-            {readOnly ? <P testID="visit-colleague">{readOnly.note}</P> : null}
             {v.payerNote ? <P muted testID="visit-payer">{v.payerNote}</P> : null}
           </View>
         </View>
+        {/* приём ведёт нанятый врач — строкой во всю ширину, с его портретом (0.5.7) */}
+        {readOnly ? (
+          <View style={styles.colleague}>
+            {readOnly.portrait ? <Portrait {...readOnly.portrait} size={40} /> : null}
+            <View style={styles.headText}>
+              <P testID="visit-colleague">{readOnly.note}</P>
+            </View>
+          </View>
+        ) : null}
         <Text style={styles.label}>{t.complaints}</Text>
         {v.complaints.length === 0 ? <P muted testID="visit-checkup">{t.checkup(v.portrait.sex === 'f')}</P>
           : theme.shape.ruled ? v.complaints.map(c => (
@@ -251,6 +260,7 @@ function KnownGroup({ g, open, onToggle, explain }: { g: ResultGroup; open: bool
 const useStyles = makeStyles(t => ({
   row: { flexDirection: 'row', gap: space.m, alignItems: 'center' },
   headText: { flex: 1, gap: 2 },
+  colleague: { flexDirection: 'row', gap: space.m, alignItems: 'center', marginTop: space.s },
   label: { fontSize: 13, fontWeight: '700', letterSpacing: 1.2, color: t.colors.muted, textTransform: 'uppercase', marginTop: space.s },
   clock: { fontSize: 15, lineHeight: 21, color: t.shape.ruled ? t.colors.muted : t.colors.info },
   said: { fontFamily: t.fonts.title, fontStyle: 'italic', fontSize: 17, lineHeight: RULE, color: t.colors.ink },

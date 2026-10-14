@@ -11,6 +11,7 @@
 | `ambient.wav` | собран `tools/audio/clinic.ts`: гул вентиляции из `tools/audio/gen.ts` и звуки набора Kenney «RPG Audio» — `footstep00`–`footstep09`, `doorClose_1`–`doorClose_4`, `bookFlip1`–`bookFlip3`, `creak3` | собственность проекта и CC0 |
 | `music-menu.mp3` | «Vaporware» (Calm Piano 1), The Cynic Project — <https://opengameart.org/content/calm-piano-1-vaporware>, файл `003_Vaporware_2.mp3`; перекодирован `tools/audio/music.mjs` | CC0 |
 | `music-shift.mp3` | «Contemplation», Joth — <https://opengameart.org/content/contemplation-0>, файл `Contemplation.mp3`; перекодирован `tools/audio/music.mjs` | CC0 |
+| `alarm.wav` | синтезирован `tools/audio/gen.ts` | собственность проекта |
 
 ## Наборы CC0
 

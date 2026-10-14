@@ -1,6 +1,8 @@
 // Внешность портрета из зерна (ADR 0013): что рисует Portrait.tsx — кожа, волосы, одежда,
 // очки. Отдельно от рисунка и без Skia: подбор портретов врача и тесты берут ту же внешность.
 import { Rng } from '@/engine/core/rng';
+import type { Trait } from '@/engine/hospital/staff';
+import type { Uniform } from './map/figures';
 
 // цвета — общие с фигурками карты (src/render/map/sprites.ts): седой пациент седой и там
 export const SKIN = ['#F2D0B5', '#E8BE9A', '#D9A57E', '#C68B63', '#F5DCC8'];
@@ -38,4 +40,21 @@ export function lookOf(seed: number, sex: 'm' | 'f', age: number): Look {
     wrinkles: age >= 55,
     bg: r.pick(BG),
   };
+}
+
+/** Портрет сотрудника (FR-AV-4, 0.5.7): лицо — из зерна его имени, возраст — из того же зерна, форма — по должности. */
+export interface StaffPortrait {
+  seed: number;
+  sex: 'm' | 'f';
+  age: number;
+  uniform: Uniform;
+}
+
+/**
+ * Возраст на портрете сотрудника (FR-AV-4, 0.5.7) — из зерна его имени, с навыком не меняется: «опытный» — от 40 лет,
+ * «новичок» — до 35, остальные — от 25 до 58.
+ */
+export function staffAge(seed: number, trait?: Trait): number {
+  const r = Rng.seeded(seed).fork('age');
+  return trait === 'experienced' ? r.range(40, 62) : trait === 'novice' ? r.range(23, 35) : r.range(25, 58);
 }

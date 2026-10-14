@@ -1,19 +1,21 @@
 // Звуки, музыка и вибрация (03-game-design.md §13, 06-architecture.md §10). В движке звуков нет:
 // их вызывает интерфейс по событиям. Короткие звуки загружаются один раз в проигрыватели.
 // Громкость, фон и вибрация — из настроек игрока. Приход пациента, фон амбулатории и музыка (часть 62) — из
-// наборов CC0 (tools/audio/clinic.ts, tools/audio/music.mjs, assets/audio/LICENSES.md).
+// наборов CC0 (tools/audio/clinic.ts, tools/audio/music.mjs, assets/audio/LICENSES.md). Тревога монитора при остановке
+// сердца (0.5.7) — синтезирована, как касание и сигналы (tools/audio/gen.ts).
 import { type AudioPlayer, createAudioPlayer } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
 import { AppState, Platform } from 'react-native';
 import { settings } from '@/state/settings';
 
-export type SoundName = 'tap' | 'ready' | 'urgent' | 'arrived';
+export type SoundName = 'tap' | 'ready' | 'urgent' | 'arrived' | 'alarm';
 
 const SOURCES: Record<SoundName | 'ambient', number> = {
   tap: require('../../assets/audio/tap.wav'),
   ready: require('../../assets/audio/ready.wav'),
   urgent: require('../../assets/audio/urgent.wav'),
   arrived: require('../../assets/audio/arrived.wav'),
+  alarm: require('../../assets/audio/alarm.wav'),
   ambient: require('../../assets/audio/ambient.wav'),
 };
 
@@ -115,10 +117,11 @@ AppState.addEventListener('change', state => {
   applyMusic(state === 'active');
 });
 
-/** Вибрация на срочное и на готовый результат; в вебе её нет, в настройках её можно выключить. */
-export function buzz(kind: 'urgent' | 'ready' | 'tap') {
+/** Вибрация на срочное, тревогу и готовый результат; в вебе её нет, в настройках её можно выключить. */
+export function buzz(kind: 'alarm' | 'urgent' | 'ready' | 'tap') {
   if (Platform.OS === 'web' || !settings().vibration) return;
-  if (kind === 'urgent') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => undefined);
+  if (kind === 'alarm') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => undefined);
+  else if (kind === 'urgent') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => undefined);
   else if (kind === 'ready') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => undefined);
   else Haptics.selectionAsync().catch(() => undefined);
 }
