@@ -1044,6 +1044,7 @@ export function noteText(n: ScoreNote): string {
     case 'setting.contacts': return t.settingContacts;
     case 'safety.knownViolation': return t.knownViolation(tx(n.tx), riskName(n.by));
     case 'safety.unaskedViolation': return t.unaskedViolation(tx(n.tx), riskName(n.by));
+    case 'safety.deniedViolation': return t.deniedViolation(tx(n.tx), riskName(n.by));
     case 'safety.notAsked': return t.notAsked(riskName(n.by));
     // обследование при противопоказании (spec 2026-10-chapter-4, часть 50а): пункция при коме
     case 'safety.examHarmKnown':

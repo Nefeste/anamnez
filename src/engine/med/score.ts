@@ -28,6 +28,11 @@ export type ScoreNote =
   /** заразного положили в общую палату (spec 2026-10-chapter-4, часть 49а): соседи по палате — контактные */
   | { code: 'setting.contacts' }
   | { code: 'safety.knownViolation' | 'safety.unaskedViolation'; tx: Id; by: Id }
+  /**
+   * спросили, а пациент о противопоказании не сказал (0.5.12): о своей аллергии знает не каждый, и расспрос ошибается —
+   * врач не виноват, оценка безопасности не снижается
+   */
+  | { code: 'safety.deniedViolation'; tx: Id; by: Id }
   | { code: 'safety.notAsked'; by: Id }
   /**
    * обследование при противопоказании (spec 2026-10-chapter-4, часть 50а): пункты его правила у больного были; врач о
@@ -194,6 +199,7 @@ export function scoreCase(x: CaseInput): CaseScore {
   let safety: Grade = safety0;
   for (const v of x.plan.violations) {
     if (v.known) { safety = 'D'; notes.push({ code: 'safety.knownViolation', tx: v.tx, by: v.by }); }
+    else if (v.asked) notes.push({ code: 'safety.deniedViolation', tx: v.tx, by: v.by });
     else { safety = worst(safety, 'C'); notes.push({ code: 'safety.unaskedViolation', tx: v.tx, by: v.by }); }
   }
   if (x.plan.violations.length === 0) {

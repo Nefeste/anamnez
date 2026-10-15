@@ -7,6 +7,7 @@ import { type AudioPlayer, createAudioPlayer } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
 import { AppState, Platform } from 'react-native';
 import { settings } from '@/state/settings';
+import type { MusicScene } from './scene';
 
 export type SoundName = 'tap' | 'ready' | 'urgent' | 'arrived' | 'alarm';
 
@@ -66,8 +67,7 @@ function applyAmbient(active: boolean) {
   else p.pause();
 }
 
-/** Где музыка: в меню — спокойная, на смене — своя и тише, под фоном амбулатории (часть 62). */
-export type MusicScene = 'menu' | 'shift';
+export type { MusicScene } from './scene';
 
 const MUSIC: Record<MusicScene, number> = {
   menu: require('../../assets/audio/music-menu.mp3'),
@@ -77,13 +77,21 @@ const MUSIC: Record<MusicScene, number> = {
 const musicVolume: Record<MusicScene, number> = { menu: 0.5, shift: 0.25 };
 const music: Partial<Record<MusicScene, AudioPlayer>> = {};
 let scene: MusicScene = 'menu';
+/** Сцена, что играет или заиграет. */
+export const musicScene = () => scene;
 /** настройки прочитаны: до того громкость музыки неизвестна, и выключившему её она не заиграет на миг */
 let musicReady = false;
 
-/** Сцена по экрану, который на виду; заиграет, когда настройки прочитаны (`startMusic`). */
+/** Сцену сменили — плавно (0.5.12, отзыв на 0.5.11): прежняя петля затихает, новая нарастает за столько миллисекунд. */
+const FADE_MS = 1000;
+const FADE_STEP_MS = 50;
+let fade: ReturnType<typeof setInterval> | null = null;
+
+/** Сцена по экрану, который на виду; заиграет, когда настройки прочитаны (`startMusic`). Сменилась — плавно. */
 export function setMusicScene(next: MusicScene) {
+  if (next === scene) return;
   scene = next;
-  applyMusic(AppState.currentState === 'active');
+  applyMusic(AppState.currentState === 'active', true);
 }
 
 /** Настройки прочитаны — музыка может играть. */
@@ -93,23 +101,57 @@ export function startMusic() {
 }
 
 /**
- * Музыка: петля сцены, что на виду, другая — на паузе; громкость или сцену сменили — сразу. Музыка на нуле или игра
- * свёрнута — не играет. В вебе — стенде для сценариев — музыки нет, как и фона.
+ * Музыка: петля сцены, что на виду, другая — на паузе; громкость сменили — сразу, сцену — плавно (`smooth`). Музыка на
+ * нуле или игра свёрнута — не играет. В вебе — стенде для сценариев — музыки нет, как и фона.
  */
-export function applyMusic(active = AppState.currentState === 'active') {
+export function applyMusic(active = AppState.currentState === 'active', smooth = false) {
   if (Platform.OS === 'web' || !musicReady) return;
-  const level = settings().music;
-  for (const k of ['menu', 'shift'] as const) {
-    const audible = active && level > 0 && k === scene;
-    if (!audible) {
-      music[k]?.pause();
-      continue;
-    }
-    const p = (music[k] ??= createAudioPlayer(MUSIC[k]));
-    p.loop = true;
-    p.volume = musicVolume[k] * level;
-    p.play();
+  if (fade) {
+    clearInterval(fade);
+    fade = null;
   }
+  const level = settings().music;
+  const scenes = ['menu', 'shift'] as const;
+  const target = (k: MusicScene) => (active && level > 0 && k === scene ? musicVolume[k] * level : 0);
+  if (!smooth) {
+    for (const k of scenes) {
+      if (target(k) === 0) {
+        music[k]?.pause();
+        continue;
+      }
+      const p = (music[k] ??= createAudioPlayer(MUSIC[k]));
+      p.loop = true;
+      p.volume = target(k);
+      p.play();
+    }
+    return;
+  }
+  // прежняя затихает с той громкости, что есть; новая начинает с тишины
+  const from: Record<MusicScene, number> = { menu: 0, shift: 0 };
+  for (const k of scenes) {
+    const p = music[k];
+    if (p?.playing) from[k] = p.volume;
+    if (target(k) === 0) continue;
+    const q = (music[k] ??= createAudioPlayer(MUSIC[k]));
+    q.loop = true;
+    if (!q.playing) {
+      q.volume = 0;
+      q.play();
+    }
+  }
+  const t0 = Date.now();
+  const step = () => {
+    const x = Math.min(1, (Date.now() - t0) / FADE_MS);
+    for (const k of scenes) {
+      const p = music[k];
+      if (p) p.volume = from[k] + (target(k) - from[k]) * x;
+    }
+    if (x < 1) return;
+    if (fade) clearInterval(fade);
+    fade = null;
+    for (const k of scenes) if (target(k) === 0) music[k]?.pause();
+  };
+  fade = setInterval(step, FADE_STEP_MS);
 }
 
 AppState.addEventListener('change', state => {

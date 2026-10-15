@@ -9,7 +9,8 @@ import { useEffect } from 'react';
 import { AppState } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { setMusicScene, startMusic } from '@/audio/sounds';
+import { musicSceneOf } from '@/audio/scene';
+import { musicScene, setMusicScene, startMusic } from '@/audio/sounds';
 import { T } from '@/i18n';
 import { installErrorLog } from '@/state/errors';
 import { loadProfile, setProfileStore } from '@/state/profile';
@@ -37,9 +38,9 @@ export default function RootLayout() {
   useEffect(() => {
     loadSettings().then(startMusic);
   }, []);
-  // приём — на смене и в «Случае дня» (его карта, решение и разбор): там музыка тише
+  // приём — на смене и в «Случае дня»: там музыка тише; справочное её не меняет (0.5.12, отзыв на 0.5.11)
   useEffect(() => {
-    setMusicScene(path.startsWith('/shift') || path.startsWith('/daily/') ? 'shift' : 'menu');
+    setMusicScene(musicSceneOf(path, musicScene()));
   }, [path]);
   // фон окна — под экраном при переходах и за клавиатурой
   useEffect(() => {
