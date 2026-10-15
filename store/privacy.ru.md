@@ -58,4 +58,4 @@
 
 Если политика изменится, новая версия появится на этой странице с новой датой.
 
-Вопросы — support@gornitsa.games.
+Вопросы о данных — privacy@gornitsa.games, об игре — support@gornitsa.games.
