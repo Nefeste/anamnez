@@ -23,7 +23,7 @@ import { freezeClock, generatePatient, patientAt, typicalPatient } from '../med/
 import { type Belief, contextOf, likelyParams, posterior } from '../med/infer';
 import { scaleTriage } from '../med/news2';
 import { alsoSettings, choiceFor, evaluatePlan, primaryOf, recommendedSetting, selfLimits, settingFit, settingRoomsOf, STAYS, surgeriesOf, treatable, txAvailable, type Venue, verdictOf, whenHolds } from '../med/plan';
-import { type DoctorRun, examCost, indicated, nextStep, ORDER_MINUTES, startRational } from '../med/policy';
+import { type DoctorRun, examCost, indicated, ORDER_MINUTES, type Parts, startRational, type StepResult, stepParts, whole } from '../med/policy';
 import { buildReview, type ReviewData, reviewBeliefs } from '../med/review';
 import { scoreCase } from '../med/score';
 import type { Observation } from '../med/types';
@@ -373,13 +373,25 @@ function wingChapter(db: ContentDb, s: ShiftState, c: CampaignProgress, next: Ch
  * Ходы времени подряд журнал сливает в один: прожить a, затем b — то же, что прожить a + b,
  * а часы на карте тикают по четыре раза в секунду.
  */
-export function apply(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
+export function apply(db: ContentDb, s: ShiftState, cmd: Command, more?: () => boolean): Notice[] {
+  // время прошлой команды, ещё не прожитое (0.5.13), — сначала всё: команда видит больницу такой же, как прежде
+  const before = catchUp(db, s);
   const last = s.journal[s.journal.length - 1];
   if (cmd.kind === 'advance' && last?.kind === 'advance') last.seconds += cmd.seconds;
   else s.journal.push({ ...cmd });
+  tailMore = more;
+  try {
+    const out = command(db, s, cmd);
+    return before.length > 0 ? [...before, ...out] : out;
+  } finally {
+    tailMore = undefined;
+  }
+}
+
+function command(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
   switch (cmd.kind) {
     case 'advance':
-      return s.dayOpen ? advanceBy(db, s, cmd.seconds) : [];
+      return s.dayOpen ? later(db, s, undefined, cmd.seconds) : [];
     case 'call':
       return call(db, s, cmd.id);
     case 'exam':
@@ -393,7 +405,7 @@ export function apply(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
       // привезла скорая, пока ждали, — ожидание кончается с её приездом: врачу пора в смотровую
       // (spec 2026-10-chapter-3, часть 37: ЭКГ при боли в груди — в первые 10 минут)
       const car = s.events.find(x => x.t <= target && x.event.kind === 'arrive' && s.patients[x.event.id]?.kind === 'ambulance');
-      return spend(db, s, p, Math.max(0, (car ? car.t : target) - s.t));
+      return later(db, s, p, Math.max(0, (car ? car.t : target) - s.t));
     }
     case 'sendAway': {
       const p = current(s);
@@ -411,7 +423,7 @@ export function apply(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
         // в очередь на своё место — как вернувшийся с анализов, по времени прихода
         enqueue(s, p, p.arriveT);
       }
-      return spend(db, s, p, MIN);
+      return later(db, s, p, MIN);
     }
     case 'diagnose': {
       const p = current(s);
@@ -946,7 +958,7 @@ function call(db: ContentDb, s: ShiftState, id: string): Notice[] {
   // к привезённому скорой врач идёт в смотровую приёмного, к пришедшему сам — в свой кабинет (FR-HOS-4)
   const meet = meetIn(db, s, p);
   goTo(s, p);
-  return spend(db, s, p, meet);
+  return later(db, s, p, meet);
 }
 
 /**
@@ -985,7 +997,7 @@ function goTo(s: ShiftState, p: ShiftPatient) {
 function exam(db: ContentDb, s: ShiftState, examId: Id): Notice[] {
   const p = current(s);
   const cost = p ? orderExam(db, s, p, examId) : null;
-  return p && cost !== null ? spend(db, s, p, cost) : [];
+  return p && cost !== null ? later(db, s, p, cost) : [];
 }
 
 /**
@@ -1199,7 +1211,7 @@ function finish(db: ContentDb, s: ShiftState): Notice[] {
   if (!p || !p.draft.diagnosis) return [];
   closePatient(db, s, p);
   s.current = undefined;
-  return spend(db, s, p, 2 * MIN); // рецепт, направление
+  return later(db, s, p, 2 * MIN); // рецепт, направление
 }
 
 /**
@@ -1500,7 +1512,7 @@ export function prepareReview(db: ContentDb, s: ShiftState): boolean {
   const p = s.current ? s.patients[s.current] : undefined;
   if (p && !p.by && !p.closed) {
     const entry = reviewEntry(db, s.meta, p);
-    if (!entry.run.step()) return true;
+    if (entry.run.part() !== true) return true;
     // разумный врач готов — уверенность после пришедших результатов, по одному за раз
     if (entry.beliefs.length <= p.results.length) {
       nextBelief(db, entry, p);
@@ -1508,8 +1520,28 @@ export function prepareReview(db: ContentDb, s: ShiftState): boolean {
     }
   }
   // затем — у приёмов нанятых врачей и у тех, кто ждёт в очереди: разумный врач разбора нужен при закрытии каждого
-  for (const q of ahead(s)) if (!reviewEntry(db, s.meta, q).run.step()) return true;
+  for (const q of ahead(s)) if (reviewEntry(db, s.meta, q).run.part() !== true) return true;
   return false;
+}
+
+/**
+ * Разбор вашего приёма к закрытию — по частям (0.5.13, NFR-PRF-1): разумный врач разбора и уверенность после каждого
+ * пришедшего результата, пока `more()`; true — готово, и закрытие приёма берёт готовое. Не успели посчитать заранее —
+ * интерфейс доводит это в кадрах и закрывает приём, когда готово. Состояния смены не меняет.
+ */
+export function prepareFinish(db: ContentDb, s: ShiftState, more: () => boolean = () => true): boolean {
+  const p = s.current ? s.patients[s.current] : undefined;
+  if (!p || p.by || p.closed) return true;
+  const entry = reviewEntry(db, s.meta, p);
+  while (!entry.run.done()) {
+    if (!more()) return false;
+    entry.run.part();
+  }
+  while (entry.beliefs.length <= p.results.length) {
+    if (!more()) return false;
+    nextBelief(db, entry, p);
+  }
+  return true;
 }
 
 /** Кого закроют следом: приёмы нанятых врачей — по времени прихода, затем очередь — по порядку. */
@@ -1725,7 +1757,7 @@ function sortAmbulance(db: ContentDb, s: ShiftState, id: string, triage: Triage)
   if (d > 0) day.under++;
   if (d < 0) day.over++;
   enqueue(s, p, p.arriveT);
-  return advanceBy(db, s, MIN);
+  return later(db, s, undefined, MIN);
 }
 
 function wardDay(s: ShiftState): WardDay {
@@ -2005,7 +2037,7 @@ function leaveWard(db: ContentDb, s: ShiftState, id: string, how: 'discharge' | 
     ward.early++;
   }
   closeStay(db, s, p, end, days);
-  return advanceBy(db, s, 2 * MIN); // выписка, эпикриз
+  return later(db, s, undefined, 2 * MIN); // выписка, эпикриз
 }
 
 /**
@@ -2113,7 +2145,7 @@ function replan(db: ContentDb, s: ShiftState, id: string, treatments: Id[]): Not
       ...(stay.dies !== undefined ? { dies: stay.dies } : {}), ...(stay.shock !== undefined ? { shock: stay.shock } : {}),
     };
   }
-  return advanceBy(db, s, 2 * MIN);
+  return later(db, s, undefined, 2 * MIN);
 }
 
 // --- время --------------------------------------------------------------------------
@@ -2121,6 +2153,42 @@ function replan(db: ContentDb, s: ShiftState, id: string, treatments: Id[]): Not
 function spend(db: ContentDb, s: ShiftState, p: ShiftPatient, seconds: number): Notice[] {
   p.spent.seconds += seconds;
   return advanceBy(db, s, seconds);
+}
+
+/** Сколько за раз проживать время в конце команды — даёт сессия (`apply` с `more`); нет — всё сразу. */
+let tailMore: (() => boolean) | undefined;
+
+/**
+ * Время в конце команды (0.5.13, NFR-PRF-1): обследование, вызов, «подождите», закрытие приёма, промотка часов. С `more`
+ * от сессии — по частям (`catchUp`): что не прожито, прожито будет в следующих кадрах, а следующая команда сначала
+ * доживёт всё. Без `more` — сразу, как `spend` и `advanceBy`.
+ */
+function later(db: ContentDb, s: ShiftState, p: ShiftPatient | undefined, seconds: number): Notice[] {
+  if (p) p.spent.seconds += seconds;
+  if (seconds <= 0) return [];
+  s.until = s.t + seconds;
+  return catchUp(db, s, tailMore);
+}
+
+/**
+ * Дожить время команды (0.5.13): события по порядку, пока `more()` перед каждым, — остальное в следующий раз; без `more`
+ * — всё. Как `advanceBy`: время идёт по событиям, а в конце — тот час, до которого жили. Нечего доживать — ничего.
+ */
+export function catchUp(db: ContentDb, s: ShiftState, more?: () => boolean): Notice[] {
+  const notices: Notice[] = [];
+  const target = s.until;
+  if (target === undefined) return notices;
+  while (s.events.length > 0 && s.events[0].t <= target) {
+    if (more && !more()) return notices;
+    // шаг нанятого врача — по частям (0.5.13): часы — уже на его минуте, событие — когда он посчитан
+    s.t = Math.max(s.t, s.events[0].t);
+    if (more && !colleagueReady(db, s, more)) return notices;
+    const { event } = s.events.shift()!;
+    handle(db, s, event, notices);
+  }
+  s.t = target;
+  delete s.until;
+  return notices;
 }
 
 function schedule(s: ShiftState, t: number, event: ShiftEvent) {
@@ -2161,7 +2229,7 @@ function handle(db: ContentDb, s: ShiftState, ev: ShiftEvent, notices: Notice[])
       return;
     }
     case 'colleague':
-      return colleagueStep(db, s, s.patients[ev.id]);
+      return colleagueStep(db, s, s.patients[ev.id], ev);
     case 'nurse':
       return nurse(db, s, s.patients[ev.id], notices);
     case 'opEnd':
@@ -2492,23 +2560,14 @@ export function examsHere(db: ContentDb, s: ShiftState): Id[] {
  * навыка. Обследование — как у вас, следующий шаг — когда придут результаты; решение — приём
  * закрыт, пара минут на карту, и врач зовёт следующего.
  */
-function colleagueStep(db: ContentDb, s: ShiftState, p: ShiftPatient) {
-  if (!s.dayOpen || p.status !== 'inRoom' || !p.by) return;
-  const m = hospitalCtx(db, s).staff.find(x => x.id === p.by);
+function colleagueStep(db: ContentDb, s: ShiftState, p: ShiftPatient, ev?: ShiftEvent) {
+  const m = colleagueOf(db, s, p);
   if (!m) return;
-  const how = doctorOf(db, m);
   const pct = speedOf(db, m);
-  // специалист знает, с чем к нему записываются (spec 2026-10-chapter-4, часть 60а): у записанного к нему болезни профиля
-  // вероятнее — во столько раз
-  const profile = p.to === m.id ? db.roles[m.role]?.profile : undefined;
-  const r = nextStep(db, p.patient, observationsOf(p), p.done, p.phase ?? {}, {
-    candidates: candidatesOf(db, p.departments ?? s.meta.department), exams: examsHere(db, s), threshold: how.threshold, minGain: how.minGain,
-    ...(profile ? { prior: { ids: profile, x: PROFILE_PRIOR } } : {}),
-    // навык 1–2 иногда забывает спросить перед лечением — жребий своей ветви
-    skipAsk: q => how.forget > 0 && branch(s, `forget:${p.id}:${q}`).chance(how.forget * 100),
-    // и что у постели (часть 39а): под монитором — тромболизис; и сколько прошло с прихода (часть 41а)
-    venue: { ...venueOf(db, s), bedside: bedsideEquipment(db, s, p), minutes: Math.round((s.t - p.arriveT) / 60), ready: id => readyIn(db, s, p, id) },
-  });
+  // считался по частям, пока больница доживала время команды (0.5.13), — готовый или досчитать; нет — сейчас, тем же счётом
+  const job = colleagueJobs.get(s);
+  const r = job && job.event === ev ? (job.result ?? whole(job.parts)) : whole(colleagueParts(db, s, p, m));
+  colleagueJobs.delete(s);
   p.phase = r.phase;
   if (r.step.kind === 'exam') {
     const cost = orderExam(db, s, p, r.step.exam, pct) ?? 0;
@@ -2536,4 +2595,63 @@ function colleagueStep(db: ContentDb, s: ShiftState, p: ShiftPatient) {
   p.spent.seconds += paper;
   (s.desk ??= {})[m.id] = s.t + paper;
   schedule(s, s.t + paper, { kind: 'free', by: m.id });
+}
+
+/** Чей это приём, если врач его ведёт: день открыт, пациент у него в кабинете, врач в штате. */
+function colleagueOf(db: ContentDb, s: ShiftState, p: ShiftPatient): StaffMember | undefined {
+  if (!s.dayOpen || p.status !== 'inRoom' || !p.by) return undefined;
+  return hospitalCtx(db, s).staff.find(x => x.id === p.by);
+}
+
+/** Шаг нанятого врача по частям (`stepParts`): по тому, что он знает о пациенте сейчас. */
+function colleagueParts(db: ContentDb, s: ShiftState, p: ShiftPatient, m: StaffMember): Parts<StepResult> {
+  const how = doctorOf(db, m);
+  // специалист знает, с чем к нему записываются (spec 2026-10-chapter-4, часть 60а): у записанного к нему болезни профиля
+  // вероятнее — во столько раз
+  const profile = p.to === m.id ? db.roles[m.role]?.profile : undefined;
+  return stepParts(db, p.patient, observationsOf(p), p.done, p.phase ?? {}, {
+    candidates: candidatesOf(db, p.departments ?? s.meta.department), exams: examsHere(db, s), threshold: how.threshold, minGain: how.minGain,
+    ...(profile ? { prior: { ids: profile, x: PROFILE_PRIOR } } : {}),
+    // навык 1–2 иногда забывает спросить перед лечением — жребий своей ветви
+    skipAsk: q => how.forget > 0 && branch(s, `forget:${p.id}:${q}`).chance(how.forget * 100),
+    // и что у постели (часть 39а): под монитором — тромболизис; и сколько прошло с прихода (часть 41а)
+    venue: { ...venueOf(db, s), bedside: bedsideEquipment(db, s, p), minutes: Math.round((s.t - p.arriveT) / 60), ready: id => readyIn(db, s, p, id) },
+  });
+}
+
+/**
+ * Шаг нанятого врача по частям (0.5.13, NFR-PRF-1): событие `colleague` в начале очереди считается между кадрами — его
+ * шаг, а если он решает, — и разумный врач разбора его приёма; само событие — когда посчитано. Пока считается, больница
+ * не меняется: следующая команда сначала доживает всё. В памяти, не в сохранении: после открытия — заново, тем же счётом.
+ */
+interface ColleagueJob {
+  event: ShiftEvent;
+  parts: Parts<StepResult>;
+  result?: StepResult;
+}
+const colleagueJobs = new WeakMap<ShiftState, ColleagueJob>();
+
+/**
+ * Посчитать шаг нанятого врача в начале очереди: часть — сразу (за неё уже спросили `more()` перед событием), следующие —
+ * пока `more()`; true — посчитан или считать нечего.
+ */
+function colleagueReady(db: ContentDb, s: ShiftState, more: () => boolean): boolean {
+  const ev = s.events[0].event;
+  if (ev.kind !== 'colleague') return true;
+  const p = s.patients[ev.id];
+  const m = colleagueOf(db, s, p);
+  if (!m) return true;
+  let job = colleagueJobs.get(s);
+  if (job?.event !== ev) colleagueJobs.set(s, (job = { event: ev, parts: colleagueParts(db, s, p, m) }));
+  while (!job.result) {
+    const r = job.parts.next();
+    if (r.done) job.result = r.value;
+    else if (!more()) return false;
+  }
+  // решил — закроет приём: разумный врач разбора нужен сейчас (бережливость), он — тоже по частям
+  if (job.result.step.kind === 'decide') {
+    const run = reviewEntry(db, s.meta, p).run;
+    while (run.part() !== true) if (!more()) return false;
+  }
+  return true;
 }

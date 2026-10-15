@@ -14,13 +14,15 @@ import { musicScene, setMusicScene, startMusic } from '@/audio/sounds';
 import { T } from '@/i18n';
 import { installErrorLog } from '@/state/errors';
 import { loadProfile, setProfileStore } from '@/state/profile';
-import { saveNow, setStore } from '@/state/session';
+import { saveNow, setStore, timeInParts } from '@/state/session';
 import { loadSettings, setSettingsStore } from '@/state/settings';
 import { rawStore } from '@/state/storage';
 import { installFonts } from '@/ui/fonts';
 import { useTheme } from '@/ui/theme';
 
 setStore(rawStore);
+// время команды — по частям, в следующих кадрах (0.5.13, NFR-PRF-1)
+timeInParts();
 setSettingsStore(rawStore);
 setProfileStore(rawStore);
 // сбои — в журнал для «Сообщить об ошибке»; только на телефоне
