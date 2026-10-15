@@ -1,4 +1,4 @@
-// Номер версии — во всех местах (08-process.md, «Версия»): app.json, package.json,
+// Номер версии — во всех местах (05-process.md, «Версия»): app.json, package.json,
 // package-lock.json и в игре; у версии есть раздел в README.md и «Что нового» в «Об игре» —
 // из этого раздела.
 import { describe, expect, test } from 'bun:test';

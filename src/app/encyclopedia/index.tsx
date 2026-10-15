@@ -1,5 +1,5 @@
-// Энциклопедия (03-game-design.md §11): оглавление и поиск по всей базе игры. Вверху —
-// оговорка одной строкой (11-publishing.md §3).
+// Энциклопедия (09-game-design.md §11): оглавление и поиск по всей базе игры. Вверху —
+// оговорка одной строкой (12-publishing.md §3).
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { TextInput } from '@/ui/text';

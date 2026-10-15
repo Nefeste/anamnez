@@ -1,4 +1,4 @@
-// Источники медицинской базы (11-publishing.md §3, «Об игре»): по видам, без повторов.
+// Источники медицинской базы (12-publishing.md §3, «Об игре»): по видам, без повторов.
 import { db } from '@/content';
 import { T } from '@/i18n';
 import { sourceGroups } from '@/state/sources';

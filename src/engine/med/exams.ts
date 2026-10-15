@@ -1,5 +1,5 @@
 // Обследование открывает признаки — и ошибается так, как ошибаются в жизни
-// (`docs/04-medical-model.md` §5): у каждой пары «обследование — признак» своя
+// (`docs/10-medical-model.md` §5): у каждой пары «обследование — признак» своя
 // чувствительность и специфичность, поправленные навыком и оборудованием.
 import type { Condition, ContentDb, Exam, ExamCheck, Id } from '../../content/types';
 import { P_ONE, Rng } from '../core/rng';
@@ -131,7 +131,7 @@ export function examFits(exam: Exam, patient: Pick<Patient, 'sex' | 'age' | 'com
 /**
  * Проводит обследование. `rng` — ветвь именно этого назначения (например,
  * `root.fork('order:12')`): повторное обследование бросает новые монеты. `exact` — без
- * ошибок: показывает правду (сложность «Студент», 03-game-design.md §14). Ложная находка
+ * ошибок: показывает правду (сложность «Студент», 09-game-design.md §14). Ложная находка
  * осмотра, снимка и ЭКГ, не показанных по жалобам, — реже (`falseRate`, вопрос 33).
  */
 export function runExam(db: ContentDb, patient: Patient, examId: Id, rng: Rng, skill: ExamSkill = NORMAL_SKILL, exact = false): Observation[] {

@@ -1,4 +1,4 @@
-// Материалы магазина и сайта (store/, docs/11-publishing.md §2–§3, §8): длины текстов,
+// Материалы магазина и сайта (store/, docs/12-publishing.md §2–§3, §8): длины текстов,
 // ни чужих игр, ни брендов лекарств, ни обещаний медицинского приложения; оговорка на
 // месте; иконка и снимки нужных размеров, иконка магазина без прозрачности.
 import { describe, expect, test } from 'bun:test';
@@ -31,12 +31,12 @@ function png(file: string): { w: number; h: number; alpha: boolean } {
 
 const TEXTS = ['listing.ru.md', 'forms.md', 'privacy.ru.md', 'privacy.en.md', 'site/page.ru.md', 'site/page.en.md', 'site/press.ru.md'];
 
-// чужие игры, сериалы и прошлые прототипы (11-publishing.md §2); бренды лекарств — findBrand (ADR 0012)
+// чужие игры, сериалы и прошлые прототипы (12-publishing.md §2); бренды лекарств — findBrand (ADR 0012)
 const FORBIDDEN = [
   /project hospital/i, /two point/i, /theme hospital/i, /prognosis/i, /\bAda\b/, /clinicsim/i,
   /доктор хаус/i, /интерны/i, /склифосовск/i, /земский доктор/i,
 ];
-// обещания медицинского приложения (11-publishing.md §3)
+// обещания медицинского приложения (12-publishing.md §3)
 const CLAIMS = [/научит ставить диагноз/i, /тренаж[её]р для врач/i, /провер\S* свои симптом/i, /справочник болезней/i, /поставит диагноз/i];
 const DISCLAIMER = 'Игра. Не является медицинским изделием и не заменяет консультацию врача.';
 
@@ -77,7 +77,7 @@ describe('store: тексты', () => {
   });
 
   // считают то, с чем приходят (presenting): хроническое без обострения — фон, не болезнь приёма
-  test('числа болезней и травм — те же, что в базе (11-publishing.md §7а)', () => {
+  test('числа болезней и травм — те же, что в базе (12-publishing.md §7а)', () => {
     const come = Object.values(db.conditions).filter(c => c.presenting);
     const ill = come.filter(c => c.kind === 'disease' || c.kind === 'syndrome');
     const diseases = ill.length;

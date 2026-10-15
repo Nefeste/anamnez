@@ -1,4 +1,4 @@
-// Типы собранной медицинской базы (`docs/07-data-model.md` §1).
+// Типы собранной медицинской базы (`docs/04-data-model.md` §1).
 //
 // Исходник — YAML в content/, собирает tools/content/build.ts. Здесь — то, что получает
 // движок: полосы частот уже переведены в целые доли 1/10 000, ссылки проверены.
@@ -100,7 +100,7 @@ export type Required = (Id | Id[])[];
 /** Лечения списка тактики — и из групп «одно из» (часть 39в). */
 export const membersOf = (list: readonly (Id | readonly Id[])[] | undefined): Id[] => (list ?? []).flatMap(g => (typeof g === 'string' ? [g] : [...g]));
 
-/** Тактика при состоянии (`04-medical-model.md` §8). */
+/** Тактика при состоянии (`10-medical-model.md` §8). */
 export interface Tactics {
   firstLine: Id[];
   acceptable: Id[];
@@ -467,7 +467,7 @@ export interface Condition {
   name: Text;
   icd10?: string;
   department: Id;
-  /** состояния с одинаковой тактикой: путаница внутри группы — частичная точность (`04` §10) */
+  /** состояния с одинаковой тактикой: путаница внутри группы — частичная точность (`10` §10) */
   group?: Id;
   /**
    * источник по скрытому параметру (spec 2026-10-chapter-4, часть 48а): поставили болезнь-источник вместо этой —
@@ -617,7 +617,7 @@ export interface Finding {
     complaint?: Text[];
     present: Text[];
     absent?: Text[];
-    /** «Что это?» простыми словами — для тех, кто не медик (05-content.md §4) */
+    /** «Что это?» простыми словами — для тех, кто не медик (11-content.md §4) */
     hint?: Text;
   };
   review: Review;

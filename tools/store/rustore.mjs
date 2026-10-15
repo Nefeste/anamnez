@@ -1,5 +1,5 @@
 // из votchina: tools/store/rustore.mjs @ 0605847
-// Загрузка APK в черновик новой версии в RuStore (docs/08-process.md, «Выкладывание в RuStore»).
+// Загрузка APK в черновик новой версии в RuStore (docs/05-process.md, «Выкладывание в RuStore»).
 //
 //   RUSTORE_KEY_ID=<номер ключа> RUSTORE_API_TOKEN=<приватный ключ, base64> node tools/store/rustore.mjs anamnez-N.apk
 //   ... --submit   — сразу отправить черновик на модерацию (по умолчанию нет: владелец смотрит

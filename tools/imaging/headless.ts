@@ -1,4 +1,4 @@
-// Skia без экрана — для снимков в тестах и `npm run imaging` (06-architecture.md §11): та же
+// Skia без экрана — для снимков в тестах и `npm run imaging` (02-architecture.md §11): та же
 // CanvasKit, что в веб-сборке, и та же обёртка `Skia` из react-native-skia, только без React
 // Native. Модуль `@shopify/react-native-skia` подменяется до первого импорта рисовальщиков.
 import { plugin } from 'bun';

@@ -1,7 +1,7 @@
 // Движок смены: приход пациентов, сортировка, очередь, терпение, обследования со своими
 // сроками, закрытие случая и дня (spec 2026-09-first-shift, «Движок»; ADR 0005).
 //
-// Две точки входа, как в `06-architecture.md` §2: `apply(state, command)` — действие врача,
+// Две точки входа, как в `02-architecture.md` §2: `apply(state, command)` — действие врача,
 // которое двигает часы на свою цену, и команда `advance` — время на карте. Состояние
 // меняется на месте; случайность — только из именованных ветвей зерна смены (ADR 0004).
 import type { Chapter, ContentDb, Equipment, Exam, Id, Preset, Season, Setting, TutorialPatient } from '../../content/types';
@@ -37,7 +37,7 @@ import { type Bed, daysIn, type StayEnd, stayNorm, wardCourse, wardState } from 
 
 const MIN = 60;
 const TRIAGE_RANK: Record<Triage, number> = { red: 0, yellow: 1, green: 2 };
-/** Сколько минут готовы ждать: красный не уходит, а ухудшается (`03-game-design.md` §4). */
+/** Сколько минут готовы ждать: красный не уходит, а ухудшается (`09-game-design.md` §4). */
 const PATIENCE: Record<Exclude<Triage, 'red'>, [number, number]> = { yellow: [120, 180], green: [60, 150] };
 /** Слоты записи: каждые 20 минут с 08:00 до 13:40, занято около 60 %. */
 const SLOTS = 18;
@@ -108,7 +108,7 @@ export function hospitalCtx(db: ContentDb, s: ShiftState): HospitalCtx {
   }
   return c;
 }
-/** «Студент»: обследования не ошибаются, пациенты ждут в полтора раза дольше (03-game-design.md §14). */
+/** «Студент»: обследования не ошибаются, пациенты ждут в полтора раза дольше (09-game-design.md §14). */
 const exact = (s: ShiftState) => easyLevel(s.meta.difficulty);
 const STUDENT_PATIENCE = 1.5;
 /** «Ординатор» (spec 2026-10-resident): обследования ошибаются, как у «Врача», а ждут в 1,2 раза дольше (§14). */
@@ -1345,7 +1345,7 @@ export function observationsOf(p: ShiftPatient): Observation[] {
   return [...complaintObservations(p.patient), ...p.results.flatMap(r => r.obs)];
 }
 
-/** Закрыть случай: проверить план по правде, промотать болезнь, поставить оценки (`04` §8–10). */
+/** Закрыть случай: проверить план по правде, промотать болезнь, поставить оценки (`10` §8–10). */
 function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
   const dx = p.draft.diagnosis!;
   const patient = p.patient;

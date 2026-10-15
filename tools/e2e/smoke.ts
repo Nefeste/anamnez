@@ -1,4 +1,4 @@
-// npm run e2e — сценарий Playwright по веб-сборке (09-testing.md §4): все пять прототипов
+// npm run e2e — сценарий Playwright по веб-сборке (06-testing.md §4): все пять прототипов
 // этапа 1 и смена этапа 2. Сначала `npm run export:web`. Снимки экранов — в tools/e2e/out/.
 import { mkdirSync, readFileSync } from 'node:fs';
 import { extname, join } from 'node:path';

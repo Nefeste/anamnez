@@ -140,7 +140,7 @@ export const spikes = {
     freshCount: (n: number) => `+${n}\u00a0${pluralRu(n, 'новый результат', 'новых результата', 'новых результатов')}`,
     at: (hh: string) => `в ${hh}`,
     tapForHint: 'Нажмите на результат или «?», чтобы узнать, что это',
-    // решение: диагноз, лечение, место (03-game-design.md §5)
+    // решение: диагноз, лечение, место (09-game-design.md §5)
     diagnosisLabel: 'Диагноз',
     treatmentLabel: 'Лечение',
     settingLabel: 'Где лечить',
@@ -315,7 +315,7 @@ export const spikes = {
     targetDone: (name: string, minutes: number, limit: number, after = 'после прихода') =>
       minutes <= limit ? `${name} — через ${minutes}\u00a0мин ${after}, в срок` : `${name} — через ${minutes}\u00a0мин ${after}, позже срока на ${minutes - limit}\u00a0мин`,
   },
-  // решение и итог приёма — отдельные экраны (03-game-design.md §5; отзыв на 0.0.5:
+  // решение и итог приёма — отдельные экраны (09-game-design.md §5; отзыв на 0.0.5:
   // диагноз и лечение на одной вкладке — тесно)
   decision: {
     title: 'Решение',

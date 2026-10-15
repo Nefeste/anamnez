@@ -1,6 +1,6 @@
-// Энциклопедия (src/state/encyclopedia.ts, 03-game-design.md §11): статья есть у каждой записи
+// Энциклопедия (src/state/encyclopedia.ts, 09-game-design.md §11): статья есть у каждой записи
 // базы, ссылки ведут в существующие статьи, статья болезни — разделами в порядке
-// 05-content.md §4, частота словами — по полосам, служебных пометок авторов и доз нет,
+// 11-content.md §4, частота словами — по полосам, служебных пометок авторов и доз нет,
 // поиск находит и с «е» вместо «ё».
 import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
@@ -23,7 +23,7 @@ describe('энциклопедия', () => {
     expect(article(db, 'cond.nothing')).toBeUndefined();
   });
 
-  test('статья болезни — разделы в порядке 05-content.md §4', () => {
+  test('статья болезни — разделы в порядке 11-content.md §4', () => {
     expect(article(db, 'cond.pneumonia_cap')!.blocks.map(b => b.key))
       .toEqual(['what', 'signs', 'who', 'confirm', 'similar', 'treatment', 'where', 'course', 'redFlags', 'pearls', 'sources']);
   });

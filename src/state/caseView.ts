@@ -1,4 +1,4 @@
-// «Вид» приёма одного пациента — то, что знает врач (`06-architecture.md` §7): жалобы,
+// «Вид» приёма одного пациента — то, что знает врач (`02-architecture.md` §7): жалобы,
 // пришедшие результаты, назначенное, подсказки, черновик решения, итог и разбор закрытого
 // случая. Общий для прототипа П4 (visit.ts) и смены (session.ts): экраны карты пациента
 // работают с любым из них. Правда здесь появляется только в разборе закрытого случая.
@@ -281,7 +281,7 @@ export interface CaseInput {
   rooms?: readonly Id[];
   targets?: string[];
   returnNote?: string;
-  /** сложность: «Похоже на» — только у «Студента» (03-game-design.md §14); нет — «Студент» (прототип П4) */
+  /** сложность: «Похоже на» — только у «Студента» (09-game-design.md §14); нет — «Студент» (прототип П4) */
   difficulty?: Difficulty;
   /** своя больница: обследования, которых здесь не сделать, — и почему (spec 2026-09-own-hospital) */
   unavailable?: Record<Id, string>;
@@ -463,7 +463,7 @@ export function diagnosisGroups(departments?: readonly Id[]): DiagnosisGroup[] {
 }
 
 /**
- * Выбор лечения: противопоказание, о котором пациент сказал, — предупреждение (`04` §8); лечению
+ * Выбор лечения: противопоказание, о котором пациент сказал, — предупреждение (`10` §8); лечению
  * у постели нужен его аппарат у постели (часть 39а) — без него кнопка серая, и сказано почему. Лечение
  * реанимации (spec 2026-10-chapter-4, часть 47) — ИВЛ — можно, если в ней есть свободная койка.
  */
@@ -742,9 +742,9 @@ const BONE_EXAMS: Record<Id, { view: BoneFindings['view']; fractures: [Id, BoneF
   },
 };
 
-/** «Студенту» — до пяти гипотез с частотой (03-game-design.md §14). */
+/** «Студенту» — до пяти гипотез с частотой (09-game-design.md §14). */
 const HINTS = 5;
-/** «Ординатор» (spec 2026-10-resident): «Похоже на» — до трёх, словами (03-game-design.md §14). */
+/** «Ординатор» (spec 2026-10-resident): «Похоже на» — до трёх, словами (09-game-design.md §14). */
 const RESIDENT_HINTS = 3;
 
 /**
@@ -906,7 +906,7 @@ export function makeCaseView(c: CaseInput): VisitView {
   };
 }
 
-/** Итог и разбор закрытого случая — словами (`04` §10). */
+/** Итог и разбор закрытого случая — словами (`10` §10). */
 export function decisionOf(x: {
   patient: Patient; arrived: readonly Arrival[]; diagnosis: Id; verdict: Decision['verdict']; confidence: number;
   plan: { treatments: Id[]; setting: Setting }; ev: PlanEval; outcome: Outcome; score: CaseScore; review: ReviewData;

@@ -1,4 +1,4 @@
-// npm run doctor — «виртуальный врач» по базе (`docs/05-content.md` §6, `docs/09-testing.md` §3).
+// npm run doctor — «виртуальный врач» по базе (`docs/11-content.md` §6, `docs/06-testing.md` §3).
 // Три стратегии на одних и тех же пациентах: разумный, ленивый, «всё подряд»; и нанятый врач
 // своей больницы по навыку 1–5 (spec 2026-09-hired-doctors) — тот же разумный с порогами навыка.
 // Флаги: --n 10000 (пациентов), --season winter|spring|summer|autumn|all, --json (для CI),
@@ -78,7 +78,7 @@ if (seasons.length === 0) {
 interface Tally {
   n: number; correct: number; correctGroup: number; money: number; minutes: number; exams: number;
   confusion: Record<string, number>; perCondition: Record<string, { n: number; correct: number; correctGroup: number }>;
-  /** оценки случая и исходы (`04-medical-model.md` §9–10) */
+  /** оценки случая и исходы (`10-medical-model.md` §9–10) */
   overall: Record<Grade, number>; treatment: Record<Grade, number>; outcomes: Record<OutcomeKind, number>;
   /** антибиотик там, где он не показан (ОРВИ, бронхит, грипп) */
   needlessAntibiotic: number;
@@ -517,7 +517,7 @@ const hiredReport = hired.map(({ skill, cases }) => {
   };
 });
 const byGroup = hiredReport.map(h => h.groupAccuracy);
-// Пороги 05-content.md §6: точность — до группы с одинаковой тактикой; ленивый сравнивается
+// Пороги 11-content.md §6: точность — до группы с одинаковой тактикой; ленивый сравнивается
 // с разумным по сбалансированной точности — иначе самая частая болезнь (ОРВИ больше
 // половины обращений) вытягивает его сама.
 interface Threshold { value: number; need: string; ok: boolean; /** для сведения — почему: в код выхода не идёт */ info?: string }
@@ -674,7 +674,7 @@ if (asJson) {
       }
     }
   }
-  console.log('\nПороги (05-content.md §6):');
+  console.log('\nПороги (11-content.md §6):');
   for (const [k, t] of Object.entries(thresholds)) console.log(`  ${t.ok ? 'да ' : 'НЕТ'} ${k}: ${t.value.toFixed(2)} (нужно ${t.need})${t.info ? ` — для сведения: ${t.info}` : ''}`);
 }
 process.exit(passed ? 0 : 1);

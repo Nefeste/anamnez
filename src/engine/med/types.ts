@@ -1,7 +1,7 @@
-// Пациент и наблюдения (`docs/04-medical-model.md`, `docs/07-data-model.md` §2).
+// Пациент и наблюдения (`docs/10-medical-model.md`, `docs/04-data-model.md` §2).
 //
 // `truth` — правда: её видит только движок и разбор закрытого случая (ADR 0009,
-// `docs/06-architecture.md` §7). Интерфейс получает наблюдения — то, что показали
+// `docs/02-architecture.md` §7). Интерфейс получает наблюдения — то, что показали
 // обследования, включая ошибки.
 import type { Id, Season } from '../../content/types';
 

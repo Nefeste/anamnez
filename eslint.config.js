@@ -1,5 +1,5 @@
 // https://docs.expo.dev/guides/using-eslint/
-// Кроме правил Expo и React Compiler — границы слоёв (docs/09-testing.md §1).
+// Кроме правил Expo и React Compiler — границы слоёв (docs/06-testing.md §1).
 const { defineConfig } = require('eslint/config');
 const expoConfig = require('eslint-config-expo/flat');
 
@@ -43,7 +43,7 @@ module.exports = defineConfig([
     },
   },
   {
-    // Интерфейс не читает правду пациента — только «вид» (docs/06-architecture.md §7).
+    // Интерфейс не читает правду пациента — только «вид» (docs/02-architecture.md §7).
     files: ['src/app/**/*.tsx', 'src/ui/**/*.tsx', 'src/render/**/*.tsx'],
     rules: {
       'no-restricted-imports': ['error', {

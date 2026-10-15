@@ -135,7 +135,7 @@ function OwnHospital({ next }: { next?: boolean }) {
   );
 }
 
-/** Практики нет: что это и какая сложность (03-game-design.md §14); по умолчанию — «Студент». */
+/** Практики нет: что это и какая сложность (09-game-design.md §14); по умолчанию — «Студент». */
 function NewPractice() {
   const [difficulty, setDifficulty] = useState<Difficulty>('student');
   return (

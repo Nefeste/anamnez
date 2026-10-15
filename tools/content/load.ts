@@ -1,5 +1,5 @@
 // Сборка медицинской базы из YAML в память: схема, ссылки, полосы → числа
-// (`docs/05-content.md` §6, `docs/07-data-model.md` §1). Используют build.ts, тесты и
+// (`docs/11-content.md` §6, `docs/04-data-model.md` §1). Используют build.ts, тесты и
 // «виртуальный врач» — все читают одну и ту же базу.
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, join, relative } from 'node:path';

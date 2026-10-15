@@ -1,5 +1,5 @@
 // Люди прототипа П2: маршруты A* между помещениями, плоскими массивами для UI-потока.
-// Движок отдаёт маршруты, а позицию на каждом кадре считает ворклет (06-architecture.md §6).
+// Движок отдаёт маршруты, а позицию на каждом кадре считает ворклет (02-architecture.md §6).
 import { Rng } from '@/engine/core/rng';
 import type { HospitalLayout } from '@/engine/hospital/grid';
 import { type Cell, findPath } from '@/engine/sim/path';

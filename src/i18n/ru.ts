@@ -1,4 +1,4 @@
-// Русский словарь — исходный: остальные языки объявляются с его типом (docs/06-architecture.md §9).
+// Русский словарь — исходный: остальные языки объявляются с его типом (docs/02-architecture.md §9).
 import { about } from './sections/about';
 import { campaign } from './sections/campaign';
 import { daily } from './sections/daily';
