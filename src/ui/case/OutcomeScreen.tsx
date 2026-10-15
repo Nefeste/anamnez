@@ -18,6 +18,17 @@ export function OutcomeScreen({ view, next, back }: { view: VisitView | undefine
   const d = T.spikes.decision;
   const x = view?.decision;
 
+  // приём закрывается (0.5.13): разбор досчитывается в следующих кадрах — пара мгновений на медленном телефоне
+  if (!x && view?.finishing) {
+    return (
+      <Screen>
+        <Card>
+          <P muted testID="visit-finishing">{d.finishing}</P>
+        </Card>
+      </Screen>
+    );
+  }
+
   if (!x) {
     return (
       <Screen footer={<Button testID={back.testID} title={back.title} onPress={back.run} />}>

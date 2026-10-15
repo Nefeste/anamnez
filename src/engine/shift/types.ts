@@ -438,6 +438,11 @@ export interface ShiftState {
    * кабинете
    */
   doctorAt?: string;
+  /**
+   * до какого часа ещё прожить время последней команды (0.5.13, NFR-PRF-1): события до него доживаются по частям, в
+   * следующих кадрах (`catchUp`), а следующая команда сначала доживает их все; нет — всё прожито
+   */
+  until?: number;
   returns: PlannedReturn[];
   summary: DaySummary;
   history: DaySummary[];

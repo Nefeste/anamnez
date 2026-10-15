@@ -170,6 +170,8 @@ export interface VisitView {
   pending: { exam: Id; name: string; at: string }[];
   /** ушёл на обследование в другой кабинет (0.5.12): строка — когда вернётся */
   away?: string;
+  /** приём закрывается (0.5.13): разбор ещё считается — экран итога ждёт его */
+  finishing?: true;
   meanwhile: string[];
   /** смена: за это время пришёл срочный пациент — звук «срочно», а не «готово» */
   urgent?: boolean;
@@ -260,6 +262,8 @@ export interface CaseInput {
   pending: { exam: Id; readyAt: number; repeat?: true }[];
   /** ушёл на обследование в другой кабинет (0.5.12): что делают, когда вернётся — минуты от полуночи */
   away?: { exam: Id; back: number };
+  /** приём закрывается (0.5.13): разбор ещё считается */
+  finishing?: true;
   meanwhile: string[];
   urgent?: boolean;
   alarm?: boolean;
@@ -868,6 +872,7 @@ export function makeCaseView(c: CaseInput): VisitView {
     freshCount: c.arrived.filter(a => c.step > 0 && a.step === c.step).reduce((n, a) => n + a.obs.filter(visible).length, 0),
     pending: c.pending.map(x => ({ exam: x.exam, name: resultName(x.exam, x.repeat), at: hhmm(x.readyAt) })),
     ...(c.away ? { away: T.spikes.patient.away(resultName(c.away.exam), hhmm(c.away.back)) } : {}),
+    ...(c.finishing ? { finishing: true as const } : {}),
     meanwhile: c.meanwhile,
     ...(c.urgent ? { urgent: true } : {}),
     ...(c.alarm ? { alarm: true } : {}),

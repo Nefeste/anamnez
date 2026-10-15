@@ -24,7 +24,7 @@ import {
   apply, atDoctor, atDoorOf, bedsideEquipment, bedsideOf, boxBeds, brokenOf, current, freeBeds, freeBoxBeds, freeIcuBeds, freeRicuBeds, type HospitalCtx, hospitalCtx, icuBeds, inBox, inIcu, inpatientsOf, inRicu,
   isOut, moreUrgent, newCampaign, newSandbox, ricuBeds,
   newShift, newSingle, observationsOf, operationOf, type OrBlock, orBlock, orQueueOf, prepareReview, reviewFor, SANDBOX_VENUE, stayEquipment, targetPlace,
-  wardBeds,
+  wardBeds, catchUp, prepareFinish,
 } from '@/engine/shift/engine';
 import { minutesTo, targetStart, targetsFor } from '@/engine/shift/targets';
 import {
@@ -236,6 +236,13 @@ interface Session {
   focus?: string;
   savedT: number;
   restored: boolean;
+  /**
+   * время последней команды ещё доживается (0.5.13, `catchUp`): её события — по мере того, как прожиты; у действия врача
+   * — чей приём и что сделано, для «За это время», когда время приёма прожито; `clock` — ход часов, его доживает тик
+   */
+  tail?: { notices: Notice[]; doctor?: { id: string; justDone?: Id }; clock?: boolean };
+  /** ваш приём закрывается (0.5.13): разбор не успели посчитать заранее — он досчитывается в кадрах (`finishFrame`) */
+  finishing?: string;
 }
 
 let store: RawStore | null = null;
@@ -335,6 +342,8 @@ export function loadShift(which?: Mode, careerNo?: number): Promise<void> {
           deriveByParams(db, p.patient.truth.conditions);
         }
         session = fresh(r.envelope.data, r.from === 'prev-1' || r.from === 'prev-2');
+        // сохранили, пока время команды доживалось (0.5.13), — доживается дальше
+        if (session.s.until !== undefined) scheduleCatchUp();
         // приёмы, закрытые до профиля (0.0.14 и раньше) или до сбоя, — в профиль; повторы он отбросит
         recordCases(closedCases(session.s));
       }
@@ -521,7 +530,9 @@ export function forgetShift() {
 
 // --- часы -----------------------------------------------------------------------------
 
-function run(sess: Session, cmd: Command): Notice[] {
+function run(sess: Session, cmd: Command, more?: () => boolean, clock = false): Notice[] {
+  // время прошлой команды ещё доживается (0.5.13) — сначала оно, со своими событиями
+  settle(sess);
   // «мягкий режим» из настроек (часть 28б) — в состояние смены раньше команды: ночью по нему решают
   const soft = settings().softMode;
   if ((sess.s.meta.soft ?? false) !== soft) apply(db, sess.s, { kind: 'soft', on: soft });
@@ -529,10 +540,89 @@ function run(sess: Session, cmd: Command): Notice[] {
   // кампании его нет
   const variety = settings().variety && sess.s.meta.mode !== 'campaign';
   if ((sess.s.meta.variety ?? false) !== variety) apply(db, sess.s, { kind: 'variety', on: variety });
-  const notices = apply(db, sess.s, cmd);
+  const notices = apply(db, sess.s, cmd, more);
   record(sess, notices);
   if (sess.s.t - sess.savedT >= SAVE_EVERY) save();
+  sess.tail = sess.s.until !== undefined ? { notices: [...notices], ...(clock ? { clock } : {}) } : undefined;
+  if (sess.tail && !clock) scheduleCatchUp();
   return notices;
+}
+
+// --- время команды по частям (0.5.13, NFR-PRF-1; spec 2026-10-parts) -------------------------------
+
+/** Время команды — по частям: включает игра (`timeInParts`); тесты сессии живут, как прежде, сразу. */
+let inParts = false;
+/** Сколько миллисекунд за раз доживать время команды — в кадре и в тике, как срезы тика с 0.5.11. */
+const PART_MS = 40;
+let partMs = PART_MS;
+export function timeInParts(on = true, ms = PART_MS) {
+  inParts = on;
+  partMs = ms;
+}
+
+/** Счёт до `ms` миллисекунд от сейчас; `first` — одно событие всегда, чтобы время шло и без запаса (кадр, тик). */
+function budget(ms: number, first = false): () => boolean {
+  const end = performance.now() + ms;
+  let once = first;
+  return () => {
+    if (!once) return performance.now() <= end;
+    once = false;
+    return true;
+  };
+}
+
+/** Сколько можно считать в команде игрока: она возвращается сразу, остальное — в кадрах; не по частям — всё сразу. */
+const partBudget = () => (inParts ? budget(partMs) : undefined);
+
+/** Сессия, где прошлая команда прожита целиком: действие игрока видит больницу такой же, как прежде. */
+function live(): Session | null {
+  const sess = session;
+  if (sess) settle(sess);
+  return sess;
+}
+
+/** Дожить время прошлой команды — всё сразу. */
+function settle(sess: Session) {
+  if (sess.s.until !== undefined) absorb(sess, catchUp(db, sess.s));
+}
+
+/** События дожитого — в журнал смены и в команду; прожито всё — «За это время» после действия врача. */
+function absorb(sess: Session, notices: Notice[]) {
+  record(sess, notices);
+  const tail = sess.tail;
+  if (!tail) return;
+  tail.notices.push(...notices);
+  if (sess.s.until !== undefined) return;
+  sess.tail = undefined;
+  const p = tail.doctor ? sess.s.patients[tail.doctor.id] : undefined;
+  if (!p || sess.s.current !== p.id) return;
+  sess.meanwhile = meanwhileOf(sess.s, p, tail.notices, tail.doctor?.justDone);
+  sess.urgent = urgentIn(tail.notices);
+  sess.alarm = tail.notices.some(n => n.kind === 'arrest');
+}
+
+const urgentIn = (notices: Notice[]) => notices.some(n => (n.kind === 'arrived' && n.triage === 'red') || n.kind === 'ambulance');
+
+let frameQueued = false;
+function nextFrame(f: () => void) {
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(f);
+  else setTimeout(f, 0);
+}
+
+/** Дожить время действия игрока в следующих кадрах — по `partMs` за кадр; ход часов доживает тик. */
+function scheduleCatchUp() {
+  if (frameQueued || !inParts) return;
+  frameQueued = true;
+  nextFrame(catchUpFrame);
+}
+
+function catchUpFrame() {
+  frameQueued = false;
+  const sess = session;
+  if (!sess || sess.s.until === undefined || sess.tail?.clock) return;
+  absorb(sess, catchUp(db, sess.s, budget(partMs, true)));
+  if (sess.s.until !== undefined) scheduleCatchUp();
+  else changed();
 }
 
 function dayStart(s: ShiftState) {
@@ -554,15 +644,23 @@ export function tick(ms: number = TICK_MS): Notice[] {
   const sess = session;
   if (!sess || sess.paused || !sess.s.dayOpen || sess.s.current || allDone(sess.s)) return [];
   // по срезам и не дольше `TICK_BUDGET_MS` (0.5.11, NFR-PRF-1): много работы у нанятых врачей — остаток тика пропускается,
-  // часы идут чуть медленнее, а экран не замирает; события те же — время проматывается по ним
+  // часы идут чуть медленнее, а экран не замирает; события те же — время проматывается по ним. По частям (0.5.13) — и
+  // срез: не прожит за тик — доживается в следующем, а сначала — недожитое; его события — тоже этого тика, если это
+  // ход часов
   const total = Math.round((ms / 1000) * sess.speed * 60);
-  const t0 = performance.now();
+  const more = budget(inParts ? partMs : TICK_BUDGET_MS, true);
+  const part = inParts ? more : undefined;
   const notices: Notice[] = [];
-  for (let done = 0; done < total; ) {
+  if (sess.s.until !== undefined) {
+    const clock = sess.tail?.clock;
+    const n = catchUp(db, sess.s, part);
+    absorb(sess, n);
+    if (clock) notices.push(...n);
+  }
+  for (let done = 0; sess.s.until === undefined && done < total && more(); ) {
     const step = Math.min(TICK_SLICE, total - done);
-    notices.push(...run(sess, { kind: 'advance', seconds: step }));
+    notices.push(...run(sess, { kind: 'advance', seconds: step }, part, true));
     done += step;
-    if (performance.now() - t0 > TICK_BUDGET_MS) break;
   }
   const { pauseOnRed, pauseOnResults } = settings();
   const red = pauseOnRed ? notices.find(n => (n.kind === 'arrived' && n.triage === 'red') || n.kind === 'ambulance') : undefined;
@@ -630,7 +728,7 @@ const SKIP_MAX = 4 * 3600;
  * следующего пациента ждали 40 секунд). Те же события, что на ×1, только без ожидания.
  */
 export function skipIdle(): Notice[] {
-  const sess = session;
+  const sess = live();
   if (!sess || !sess.s.dayOpen || sess.s.current || sess.s.queue.length > 0 || allDone(sess.s)) return [];
   // привезённого скорой ждёт сортировка — мимо него часы не проматываем (часть 27)
   if (Object.values(sess.s.patients).some(p => p.kind === 'ambulance' && p.status === 'waiting' && !p.sorted)) return [];
@@ -664,9 +762,9 @@ export function pauseClock() {
 
 /** Пригласить в кабинет; false — нельзя (кабинет занят, пациент уже не ждёт). */
 export function callPatient(id: string): boolean {
-  const sess = session;
+  const sess = live();
   if (!sess || sess.s.current || sess.s.patients[id]?.status !== 'waiting') return false;
-  run(sess, { kind: 'call', id });
+  run(sess, { kind: 'call', id }, partBudget());
   sess.meanwhile = [];
   sess.urgent = false;
   sess.alarm = false;
@@ -681,13 +779,21 @@ export function callPatient(id: string): boolean {
 }
 
 function doctor(cmd: Command, justDone?: Id) {
-  const sess = session;
+  const sess = live();
   const p = sess && current(sess.s);
-  if (!sess || !p) return;
-  const notices = run(sess, cmd);
-  sess.meanwhile = meanwhileOf(sess.s, p, notices, justDone);
-  sess.urgent = notices.some(n => (n.kind === 'arrived' && n.triage === 'red') || n.kind === 'ambulance');
-  sess.alarm = notices.some(n => n.kind === 'arrest');
+  if (!sess || !p || sess.finishing) return;
+  const notices = run(sess, cmd, partBudget());
+  if (sess.tail) {
+    // время приёма ещё доживается (0.5.13): «За это время» — когда прожито
+    sess.tail.doctor = { id: p.id, ...(justDone ? { justDone } : {}) };
+    sess.meanwhile = [];
+    sess.urgent = false;
+    sess.alarm = false;
+  } else {
+    sess.meanwhile = meanwhileOf(sess.s, p, notices, justDone);
+    sess.urgent = urgentIn(notices);
+    sess.alarm = notices.some(n => n.kind === 'arrest');
+  }
   changed();
 }
 
@@ -700,9 +806,9 @@ export function waitForResults() {
 }
 
 export function sendAway() {
-  const sess = session;
-  if (!sess || !current(sess.s)) return;
-  run(sess, { kind: 'sendAway' });
+  const sess = live();
+  if (!sess || !current(sess.s) || sess.finishing) return;
+  run(sess, { kind: 'sendAway' }, partBudget());
   sess.meanwhile = [];
   sess.urgent = false;
   sess.alarm = false;
@@ -711,8 +817,8 @@ export function sendAway() {
 }
 
 function draft(cmd: Command) {
-  const sess = session;
-  if (!sess || !current(sess.s)) return;
+  const sess = live();
+  if (!sess || !current(sess.s) || sess.finishing) return;
   run(sess, cmd);
   changed();
 }
@@ -734,12 +840,26 @@ export function toggleHypothesis(id: Id) {
   draft({ kind: 'hypothesis', id });
 }
 
-/** Завершить приём: случай закрыт, его итог — на экране итога (фокус). */
+/**
+ * Завершить приём: случай закрыт, его итог — на экране итога (фокус). Разбор не успели посчитать заранее (0.5.13,
+ * NFR-PRF-1) — он досчитывается в следующих кадрах, по `partMs` за кадр, а приём закрывается, когда разбор готов; экран
+ * итога пока — «Закрываем приём».
+ */
 export function finishCase() {
-  const sess = session;
+  const sess = live();
   const p = sess && current(sess.s);
-  if (!sess || !p || !p.draft.diagnosis) return;
-  run(sess, { kind: 'finish' });
+  if (!sess || !p || !p.draft.diagnosis || sess.finishing) return;
+  if (inParts && !prepareFinish(db, sess.s, budget(partMs))) {
+    sess.finishing = p.id;
+    nextFrame(finishFrame);
+    changed();
+    return;
+  }
+  closeVisit(sess, p);
+}
+
+function closeVisit(sess: Session, p: ShiftPatient) {
+  run(sess, { kind: 'finish' }, partBudget());
   recordCases(closedCases(sess.s));
   sess.focus = p.id;
   sess.meanwhile = [];
@@ -747,6 +867,25 @@ export function finishCase() {
   sess.alarm = false;
   save();
   changed();
+}
+
+/** Кадр закрытия приёма (0.5.13): разбор — по `partMs`; готов — приём закрыт. */
+function finishFrame() {
+  const sess = session;
+  const id = sess?.finishing;
+  if (!sess || id === undefined) return;
+  const p = sess.s.patients[id];
+  if (sess.s.current !== id || !p?.draft.diagnosis) {
+    sess.finishing = undefined;
+    changed();
+    return;
+  }
+  if (!prepareFinish(db, sess.s, budget(partMs, true))) {
+    nextFrame(finishFrame);
+    return;
+  }
+  sess.finishing = undefined;
+  closeVisit(sess, p);
 }
 
 /** Открыть итог и разбор закрытого случая — из итогов дня. */
@@ -766,7 +905,7 @@ export function openColleagueCase(id: string) {
 
 /** Забрать себе пациента нанятого врача: вы свободны — он сразу у вас в кабинете (`true`). */
 export function takeOver(id: string): boolean {
-  const sess = session;
+  const sess = live();
   const p = sess?.s.patients[id];
   // уже не у врача (забрали касанием раньше, приём закрыт) — ничего не делаем
   if (!sess?.s.dayOpen || !p?.by || p.closed) return !!sess && sess.s.current === id;
@@ -806,7 +945,7 @@ export function leaveCase() {
 }
 
 export function closeDay() {
-  const sess = session;
+  const sess = live();
   if (!sess || !sess.s.dayOpen) return;
   run(sess, { kind: 'closeDay' });
   // ночью умерший после операции (часть 28б) — в архиве профиля его приём с исходом
@@ -824,7 +963,7 @@ export function closeDay() {
 }
 
 export function nextDay() {
-  const sess = session;
+  const sess = live();
   if (!sess || sess.s.dayOpen) return;
   // песочница: без регистратуры, зоны ожидания и кабинета смену не открыть — движок не откроет
   run(sess, { kind: 'nextDay' });
@@ -1862,9 +2001,9 @@ export function replanChoices(id: string): ReturnType<typeof treatmentGroupsFor>
 }
 
 function wardAct(cmd: Command) {
-  const sess = session;
+  const sess = live();
   if (!sess || !sess.s.dayOpen) return;
-  run(sess, cmd);
+  run(sess, cmd, partBudget());
   // выписан или переведён — в архиве профиля его приём с исходом
   if (cmd.kind !== 'replan') recordCases(closedCases(sess.s));
   save();
@@ -1915,9 +2054,9 @@ function ambulanceRows(s: ShiftState): AmbulanceRow[] {
 
 /** Отсортировать привезённого скорой: цвет — место в очереди. */
 export function sortAmbulance(id: string, triage: Triage) {
-  const sess = session;
+  const sess = live();
   if (!sess || !sess.s.dayOpen) return;
-  run(sess, { kind: 'sort', id, triage });
+  run(sess, { kind: 'sort', id, triage }, partBudget());
   save();
   changed();
 }
@@ -2093,7 +2232,8 @@ function buildCaseView(): VisitView | undefined {
   return makeCaseView({
     version,
     patient: p.patient,
-    clock: minuteOfDay(s.t),
+    // у вас в кабинете — ваше время: конец последнего действия, пока больница его доживает (0.5.13)
+    clock: minuteOfDay(p.id === s.current ? (s.until ?? s.t) : s.t),
     minutesSpent: Math.round(p.spent.seconds / 60),
     money: p.spent.money,
     step: p.step,
@@ -2101,6 +2241,8 @@ function buildCaseView(): VisitView | undefined {
     pending: [...asking, ...p.pending.map(x => ({ exam: x.exam, readyAt: minuteOfDay(x.readyAt), ...(x.repeat ? { repeat: x.repeat } : {}) }))],
     // ушёл на обследование в другой кабинет (0.5.12): когда вернётся
     ...(p.id === s.current && p.out && p.out.back > s.t ? { away: { exam: p.out.exam, back: minuteOfDay(p.out.back) } } : {}),
+    // приём закрывается (0.5.13): разбор досчитывается в кадрах
+    ...(p.id === sess.finishing ? { finishing: true as const } : {}),
     meanwhile: p.id === s.current ? sess.meanwhile : [],
     urgent: p.id === s.current && sess.urgent,
     alarm: p.id === s.current && sess.alarm,

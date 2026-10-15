@@ -413,14 +413,31 @@ export interface StepOptions {
   prior?: Prior;
 }
 
-/** Самое полезное на единицу цены из несделанных; польза ниже `minGain` — не назначается. */
-function bestExam(db: ContentDb, beliefs: Belief[], ctx: Parameters<typeof expectedGain>[3], obs: readonly Observation[], done: readonly Id[], opt: StepOptions): Id | undefined {
+/**
+ * Шаг по частям (0.5.13, NFR-PRF-1): между частями — `yield`, и шаг можно продолжить в следующем кадре; части — польза
+ * каждого обследования и уверенность во всех болезнях. Как у Бенеша: «Необходимо проверять десятки доступных видов
+ * анализов, поэтому в одном кадре обновление выполняется только для некоторых, и продолжается в следующем».
+ */
+export type Parts<T> = Generator<void, T, void>;
+export type StepResult = { step: DoctorStep; phase: DoctorPhase };
+
+/** Довести до конца — сразу. */
+export function whole<T>(parts: Parts<T>): T {
+  for (;;) {
+    const r = parts.next();
+    if (r.done) return r.value;
+  }
+}
+
+/** Самое полезное на единицу цены из несделанных; польза ниже `minGain` — не назначается. По обследованию за часть. */
+function* bestExam(db: ContentDb, beliefs: Belief[], ctx: Parameters<typeof expectedGain>[3], obs: readonly Observation[], done: readonly Id[], opt: StepOptions): Parts<Id | undefined> {
   const observed = new Set(obs.map(o => o.f));
   let best: Id | undefined;
   let bestScore = 0;
   for (const id of opt.exams) {
     if (done.includes(id)) continue;
     const gain = expectedGain(db, id, beliefs, ctx, observed);
+    yield;
     if (quantize(gain) < quantize(opt.minGain)) continue;
     const score = quantize(gain / examCost(db, id));
     if (score > bestScore) {
@@ -448,7 +465,7 @@ export function tacticParams(db: ContentDb, condId: Id): string[] {
  * польза ниже `minGain` — не назначается. Перелом со штыкообразной деформацией — ещё снимок:
  * смещён он или нестабилен, решает он.
  */
-function tacticExam(db: ContentDb, diagnosis: Id, obs: readonly Observation[], age: Who, done: readonly Id[], opt: StepOptions): Id | undefined {
+function* tacticExam(db: ContentDb, diagnosis: Id, obs: readonly Observation[], age: Who, done: readonly Id[], opt: StepOptions): Parts<Id | undefined> {
   let best: Id | undefined;
   let bestScore = 0;
   const minutes = opt.venue?.minutes ?? 0;
@@ -458,6 +475,7 @@ function tacticExam(db: ContentDb, diagnosis: Id, obs: readonly Observation[], a
     for (const id of opt.exams) {
       if (done.includes(id)) continue;
       const gain = paramGain(db, diagnosis, name, id, obs, age, minutes);
+      yield;
       if (quantize(gain) < quantize(opt.minGain)) continue;
       const score = quantize(gain / examCost(db, id));
       if (score > bestScore) {
@@ -499,14 +517,19 @@ function confirmBeforeInvasive(db: ContentDb, diagnosis: Id, obs: readonly Obser
  * противопоказаниях к лечению (об аллергиях — перед антибиотиком; о беременности не
  * спрашивают мужчину и женщину 64 лет), и план.
  */
-export function nextStep(db: ContentDb, patient: Patient, obs: readonly Observation[], done: readonly Id[], phase: DoctorPhase, options: StepOptions): { step: DoctorStep; phase: DoctorPhase } {
+export function nextStep(db: ContentDb, patient: Patient, obs: readonly Observation[], done: readonly Id[], phase: DoctorPhase, options: StepOptions): StepResult {
+  return whole(stepParts(db, patient, obs, done, phase, options));
+}
+
+/** Тот же шаг по частям (0.5.13): так его делает нанятый врач, пока больница доживает время команды, и разбор заранее. */
+export function* stepParts(db: ContentDb, patient: Patient, obs: readonly Observation[], done: readonly Id[], phase: DoctorPhase, options: StepOptions): Parts<StepResult> {
   // обследование с вредом при противопоказании (spec 2026-10-chapter-4, часть 50а): пункт правила известен — его не
   // делают; пока не всё проверено — сначала самое дешёвое из того, что проверит оставшийся пункт: сознание и очаговые
   // признаки — осмотром невролога, давление — тонометром, тромбоциты — анализом крови. Проверить нечем — делают:
   // остальное в этой больнице не узнать. Нанятый врач невысокого навыка проверку забывает (`skipAsk`)
   const known = knownOf(obs);
   const exams = options.exams.filter(id => harmCheck(db, id, known).verdict !== 'yes');
-  const r = nextStepFor(db, patient, obs, done, phase, { ...options, exams });
+  const r = yield* nextStepFor(db, patient, obs, done, phase, { ...options, exams });
   if (r.step.kind !== 'exam') return r;
   const { verdict, left } = harmCheck(db, r.step.exam, known);
   if (verdict !== 'unknown') return r;
@@ -516,7 +539,7 @@ export function nextStep(db: ContentDb, patient: Patient, obs: readonly Observat
   return check ? { step: { kind: 'exam', exam: check }, phase } : r;
 }
 
-function nextStepFor(db: ContentDb, patient: Patient, obs: readonly Observation[], done: readonly Id[], phase: DoctorPhase, options: StepOptions): { step: DoctorStep; phase: DoctorPhase } {
+function* nextStepFor(db: ContentDb, patient: Patient, obs: readonly Observation[], done: readonly Id[], phase: DoctorPhase, options: StepOptions): Parts<StepResult> {
   // о месячных и беременности мужчину не спрашивают: только то, что пациенту подходит; есть срок
   // решения (часть 39в) — то, что успеет до него. С частью 46а — за вычетом минут, что прошли после
   // находки (по обследованиям после того, что её показало), и с запасом на вопросы о противопоказаниях
@@ -526,10 +549,22 @@ function nextStepFor(db: ContentDb, patient: Patient, obs: readonly Observation[
     const k = done.findIndex(id => obs.some(o => o.exam === id && o.shown && fs.includes(o.f)));
     return k < 0 ? 0 : done.slice(k + 1).reduce((a, id) => a + (db.exams[id] ? examMinutes(db.exams[id]) : 0), 0);
   };
+  // уверенность во всех болезнях — одна на шаг (0.5.13): её берут и срок, и тактика, и польза обследований; считают, когда
+  // нужна, — отдельной частью
+  let ctx: ReturnType<typeof contextOf> | undefined;
+  let all: Belief[] | undefined;
+  const ctxOf = () => (ctx ??= contextOf(db, patient, obs, options.prior));
+  const beliefsOf = () => (all ??= posterior(db, options.candidates, obs, ctxOf()));
   let limit = decisionLimit(db, obs, patient.complaints, elapsed, since, patient);
   // срок, который ничего не решает (часть 46а): подъём ST на ЭКГ у больного с ТИА, которого инфарктом
   // не объяснить, — болезни, которую этим лечат, вероятнее `RULE_IN` нет, и обследование он не торопит
-  if (limit !== undefined && !ruleIn(db, posterior(db, options.candidates, obs, contextOf(db, patient, obs, options.prior)), obs, patient, options.venue)) limit = undefined;
+  if (limit !== undefined) {
+    if (!all) {
+      beliefsOf();
+      yield;
+    }
+    if (!ruleIn(db, beliefsOf(), obs, patient, options.venue)) limit = undefined;
+  }
   const safety = limit === undefined ? [] : safetyExams(db, obs, patient, options.exams, options.venue).filter(id => !done.includes(id));
   const reserve = safety.reduce((a, id) => a + examMinutes(db.exams[id]), 0);
   const opt = {
@@ -539,11 +574,7 @@ function nextStepFor(db: ContentDb, patient: Patient, obs: readonly Observation[
   let now = phase;
   // какое обследование больше уточнит тактику самого вероятного диагноза (часть 41а): КТ-ангиография
   // вместо КТ, если окклюзия её решает
-  let lead: Belief | undefined | null = null;
-  const leadOf = (): Belief | undefined => {
-    if (lead === null) lead = posterior(db, opt.candidates, obs, contextOf(db, patient, obs, opt.prior))[0];
-    return lead;
-  };
+  const leadOf = (): Belief | undefined => beliefsOf()[0];
   const preferTactic = (e: Id) => {
     const top = leadOf();
     return top ? tacticGain(db, top.id, e, obs, patient, elapsed) : 0;
@@ -591,16 +622,19 @@ function nextStepFor(db: ContentDb, patient: Patient, obs: readonly Observation[
     // повышенный ведёт на УЗИ
     const open = openRuleExams(db, patient, obs, id => examCost(db, id)).find(id => opt.exams.includes(id) && !done.includes(id));
     if (open) return { step: { kind: 'exam', exam: open }, phase: now };
-    const ctx = contextOf(db, patient, obs, opt.prior);
-    const beliefs = posterior(db, opt.candidates, obs, ctx);
+    if (!all) {
+      beliefsOf();
+      yield;
+    }
+    const beliefs = beliefsOf();
     if (beliefs[0].p < opt.threshold) {
-      const best = bestExam(db, beliefs, ctx, obs, done, opt);
+      const best = yield* bestExam(db, beliefs, ctxOf(), obs, done, opt);
       if (best) return { step: { kind: 'exam', exam: best }, phase: now };
     }
     // уверенности нет, а срок на лечение идёт (часть 46а) — за болезнь, которую этим лечат, если она не исключена
     const top = beliefs[0].p < opt.threshold && limit !== undefined ? (ruleIn(db, beliefs, obs, patient, opt.venue) ?? beliefs[0]) : beliefs[0];
     // диагноз ясен — уточняет то, от чего зависит лечение (часть 32): смещение отломков видно на снимке
-    const tactic = tacticExam(db, top.id, obs, patient, done, opt);
+    const tactic = yield* tacticExam(db, top.id, obs, patient, done, opt);
     if (tactic) return { step: { kind: 'exam', exam: tactic }, phase: now };
     // перед операцией, пункцией и дренажом — подтверждающее обследование из рекомендации (части
     // 32 и 32в): нестабильный перелом с деформацией не оперируют, пневмоторакс не дренируют без снимка
@@ -642,6 +676,10 @@ export function runDoctor(db: ContentDb, patient: Patient, strategy: Strategy, r
 export interface DoctorRun {
   /** сделать шаг; true — решение уже принято */
   step(): boolean;
+  /** часть шага (0.5.13, `stepParts`): undefined — шаг ещё идёт; иначе — как `step` */
+  part(): boolean | undefined;
+  /** решение принято — считать больше нечего (0.5.13) */
+  done(): boolean;
   result(): DoctorResult;
 }
 
@@ -654,13 +692,20 @@ export function startRational(db: ContentDb, patient: Patient, rng: Rng, opt: Do
   let phase: DoctorPhase = {};
   let decision: { diagnosis: Id; confidence: number; plan: Plan } | undefined;
   let out: DoctorResult | undefined;
-  const step = (): boolean => {
+  let parts: Parts<StepResult> | undefined;
+  const part = (): boolean | undefined => {
     if (decision) return true;
-    // сколько прошло с прихода (часть 41а): окно тромболизиса закрывается, пока идёт обследование
-    const minutes = done.reduce((a, id) => a + examMinutes(db.exams[id]), 0);
-    const r = nextStep(db, patient, obs, done, phase, {
-      candidates: opt.candidates, exams: opt.exams, threshold, minGain, ...(opt.skipAsk ? { skipAsk: opt.skipAsk } : {}), ...(opt.prior ? { prior: opt.prior } : {}), venue: { minutes },
-    });
+    if (!parts) {
+      // сколько прошло с прихода (часть 41а): окно тромболизиса закрывается, пока идёт обследование
+      const minutes = done.reduce((a, id) => a + examMinutes(db.exams[id]), 0);
+      parts = stepParts(db, patient, obs, done, phase, {
+        candidates: opt.candidates, exams: opt.exams, threshold, minGain, ...(opt.skipAsk ? { skipAsk: opt.skipAsk } : {}), ...(opt.prior ? { prior: opt.prior } : {}), venue: { minutes },
+      });
+    }
+    const next = parts.next();
+    if (!next.done) return undefined;
+    parts = undefined;
+    const r = next.value;
     phase = r.phase;
     if (r.step.kind === 'decide') {
       decision = r.step;
@@ -669,8 +714,16 @@ export function startRational(db: ContentDb, patient: Patient, rng: Rng, opt: Do
     doExam(r.step.exam);
     return false;
   };
+  const step = (): boolean => {
+    for (;;) {
+      const r = part();
+      if (r !== undefined) return r;
+    }
+  };
   return {
     step,
+    part,
+    done: () => decision !== undefined,
     result: () => {
       while (!step());
       return (out ??= resultOf(db, patient, decision!, done, obs));
