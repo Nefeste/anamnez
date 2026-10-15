@@ -28,8 +28,8 @@ import { buildReview, type ReviewData, reviewBeliefs } from '../med/review';
 import { scoreCase } from '../med/score';
 import type { Observation } from '../med/types';
 import {
-  type ClosedCase, type ColleagueDay, type Command, DAY, type DaySummary, type Difficulty, easyLevel, type Notice, type PlannedReturn, SHIFT_END, SHIFT_SCHEMA_VERSION,
-  SHIFT_START, type ShiftEvent, type ShiftPatient, type ShiftState, type Triage, type VisitKind, type WardDay, type AmbulanceDay, type SurgeryDay,
+  type ClosedCase, type ColleagueDay, type Command, DAY, type DaySummary, type Difficulty, easyLevel, type Notice, type PlannedReturn, REGISTRATION, SHIFT_END, SHIFT_SCHEMA_VERSION,
+  SHIFT_START, type ShiftEvent, type ShiftPatient, type ShiftState, TRIAGE, type Triage, type VisitKind, type WardDay, type AmbulanceDay, type SurgeryDay,
 } from './types';
 import { COMPLICATION_DAYS, complicationAt, complicationsOf, deathsOf, onsetHours, operationFor } from './surgery';
 import { dueIn, type TargetPlace, targetResults } from './targets';
@@ -2101,6 +2101,8 @@ function handle(db: ContentDb, s: ShiftState, ev: ShiftEvent, notices: Notice[])
     }
     case 'colleague':
       return colleagueStep(db, s, s.patients[ev.id]);
+    case 'nurse':
+      return nurse(db, s, s.patients[ev.id], notices);
     case 'opEnd':
       return finishOperation(db, s, s.patients[ev.id]);
     case 'arrest': {
@@ -2119,19 +2121,21 @@ function handle(db: ContentDb, s: ShiftState, ev: ShiftEvent, notices: Notice[])
   }
 }
 
-/** Пришёл: медсестра меряет витальные и сортирует — по тому, что видит (жалобы и измерения). */
+/**
+ * Пришёл: регистратор слышит жалобу — по ней и срочность; медсестра доврачебного кабинета меряет витальные, когда он до
+ * неё дойдёт (0.5.12, отзыв на 0.5.11: срочный, которого позвали сразу, приходил к врачу уже измеренным). Нет её —
+ * меряет врач.
+ */
 function arrive(db: ContentDb, s: ShiftState, p: ShiftPatient, notices: Notice[]) {
   if (p.status !== 'coming') return;
   if (p.kind === 'ambulance') return arriveByAmbulance(db, s, p, notices);
   const ctx = hospitalCtx(db, s);
-  // медсестра доврачебного кабинета меряет давление, пульс, температуру; нет её — врач сам
-  if (ctx.triage && db.exams['exam.vitals']) {
-    p.done.push('exam.vitals');
-    p.results.push({ exam: 'exam.vitals', obs: runExam(db, p.patient, 'exam.vitals', branch(s, `vitals:${p.id}`), undefined, exact(s)), at: s.t, step: 0 });
-  }
+  const nurse = ctx.triage && db.exams['exam.vitals'] !== undefined;
   p.triage = triageOf(db, p);
   if (!ctx.triage) p.triaged = false;
-  const [lo, hi] = p.triage === 'red' ? [0, 0] : PATIENCE[p.triage];
+  // терпение — каков он на самом деле: и по тому, что медсестра у него намеряет
+  const sure = nurse ? triageOf(db, p, vitalsOf(db, s, p)) : p.triage;
+  const [lo, hi] = sure === 'red' ? [0, 0] : PATIENCE[sure];
   p.patience = Math.round(branch(s, `patience:${p.id}`).range(lo, hi) * MIN * patienceOf(s.meta.difficulty));
   // своя больница: пришёл в полную зону ожидания — стоит, и ждать готов вдвое меньше
   if (s.hospital && p.patience > 0 && s.queue.length >= ctx.seats) p.patience = Math.round(p.patience / 2);
@@ -2139,7 +2143,26 @@ function arrive(db: ContentDb, s: ShiftState, p: ShiftPatient, notices: Notice[]
   if (p.kind === 'return') s.summary.returnsToday++;
   enqueue(s, p, s.t);
   notices.push({ kind: 'arrived', id: p.id, triage: p.triaged === false ? 'green' : p.triage });
+  if (nurse) schedule(s, s.t + REGISTRATION + TRIAGE, { kind: 'nurse', id: p.id });
   staffDesks(db, s);
+}
+
+/** Давление, пульс, температура и сатурация у медсестры — своей ветвью зерна: те же, когда бы она ни мерила. */
+const vitalsOf = (db: ContentDb, s: ShiftState, p: ShiftPatient) => runExam(db, p.patient, 'exam.vitals', branch(s, `vitals:${p.id}`), undefined, exact(s));
+
+/**
+ * Медсестра доврачебного кабинета закончила (0.5.12): витальные — в карту, срочность — и по ним; стал срочным — в очереди
+ * выше, и об этом знают. Его уже позвали — к врачу он пришёл без них.
+ */
+function nurse(db: ContentDb, s: ShiftState, p: ShiftPatient, notices: Notice[]) {
+  if (p.status !== 'waiting' || p.calledT !== undefined || p.done.includes('exam.vitals')) return;
+  const was = p.triage;
+  p.done.push('exam.vitals');
+  p.results.push({ exam: 'exam.vitals', obs: vitalsOf(db, s, p), at: s.t, step: 0 });
+  p.triage = triageOf(db, p);
+  if (p.triage === was) return;
+  sortQueue(s);
+  if (p.triage === 'red') notices.push({ kind: 'arrived', id: p.id, triage: 'red' });
 }
 
 /**
@@ -2188,8 +2211,8 @@ export function arrestAfter(db: ContentDb, s: ShiftState, p: ShiftPatient): numb
   return hours < a.hours - onset ? Math.round(hours * 3600) : undefined;
 }
 
-export function triageOf(db: ContentDb, p: ShiftPatient): Triage {
-  const seen = [...p.patient.complaints, ...p.results.flatMap(r => r.obs.filter(o => o.shown).map(o => o.f))];
+export function triageOf(db: ContentDb, p: ShiftPatient, more: readonly Observation[] = []): Triage {
+  const seen = [...p.patient.complaints, ...[...p.results.flatMap(r => r.obs), ...more].filter(o => o.shown).map(o => o.f)];
   const levels = seen.map(f => db.findings[f]?.triage).filter(Boolean);
   return levels.includes('red') ? 'red' : levels.includes('yellow') ? 'yellow' : 'green';
 }
@@ -2217,13 +2240,18 @@ function enqueue(s: ShiftState, p: ShiftPatient, queuedT: number) {
   p.status = 'waiting';
   p.queuedT = queuedT;
   p.wait++;
-  // срочность, если её определили (есть доврачебный кабинет), затем — кто раньше
-  s.queue = [...s.queue.filter(x => x !== p.id), p.id].sort((a, b) => {
+  s.queue = [...s.queue.filter(x => x !== p.id), p.id];
+  sortQueue(s);
+  if (p.patience > 0) schedule(s, s.t + p.patience, { kind: 'patience', id: p.id, wait: p.wait });
+}
+
+/** Очередь: срочность, если её определили (есть доврачебный кабинет), затем — кто раньше. */
+function sortQueue(s: ShiftState) {
+  s.queue = [...s.queue].sort((a, b) => {
     const x = s.patients[a];
     const y = s.patients[b];
     return rankOf(x) - rankOf(y) || x.queuedT - y.queuedT || (a < b ? -1 : 1);
   });
-  if (p.patience > 0) schedule(s, s.t + p.patience, { kind: 'patience', id: p.id, wait: p.wait });
 }
 
 /** Результаты пришли. Ушедший на анализы возвращается в очередь — впереди, по времени прихода. */

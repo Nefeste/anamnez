@@ -138,7 +138,13 @@ describe('смена на экране: приём', () => {
     startShift(3, 'winter', 'student');
     untilQueue();
     expect(shiftCaseView()).toBeUndefined();
-    callPatient(shiftView().queue[0].id);
+    // медсестра меряет, когда пациент до неё дошёл (0.5.12): через пять минут после прихода
+    const id = shiftView().queue[0].id;
+    for (let i = 0; i < 10 && !shiftState()!.patients[id].done.includes('exam.vitals'); i++) {
+      if (shiftView().paused) setSpeed(1);
+      tick(1000);
+    }
+    callPatient(id);
     const c = shiftCaseView()!;
     expect(c.groups.map(g => g.exam)).toContain('exam.vitals');
     expect(c.hints.length).toBeGreaterThan(0);
