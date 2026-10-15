@@ -1,6 +1,6 @@
 // Идентификаторы базы вечные (ADR 0011): ни один выпущенный не исчез — на них ссылаются
 // сохранения, архив приёмов и разборы. Список выпущенных — tools/test/fixtures/released-ids.json.
-// Каждое слияние в main — выпуск (08-process.md), поэтому в списке и всё, что есть в базе сейчас:
+// Каждое слияние в main — выпуск (05-process.md), поэтому в списке и всё, что есть в базе сейчас:
 // появилась запись — `bun tools/content/released-ids.ts`.
 import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';

@@ -1,4 +1,4 @@
-// Общее для экранов энциклопедии: оговорка одной строкой вверху раздела (11-publishing.md §3),
+// Общее для экранов энциклопедии: оговорка одной строкой вверху раздела (12-publishing.md §3),
 // переход к статье, ссылка-плашка и строка списка.
 import { router } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';

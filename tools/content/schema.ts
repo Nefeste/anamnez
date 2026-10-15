@@ -1,4 +1,4 @@
-// Схема исходных записей медицинской базы (YAML в content/, `docs/05-content.md` §4).
+// Схема исходных записей медицинской базы (YAML в content/, `docs/11-content.md` §4).
 // Строгие объекты: опечатка в имени поля — ошибка сборки, а не молча пропущенное поле.
 import { z } from 'zod';
 import { SYSTEMS } from '../../src/content/types';
@@ -202,7 +202,7 @@ export const conditionSchema = z.strictObject({
       hours: z.array(z.tuple([z.number().positive(), z.number().int().positive()])).min(1),
     }).optional(),
   }),
-  /** тактика (`04-medical-model.md` §8): пять списков и где лечить */
+  /** тактика (`10-medical-model.md` §8): пять списков и где лечить */
   treatment: z.strictObject({
     /** при лечении дома — хотя бы одно (валидатор); при переводе — что сделать до приезда скорой */
     firstLine: z.array(txId).default([]),
@@ -586,7 +586,7 @@ export const professionSchema = z.strictObject({
   review,
 });
 
-// --- каталог больницы (spec 2026-09-own-hospital, `docs/07-data-model.md` §1) ---------------
+// --- каталог больницы (spec 2026-09-own-hospital, `docs/04-data-model.md` §1) ---------------
 // Помещения, аппараты и должности — игровые предметы: цены и размеры — баланс игры. Что
 // каким аппаратом делают — медицинский факт, он записан в записях обследований с источниками.
 

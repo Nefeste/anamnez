@@ -1,4 +1,4 @@
-// Инварианты пациента (`docs/04-medical-model.md` §1, ADR 0009) на тысячах сгенерированных
+// Инварианты пациента (`docs/10-medical-model.md` §1, ADR 0009) на тысячах сгенерированных
 // пациентов из настоящей базы.
 import { describe, expect, test } from 'bun:test';
 import { Rng } from '../../src/engine/core/rng';

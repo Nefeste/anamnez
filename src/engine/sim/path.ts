@@ -1,4 +1,4 @@
-// Пути по сетке больницы: A* по четырём направлениям (`docs/06-architecture.md` §3).
+// Пути по сетке больницы: A* по четырём направлениям (`docs/02-architecture.md` §3).
 // Люди ходят по полу помещений, коридорам и дверям; стены и улица непроходимы.
 import type { Grid } from '../hospital/grid';
 import { walkable } from '../hospital/grid';

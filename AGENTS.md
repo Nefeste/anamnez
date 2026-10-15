@@ -24,15 +24,15 @@ truth for *why* things are the way they are. Start there, in this order, especia
 context reset:
 
 - `docs/README.md` — index and the rules these documents follow.
-- `docs/01-product.md`, `docs/03-game-design.md` — what the game is and how it plays.
-- `docs/04-medical-model.md` — the medical model (findings, exams, inference, scoring). Read it
+- `docs/01-product.md`, `docs/09-game-design.md` — what the game is and how it plays.
+- `docs/10-medical-model.md` — the medical model (findings, exams, inference, scoring). Read it
   before touching anything about diagnosis.
-- `docs/05-content.md` — the medical database: allowed and **forbidden** sources, record format,
+- `docs/11-content.md` — the medical database: allowed and **forbidden** sources, record format,
   checks, medical review.
-- `docs/06-architecture.md`, `docs/07-data-model.md` — how it is built.
-- `docs/08-process.md`, `docs/09-testing.md` — versioning, CI, signing, release checklist, what
+- `docs/02-architecture.md`, `docs/04-data-model.md` — how it is built.
+- `docs/05-process.md`, `docs/06-testing.md` — versioning, CI, signing, release checklist, what
   to run before declaring anything done.
-- `docs/10-roadmap.md` — what is being built right now; it links the live specification. Owner questions are
+- `docs/07-roadmap.md` — what is being built right now; it links the live specification. Owner questions are
   GitHub Issues labelled `владелец` (charter template, one fork per issue); the roadmap keeps only a table of their
   old numbers.
 - `docs/adr/` — decisions that are expensive to reverse. Read the relevant one *before*
@@ -41,7 +41,7 @@ context reset:
 
 Working rule, spec-first lifecycle, ADRs and version sections are the same in every studio
 project — charter `docs/04-process.md`. In addition here: new diseases, findings and exams are
-**content records**, not specs (`docs/05-content.md`).
+**content records**, not specs (`docs/11-content.md`).
 
 ## Medical content rules (non-negotiable)
 
@@ -50,10 +50,10 @@ project — charter `docs/04-process.md`. In addition here: new diseases, findin
   the `data/*.json` of the old Godot `ClinicSim` repo, which mirrors Project Hospital. Not "for
   initial filling", not "just to compare". If asked to, decline and point to ADR 0008.
 - Write every record **from a named primary source** (Russian Ministry of Health clinical
-  guidelines, textbooks, papers, open datasets listed in `docs/05-content.md` §2) and put it in
+  guidelines, textbooks, papers, open datasets listed in `docs/11-content.md` §2) and put it in
   `sources`. Never from memory: model memory mixes sources, including other games.
 - Cite a Ministry of Health guideline by its entry in the rubricator (`cr.minzdrav.gov.ru`): exact
-  title, publication year, ID and card URL (`docs/05-content.md` §2). Before a release with a
+  title, publication year, ID and card URL (`docs/11-content.md` §2). Before a release with a
   changed base run `bun tools/content/clinrecs.ts` (needs network): the guideline is in force,
   the title matches, there is no newer version.
 - Frequencies as bands (`always`, `usually`, `often`, `sometimes`, `rarely`, `very_rarely`,
@@ -67,7 +67,7 @@ project — charter `docs/04-process.md`. In addition here: new diseases, findin
 - Content IDs are eternal (charter [`docs/05-rules.md`](https://github.com/Nefeste/gornitsa/blob/main/docs/05-rules.md), «Код»): here a released ID is
   deprecated with `replacedBy` (ADR 0011).
 - After a batch of records run the content build/validator and the "virtual doctor" and put the
-  report in the commit message (`docs/05-content.md` §6).
+  report in the commit message (`docs/11-content.md` §6).
 
 ## Engine rules
 
@@ -76,7 +76,7 @@ project — charter `docs/04-process.md`. In addition here: new diseases, findin
   seeded generator and its named forks.
 - The UI never reads a patient's truth: screens get the player's view from
   `src/state/caseView.ts` (built from what was said and shown); only the review of a closed case
-  uses `engine/med/review` (`docs/06-architecture.md` §7).
+  uses `engine/med/review` (`docs/02-architecture.md` §7).
 - Every finding a patient has must have a cause among their conditions, risks, treatment or
   background leak (ADR 0009). No random "red herring" symptoms.
 
@@ -95,7 +95,7 @@ npm run content             # build + validate the medical database → src/cont
 npm run lint                # zero warnings
 npm run typecheck           # app and tools (tools/tsconfig.json)
 npm test                    # Bun tests in tools/test (builds the database first)
-npm run doctor              # "virtual doctor" over the database; thresholds in docs/05-content.md §6
+npm run doctor              # "virtual doctor" over the database; thresholds in docs/11-content.md §6
 npm run shift-sim           # shift pacing: does a good doctor keep up with the queue
 npm run economy-sim         # own-hospital balance: 30 days, criteria in docs/specs/2026-09-own-hospital.md (~5 min)
 npm run export:web && npm run e2e   # web build + Playwright scenario, screenshots in tools/e2e/out
@@ -116,7 +116,7 @@ charter's `docs/05-rules.md` and are not repeated here. Project rules:
 - Merging and releases follow studio ADR [0018](https://github.com/Nefeste/gornitsa/blob/main/adr/0018-change-classes-automerge.md) and
   [0019](https://github.com/Nefeste/gornitsa/blob/main/adr/0019-ci-on-pr.md); here, because agents act through the owner's GitHub account
   and branch protection cannot tell an agent from the owner: never merge, never enable
-  auto-merge by hand (API, MCP tool or UI) and never create a `vX.Y.Z` tag (`docs/08-process.md`,
+  auto-merge by hand (API, MCP tool or UI) and never create a `vX.Y.Z` tag (`docs/05-process.md`,
   «Слияние»).
 - The release build has **no `INTERNET` permission** (ADR 0006); it is removed from the release
   manifest by a config plugin, debug keeps it for Metro. Any new permission must be added to the
@@ -129,6 +129,6 @@ charter's `docs/05-rules.md` and are not repeated here. Project rules:
   keep their own colors in both themes.
 - React Compiler memoizes calls by argument identity, and the engine mutates its state in place:
   screens read data from the view rebuilt per version (`ShiftView` in `src/state/session.ts`),
-  never compute from the live state during render (`docs/06-architecture.md` §12).
+  never compute from the live state during render (`docs/02-architecture.md` §12).
 - Store texts never mention other games, TV shows, real insurers, clinics or drug brands
-  (`docs/11-publishing.md`).
+  (`docs/12-publishing.md`).

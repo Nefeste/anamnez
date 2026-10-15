@@ -1,4 +1,4 @@
-// Вывод уверенности (`docs/04-medical-model.md` §10–12): пример из документа, посчитанный
+// Вывод уверенности (`docs/10-medical-model.md` §10–12): пример из документа, посчитанный
 // руками, — маленькая база из четырёх состояний и двух признаков.
 import { describe, expect, test } from 'bun:test';
 import { NO_ECONOMY } from '../content/load';
@@ -44,7 +44,7 @@ const p = (beliefs: { id: string; p: number }[], id: string) => beliefs.find(b =
 const crackles = (shown: boolean): Observation => ({ f: 'sign.crackles', shown, exam: 'exam.auscultation' });
 const infiltrate = (shown: boolean): Observation => ({ f: 'img.infiltrate', shown, exam: 'exam.xray' });
 
-describe('пример из 04-medical-model.md §12', () => {
+describe('пример из 10-medical-model.md §12', () => {
   test('априорные вероятности — 45/25/15/15', () => {
     const b = posterior(db, candidates, told, ctx);
     expect(p(b, 'cond.arvi')).toBeCloseTo(0.45, 6);
@@ -113,7 +113,7 @@ describe('пример из 04-medical-model.md §12', () => {
 });
 
 // С чем пришёл (spec 2026-10-chapter-4, часть 61а): хоть одна жалоба — от основной болезни, без жалоб приходят только на
-// профосмотр (`04-medical-model.md` §3 и §10)
+// профосмотр (`10-medical-model.md` §3 и §10)
 describe('с чем пришёл', () => {
   const sym = (id: string): Finding => ({ id, name: { ru: id }, kind: 'sym', leak: 300, salience: 3, texts: { present: [{ ru: id }] }, review: 'draft' });
   const of = (id: string, links: [string, number][], checkup = false): Condition => ({ ...cond(id, 50, 0, 0), findings: links.map(([f, q]) => ({ f, p: q })), ...(checkup ? { checkup } : {}) });

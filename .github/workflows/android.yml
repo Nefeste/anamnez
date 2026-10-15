@@ -1,7 +1,7 @@
 # из votchina: .github/workflows/android.yml @ 00d89c0
 # Только на тег версии vX.Y.Z, ручного запуска нет (ADR студии 0019, решение владельца
 # 03.10.2026): проверки, сценарий в браузере, APK, подписанный постоянным ключом, и
-# публикация в Releases (docs/08-process.md «Сборка и выкладывание», ADR 0015). Слияние в main
+# публикация в Releases (docs/05-process.md «Сборка и выкладывание», ADR 0015). Слияние в main
 # сборку не запускает: на каждый PR идут быстрые проверки pr.yml.
 #
 # Без секретов ключа релиза нет никогда: APK собирается только на проверку (манифест,
@@ -47,7 +47,7 @@ jobs:
     needs: version
     runs-on: ubuntu-24.04
     # С пределом в 20 минут задание сняли на тегах v0.5.1 и v0.5.2: тесты шли 13,7 минуты, «Виртуальный врач» — 5,5,
-    # и APK не вышел. С 0.5.3 оба короче, а предел — с запасом на разброс машин (docs/08-process.md, «Релизы и проверки»).
+    # и APK не вышел. С 0.5.3 оба короче, а предел — с запасом на разброс машин (docs/05-process.md, «Релизы и проверки»).
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
@@ -69,11 +69,11 @@ jobs:
         run: npm run lint
       - name: Тесты
         run: bun test tools/test
-      # Пороги — docs/05-content.md §6; полный прогон по всем отделениям — отдельно.
+      # Пороги — docs/11-content.md §6; полный прогон по всем отделениям — отдельно.
       - name: Виртуальный врач, 3000 пациентов
         run: bun tools/sim/doctor.ts --n 3000
 
-  # Веб-сборка и сценарий Playwright по всем экранам (docs/09-testing.md §4). Здесь же
+  # Веб-сборка и сценарий Playwright по всем экранам (docs/06-testing.md §4). Здесь же
   # проверяется, что движок в V8 даёт тот же отпечаток тысячи пациентов, что в Bun.
   # Только в сборке, не на PR: сценарий гоняется локально перед пушем, а в CI он — ворота
   # релиза, которые берегут минуты Actions (решение владельца).
@@ -98,7 +98,7 @@ jobs:
       - name: Сценарий
         run: bun tools/e2e/smoke.ts
       # Снимки экранов — только когда сценарий упал, и на неделю: место под артефакты общее на все
-      # закрытые репозитории аккаунта и в октябре 2026 кончилось (docs/08-process.md, «Место под
+      # закрытые репозитории аккаунта и в октябре 2026 кончилось (docs/05-process.md, «Место под
       # артефакты»). Не выгрузились — не беда: задание уже красное, а сценарий пишет те же снимки
       # и локально (tools/e2e/out/).
       - uses: actions/upload-artifact@v4
@@ -132,7 +132,7 @@ jobs:
           if [ -z "$KEYSTORE_B64$KEYSTORE_PASSWORD$KEY_ALIAS$KEY_PASSWORD" ]; then
             echo "ready=no" >> "$GITHUB_OUTPUT"
             echo "matrix={\"include\":[$APK]}" >> "$GITHUB_OUTPUT"
-            echo "::warning::Секретов ключа подписи нет: APK собирается только на проверку и выбрасывается, релиза не будет. Как завести ключ — docs/08-process.md."
+            echo "::warning::Секретов ключа подписи нет: APK собирается только на проверку и выбрасывается, релиза не будет. Как завести ключ — docs/05-process.md."
             exit 0
           fi
           if [ -z "$KEYSTORE_B64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
@@ -193,7 +193,7 @@ jobs:
         working-directory: android
         env:
           NODE_ENV: production
-          # для какого магазина: play — Google Play, без экрана «Поддержать» (docs/08-process.md)
+          # для какого магазина: play — Google Play, без экрана «Поддержать» (docs/05-process.md)
           EXPO_PUBLIC_STORE: ${{ matrix.store }}
           # пароли нужны Gradle, только если выше подложен файл ключа; в файлы они не пишутся
           ORG_GRADLE_PROJECT_ANAMNEZ_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -271,7 +271,7 @@ jobs:
           MB="$(awk -v s="$SIZE" 'BEGIN { printf "%.1f", s / 1048576 }')"
           { echo "### $TARGET"; echo ""; echo "Размер: $MB МБ"; } >> "$GITHUB_STEP_SUMMARY"
           echo "Размер $TARGET: $MB МБ"
-          # NFR-SIZE-1 (02-requirements.md): не больше 100 МБ
+          # NFR-SIZE-1 (08-requirements.md): не больше 100 МБ
           if [ "$SIZE" -gt $((100 * 1048576)) ]; then echo "::error::$TARGET — $MB МБ, больше предела 100 МБ (NFR-SIZE-1)"; exit 1; fi
 
           # 2. Разрешения и target API — по готовому APK (манифест AAB тот же)
@@ -286,7 +286,7 @@ jobs:
             if printf '%s\n' "$PERMS" | grep -E "$DENY"; then echo "::error::В APK запретное разрешение (выше)."; exit 1; fi
             # Белый список: вибрация (expo-haptics), настройки звука (expo-audio, обычное
             # разрешение без запроса) и служебное разрешение самого приложения. Всё прочее —
-            # ошибка: нужное добавить сюда и в docs/08-process.md, ненужное — в blockedPermissions.
+            # ошибка: нужное добавить сюда и в docs/05-process.md, ненужное — в blockedPermissions.
             ALLOW='^(android\.permission\.(VIBRATE|MODIFY_AUDIO_SETTINGS)|games\.gornitsa\.anamnez\.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION)$'
             EXTRA="$(printf '%s\n' "$PERMS" | grep -vE "$ALLOW" || true)"
             if [ -n "$EXTRA" ]; then echo "::error::Разрешения вне списка: $(printf '%s\n' "$EXTRA" | paste -sd ' ')."; exit 1; fi
@@ -310,7 +310,7 @@ jobs:
           printf '%s\n%s\n' "$LABEL" "$SHA" > "dist/signature-$TARGET.txt"
           ls -la dist
 
-      # Файлы — заданию «Релиз» через кэш Actions, а не артефактом (docs/08-process.md, «Место
+      # Файлы — заданию «Релиз» через кэш Actions, а не артефактом (docs/05-process.md, «Место
       # под артефакты»): кэш в это место не входит. Ключ — своя строка матрицы и прогон.
       - uses: actions/cache/save@v4
         if: needs.key.outputs.ready == 'yes'

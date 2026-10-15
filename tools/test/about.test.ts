@@ -1,5 +1,5 @@
 // «Об игре» (src/state/sources.ts): источники медицинской базы — по видам, без повторов и
-// без служебных пометок авторов базы (11-publishing.md §3).
+// без служебных пометок авторов базы (12-publishing.md §3).
 import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
 import { sourceGroups, sourceLine } from '../../src/state/sources';

@@ -12,7 +12,7 @@ import { daysIn, wardState } from '../../src/engine/shift/ward';
 
 const MIN = 60;
 const SEEDS = 3000;
-// «Студент» — как у нового игрока: на снимках видны подсказки «Похоже на» (03-game-design.md §14)
+// «Студент» — как у нового игрока: на снимках видны подсказки «Похоже на» (09-game-design.md §14)
 const winter = { season: 'winter' as const, difficulty: 'student' as const };
 
 /** Сохранение слота партии, как его пишет игра (src/state/saves.ts). */

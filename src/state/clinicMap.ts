@@ -13,7 +13,7 @@ import { REGISTRATION, type ShiftPatient, type ShiftState, TRIAGE } from '@/engi
 import { lookOf } from '@/render/look';
 import { type Figure as Look, patientFigure, staffFigure, type Uniform } from '@/render/map/figures';
 
-/** Вид фигурки: персонал — по роли, пациент — по срочности (цвет — не единственный признак: 03-game-design.md §13). */
+/** Вид фигурки: персонал — по роли, пациент — по срочности (цвет — не единственный признак: 09-game-design.md §13). */
 export type Figure = 'doctor' | 'nurse' | 'staff' | 'patient' | 'patientYellow' | 'patientRed';
 
 /** Место: клетка, стул в зале ожидания или скамья в коридоре — их раздаёт карта. */

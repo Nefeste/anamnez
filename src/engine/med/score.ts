@@ -1,4 +1,4 @@
-// Оценка случая по категориям (`docs/04-medical-model.md` §10). Движок отдаёт буквы и коды
+// Оценка случая по категориям (`docs/10-medical-model.md` §10). Движок отдаёт буквы и коды
 // замечаний; слова к ним — в src/i18n (на экране разбора).
 import type { Id, Setting } from '../../content/types';
 import type { Outcome } from './course';

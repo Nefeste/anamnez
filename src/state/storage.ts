@@ -1,4 +1,4 @@
-// Хранилище на телефоне: файлы в каталоге документов приложения (07-data-model.md §4).
+// Хранилище на телефоне: файлы в каталоге документов приложения (04-data-model.md §4).
 // API expo-file-system SDK 57: File, Directory, Paths (сверено с типами пакета).
 import { Directory, File, Paths } from 'expo-file-system';
 import type { RawStore } from './saves';

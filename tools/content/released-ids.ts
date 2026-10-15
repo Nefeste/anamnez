@@ -1,7 +1,7 @@
 // Выпущенные идентификаторы базы (ADR 0011): их не удаляют и не переименовывают — на них
 // ссылаются сохранения, архив приёмов и разборы. При каждом выпуске список дополняется
 // идентификаторами нынешней базы (`bun tools/content/released-ids.ts`, чек-лист релиза в
-// 08-process.md); tools/test/ids.test.ts падает, если какой-то из выпущенных исчез.
+// 05-process.md); tools/test/ids.test.ts падает, если какой-то из выпущенных исчез.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ContentDb } from '../../src/content/types';

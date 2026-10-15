@@ -1,4 +1,4 @@
-// Валидатор базы (`docs/05-content.md` §6): ловит битые ссылки и нарушения правил,
+// Валидатор базы (`docs/11-content.md` §6): ловит битые ссылки и нарушения правил,
 // а не только опечатки схемы. Проверяется на испорченной копии базы.
 import { describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -146,7 +146,7 @@ describe('валидатор базы', () => {
     expect(errors.some(e => e.includes('не совпадает с именем файла'))).toBe(true);
   });
 
-  test('полосы переводятся в числа по таблице 04-medical-model.md §4', () => {
+  test('полосы переводятся в числа по таблице 10-medical-model.md §4', () => {
     const { db } = buildDb();
     const cough = db.conditions['cond.acute_bronchitis'].findings.find(l => l.f === 'sym.cough')!;
     expect(cough.p).toBe(9500);

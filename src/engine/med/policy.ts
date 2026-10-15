@@ -1,4 +1,4 @@
-// «Виртуальный врач» (`docs/05-content.md` §6, `docs/09-testing.md` §3): три стратегии,
+// «Виртуальный врач» (`docs/11-content.md` §6, `docs/06-testing.md` §3): три стратегии,
 // которыми проверяется база. Шаг разумного врача (`nextStep`) — и нанятый врач своей больницы
 // (spec 2026-09-hired-doctors): тот делает шаги по одному, с порогами своего навыка.
 import { byParams, byValue, type ContentDb, type Exam, type Id, paramsOf, type Target } from '../../content/types';

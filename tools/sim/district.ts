@@ -831,7 +831,7 @@ else {
 }
 const seconds = Math.round((performance.now() - t0) / 1000);
 if (STALL) {
-  // NFR-PRF-1: ни одного подвисания дольше 100 мс; на телефоне без JIT те же команды — в разы дольше (09-testing.md §3)
+  // NFR-PRF-1: ни одного подвисания дольше 100 мс; на телефоне без JIT те же команды — в разы дольше (06-testing.md §3)
   const by = new Map<string, number[]>();
   for (const x of stalls) (by.get(x.kind) ?? by.set(x.kind, []).get(x.kind)!).push(x.ms);
   const q = (xs: number[], f: number) => xs.slice().sort((a, b) => a - b)[Math.min(xs.length - 1, Math.floor(xs.length * f))];
@@ -1049,7 +1049,7 @@ for (const chapter of MONTHS) {
 }
 if (CAREER) {
   console.log(`\nКарьера разумного с начала: ${careers.map(c => `${c.chapters.map((x, i) => `глава ${i + 1} — ${x ?? '—'} дн.`).join(', ')}, касса не ниже ${rub(c.minCash)}`).join('; ')}`);
-  console.log('Критерии карьеры (этапы 4 и 5 — 10-roadmap.md; spec 2026-10-chapter-3, приёмка 5):');
+  console.log('Критерии карьеры (этапы 4 и 5 — 07-roadmap.md; spec 2026-10-chapter-3, приёмка 5):');
   for (const c of Object.values(careerCriteria)) console.log(`  ${c.ok ? 'да ' : 'НЕТ'} ${c.text}`);
 }
 process.exit(passed ? 0 : 1);

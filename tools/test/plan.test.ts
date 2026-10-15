@@ -1,4 +1,4 @@
-// План лечения, исход, оценка случая и разбор (`docs/04-medical-model.md` §7–10) на
+// План лечения, исход, оценка случая и разбор (`docs/10-medical-model.md` §7–10) на
 // настоящей базе: роли назначений, место лечения, противопоказания, исходы и буквы.
 import { describe, expect, test } from 'bun:test';
 import { Rng } from '../../src/engine/core/rng';
