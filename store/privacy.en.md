@@ -60,4 +60,4 @@ EU).
 
 If this policy changes, the new version will appear on this page with a new date.
 
-Questions — support@gornitsa.games.
+Questions about data — privacy@gornitsa.games; about the game — support@gornitsa.games.
