@@ -40,7 +40,7 @@ import { contextOf, posterior } from '../../src/engine/med/infer';
 import { alsoSettings, recommendedSetting, settingFit, type Venue } from '../../src/engine/med/plan';
 import { choosePlan, decisionLimit, type DoctorPhase, MIN_GAIN, nextStep, runDoctor, type Strategy } from '../../src/engine/med/policy';
 import {
-  apply, bedDayOf, bedsideEquipment, brokenOf, candidatesOf, careUnit, current, freeBeds, freeBoxBeds, freeIcuBeds, freeRicuBeds, hospitalCtx, inBox, inIcu, inpatientsOf, inRicu, meetIn, moreUrgent, newCampaign,
+  apply, atDoctor, bedDayOf, bedsideEquipment, brokenOf, candidatesOf, careUnit, current, isOut, freeBeds, freeBoxBeds, freeIcuBeds, freeRicuBeds, hospitalCtx, inBox, inIcu, inpatientsOf, inRicu, meetIn, moreUrgent, newCampaign,
   observationsOf, operationOf, prepareReview, readyIn, targetPlace,
 } from '../../src/engine/shift/engine';
 import { minutesTo, targetsFor, targetStart } from '../../src/engine/shift/targets';
@@ -231,7 +231,7 @@ function margins(s: ShiftState, p: ShiftPatient, walk: number): number[] {
  * очереди раньше привезённого, а ему срок не нужен. С частью 43г — и ниже по срочности: «попросить
  * подождать» ради срока можно и того, кто выше (`moreUrgent`), и звать надо того, ради кого просили. С частью
  * 46б — по запасу: сначала тот, чей срок ещё успеть, с меньшим запасом; потом те, чей срок уже вышел. Сроков нет —
- * первого в очереди.
+ * первого в очереди; с 0.5.12 — из уже померенных медсестрой, если такие есть.
  */
 function firstDue(s: ShiftState): string {
   let best: { id: string; key: number } | undefined;
@@ -246,7 +246,19 @@ function firstDue(s: ShiftState): string {
   // записанного к специалисту (spec 2026-10-chapter-4, часть 61б) оставить ему — кроме тех, кого он не берёт:
   // «красных», повторных и отпущенных ждать результатов; иначе разумный забирал их, а свои уходили
   const theirs = (p: ShiftPatient) => p.to !== undefined && p.calledT === undefined && p.kind !== 'return' && !(p.triaged !== false && p.triage === 'red');
-  return best?.id ?? s.queue.find(id => !theirs(s.patients[id])) ?? s.queue[0];
+  // медсестра ещё меряет (0.5.12) — сначала того, кого она уже померила: врачу мерить самому 6 минут, а ей осталось
+  // меньше; срочного — сразу
+  const measured = (p: ShiftPatient) => p.done.includes('exam.vitals') || p.calledT !== undefined || p.triaged === false || p.triage === 'red';
+  const free = s.queue.filter(id => !theirs(s.patients[id]));
+  return best?.id ?? free.find(id => measured(s.patients[id])) ?? free[0] ?? s.queue[0];
+}
+
+/**
+ * Пациент на обследовании, а дальше — то, что делают при нём (0.5.12): ждут другие — к ним, он вернётся в очередь с
+ * результатами; ждать некому или его не отпустить — подождать.
+ */
+function whileOut(s: ShiftState, p: ShiftPatient, hold: boolean): Command {
+  return !hold && s.queue.length > 0 && p.pending.length > 0 ? { kind: 'sendAway' } : { kind: 'waitResults' };
 }
 
 /**
@@ -352,8 +364,14 @@ function playDay(s: ShiftState, player: Player) {
     const candidates = candidatesOf(db, p.departments ?? s.meta.department);
     if (player === 'lazy') {
       if (!todo.has(p.id)) todo.set(p.id, runDoctor(db, p.patient, player, Rng.seeded(s.meta.seed).fork(`sim:${p.id}`), { candidates, exams }).exams);
-      const next = todo.get(p.id)!.shift();
+      const next = todo.get(p.id)![0];
       if (next) {
+        // ушёл на обследование (0.5.12): что делают при нём — когда вернётся
+        if (isOut(s, p) && atDoctor(db, s, p, next)) {
+          step(whileOut(s, p, false));
+          continue;
+        }
+        todo.get(p.id)!.shift();
         step({ kind: 'exam', exam: next });
         continue;
       }
@@ -384,6 +402,11 @@ function playDay(s: ShiftState, player: Player) {
       candidates, exams: skip ? exams.filter(e => !skip.has(e)) : exams, threshold: 0.9, minGain: MIN_GAIN, venue,
     });
     if (r.step.kind === 'exam') {
+      // ушёл на обследование (0.5.12): что делают при нём — когда вернётся
+      if (isOut(s, p) && atDoctor(db, s, p, r.step.exam)) {
+        step(whileOut(s, p, keep(s, p)));
+        continue;
+      }
       phases.set(p.id, r.phase);
       step({ kind: 'exam', exam: r.step.exam });
       // назначить нельзя (кабинет не работает) — дальше без него

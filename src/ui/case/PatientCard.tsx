@@ -146,10 +146,11 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
             {isOpen('quiet') && quiet.map(g => <KnownGroup key={g.key} g={g} open explain={explain} />)}
           </>
         )}
+        {v.away && <P testID="visit-away">{v.away}</P>}
         {v.pending.map((p, i) => <P key={i} muted>{t.pending(p.name, p.at)}</P>)}
-        {v.pending.length > 0 && !v.decision && !readOnly && (
+        {(v.pending.length > 0 || v.away) && !v.decision && !readOnly && (
           <>
-            <Button kind="plain" testID="visit-wait" title={t.wait} onPress={actions.waitForResults} />
+            <Button kind="plain" testID="visit-wait" title={v.away ? t.waitBack : t.wait} onPress={actions.waitForResults} />
             {v.canSendAway && actions.sendAway && <Button kind="plain" testID="visit-send-away" title={t.sendAway} hint={t.sendAwayHint} onPress={actions.sendAway} />}
           </>
         )}

@@ -28,9 +28,11 @@ describe('«Ординатор»: смена', () => {
     for (const [i, p] of resident.entries()) {
       // терпение — минуты зерна, умноженные на множитель уровня, в секундах с округлением
       expect(Math.abs(p.patience - doctor[i].patience * 1.2)).toBeLessThanOrEqual(1);
-      // у «Студента» обследования не ошибаются — срочность бывает другой, а с ней и терпение; сравнимы — при той же
+      // у «Студента» обследования не ошибаются — срочность бывает другой, а с ней и терпение; сравнимы — при той же. С 0.5.12
+      // терпение — по срочности с витальными, а они у медсестры через 5 минут: сравнимы — уже померенные
       const same = student.find(x => x.id === p.id);
-      if (same && same.triage === p.triage) expect(p.patience).toBeLessThan(same.patience);
+      const measured = (x: typeof p) => x.done.includes('exam.vitals');
+      if (same && measured(p) && measured(same) && same.triage === p.triage) expect(p.patience).toBeLessThan(same.patience);
     }
   });
 

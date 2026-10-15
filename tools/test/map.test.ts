@@ -183,7 +183,8 @@ describe('план: знаки помещений (часть 23)', () => {
     apply(db, s, { kind: 'exam', exam: 'exam.cbc' });
     apply(db, s, { kind: 'sendAway' });
     const x = s.patients[id].pending.find(r => r.exam === 'exam.cbc')!;
-    // кровь уже взята, анализ ещё идёт
+    // кровь взяли (с 0.5.12 — после направления, пациент идёт в процедурный сам), анализ ещё идёт
+    apply(db, s, { kind: 'advance', seconds: Math.max(0, x.end! - s.t) });
     expect(x.end!).toBeLessThanOrEqual(s.t);
     expect(s.t).toBeLessThan(x.readyAt);
     expect(signOf(s, 'lab').lit).toBe(true);

@@ -122,7 +122,8 @@ describe('день в кассе', () => {
     advanceUntil(s, () => s.queue.length > 0);
     run(s, { kind: 'call', id: s.queue[0] });
     const p = current(s)!;
-    run(s, { kind: 'exam', exam: 'exam.ask_onset' }, { kind: 'exam', exam: 'exam.cbc' }, { kind: 'waitResults' },
+    // подождать — пока вернётся из процедурного, затем результат (0.5.12)
+    run(s, { kind: 'exam', exam: 'exam.ask_onset' }, { kind: 'exam', exam: 'exam.cbc' }, { kind: 'waitResults' }, { kind: 'waitResults' },
       { kind: 'diagnose', id: 'cond.arvi' }, { kind: 'finish' }, { kind: 'closeDay' });
     const h = s.history[0].economy!;
     const payer = p.payer!;

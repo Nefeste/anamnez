@@ -9,7 +9,7 @@ import type { ContentDb, Exam, Id } from '@/content/types';
 import { fnv1a } from '@/engine/core/hash';
 import { type Cell, type ClinicLayout, clinicLayout, FIGURE, type StaffRole } from '@/engine/hospital/clinic';
 import { inBox, inIcu, inRicu } from '@/engine/shift/engine';
-import type { ShiftPatient, ShiftState } from '@/engine/shift/types';
+import { REGISTRATION, type ShiftPatient, type ShiftState, TRIAGE } from '@/engine/shift/types';
 import { lookOf } from '@/render/look';
 import { type Figure as Look, patientFigure, staffFigure, type Uniform } from '@/render/map/figures';
 
@@ -58,9 +58,8 @@ export interface Placement {
 /** План амбулатории — один на всю игру: по нему и места в смене, и карта. */
 export const CLINIC = clinicLayout(db);
 
-/** Сколько игровых секунд новый пациент у регистратуры и у медсестры, прежде чем сесть. */
-export const REGISTRATION = 2 * 60;
-export const TRIAGE = 3 * 60;
+/** Сколько игровых секунд новый пациент у регистратуры и у медсестры, прежде чем сесть, — как в движке. */
+export { REGISTRATION, TRIAGE } from '@/engine/shift/types';
 /** Сколько принятый ещё виден по дороге к выходу. */
 export const LEAVING = 10 * 60;
 
@@ -162,6 +161,9 @@ export function placements(db: ContentDb, layout: ClinicLayout, s: ShiftState): 
       const state = p.status === 'inRoom' ? 'withYou' : !p.sorted ? 'unsorted' : bay ? 'waiting' : 'door';
       const callable = p.status === 'waiting' && p.sorted === true && s.current === undefined;
       out.push({ id: p.id, figure, look, where: bay ? { cell: bay } : exit, doing: { kind: 'ambulance', state }, callable });
+    } else if (p.status === 'inRoom' && p.out && s.t < p.out.until) {
+      // ушёл от врача на обследование (0.5.12): в его помещении или в очереди к нему
+      out.push({ id: p.id, figure, look, ...awayPlace(db, layout, p, s.t) });
     } else if (p.status === 'inRoom' && p.by) {
       // у нанятого врача — в его кабинете (spec 2026-09-hired-doctors)
       const room = s.staff?.find(m => m.id === p.by)?.room;
@@ -169,7 +171,7 @@ export function placements(db: ContentDb, layout: ClinicLayout, s: ShiftState): 
     } else if (p.status === 'inRoom') {
       out.push({ id: p.id, figure, look, where: { cell: layout.spots.office }, doing: { kind: 'office' } });
     } else if (p.status === 'waiting') {
-      // только что пришедший — регистратура и медсестра (её витальные — уже в результатах);
+      // только что пришедший — регистратура и медсестра (её витальные — когда она закончит, 0.5.12);
       // вернувшийся с обследований — сразу в зал: врач с ним уже работал
       // пригласить можно любого из очереди, как из списка, — пока кабинет свободен
       const since = s.t - p.arriveT;

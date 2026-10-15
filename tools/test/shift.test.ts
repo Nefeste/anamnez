@@ -138,10 +138,16 @@ describe('смена: приём', () => {
     expect(cbc.step).toBe(s.patients[id].step); // пришло после последнего действия — «новое»
   });
 
-  test('в кабинете можно подождать результат: часы — до его готовности', () => {
+  // с 0.5.12 кровь берут в процедурном, куда пациент идёт сам: сначала — пока он вернётся, затем — до результата
+  test('в кабинете можно подождать результат: часы — до его возвращения, затем до готовности', () => {
     const s = withPatient(4);
     apply(db, s, { kind: 'exam', exam: 'exam.crp' });
-    const ready = current(s)!.pending[0].readyAt;
+    const p = current(s)!;
+    const ready = p.pending[0].readyAt;
+    const back = p.out!.back;
+    expect(back).toBeLessThan(ready);
+    apply(db, s, { kind: 'waitResults' });
+    expect(s.t).toBe(back);
     apply(db, s, { kind: 'waitResults' });
     expect(s.t).toBe(ready);
     expect(current(s)!.results.some(r => r.exam === 'exam.crp')).toBe(true);

@@ -143,19 +143,20 @@ describe('дорога в смене', () => {
     expect(x.readyAt - t0).toBeCloseTo(ready * 60, 6);
   });
 
-  test('анализ крови: кровь берут в процедурном — забор через 8 секунд дороги, результат — на столько же позже', () => {
+  // с 0.5.12 — и направление, как к аппарату: пациент идёт в процедурный, когда врач его выписал
+  test('анализ крови: кровь берут в процедурном — забор после направления и 8 секунд дороги, результат — на столько же позже', () => {
     const s = clinic();
     const p = called(s);
     const t0 = s.t;
     const ready = readyIn(db, s, p, CBC)!;
     apply(db, s, { kind: 'exam', exam: CBC });
     const x = p.pending.find(e => e.exam === CBC)!;
-    expect(x.start! - t0).toBe(8);
+    expect(x.start! - t0).toBe(ORDER_MINUTES * 60 + 8);
     expect(x.end! - x.start!).toBe(db.exams[CBC].time.procedure * 60);
     expect(x.readyAt - t0).toBeCloseTo(ready * 60, 6);
   });
 
-  test('тропонин пришедшему самому — кровь берут в смотровой приёмного: забор — через дорогу до неё', () => {
+  test('тропонин пришедшему самому — кровь берут в смотровой приёмного: забор — после направления и дороги до неё', () => {
     const { s, room } = withEmergency(21);
     apply(db, s, { kind: 'nextDay' });
     delete s.broken;
@@ -166,8 +167,8 @@ describe('дорога в смене', () => {
     const t = s.t;
     apply(db, s, { kind: 'exam', exam: TROP });
     const x = p.pending.find(e => e.exam === TROP)!;
-    expect(x.start! - t).toBe(walkSeconds(pl, doctorRoom(pl), room));
-    expect(x.start! - t).toBeGreaterThan(20);
+    expect(x.start! - t).toBe(ORDER_MINUTES * 60 + walkSeconds(pl, doctorRoom(pl), room));
+    expect(x.start! - t - ORDER_MINUTES * 60).toBeGreaterThan(20);
   });
 
   test('пациент нанятого врача идёт из его кабинета: срок снимка — на разницу дороги позже', () => {
