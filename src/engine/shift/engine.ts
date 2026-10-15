@@ -793,6 +793,8 @@ function closeDay(db: ContentDb, s: ShiftState) {
     if (icu > 0) day.icuLying = icu;
     if (ricu > 0) day.ricuLying = ricu;
     if (box > 0) day.boxLying = box;
+    const heavy = lying.filter(p => p.stay?.heavy).length;
+    if (heavy > 0) day.heavyLying = heavy;
   }
   if (s.economy && s.hospital) settle(db, s);
   s.history.push({ ...s.summary, grades: { ...s.summary.grades } });
@@ -1796,9 +1798,13 @@ function admit(db: ContentDb, s: ShiftState, p: ShiftPatient) {
     if (icu) p.stay.shock = night;
     else p.stay.dies = Math.min(p.stay.dies ?? night, night);
   }
+  // тяжёлый (spec 2026-10-rules, часть 72): по шкале листа передачи, а не по тому, как отсортировали, — и в ПИТ или
+  // реанимации; по ним — задание главы 4 о смертности
+  if (icu || (p.kind === 'ambulance' && p.scale?.triage === 'red')) p.stay.heavy = true;
   p.status = 'admitted';
   const day = wardDay(s);
   day.admitted++;
+  if (p.stay.heavy) day.heavy = (day.heavy ?? 0) + 1;
   if (icu && !ricu) day.icu = (day.icu ?? 0) + 1;
   if (ricu) day.ricu = (day.ricu ?? 0) + 1;
   if (box) day.box = (day.box ?? 0) + 1;
@@ -2035,6 +2041,8 @@ function leaveWard(db: ContentDb, s: ShiftState, id: string, how: 'discharge' | 
     s.summary.returnsPlanned++;
     ward.discharged++;
     ward.early++;
+    // тяжёлый раньше срока — потеря для задания о смертности (spec 2026-10-rules, часть 72)
+    if (stay.heavy) ward.heavyEarly = (ward.heavyEarly ?? 0) + 1;
   }
   closeStay(db, s, p, end, days);
   return later(db, s, undefined, 2 * MIN); // выписка, эпикриз
@@ -2103,6 +2111,7 @@ function nightDeaths(db: ContentDb, s: ShiftState) {
     const ward = wardDay(s);
     // осложнение обследования (часть 50а) остаётся в исходе: разбор называет его
     const harm = p.closed.outcome.examHarm ? { examHarm: p.closed.outcome.examHarm } : {};
+    if (stay.heavy) ward.heavyDied = (ward.heavyDied ?? 0) + 1;
     if (s.meta.soft) {
       p.closed.outcome = { kind: 'transferred', day: days, cured: false, severe: true, ...harm };
       ward.transferred++;

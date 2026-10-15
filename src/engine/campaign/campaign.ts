@@ -43,7 +43,8 @@ export interface MissionProgress {
   accuracy?: number;
   stay?: { days: number; norm: number };
   doctors?: number;
-  mortality?: { died: number; lying: number };
+  /** задание о смертности (с 0.5.15): тяжёлых умерло, выписано раньше срока и лежало за окно */
+  mortality?: Mortality;
   done: boolean;
 }
 
@@ -92,32 +93,38 @@ export function dayOk(kind: DayKind, h: DaySummary): boolean {
   }
 }
 
+export interface Mortality {
+  died: number;
+  early: number;
+  lying: number;
+}
+
 /**
- * Смертность в стационаре за дни подряд (часть 60а): умерли — и в «мягком режиме» переведены в тяжёлом состоянии вместо
- * смерти; лежали — лежавшие вечером накануне первого дня и поступившие за эти дни.
+ * Потери тяжёлых больных стационара за дни подряд (часть 60а; с 0.5.15 — по тяжёлым, решение владельца 15.10.2026,
+ * вопрос 36: «в пользу обучения»): тяжёлые — привезённые скорой «красными» по шкале и положенные в ПИТ или реанимацию;
+ * умерли — и в «мягком режиме» переведены в тяжёлом состоянии вместо смерти; выписаны раньше срока — такой вернётся
+ * хуже; лежали — тяжёлые, лежавшие вечером накануне первого дня, и поступившие за эти дни. По всем лежавшим и по одним
+ * умершим задание выполнял и ленивый: он кладёт всех подряд, а в палате у нас умирают редко — его больные возвращаются
+ * хуже после ранней выписки.
  */
-function mortalityOf(history: readonly DaySummary[], days: readonly DaySummary[]): { died: number; lying: number } {
-  const before = history.find(h => h.day === days[0].day - 1)?.ward?.lying ?? 0;
+function mortalityOf(history: readonly DaySummary[], days: readonly DaySummary[]): Mortality {
+  const before = history.find(h => h.day === days[0].day - 1)?.ward?.heavyLying ?? 0;
   return {
-    died: days.reduce((a, h) => a + (h.ward?.died ?? 0) + (h.ward?.severe ?? 0), 0),
-    lying: before + days.reduce((a, h) => a + (h.ward?.admitted ?? 0), 0),
+    died: days.reduce((a, h) => a + (h.ward?.heavyDied ?? 0), 0),
+    early: days.reduce((a, h) => a + (h.ward?.heavyEarly ?? 0), 0),
+    lying: before + days.reduce((a, h) => a + (h.ward?.heavy ?? 0), 0),
   };
 }
 
 /**
- * Срок у больных подряд (часть 45а): оценки срока по порядку закрытия во всех днях главы; выполнен — «A».
- * Лучшая серия решает задание, нынешняя (с конца) — ход.
+ * Срок у больных (часть 45а; с 0.5.15 — без «подряд», решение владельца 15.10.2026, вопрос 35): оценки срока во всех
+ * днях главы; выполнен — «A». Опоздание видно в разборе и счёт не обнуляет: серия ждала редких больных, и одно опоздание
+ * отбрасывало главу на недели.
  */
-function deadlineRuns(days: readonly DaySummary[], target: Id): { best: number; now: number } {
-  let best = 0;
-  let now = 0;
-  for (const h of days) {
-    for (const g of h.targetSeq?.[target] ?? '') {
-      now = g === 'A' ? now + 1 : 0;
-      best = Math.max(best, now);
-    }
-  }
-  return { best, now };
+function deadlineCount(days: readonly DaySummary[], target: Id): number {
+  let n = 0;
+  for (const h of days) for (const g of h.targetSeq?.[target] ?? '') if (g === 'A') n++;
+  return n;
 }
 
 /** Ход задания сейчас; выполненное раньше — выполнено, что бы ни было потом. */
@@ -159,12 +166,12 @@ export function missionProgress(db: ContentDb, v: CampaignView, m: Mission): Mis
       const n = days.reduce((a, h) => a + (h.surgery?.good ?? 0), 0);
       return { value: Math.min(n, m.count), target: m.count, done: was || n >= m.count };
     }
-    // глава 3 (spec 2026-10-chapter-3, часть 45а): срок выполнен у N ваших больных подряд — серия рвётся
-    // на первом опоздании; тромболизисы в окне и без противопоказаний за главу
+    // глава 3 (spec 2026-10-chapter-3, часть 45а): срок выполнен у N ваших больных — с 0.5.15 без «подряд»
+    // (spec 2026-10-rules); тромболизисы в окне и без противопоказаний за главу
     case 'deadline': {
-      const r = deadlineRuns(days, m.target);
-      const done = was || r.best >= m.count;
-      return { value: done ? m.count : Math.min(r.now, m.count), target: m.count, done };
+      const n = deadlineCount(days, m.target);
+      const done = was || n >= m.count;
+      return { value: done ? m.count : n, target: m.count, done };
     }
     case 'thrombolysis': {
       const n = days.reduce((a, h) => a + (h.lysis?.good ?? 0), 0);
@@ -209,10 +216,10 @@ export function missionProgress(db: ContentDb, v: CampaignView, m: Mission): Mis
         done: was || (seen >= m.count && accuracy >= m.accuracy && who.size >= m.doctors),
       };
     }
-    // окно — дни главы подряд; выполнено, если хоть в одном окне лежало не меньше порога и умерло не больше доли; ход —
-    // последнее окно
+    // окно — дни главы подряд; выполнено, если хоть в одном окне тяжёлых было не меньше порога, а умерло и выписано раньше
+    // срока не больше доли; ход — последнее окно
     case 'mortality': {
-      const fits = (x: { died: number; lying: number }) => x.lying >= m.lying && x.died * 100 <= m.percent * x.lying;
+      const fits = (x: Mortality) => x.lying >= m.lying && (x.died + x.early) * 100 <= m.percent * x.lying;
       let ok = false;
       for (let i = m.days; i <= days.length && !ok; i++) ok = fits(mortalityOf(v.history, days.slice(i - m.days, i)));
       return {

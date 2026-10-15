@@ -1435,6 +1435,20 @@ try {
   await page.getByTestId('shift-clock').waitFor({ timeout: 10_000 });
   check((await text(page, 'shift-clock')) === '08:00' && (await text(page, 'shift-counts')).startsWith('Принято: 0'), 'меню: «Начать заново» — день 1, 08:00');
 
+  // песочница — после главы 2 кампании (spec 2026-10-rules, часть 72): пока глава не выполнена, в «Быстрой игре» она
+  // закрыта и говорит, какая глава её откроет; достижение главы 2 в профиле — открыта
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').waitFor({ timeout: 10_000 });
+  check(await page.getByTestId('menu-sandbox').isDisabled() && (await text(page, 'menu-sandbox')).includes('откроется после главы 2 «Приёмное»'),
+    `песочница закрыта до главы 2: ${(await text(page, 'menu-sandbox')).replace(/\n/g, ' · ')}`);
+  await page.evaluate(() => {
+    const key = 'anamnez:saves/profile.json';
+    const e = JSON.parse(localStorage.getItem(key) ?? 'null');
+    e.data.achievements.got['ach.hospital'] = { at: new Date().toISOString(), by: 'e2e' };
+    localStorage.setItem(key, JSON.stringify(e));
+  });
+
   // песочница: пустой участок → регистратура (призрак тянут пальцем) → коридор кистью → отмена
   // и снова → карточка помещения → «Готово»; в меню «Продолжить» — песочница
   await page.goto(base);
@@ -3224,7 +3238,9 @@ try {
   check((await text(page, 'chapter')).startsWith('Глава 3. Сердце и мозг') && (await text(page, 'chapter-day')).startsWith('сосудистое отделение районной больницы в Нижнеборске · перед первой сменой')
     && (await page.locator('[data-testid^="mission-"]').count()) === 7 && (await page.getByTestId('chapter-next').count()) === 0,
     `глава 3: ${(await text(page, 'chapter-day'))}, заданий ${await page.locator('[data-testid^="mission-"]').count()}`);
-  check((await text(page, 'mission-ecg')).includes('0 из 5\u00a0больных подряд') && (await text(page, 'mission-ctRoom')).includes('пока нет'), 'глава 3: ход заданий — срок подряд, кабинет КТ');
+  // срок — без «подряд» (spec 2026-10-rules)
+  check((await text(page, 'mission-ecg')).includes('0 из 5\u00a0больных') && !(await text(page, 'mission-ecg')).includes('подряд') && (await text(page, 'mission-ctRoom')).includes('пока нет'),
+    `глава 3: ход заданий — срок без «подряд», кабинет КТ: ${(await text(page, 'mission-ecg')).replace(/\n/g, ' · ')}`);
   await page.getByTestId('letter-minutes').click();
   await page.getByTestId('letter-text').waitFor({ timeout: 5000 });
   check((await text(page, 'letter-text')).startsWith('Здравствуйте. В нашем деле решают минуты') && (await text(page, 'letter-sheet')).includes('Е. В. Соколова'),

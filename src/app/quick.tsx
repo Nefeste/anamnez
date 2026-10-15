@@ -1,13 +1,13 @@
 // Быстрая игра (09-game-design.md §10; spec 2026-09-campaign): практика в амбулатории, «Смена»
-// в выбранной больнице, «Случай дня» и песочница — своя больница. У практики и песочницы по
-// сохранению: есть оно — лист «продолжить или начать заново».
+// в выбранной больнице, «Случай дня» и песочница — своя больница; песочница — после главы 2 кампании (spec
+// 2026-10-rules). У практики и песочницы по сохранению: есть оно — лист «продолжить или начать заново».
 import { router, Stack, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import type { Difficulty, Mode } from '@/engine/shift/types';
 import { T } from '@/i18n';
 import { dailyMenuHint } from '@/state/daily';
 import { useProfile } from '@/state/profile';
-import { type GameSummary, loadShift, savedGames, startShift } from '@/state/session';
+import { type GameSummary, loadShift, sandboxLock, savedGames, startShift } from '@/state/session';
 import { Button, H, P, Screen, Sheet } from '@/ui/components';
 import { DifficultyChoice } from '@/ui/difficulty';
 
@@ -32,6 +32,7 @@ export default function QuickGame() {
   );
   const practice = games.find(g => g.mode === 'shift');
   const sandbox = games.find(g => g.mode === 'sandbox');
+  const locked = sandboxLock(games, p.achievements.got);
   const open = async (m: Mode) => {
     setSheet(undefined);
     await loadShift(m);
@@ -73,7 +74,8 @@ export default function QuickGame() {
         testID="menu-sandbox"
         kind="plain"
         title={sb.menu}
-        hint={sandbox ? sb.menuSaved(sandbox.day, T.common.rub(sandbox.cash ?? 0)) : sb.menuHint}
+        disabled={locked !== undefined}
+        hint={sandbox ? sb.menuSaved(sandbox.day, T.common.rub(sandbox.cash ?? 0)) : locked ? sb.menuLocked(locked.order, locked.name) : sb.menuHint}
         onPress={() => pick('sandbox', sandbox)}
       />
       <Sheet visible={sheet !== undefined} onClose={() => setSheet(undefined)} closeTitle={t.cancel} testID="restart-sheet">

@@ -39,20 +39,25 @@ export const campaign = {
   stayProgress: (n: number, of: number, stay?: { days: number; norm: number }) =>
     `${n} из ${of}\u00a0${pluralRu(of, 'выписанного', 'выписанных', 'выписанных')} подряд${stay ? ` · в среднем ${String(stay.days).replace('.', ',')}\u00a0сут. при обычных ${String(stay.norm).replace('.', ',')}` : ''}`,
   // глава 3 (spec 2026-10-chapter-3, часть 45а): срок у больных подряд, тромболизисы в окне
-  deadlineProgress: (n: number, of: number) => `${n} из ${of}\u00a0${pluralRu(of, 'больного', 'больных', 'больных')} подряд`,
+  // с 0.5.15 — без «подряд» (spec 2026-10-rules)
+  deadlineProgress: (n: number, of: number) => `${n} из ${of}\u00a0${pluralRu(of, 'больного', 'больных', 'больных')}`,
   lysisProgress: (n: number, of: number) => `${n} из ${of}`,
-  // глава 4 (spec 2026-10-chapter-4, часть 60а): приёмы специалистов; дни подряд со смертностью в стационаре не выше порога
+  // глава 4 (spec 2026-10-chapter-4, часть 60а): приёмы специалистов; дни подряд, когда тяжёлых умерло и выписано раньше
+  // срока не больше порога (с 0.5.15, spec 2026-10-rules)
   staffProgress: (seen: number, of: number, accuracy: number, doctors: number, need: number) =>
     `${seen} из ${of}, точность ${accuracy}\u00a0%, специалистов ${doctors} из ${need}`,
-  mortalityProgress: (days: number, of: number, x: { died: number; lying: number } | undefined, min: number) => {
+  mortalityProgress: (days: number, of: number, x: { died: number; early: number; lying: number } | undefined, min: number) => {
     if (days < of || !x) return `${days} из ${of}\u00a0${pluralRu(of, 'дня', 'дней', 'дней')}`;
     const last = `за ${pluralRu(of, 'последний', 'последние', 'последние')} ${of}\u00a0${pluralRu(of, 'день', 'дня', 'дней')}`;
-    const lay = `${pluralRu(x.lying, 'лежал', 'лежали', 'лежали')} ${x.lying}`;
+    const lay = `${pluralRu(x.lying, 'был', 'было', 'было')} ${x.lying}\u00a0${pluralRu(x.lying, 'тяжёлый', 'тяжёлых', 'тяжёлых')}`;
     if (x.lying < min) return `${last} ${lay} — нужно не меньше ${min}`;
-    if (x.died === 0) return `${last} ${lay}, умерших нет`;
-    const pct = ((100 * x.died) / x.lying).toFixed(1).replace('.', ',');
-    const died = pluralRu(x.died, 'умер', 'умерли', 'умерли');
-    return `${last} ${died} ${x.died} из ${x.lying}\u00a0${pluralRu(x.lying, 'лежавшего', 'лежавших', 'лежавших')} — ${pct}\u00a0%`;
+    if (x.died + x.early === 0) return `${last} ${lay}, умерших и выписанных раньше срока нет`;
+    const pct = ((100 * (x.died + x.early)) / x.lying).toFixed(1).replace('.', ',');
+    const lost = [
+      ...(x.died > 0 ? [`${pluralRu(x.died, 'умер', 'умерли', 'умерли')} ${x.died}`] : []),
+      ...(x.early > 0 ? [`${pluralRu(x.early, 'выписан', 'выписаны', 'выписаны')} раньше срока ${x.early}`] : []),
+    ];
+    return `${last} из ${x.lying}\u00a0${pluralRu(x.lying, 'тяжёлого', 'тяжёлых', 'тяжёлых')} ${lost.join(', ')} — ${pct}\u00a0%`;
   },
   notYet: 'пока нет',
   doneOn: (day: number) => `выполнено, день ${day}`,

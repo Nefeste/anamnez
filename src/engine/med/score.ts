@@ -227,6 +227,9 @@ export function scoreCase(x: CaseInput): CaseScore {
   const mean = weighted / ((lenient ? 7 : 9) + (targets ? 1 : 0));
   let overall: Grade = mean >= 2.5 ? 'A' : mean >= 1.75 ? 'B' : mean >= 1 ? 'C' : 'D';
   if (safety === 'D') overall = worst(overall, 'C'); // опасное решение не бывает хорошим случаем
+  // неверный диагноз — тоже (решение владельца 15.10.2026, вопрос 13): «B · неверно» читалось похвалой за ошибку;
+  // у «Практиканта» итог — среднее: он учится на лечении и безопасности
+  if (x.verdict === 'wrong' && !lenient) overall = worst(overall, 'C');
   if (lenient && (defensibility !== 'A' || thrift !== 'A')) notes.push({ code: 'level.lenient' });
   return { accuracy, defensibility, thrift, treatment, setting, safety, ...(targets ? { targets } : {}), overall, notes };
 }

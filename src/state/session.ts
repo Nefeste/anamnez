@@ -1284,6 +1284,21 @@ export async function savedGames(): Promise<GameSummary[]> {
   return out.sort((a, b) => (a.savedAt < b.savedAt ? 1 : a.savedAt > b.savedAt ? -1 : 0));
 }
 
+/** После какой главы кампании открывается песочница (09-game-design.md §10; решение владельца 15.10.2026, вопрос 12). */
+export const SANDBOX_AFTER: Id = 'chapter.hospital';
+
+/**
+ * Закрыта ли песочница (spec 2026-10-rules, часть 72): открыта, если глава 2 выполнена — её достижение в профиле, — или
+ * какая-нибудь карьера уже дальше неё, или песочница уже начата: начатую не закрываем. Закрыта — какая глава её откроет.
+ */
+export function sandboxLock(games: readonly GameSummary[], got: Readonly<Record<Id, unknown>>): { order: number; name: string } | undefined {
+  const after = db.chapters[SANDBOX_AFTER];
+  if (!after || games.some(g => g.mode === 'sandbox')) return undefined;
+  if (games.some(g => g.mode === 'campaign' && g.chapter && (db.chapters[g.chapter]?.order ?? 0) > after.order)) return undefined;
+  if (Object.values(db.achievements).some(a => a.kind === 'chapter' && a.chapter === SANDBOX_AFTER && got[a.id] !== undefined)) return undefined;
+  return { order: after.order, name: after.name.ru };
+}
+
 // --- кампания (spec 2026-09-campaign) ---------------------------------------------------------
 
 /** Письмо в главе: от кого, портрет, текст, когда пришло, прочитано ли. */
