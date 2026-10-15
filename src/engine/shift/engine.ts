@@ -386,9 +386,10 @@ export function apply(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
       return exam(db, s, cmd.exam);
     case 'waitResults': {
       const p = current(s);
-      if (!p || p.pending.length === 0) return [];
+      if (!p || (p.pending.length === 0 && !isOut(s, p))) return [];
       p.step++;
-      const target = Math.min(...p.pending.map(x => x.readyAt));
+      // и пока он не вернётся с обследования (0.5.12): что делают при нём — тогда
+      const target = Math.min(...p.pending.map(x => x.readyAt), ...(isOut(s, p) ? [p.out!.back] : []));
       // привезла скорая, пока ждали, — ожидание кончается с её приездом: врачу пора в смотровую
       // (spec 2026-10-chapter-3, часть 37: ЭКГ при боли в груди — в первые 10 минут)
       const car = s.events.find(x => x.t <= target && x.event.kind === 'arrive' && s.patients[x.event.id]?.kind === 'ambulance');
@@ -401,6 +402,8 @@ export function apply(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
       if (!p || (p.pending.length === 0 && !moreUrgent(db, s, p))) return [];
       p.step++; // что придёт, пока его нет, — «новое» при следующем вызове, а прежнее — нет
       s.current = undefined;
+      // ушёл на обследование — после него в зал, не к вам (0.5.12)
+      delete p.out;
       if (p.pending.length > 0) {
         p.status = 'away';
         p.wait++;
@@ -1028,7 +1031,7 @@ export function targetPlace(db: ContentDb, s: ShiftState, p: ShiftPatient): Targ
 function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pct = 100): number | null {
   const how = examSetup(db, s, p, examId);
   if (!how) return null;
-  const { e, ctx, bed, queued, room, eqId, roomPct, walk } = how;
+  const { e, ctx, bed, queued, room, eqId, roomPct, walk, to } = how;
   const skill = room && e.kind === 'imaging' ? imagingSkill(db, ctx.staff, room, eqId) : NORMAL_SKILL;
 
   // песочница: показано ли — по тому, что известно сейчас; показанные оплачивают ОМС и ДМС
@@ -1039,19 +1042,23 @@ function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pc
   if (!p.by) s.summary.money += e.cost; // в итогах — ваши обследования
   if (s.economy) ledgerOf(s).expenses.consumables += consumablesOf(db, e);
   const obs = runExam(db, p.patient, examId, branch(s, `exam:${p.id}:${p.done.length}:${examId}`), skill, exact(s));
+  // ушёл на обследование в другой кабинет (0.5.12, отзыв на 0.5.11) — что делают при нём, то когда вернётся
+  const away = Math.max(0, (p.out?.back ?? 0) - s.t);
   if (bed) {
     const cost = Math.round((bed.time.procedure * MIN * pct) / 100);
-    p.results.push({ exam: examId, obs, at: s.t + cost, step: p.step });
-    return cost;
+    p.results.push({ exam: examId, obs, at: s.t + away + cost, step: p.step });
+    return away + cost;
   }
   const after = (e.time.report ?? 0) + (e.time.turnaround ?? 0);
   if (queued && room) {
     const order = ORDER_MINUTES * MIN;
-    // к аппарату — назначить и дойти до кабинета
-    const start = Math.max(s.t + order + walk, s.rooms[room.id] ?? 0);
+    // к аппарату — назначить, и пациент идёт туда сразу (0.5.12): из кабинета или прямо с прошлого обследования
+    const go = outFrom(ctx, s, p, room.id, s.t + order);
+    const start = Math.max(go.at + go.walk, s.rooms[room.id] ?? 0);
     const end = start + Math.round((e.time.procedure * MIN * roomPct) / 100);
     s.rooms[room.id] = end;
     addPending(s, p, examId, end + after * MIN, obs, { room: room.id, start, end });
+    goOut(ctx, p, examId, room.id, end);
     return order;
   }
   const cost = Math.round((e.time.procedure * MIN * pct) / 100);
@@ -1062,14 +1069,58 @@ function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pc
   const again = e.repeat?.checks ?? [];
   const first = obs.filter(o => !again.includes(o.f));
   const second = obs.filter(o => again.includes(o.f));
-  // анализ: кровь берут в процедурном — пациент до него доходит (FR-HOS-4); результат — на столько позже
-  if (after > 0) addPending(s, p, examId, s.t + walk + cost + wait, first, room ? { room: room.id, start: s.t + walk, end: s.t + walk + cost } : undefined);
-  else p.results.push({ exam: examId, obs: first, at: s.t + cost, step: p.step });
+  // анализ: кровь берут в процедурном — пациент идёт туда сразу, как выписали направление (FR-HOS-4; 0.5.12), и
+  // возвращается; результат — когда лаборатория приготовит. Берут там, где он лежит, — на месте
+  if (after > 0 && room && to !== undefined && to !== fromRoom(ctx, p)) {
+    const order = ORDER_MINUTES * MIN;
+    const go = outFrom(ctx, s, p, to, s.t + order);
+    const start = go.at + go.walk;
+    addPending(s, p, examId, start + cost + wait, first, { room: room.id, start, end: start + cost });
+    goOut(ctx, p, examId, to, start + cost);
+    if (e.repeat && second.length > 0) {
+      const draw = s.t + e.repeat.minutes * MIN + walk;
+      addPending(s, p, examId, draw + cost + wait, second, { room: room.id, start: draw, end: draw + cost }, true);
+    }
+    return order;
+  }
+  if (after > 0) addPending(s, p, examId, s.t + away + walk + cost + wait, first, room ? { room: room.id, start: s.t + away + walk, end: s.t + away + walk + cost } : undefined);
+  else p.results.push({ exam: examId, obs: first, at: s.t + away + cost, step: p.step });
   if (e.repeat && second.length > 0) {
-    const draw = s.t + e.repeat.minutes * MIN + walk;
+    const draw = s.t + away + e.repeat.minutes * MIN + walk;
     addPending(s, p, examId, draw + cost + wait, second, room ? { room: room.id, start: draw, end: draw + cost } : undefined, true);
   }
-  return cost;
+  return away + cost;
+}
+
+/** Ушёл на обследование в другой кабинет и ещё не вернулся (0.5.12). */
+export const isOut = (s: ShiftState, p: ShiftPatient) => p.out !== undefined && p.out.back > s.t;
+
+/**
+ * Делают ли обследование при враче (0.5.12): вопрос, осмотр, у постели, анализ, взятый на месте, — да; снимок, ЭКГ в
+ * кабинете, анализ в процедурном — пациент идёт туда сам. Нельзя сделать — undefined.
+ */
+export function atDoctor(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id): boolean | undefined {
+  const how = examSetup(db, s, p, examId);
+  if (!how) return undefined;
+  const { e, ctx, bed, queued, room, to } = how;
+  if (bed) return true;
+  if (queued && room) return false;
+  const after = (e.time.report ?? 0) + (e.time.turnaround ?? 0);
+  return !(after > 0 && room && to !== undefined && to !== fromRoom(ctx, p));
+}
+
+/**
+ * Откуда и когда пациент пойдёт на обследование в другом кабинете (0.5.12): сейчас на другом обследовании — прямо
+ * оттуда, когда оно кончится; иначе — от врача (или со своего места в смотровой), как только выписали направление.
+ */
+function outFrom(ctx: HospitalCtx, s: ShiftState, p: ShiftPatient, to: string, leave: number): { at: number; walk: number } {
+  const out = p.out && p.out.back > s.t ? p.out : undefined;
+  return out ? { at: Math.max(leave, out.until), walk: walkSeconds(ctx.plan, out.room, to) } : { at: leave, walk: walkSeconds(ctx.plan, fromRoom(ctx, p), to) };
+}
+
+/** Ушёл на обследование (0.5.12): там — до `until`, у врача снова — когда дойдёт обратно. */
+function goOut(ctx: HospitalCtx, p: ShiftPatient, exam: Id, room: string, until: number) {
+  p.out = { exam, room, until, back: until + walkSeconds(ctx.plan, room, fromRoom(ctx, p)) };
 }
 
 /** Где и как сделать обследование этому пациенту сейчас: у постели или в кабинете, время — с поправкой аппарата и человека; нельзя — null. */
@@ -1094,7 +1145,7 @@ function examSetup(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id) {
   // записано (кровь — в процедурном, тропонин и пункцию — в смотровой приёмного)
   const to = queued ? room?.id : e.collect && !bed ? collectRoom(ctx, p, e.collect) : undefined;
   const walk = to ? walkSeconds(ctx.plan, fromRoom(ctx, p), to) : 0;
-  return { e, ctx, bed, queued, room, eqId, roomPct, walk };
+  return { e, ctx, bed, queued, room, eqId, roomPct, walk, to };
 }
 
 /** Где берут материал (FR-HOS-4): лежит в помещении этого вида — там же, иначе — в первом работающем. */
@@ -1122,11 +1173,20 @@ function fromRoom(ctx: HospitalCtx, p: ShiftPatient): string | undefined {
 export function readyIn(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id): number | undefined {
   const how = examSetup(db, s, p, examId);
   if (!how) return undefined;
-  const { e, bed, queued, room, roomPct, walk } = how;
-  if (bed) return bed.time.procedure;
+  const { e, ctx, bed, queued, room, roomPct, walk, to } = how;
+  // ушёл на другое обследование (0.5.12): при нём — когда вернётся, в другой кабинет — оттуда
+  const away = Math.max(0, (p.out?.back ?? 0) - s.t) / MIN;
+  if (bed) return away + bed.time.procedure;
   const after = (e.time.report ?? 0) + (e.time.turnaround ?? 0);
-  if (queued && room) return (Math.max(s.t + ORDER_MINUTES * MIN + walk, s.rooms[room.id] ?? 0) - s.t) / MIN + (e.time.procedure * roomPct) / 100 + after;
-  return walk / MIN + e.time.procedure + (room ? (after * roomPct) / 100 : after) + (e.repeat?.minutes ?? 0);
+  if (queued && room) {
+    const go = outFrom(ctx, s, p, room.id, s.t + ORDER_MINUTES * MIN);
+    return (Math.max(go.at + go.walk, s.rooms[room.id] ?? 0) - s.t) / MIN + (e.time.procedure * roomPct) / 100 + after;
+  }
+  if (room && to !== undefined && to !== fromRoom(ctx, p)) {
+    const go = outFrom(ctx, s, p, to, s.t + ORDER_MINUTES * MIN);
+    return (go.at + go.walk - s.t) / MIN + e.time.procedure + (after * roomPct) / 100 + (e.repeat?.minutes ?? 0);
+  }
+  return away + walk / MIN + e.time.procedure + (room ? (after * roomPct) / 100 : after) + (e.repeat?.minutes ?? 0);
 }
 
 function addPending(s: ShiftState, p: ShiftPatient, examId: Id, readyAt: number, obs: Observation[], at?: { room: string; start: number; end: number }, repeat?: true) {
@@ -1149,6 +1209,7 @@ function finish(db: ContentDb, s: ShiftState): Notice[] {
 function closePatient(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
   // не дождались — результат приходит в пустоту: случай решён тем, что было известно
   p.pending = [];
+  delete p.out;
   // последнюю койку успели занять — направить в стационар другой больницы (часть 26); оперировать
   // этот диагноз здесь нечем или некому — вызвать скорую, как из амбулатории (часть 28)
   if (p.draft.setting === 'admit' && freeBeds(db, s).length === 0) p.draft.setting = 'ward';
@@ -2356,6 +2417,7 @@ function releaseWaiting(db: ContentDb, s: ShiftState, p: ShiftPatient, m: StaffM
   s.events = s.events.filter(e => e !== step);
   p.spent.seconds -= step.t - s.t;
   p.status = 'away';
+  delete p.out;
   p.wait++;
   p.spent.seconds += MIN;
   (s.desk ??= {})[m.id] = s.t + MIN;
@@ -2455,6 +2517,7 @@ function colleagueStep(db: ContentDb, s: ShiftState, p: ShiftPatient) {
     const list = colleaguesOf(db, s);
     if (p.pending.length > 0 && s.queue.some(x => colleagueTakes(db, s.patients[x], m, list))) {
       p.status = 'away';
+      delete p.out;
       p.wait++;
       const away = cost + MIN;
       p.spent.seconds += away;

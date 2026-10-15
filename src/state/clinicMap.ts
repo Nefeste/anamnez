@@ -161,6 +161,9 @@ export function placements(db: ContentDb, layout: ClinicLayout, s: ShiftState): 
       const state = p.status === 'inRoom' ? 'withYou' : !p.sorted ? 'unsorted' : bay ? 'waiting' : 'door';
       const callable = p.status === 'waiting' && p.sorted === true && s.current === undefined;
       out.push({ id: p.id, figure, look, where: bay ? { cell: bay } : exit, doing: { kind: 'ambulance', state }, callable });
+    } else if (p.status === 'inRoom' && p.out && s.t < p.out.until) {
+      // ушёл от врача на обследование (0.5.12): в его помещении или в очереди к нему
+      out.push({ id: p.id, figure, look, ...awayPlace(db, layout, p, s.t) });
     } else if (p.status === 'inRoom' && p.by) {
       // у нанятого врача — в его кабинете (spec 2026-09-hired-doctors)
       const room = s.staff?.find(m => m.id === p.by)?.room;

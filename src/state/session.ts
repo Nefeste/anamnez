@@ -21,8 +21,8 @@ import { memberAt, type StaffMember, staffingOf } from '@/engine/hospital/staff'
 import { type MissionProgress, missionProgress, nextChapterOf, tutorialDayOf } from '@/engine/campaign/campaign';
 import { levelOf } from '@/engine/economy/economy';
 import {
-  apply, atDoorOf, bedsideEquipment, bedsideOf, boxBeds, brokenOf, current, freeBeds, freeBoxBeds, freeIcuBeds, freeRicuBeds, type HospitalCtx, hospitalCtx, icuBeds, inBox, inIcu, inpatientsOf, inRicu,
-  moreUrgent, newCampaign, newSandbox, ricuBeds,
+  apply, atDoctor, atDoorOf, bedsideEquipment, bedsideOf, boxBeds, brokenOf, current, freeBeds, freeBoxBeds, freeIcuBeds, freeRicuBeds, type HospitalCtx, hospitalCtx, icuBeds, inBox, inIcu, inpatientsOf, inRicu,
+  isOut, moreUrgent, newCampaign, newSandbox, ricuBeds,
   newShift, newSingle, observationsOf, operationOf, type OrBlock, orBlock, orQueueOf, prepareReview, reviewFor, SANDBOX_VENUE, stayEquipment, targetPlace,
   wardBeds,
 } from '@/engine/shift/engine';
@@ -2084,7 +2084,12 @@ function buildCaseView(): VisitView | undefined {
   if (!p.closed && !watching) {
     for (const [eid, e] of Object.entries(db.exams)) if (e.bedside && bedsideOf(db, s, p, eid)) bedside[eid] = e.bedside.time.procedure;
   }
-  const unavailable = Object.fromEntries(Object.entries(unavailableOf(s)).filter(([eid]) => bedside[eid] === undefined));
+  const unavailable: Record<Id, string> = Object.fromEntries(Object.entries(unavailableOf(s)).filter(([eid]) => bedside[eid] === undefined));
+  // ушёл на обследование в другой кабинет (0.5.12): что делают при нём — когда вернётся; в другой кабинет — можно
+  if (p.id === s.current && isOut(s, p)) {
+    const why = T.spikes.patient.awayExam(hhmm(minuteOfDay(p.out!.back)));
+    for (const eid of Object.keys(db.exams)) if (!unavailable[eid] && !p.done.includes(eid) && atDoctor(db, s, p, eid)) unavailable[eid] = why;
+  }
   return makeCaseView({
     version,
     patient: p.patient,
@@ -2094,6 +2099,8 @@ function buildCaseView(): VisitView | undefined {
     step: p.step,
     arrived,
     pending: [...asking, ...p.pending.map(x => ({ exam: x.exam, readyAt: minuteOfDay(x.readyAt), ...(x.repeat ? { repeat: x.repeat } : {}) }))],
+    // ушёл на обследование в другой кабинет (0.5.12): когда вернётся
+    ...(p.id === s.current && p.out && p.out.back > s.t ? { away: { exam: p.out.exam, back: minuteOfDay(p.out.back) } } : {}),
     meanwhile: p.id === s.current ? sess.meanwhile : [],
     urgent: p.id === s.current && sess.urgent,
     alarm: p.id === s.current && sess.alarm,

@@ -408,7 +408,8 @@ function usSave(): { save: string; id: string } {
   apply(db, s, { kind: 'call', id });
   apply(db, s, { kind: 'exam', exam: 'exam.vitals' });
   apply(db, s, { kind: 'exam', exam: 'exam.us_abdomen' });
-  apply(db, s, { kind: 'waitResults' });
+  // с 0.5.12 — сначала пока вернётся из кабинета УЗИ, затем описание
+  for (let i = 0; i < 20 && s.patients[id].pending.length > 0; i++) apply(db, s, { kind: 'waitResults' });
   return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s }), id };
 }
 
@@ -3368,7 +3369,12 @@ try {
   await visible(page, 'tab-order').click();
   await visible(page, 'exam-exam.ct_head').click();
   await page.getByTestId('done-exam.ct_head').waitFor({ timeout: 10_000 });
+  // повезли на КТ (0.5.12): расспрос — когда вернётся, заключение пишут без него
+  const away = await visibleText(page, 'visit-away');
   await visible(page, 'tab-ask').click();
+  check(away.startsWith('На обследовании: КТ') && (await visible(page, 'exam-exam.ask_stroke').isDisabled()), `глава 3: инсульт — повезли на КТ, вопросы — когда вернётся («${away}»)`);
+  // привезённая скорая обрывает ожидание — ещё раз
+  for (let i = 0; i < 8 && (await visible(page, 'exam-exam.ask_stroke').isDisabled()); i++) await visible(page, 'visit-wait').click();
   await visible(page, 'exam-exam.ask_stroke').click();
   await page.getByTestId('done-exam.ask_stroke').waitFor({ timeout: 10_000 });
   await visible(page, 'exam-exam.ask_lysis').click();
