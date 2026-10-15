@@ -32,7 +32,9 @@ context reset:
 - `docs/06-architecture.md`, `docs/07-data-model.md` — how it is built.
 - `docs/08-process.md`, `docs/09-testing.md` — versioning, CI, signing, release checklist, what
   to run before declaring anything done.
-- `docs/10-roadmap.md` — what is being built right now; it links the live specification.
+- `docs/10-roadmap.md` — what is being built right now; it links the live specification. Owner questions are
+  GitHub Issues labelled `владелец` (charter template, one fork per issue); the roadmap keeps only a table of their
+  old numbers.
 - `docs/adr/` — decisions that are expensive to reverse. Read the relevant one *before*
   proposing the opposite; each records what it costs.
 - `docs/specs/` — specification-driven development: a notable feature gets a spec **before** code.
