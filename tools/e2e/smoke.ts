@@ -56,12 +56,19 @@ async function fastClock(page: Page): Promise<void> {
   await page.getByTestId('tab-x4').click({ timeout: 2_000 }).catch(() => undefined);
 }
 
-/** Часы смены на ×4, пока не выполнится условие; автопаузу («срочный», «результаты») снимаем. */
+/**
+ * Часы смены на ×4, пока не выполнится условие; автопаузу («срочный», «результаты») снимаем — но не ту, что встала из-за
+ * того, чего ждём: условие могло выполниться между двумя проверками, и снятая пауза отдала бы часам лишнюю минуту (так
+ * упал сценарий тега v0.5.13: скорую с инсультом позвали на минуту позже, и КТ опоздала).
+ */
 async function runClockUntil(page: Page, done: () => Promise<boolean>, ms = 60_000): Promise<boolean> {
   const until = Date.now() + ms;
   while (Date.now() < until) {
     if (await done()) return true;
-    if ((await page.getByTestId('shift-pause-reason').count()) > 0) await fastClock(page);
+    if ((await page.getByTestId('shift-pause-reason').count()) > 0) {
+      if (await done()) return true;
+      await fastClock(page);
+    }
     await page.waitForTimeout(250);
   }
   return false;

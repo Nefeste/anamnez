@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
 import { salaryOf, type StaffMember } from '../../src/engine/hospital/staff';
 import { apply, catchUp, newSandbox, prepareFinish } from '../../src/engine/shift/engine';
-import type { Command, Notice, ShiftState } from '../../src/engine/shift/types';
+import { type Command, DAY, type Notice, type ShiftState } from '../../src/engine/shift/types';
+import { hhmm } from '../../src/state/caseView';
 import { memoryStore } from '../../src/state/saves';
 import {
   assign, buildAction, buildView, callPatient, chooseDiagnosis, endBuild, examine, finishCase, forgetShift, hire, loadShift, nextDay, saved,
@@ -244,6 +245,38 @@ describe('сессия: время команды по частям', () => {
     });
     expect(heard).toEqual(said);
     expect(start).toEqual(live);
+  }, 120_000);
+
+  test('карта вашего пациента — на конец вашего действия (0.5.14): пока больница доживает, она та же, что после', async () => {
+    open(true);
+    for (let i = 0; i < 10 && shiftState()!.queue.length === 0; i++) skipIdle();
+    callPatient(shiftState()!.queue[0]);
+    await frames();
+    examine('exam.ask_complaints');
+    await frames();
+    // анализ крови — в процедурный: пациент ушёл
+    examine('exam.cbc');
+    await frames();
+    expect(shiftCaseView()!.away).toBeDefined();
+    let checked = 0;
+    for (let i = 0; i < 6 && shiftState()!.current; i++) {
+      const p0 = shiftState()!.patients[shiftState()!.current!];
+      if (p0.pending.length === 0 && !(p0.out && p0.out.back > shiftState()!.t)) break;
+      waitForResults();
+      const s = shiftState()!;
+      if (s.until === undefined) continue;
+      // ожидание кончилось, а больница его ещё доживает: результат к этому часу и возвращение — уже в карте
+      const p = s.patients[s.current!];
+      const v = shiftCaseView()!;
+      expect(v.clock).toBe(hhmm(Math.floor((s.until % DAY) / 60)));
+      expect(v.away !== undefined).toBe(p.out !== undefined && p.out.back > s.until);
+      const seen = { away: v.away, pending: v.pending, groups: v.groups.map(g => g.key) };
+      await frames();
+      const after = shiftCaseView()!;
+      expect({ away: after.away, pending: after.pending, groups: after.groups.map(g => g.key) }).toEqual(seen);
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(0);
   }, 120_000);
 
   test('сохранили посреди времени команды — открыли: кадры доживают, смена та же, что сразу', async () => {

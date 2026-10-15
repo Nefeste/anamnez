@@ -2,6 +2,8 @@
 // автопауза на «красного»; «за это время»; итог закрытого случая; итоги дня; сохранение и
 // чтение — с откатом к копии и отказом от несовместимого.
 import { beforeEach, describe, expect, test } from 'bun:test';
+import { db } from '../../src/content';
+import { apply } from '../../src/engine/shift/engine';
 import type { ShiftState } from '../../src/engine/shift/types';
 import { loadSlot, memoryStore } from '../../src/state/saves';
 import {
@@ -131,6 +133,35 @@ describe('смена на экране: часы', () => {
     }
     expect(checked).toBe(true);
   });
+
+  test('автопауза — в том срезе тика, где пришёл срочный (0.5.14): часы не уходят дальше до конца тика', () => {
+    let checked = false;
+    for (let seed = 1; seed <= 80 && !checked; seed++) {
+      forgetSettings();
+      forgetShift();
+      startShift(seed, 'winter');
+      // приходят по целым минутам, а тик на ×4 — минута: полминуты на ×2 сдвигают тики, и пришедший — посреди тика (так
+      // бывает и после тика, на который не хватило запаса)
+      setSpeed(2);
+      tick(250);
+      setSpeed(4);
+      let before: ShiftState | undefined;
+      for (let ticks = 0; ticks < 400 && !shiftView().paused; ticks++) {
+        before = structuredClone(shiftState()!);
+        tick(250);
+      }
+      if (!shiftView().pauseReason?.includes('срочный') || !before) continue;
+      // тот же тик движком: срезы по 15 секунд, пока не придёт срочный, — и часы там же, где встали; пришёл в последнем
+      // срезе — не отличить от тика целиком, ищем дальше
+      const s = before;
+      const t0 = s.t;
+      for (let i = 0; i < 4; i++) if (apply(db, s, { kind: 'advance', seconds: 15 }).some(n => n.kind === 'arrived' && n.triage === 'red')) break;
+      if (s.t >= t0 + 60) continue;
+      expect(shiftState()!.t).toBe(s.t);
+      checked = true;
+    }
+    expect(checked).toBe(true);
+  }, 60_000);
 });
 
 describe('смена на экране: приём', () => {

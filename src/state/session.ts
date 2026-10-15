@@ -22,7 +22,7 @@ import { type MissionProgress, missionProgress, nextChapterOf, tutorialDayOf } f
 import { levelOf } from '@/engine/economy/economy';
 import {
   apply, atDoctor, atDoorOf, bedsideEquipment, bedsideOf, boxBeds, brokenOf, current, freeBeds, freeBoxBeds, freeIcuBeds, freeRicuBeds, type HospitalCtx, hospitalCtx, icuBeds, inBox, inIcu, inpatientsOf, inRicu,
-  isOut, moreUrgent, newCampaign, newSandbox, ricuBeds,
+  moreUrgent, newCampaign, newSandbox, ricuBeds,
   newShift, newSingle, observationsOf, operationOf, type OrBlock, orBlock, orQueueOf, prepareReview, reviewFor, SANDBOX_VENUE, stayEquipment, targetPlace,
   wardBeds, catchUp, prepareFinish,
 } from '@/engine/shift/engine';
@@ -651,20 +651,23 @@ export function tick(ms: number = TICK_MS): Notice[] {
   const more = budget(inParts ? partMs : TICK_BUDGET_MS, true);
   const part = inParts ? more : undefined;
   const notices: Notice[] = [];
+  const { pauseOnRed, pauseOnResults } = settings();
+  const redOf = (ns: Notice[]) => (pauseOnRed ? ns.find(n => (n.kind === 'arrived' && n.triage === 'red') || n.kind === 'ambulance') : undefined);
+  const backOf = (ns: Notice[]) => (pauseOnResults ? ns.find(n => n.kind === 'resultsReady' && sess.s.patients[n.id].status === 'waiting') : undefined);
   if (sess.s.until !== undefined) {
     const clock = sess.tail?.clock;
     const n = catchUp(db, sess.s, part);
     absorb(sess, n);
     if (clock) notices.push(...n);
   }
-  for (let done = 0; sess.s.until === undefined && done < total && more(); ) {
+  // автопауза — в том срезе, где пришёл срочный или вернулся с результатами (0.5.14): часы не уходят дальше до конца тика
+  for (let done = 0; sess.s.until === undefined && done < total && !redOf(notices) && !backOf(notices) && more(); ) {
     const step = Math.min(TICK_SLICE, total - done);
     notices.push(...run(sess, { kind: 'advance', seconds: step }, part, true));
     done += step;
   }
-  const { pauseOnRed, pauseOnResults } = settings();
-  const red = pauseOnRed ? notices.find(n => (n.kind === 'arrived' && n.triage === 'red') || n.kind === 'ambulance') : undefined;
-  const back = pauseOnResults ? notices.find(n => n.kind === 'resultsReady' && sess.s.patients[n.id].status === 'waiting') : undefined;
+  const red = redOf(notices);
+  const back = backOf(notices);
   if (red && red.kind === 'ambulance') pause(sess, T.shift.pause.ambulance(nameOf(sess.s.patients[red.id])));
   else if (red && red.kind === 'arrived') pause(sess, T.shift.pause.red(nameOf(sess.s.patients[red.id])));
   else if (back && back.kind === 'resultsReady') pause(sess, T.shift.pause.results(nameOf(sess.s.patients[back.id])));
@@ -2096,6 +2099,20 @@ function decisionFor(meta: Pick<ShiftState['meta'], 'seed' | 'department'>, p: S
   return out;
 }
 
+/**
+ * Ваш пациент на час `t` (0.5.14): результаты, готовые к нему, — уже пришли, по порядку, как их отдаст движок, когда
+ * больница доживёт до него (`results`: по времени, затем по обследованию). Только для карты: смена — та же.
+ */
+function seenAt(p: ShiftPatient, t: number): ShiftPatient {
+  const ready = p.pending.filter(x => x.readyAt <= t).sort((a, b) => a.readyAt - b.readyAt || (a.exam < b.exam ? -1 : 1));
+  if (ready.length === 0) return p;
+  return {
+    ...p,
+    pending: p.pending.filter(x => x.readyAt > t),
+    results: [...p.results, ...ready.map(x => ({ exam: x.exam, obs: x.obs, at: x.readyAt, step: p.step, ...(x.repeat ? { repeat: x.repeat } : {}) }))],
+  };
+}
+
 /** Пришедшие результаты; `until` — только готовые к этому времени (приём врача идёт: что он выясняет сейчас, ещё не известно). */
 const arrivedOf = (p: ShiftPatient, until = Infinity): Arrival[] =>
   p.results.filter(r => r.at <= until).map(r => ({ exam: r.exam, step: r.step, at: minuteOfDay(r.at), obs: r.obs, ...(r.repeat ? { repeat: r.repeat } : {}) }));
@@ -2212,10 +2229,15 @@ function buildCaseView(): VisitView | undefined {
   const id = sess.focus ?? s.current;
   const p = id ? s.patients[id] : undefined;
   if (!p) return undefined;
+  // ваш пациент — на конец вашего действия (0.5.14): больница ещё доживает его минуты, а результаты к этому часу и
+  // возвращение пациента — уже такие, какими вы их увидите; смена от этого не меняется
+  const mine = p.id === s.current;
+  const now = mine && s.until !== undefined ? s.until : s.t;
+  const seen = mine && s.until !== undefined ? seenAt(p, s.until) : p;
   // приём врача идёт (часть 19): врач записывает вопрос или осмотр сразу, со временем конца —
   // до него это «идёт», как анализ
   const watching = p.by !== undefined && !p.closed;
-  const arrived = arrivedOf(p, watching ? s.t : Infinity);
+  const arrived = arrivedOf(seen, watching ? s.t : Infinity);
   const asking = watching ? p.results.filter(r => r.at > s.t).map(r => ({ exam: r.exam, readyAt: minuteOfDay(r.at) })) : [];
   const prev = p.returnOf ? s.patients[p.returnOf] : undefined;
   // у постели в смотровой приёмного (часть 37): ЭКГ монитором — 5 минут, без очереди и описания
@@ -2225,7 +2247,7 @@ function buildCaseView(): VisitView | undefined {
   }
   const unavailable: Record<Id, string> = Object.fromEntries(Object.entries(unavailableOf(s)).filter(([eid]) => bedside[eid] === undefined));
   // ушёл на обследование в другой кабинет (0.5.12): что делают при нём — когда вернётся; в другой кабинет — можно
-  if (p.id === s.current && isOut(s, p)) {
+  if (mine && p.out !== undefined && p.out.back > now) {
     const why = T.spikes.patient.awayExam(hhmm(minuteOfDay(p.out!.back)));
     for (const eid of Object.keys(db.exams)) if (!unavailable[eid] && !p.done.includes(eid) && atDoctor(db, s, p, eid)) unavailable[eid] = why;
   }
@@ -2233,14 +2255,14 @@ function buildCaseView(): VisitView | undefined {
     version,
     patient: p.patient,
     // у вас в кабинете — ваше время: конец последнего действия, пока больница его доживает (0.5.13)
-    clock: minuteOfDay(p.id === s.current ? (s.until ?? s.t) : s.t),
+    clock: minuteOfDay(now),
     minutesSpent: Math.round(p.spent.seconds / 60),
     money: p.spent.money,
     step: p.step,
     arrived,
-    pending: [...asking, ...p.pending.map(x => ({ exam: x.exam, readyAt: minuteOfDay(x.readyAt), ...(x.repeat ? { repeat: x.repeat } : {}) }))],
+    pending: [...asking, ...seen.pending.map(x => ({ exam: x.exam, readyAt: minuteOfDay(x.readyAt), ...(x.repeat ? { repeat: x.repeat } : {}) }))],
     // ушёл на обследование в другой кабинет (0.5.12): когда вернётся
-    ...(p.id === s.current && p.out && p.out.back > s.t ? { away: { exam: p.out.exam, back: minuteOfDay(p.out.back) } } : {}),
+    ...(mine && p.out && p.out.back > now ? { away: { exam: p.out.exam, back: minuteOfDay(p.out.back) } } : {}),
     // приём закрывается (0.5.13): разбор досчитывается в кадрах
     ...(p.id === sess.finishing ? { finishing: true as const } : {}),
     meanwhile: p.id === s.current ? sess.meanwhile : [],
@@ -2249,9 +2271,9 @@ function buildCaseView(): VisitView | undefined {
     done: p.done,
     draft: p.draft,
     decision: p.closed ? decisionFor(s.meta, p, arrived, outcomeKnown(s, p)) : undefined,
-    canSendAway: p.status === 'inRoom' && p.pending.length > 0,
+    canSendAway: p.status === 'inRoom' && seen.pending.length > 0,
     // ждать нечего, а ждёт кто-то срочнее — «Попросить подождать» (часть 37)
-    canStepOut: p.status === 'inRoom' && p.pending.length === 0 && moreUrgent(db, s, p),
+    canStepOut: p.status === 'inRoom' && seen.pending.length === 0 && moreUrgent(db, s, p),
     returnNote: p.returnReason && prev?.closed ? T.shift.returnNote(p.returnReason, closedDay(prev), female(p)) : undefined,
     difficulty: s.meta.difficulty ?? 'doctor',
     // и в практике: кабинета УЗИ в амбулатории нет (часть 29)
