@@ -28,7 +28,9 @@
 // vascular или city (одна глава), --no-career, --jobs 4 (процессов; прогон зависит только от главы, врача и зерна), --json.
 // С 0.5.11 — --stall (NFR-PRF-1): сколько длится каждая команда движка у разумного врача — по видам; перед командой —
 // пауза, в которую разбор считается заранее, как в игре, пока игрок думает; порог — худшая команда смены и 99 % команд
-// (spec 2026-10-performance), не выполнен — выход с кодом 1; без ленивого и карьеры, в одном процессе.
+// (spec 2026-10-performance), не выполнен — выход с кодом 1; без ленивого и карьеры, в одном процессе. С 0.5.13 —
+// --stall --parts: время команды — по частям, как в игре (spec 2026-10-parts): команда — с запасом 40 мс, остальное —
+// кадрами и тиками по 40 мс; замер — каждого куска, порог — тот же.
 import { availableParallelism } from 'node:os';
 import type { Id, Setting } from '../../src/content/types';
 import { nextChapterOf } from '../../src/engine/campaign/campaign';
@@ -40,8 +42,8 @@ import { contextOf, posterior } from '../../src/engine/med/infer';
 import { alsoSettings, recommendedSetting, settingFit, type Venue } from '../../src/engine/med/plan';
 import { choosePlan, decisionLimit, type DoctorPhase, MIN_GAIN, nextStep, runDoctor, type Strategy } from '../../src/engine/med/policy';
 import {
-  apply, atDoctor, bedDayOf, bedsideEquipment, brokenOf, candidatesOf, careUnit, current, isOut, freeBeds, freeBoxBeds, freeIcuBeds, freeRicuBeds, hospitalCtx, inBox, inIcu, inpatientsOf, inRicu, meetIn, moreUrgent, newCampaign,
-  observationsOf, operationOf, prepareReview, readyIn, targetPlace,
+  apply, atDoctor, bedDayOf, bedsideEquipment, brokenOf, candidatesOf, careUnit, catchUp, current, isOut, freeBeds, freeBoxBeds, freeIcuBeds, freeRicuBeds, hospitalCtx, inBox, inIcu, inpatientsOf, inRicu, meetIn, moreUrgent, newCampaign,
+  observationsOf, operationOf, prepareFinish, prepareReview, readyIn, targetPlace,
 } from '../../src/engine/shift/engine';
 import { minutesTo, targetsFor, targetStart } from '../../src/engine/shift/targets';
 import { type Command, DAY, SHIFT_END, type ShiftPatient, type ShiftState } from '../../src/engine/shift/types';
@@ -115,8 +117,26 @@ const TICK_PREPARE_MS = 20;
 const SLICE = 15;
 /** сколько посчитано заранее в паузах: мс */
 let prepared = 0;
+/** `--stall --parts` (0.5.13): время команды — по частям, по `PART_MS` за раз (`partMs` в session.ts) */
+const PARTS = STALL && process.argv.includes('--parts');
+const PART_MS = 40;
 
-/** Команда движка; с `--stall` — с замером, а перед ней — пауза, в которую разбор считается заранее, как в игре. */
+/** Счёт до `ms` от сейчас; `first` — одно событие всегда (кадр, тик) — как `budget` в session.ts. */
+function budget(ms: number, first = false): () => boolean {
+  const end = performance.now() + ms;
+  let once = first;
+  return () => {
+    if (!once) return performance.now() <= end;
+    once = false;
+    return true;
+  };
+}
+
+/**
+ * Команда движка; с `--stall` — с замером, а перед ней — пауза, в которую разбор считается заранее, как в игре. С
+ * `--parts` — и время команды по частям: команда — с запасом, остальное — кусками, как кадры и тики игры; вид куска —
+ * вид команды с «+». Итог тот же: всё прожито до следующей команды.
+ */
 function timed(s: ShiftState, cmd: Command) {
   if (!STALL) return apply(db, s, cmd);
   const p0 = performance.now();
@@ -126,10 +146,31 @@ function timed(s: ShiftState, cmd: Command) {
   prepared += performance.now() - p0;
   const slices = cmd.kind === 'advance' ? Array.from({ length: Math.ceil(cmd.seconds / SLICE) }, (_, i) => Math.min(SLICE, cmd.seconds - i * SLICE)) : [];
   const out: ReturnType<typeof apply> = [];
+  // закрытие вашего приёма (0.5.13): разбор не готов — досчитывается кусками, как в кадрах игры (`finishCase`); последний
+  // кусок и само закрытие — в одном кадре
+  let carry = 0;
+  if (PARTS && cmd.kind === 'finish') {
+    for (;;) {
+      const f0 = performance.now();
+      const ready = prepareFinish(db, s, budget(PART_MS, true));
+      const ms = performance.now() - f0;
+      if (ready) {
+        carry = ms;
+        break;
+      }
+      stalls.push({ ms, kind: 'finish+' });
+    }
+  }
   for (const one of slices.length > 0 ? slices.map((seconds): Command => ({ kind: 'advance', seconds })) : [cmd]) {
     const t0 = performance.now();
-    out.push(...apply(db, s, one));
-    stalls.push({ ms: performance.now() - t0, kind: one.kind });
+    out.push(...apply(db, s, one, PARTS ? budget(PART_MS, one.kind === 'advance') : undefined));
+    stalls.push({ ms: performance.now() - t0 + carry, kind: one.kind });
+    carry = 0;
+    while (s.until !== undefined) {
+      const f0 = performance.now();
+      out.push(...catchUp(db, s, budget(PART_MS, true)));
+      stalls.push({ ms: performance.now() - f0, kind: `${one.kind}+` });
+    }
   }
   return out;
 }
@@ -794,7 +835,8 @@ if (STALL) {
   const by = new Map<string, number[]>();
   for (const x of stalls) (by.get(x.kind) ?? by.set(x.kind, []).get(x.kind)!).push(x.ms);
   const q = (xs: number[], f: number) => xs.slice().sort((a, b) => a - b)[Math.min(xs.length - 1, Math.floor(xs.length * f))];
-  console.log(`Быстродействие движка (${MONTHS.map(c => c.replace('chapter.', '')).join(', ')}; ${RUNS} × ${DAYS} дн.; команд ${stalls.length}; ${seconds} с; в паузах перед командами — ${(prepared / stalls.length).toFixed(1)} мс в среднем из ${THINK_MS}):`);
+  const what = PARTS ? `кусков ${stalls.length}, по частям — по ${PART_MS} мс` : `команд ${stalls.length}`;
+  console.log(`Быстродействие движка (${MONTHS.map(c => c.replace('chapter.', '')).join(', ')}; ${RUNS} × ${DAYS} дн.; ${what}; ${seconds} с; в паузах перед командами — ${(prepared / stalls.filter(x => !x.kind.endsWith('+')).length).toFixed(1)} мс в среднем из ${THINK_MS}):`);
   for (const [k, xs] of [...by.entries()].sort((a, b) => Math.max(...b[1]) - Math.max(...a[1]))) {
     console.log(`  ${k.padEnd(16)} ${String(xs.length).padStart(6)}   медиана ${q(xs, 0.5).toFixed(1).padStart(6)}   99 % ${q(xs, 0.99).toFixed(1).padStart(7)}   худшая ${Math.max(...xs).toFixed(1).padStart(7)} мс`);
   }
