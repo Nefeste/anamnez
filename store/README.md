@@ -9,7 +9,6 @@
 |------|---------|------|
 | [`listing.ru.md`](listing.ru.md) | название, краткое (≤ 80) и полное (≤ 4000) описание, «Что нового», подписи к снимкам, категория, возраст, контакты | RuStore; сайт |
 | [`forms.md`](forms.md) | ответы анкет: возраст 16+ с обоснованием, данные, разрешения, предзаказ; Google Play — к этапу 7 | RuStore, Play Console |
-| [`privacy.ru.md`](privacy.ru.md), [`privacy.en.md`](privacy.en.md) | политика конфиденциальности на двух языках | сайт: раздел «Анамнез» в единой политике `gornitsa.games/privacy` (устав студии, `docs/07-privacy.md`) — ссылку просят оба магазина |
 | `icon/icon-512.png` | иконка 512 × 512, PNG без прозрачности | RuStore; сайт |
 | `screenshots/phone/*.png` | восемь снимков экрана 1080 × 1920 с подписями | RuStore; сайт |
 | `graphics/feature-1024x500.png` | графика 1024 × 500 | Google Play; шапка сайта |
@@ -51,14 +50,14 @@ npm run store -- --only icons            # только иконки (store/icon
 | краткое описание | до 80 символов | проверяет тест |
 | полное описание | до 4000 символов | проверяет тест |
 | возраст | по 436-ФЗ | 16+ ([`forms.md`](forms.md)) |
-| политика конфиденциальности | ссылка на страницу | единая политика студии https://gornitsa.games/privacy.html, раздел «Анамнез» |
+| политика конфиденциальности | ссылка на страницу | единая политика студии https://gornitsa.games/privacy.html#anamnez, раздел «Анамнез» |
 
 ## Предзаказ в RuStore — что сделать владельцу
 
 - [ ] проверить название «Анамнез» по ФИПС (классы МКТУ 9 и 41) и по RuStore
 - [x] почта поддержки — support@gornitsa.games, вписана во все тексты (27.09.2026)
-- [ ] раздел «Анамнез» — в единой политике студии https://gornitsa.games/privacy.html (текст —
-      `privacy.ru.md`, `privacy.en.md`); страница игры — https://gornitsa.games/anamnez/, из `site/page.*.md`
+- [x] раздел «Анамнез» — в единой политике студии https://gornitsa.games/privacy.html#anamnez (Nefeste/gornitsagames#58);
+      страница игры — https://gornitsa.games/anamnez/, из `site/page.*.md`
 - [ ] в консоли RuStore: новое приложение → тип «Игра», пакет `games.gornitsa.anamnez`,
       категория «Симуляторы», возраст 16+; тексты — из `listing.ru.md`, иконка и снимки —
       из этой папки, анкеты — по `forms.md`
