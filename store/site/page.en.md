@@ -137,8 +137,8 @@ in Russian.
 - “What is this?” for every sign and test in plain words, and more in the in-game encyclopedia:
   conditions, signs, tests, treatment, scores and rules. From a condition’s article you can work
   through a case — see one such patient where the condition is treated.
-- A doctor profile: practice totals, an archive of recent visits with reviews, and achievements —
-  no deadlines and no streaks.
+- A doctor profile: specialties with levels and small skills, practice totals, an archive of recent
+  visits with reviews, and achievements — no deadlines and no streaks.
 - Two themes: the light “Chart” — paper and blue ink, like a patient’s record — and the dark
   “Monitor” in the colours of a bedside monitor. Or follow the phone.
 - A “Shift” at a hospital of your choice, scored by category, and a “Case of the day” — one patient
