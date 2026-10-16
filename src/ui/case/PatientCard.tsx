@@ -2,8 +2,8 @@
 // три действия — «Спросить», «Осмотреть», «Назначить». Решение — отдельный экран, кнопкой
 // внизу. Общая для прототипа П4 и смены: вид и действия приходят снаружи.
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { type LayoutChangeEvent, Pressable, View } from 'react-native';
 import { Text } from '../text';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { buzz, play } from '@/audio/sounds';
@@ -11,7 +11,7 @@ import { T } from '@/i18n';
 import type { StaffPortrait } from '@/render/look';
 import { Portrait } from '@/render/Portrait';
 import { examInfo, examsByAction, examTerm, findingInfo, type Line, type ResultGroup, type TermInfo, type VisitView } from '@/state/caseView';
-import { Button, Card, Chip, Chips, H, P, RULE, Ruled, Screen, Tabs } from '@/ui/components';
+import { Button, Card, Chip, Chips, H, P, RULE, Ruled, Screen, type ScreenScroll, Tabs } from '@/ui/components';
 import { TermSheet } from '@/ui/TermSheet';
 import { makeStyles, space, useTheme } from '@/ui/theme';
 import type { CaseActions, FooterAction } from './actions';
@@ -19,6 +19,12 @@ import { Differential } from './Differential';
 import { ResultPicture } from './ResultPicture';
 
 type Tab = 'ask' | 'examine' | 'order';
+
+/** Сколько после действия держать ответ посередине: пока раскладка выше не улеглась; листаете сами — сразу перестаём. */
+const CENTER_MS = 900;
+const WAIT_MS = 8000;
+/** Ключ первого нового в «Известно» — к нему после «Подождать». */
+const FIRST_FRESH = 'known:fresh';
 
 /**
  * `readOnly` — приём ведёт нанятый врач (spec 2026-09-hired-doctors, часть 19): видно, что он
@@ -59,10 +65,59 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
     }
   }, [v.meanwhile, v.urgent, v.alarm]);
 
+  // ответ на сделанное — посередине экрана (отзыв владельца 16.10.2026): «Известно» и «Похоже на» выше растут вместе
+  // с ответом, и без этого строка с ним уезжает вниз — прокрутка на Android места не держит. Где что лежит — по
+  // onLayout: строка — от начала своей карточки, карточка — от начала прокрутки; ставим, когда раскладка улеглась
+  const scroll = useRef<ScreenScroll>(null);
+  const cardY = useRef<Record<'known' | 'list', number>>({ known: 0, list: 0 });
+  const rows = useRef(new Map<string, { card: 'known' | 'list'; y: number; height: number; id?: string }>());
+  // `skip` — новое, что было до «Подождать»: ставим следующее, а не его
+  const want = useRef<{ key: string; skip?: string } | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const expiry = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current);
+    if (expiry.current) clearTimeout(expiry.current);
+  }, []);
+  const centerSoon = () => {
+    if (!want.current) return;
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      const w = want.current;
+      const r = w && rows.current.get(w.key);
+      if (r && !(w.skip && r.id === w.skip)) scroll.current?.center(cardY.current[r.card] + r.y, r.height);
+    }, 40);
+  };
+  const follow = (key: string, ms = CENTER_MS, skip?: string) => {
+    want.current = { key, skip };
+    if (expiry.current) clearTimeout(expiry.current);
+    expiry.current = setTimeout(() => {
+      want.current = null;
+    }, ms);
+    centerSoon();
+  };
+  const placeCard = (card: 'known' | 'list', e: LayoutChangeEvent) => {
+    cardY.current[card] = e.nativeEvent.layout.y;
+    centerSoon();
+  };
+  const placeRow = (key: string, card: 'known' | 'list', e: LayoutChangeEvent, id?: string) => {
+    const { y, height } = e.nativeEvent.layout;
+    rows.current.set(key, { card, y, height, id });
+    if (want.current?.key === key) centerSoon();
+  };
+  const firstFresh = loud.find(x => x.fresh);
+
   // касание — вибрацией: звук касания на телефоне не понравился (отзыв на 0.0.2)
   const doExam = (id: string) => {
     buzz('tap');
+    follow(`done:${id}`);
     actions.act(id);
+  };
+  // пришли результаты — к первому новому в «Известно»; часы доживают ожидание в следующих кадрах, поэтому дольше
+  const wait = () => {
+    follow(FIRST_FRESH, WAIT_MS, firstFresh?.key);
+    actions.waitForResults();
   };
   const explain = (info: TermInfo) => {
     setHinted(true);
@@ -77,7 +132,7 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
       : <Button testID="visit-decide" title={`${d.open} ▶`} hint={v.draft.diagnosis ? d.diagnosis(v.draftDiagnosisName ?? '') : undefined} onPress={() => router.push(actions.routes.decision)} />;
 
   return (
-    <Screen resetKey={v.portrait.key} footer={footer}>
+    <Screen resetKey={v.portrait.key} footer={footer} scrollRef={scroll} onDrag={() => { want.current = null; }}>
       {/* лист истории болезни: в «Медкарте» — линовка и поле, жалобы — курсивом, со слов пациента */}
       <Ruled>
         <View style={styles.row}>
@@ -127,7 +182,7 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
         </Card>
       )}
 
-      <Card>
+      <Card onLayout={e => placeCard('known', e)}>
         <View style={styles.knownHead}>
           <Text style={styles.label}>{t.known}</Text>
           {v.freshCount > 0 && <Text testID="visit-fresh-count" style={styles.freshCount}>{t.freshCount(v.freshCount)}</Text>}
@@ -135,7 +190,10 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
         {v.groups.length === 0 ? <P muted>{t.none}</P> : (
           <>
             {/* новые результаты — сверху, выделены и целиком; прежние — что нашли, остальное свёрнуто */}
-            {loud.map(g => <KnownGroup key={g.key} g={g} open={g.fresh || isOpen(g.key)} onToggle={() => toggle(g.key)} explain={explain} />)}
+            {loud.map(g => (
+              <KnownGroup key={g.key} g={g} open={g.fresh || isOpen(g.key)} onToggle={() => toggle(g.key)} explain={explain}
+                onLayout={g === firstFresh ? e => placeRow(FIRST_FRESH, 'known', e, g.key) : undefined} />
+            ))}
             {quiet.length > 0 && (
               <Pressable testID="visit-quiet" accessibilityRole="button" aria-expanded={isOpen('quiet')} onPress={() => toggle('quiet')}
                 style={({ pressed }) => [styles.quiet, pressed && styles.pressed]}>
@@ -150,7 +208,7 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
         {v.pending.map((p, i) => <P key={i} muted>{t.pending(p.name, p.at)}</P>)}
         {(v.pending.length > 0 || v.away) && !v.decision && !readOnly && (
           <>
-            <Button kind="plain" testID="visit-wait" title={v.away ? t.waitBack : t.wait} onPress={actions.waitForResults} />
+            <Button kind="plain" testID="visit-wait" title={v.away ? t.waitBack : t.wait} onPress={wait} />
             {v.canSendAway && actions.sendAway && <Button kind="plain" testID="visit-send-away" title={t.sendAway} hint={t.sendAwayHint} onPress={actions.sendAway} />}
           </>
         )}
@@ -197,7 +255,7 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
             onChange={setTab}
             items={[{ key: 'ask', title: t.ask }, { key: 'examine', title: t.examine }, { key: 'order', title: t.order }]}
           />
-          <Card>
+          <Card onLayout={e => placeCard('list', e)}>
             {focus && <P muted testID="visit-focus">{t.focusNote}</P>}
             {[...main, ...(isOpen(restKey) ? rest : [])].map(id => {
               const info = examInfo(id);
@@ -214,7 +272,8 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
                 const seen = lines.filter(l => l.shown).map(l => l.text).join('; ') || t.nothingFound;
                 const summary = g ? (wait ? `${seen} · ${t.readyAt(wait.at)}` : seen) : wait ? t.readyAt(wait.at) : t.done;
                 return (
-                  <Animated.View key={id} entering={FadeInDown.duration(250)} testID={`done-${id}`} style={[styles.done, g?.fresh && styles.groupFresh]}>
+                  <Animated.View key={id} entering={FadeInDown.duration(250)} testID={`done-${id}`} onLayout={e => placeRow(`done:${id}`, 'list', e)}
+                    style={[styles.done, g?.fresh && styles.groupFresh]}>
                     <Pressable accessibilityRole="button" aria-expanded={open} accessibilityLabel={`${info.name}: ${open ? t.collapse : t.expand}`} disabled={!g || g.fresh}
                       onPress={() => toggle(key)} style={({ pressed }) => [styles.groupHead, pressed && styles.pressed]}>
                       <Text style={styles.groupTitle}>{`✓ ${info.name}`}</Text>
@@ -252,13 +311,15 @@ const found = (g: ResultGroup) => g.lines.some((l: Line) => l.shown);
  * Результаты одного обследования в «Известно». Раскрытое — все строки; свёрнутое — только то,
  * что нашли, и «ещё N без особенностей», касание раскрывает (отзыв на 0.0.37: меньше листать).
  */
-function KnownGroup({ g, open, onToggle, explain }: { g: ResultGroup; open: boolean; onToggle?: () => void; explain: (info: TermInfo) => void }) {
+function KnownGroup({ g, open, onToggle, explain, onLayout }: {
+  g: ResultGroup; open: boolean; onToggle?: () => void; explain: (info: TermInfo) => void; onLayout?: (e: LayoutChangeEvent) => void;
+}) {
   const styles = useStyles();
   const t = T.spikes.patient;
   const lines = open ? g.lines : g.lines.filter(l => l.shown);
   const hidden = g.lines.length - lines.length;
   return (
-    <Animated.View entering={FadeInDown.duration(350)} testID={g.fresh ? 'visit-fresh' : undefined} style={[styles.group, g.fresh && styles.groupFresh]}>
+    <Animated.View entering={FadeInDown.duration(350)} testID={g.fresh ? 'visit-fresh' : undefined} onLayout={onLayout} style={[styles.group, g.fresh && styles.groupFresh]}>
       <View style={styles.groupHead}>
         <Text style={styles.groupTitle}>{`${g.name} · ${t.at(g.at)}`}</Text>
         {g.fresh && <Text style={styles.badge}>{t.fresh}</Text>}

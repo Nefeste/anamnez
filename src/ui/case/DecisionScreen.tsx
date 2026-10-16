@@ -4,19 +4,23 @@
 // поставленном диагнозе, остальное — свёрнуто, с поиском по названию.
 import { router } from 'expo-router';
 import { useState } from 'react';
+import { View } from 'react-native';
 import { Text, TextInput } from '../text';
 import { T } from '@/i18n';
 import { conditionTerm, type TermInfo, treatmentTerm, type VisitView } from '@/state/caseView';
 import { matchesQuery } from '@/state/encyclopedia';
 import { Button, Card, Chip, Chips, H, P, Screen } from '@/ui/components';
+import { Icon } from '@/ui/Icon';
+import { SYSTEM_ICONS } from '@/ui/iconShapes';
 import { TermSheet } from '@/ui/TermSheet';
-import { makeStyles, space, touch } from '@/ui/theme';
+import { makeStyles, space, touch, useTheme } from '@/ui/theme';
 import type { CaseActions } from './actions';
 
 type Step = 'diagnosis' | 'plan';
 
 export function DecisionScreen({ view: v, actions }: { view: VisitView; actions: CaseActions }) {
   const styles = useStyles();
+  const theme = useTheme();
   const [step, setStep] = useState<Step>('diagnosis');
   const [term, setTerm] = useState<TermInfo | null>(null);
   // остальное лечение — свёрнуто, с поиском (вопрос 34)
@@ -96,7 +100,11 @@ export function DecisionScreen({ view: v, actions }: { view: VisitView; actions:
           )}
           {v.diagnoses.map(g => (
             <Card key={g.key}>
-              <Text style={styles.label}>{g.title}</Text>
+              {/* группа — со значком, как плитки «Своих больных» в настройках (0.5.20) */}
+              <View style={styles.groupHead}>
+                <Icon shape={SYSTEM_ICONS[g.key]} size={22} color={theme.colors.muted} />
+                <Text style={[styles.label, styles.groupLabel]}>{g.title}</Text>
+              </View>
               {g.items.map(c => (
                 <Button key={c.id} testID={`dx-${c.id}`} kind={v.draft.diagnosis === c.id ? 'primary' : 'plain'} title={c.name}
                   onPress={() => actions.chooseDiagnosis(c.id)} onInfo={() => setTerm(conditionTerm(c.id))} infoLabel={t.whatIsIt} />
@@ -144,6 +152,8 @@ export function DecisionScreen({ view: v, actions }: { view: VisitView; actions:
 
 const useStyles = makeStyles(t => ({
   label: { fontSize: 13, fontWeight: '700', letterSpacing: 1.2, color: t.colors.muted, textTransform: 'uppercase', marginTop: space.s },
+  groupHead: { flexDirection: 'row', alignItems: 'center', gap: space.s, marginTop: space.s },
+  groupLabel: { flex: 1, marginTop: 0 },
   search: {
     minHeight: touch,
     backgroundColor: t.colors.card,
