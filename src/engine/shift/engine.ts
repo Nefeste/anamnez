@@ -4,7 +4,7 @@
 // Две точки входа, как в `02-architecture.md` §2: `apply(state, command)` — действие врача,
 // которое двигает часы на свою цену, и команда `advance` — время на карте. Состояние
 // меняется на месте; случайность — только из именованных ветвей зерна смены (ADR 0004).
-import type { Chapter, ContentDb, Equipment, Exam, Id, Preset, Season, Setting, TutorialPatient } from '../../content/types';
+import { type BodySystem, type Chapter, type ContentDb, type Equipment, type Exam, type Id, type Preset, type Season, type Setting, SYSTEMS, type TutorialPatient } from '../../content/types';
 import { fnv1a } from '../core/hash';
 import {
   caseIncome, consumablesOf, emptyLedger, expensesOf, flowOf, incomeOf, interestOf, type Ledger, levelOf, payerOf, reputationAfter, salariesOf, upkeepOf,
@@ -27,7 +27,7 @@ import { type DoctorRun, examCost, indicated, ORDER_MINUTES, type Parts, startRa
 import { buildReview, type ReviewData, reviewBeliefs } from '../med/review';
 import { scoreCase } from '../med/score';
 import { askMinutes, examSkillWith, mentorOf } from '../career/skills';
-import type { Observation } from '../med/types';
+import type { Observation, Patient } from '../med/types';
 import {
   type ClosedCase, type ColleagueDay, type Command, DAY, type DaySummary, type Difficulty, easyLevel, type Notice, type PlannedReturn, REGISTRATION, SHIFT_END, SHIFT_SCHEMA_VERSION,
   SHIFT_START, type ShiftEvent, type ShiftPatient, type ShiftState, TRIAGE, type Triage, type VisitKind, type WardDay, type AmbulanceDay, type SurgeryDay,
@@ -537,6 +537,11 @@ function command(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
       if (cmd.today) setSkills(s, cmd.ids);
       else if (sameIds(cmd.ids, s.meta.skills ?? [])) delete s.meta.skillsNext;
       else s.meta.skillsNext = [...cmd.ids];
+      return [];
+    // «свои больные» (spec 2026-10-own-patients, часть 76): сразу — следующий, кого врач позовёт, уже по ним
+    case 'mine':
+      if (cmd.systems.length > 0) s.meta.mine = [...cmd.systems];
+      else delete s.meta.mine;
       return [];
     case 'nextChapter':
       nextChapter(db, s);
@@ -2480,13 +2485,59 @@ function profileHere(db: ContentDb, m: StaffMember, admits: readonly Id[]): Id[]
  * сортировке, не повторное обращение и не того, кого вы отпустили ждать результатов. Без
  * доврачебного кабинета срочность никто не определил — берёт по очереди прихода. Специалист (часть 59) —
  * только записанных к нему; терапевт — кроме записанных к специалисту, который сегодня принимает. Заданного пациента
- * первой смены главы (часть 61в) — никто: он для вас.
+ * первой смены главы (часть 61в) — никто: он для вас. «Своих больных» (часть 76) — тоже: их оставляют вам.
  */
-function colleagueTakes(db: ContentDb, p: ShiftPatient, m: StaffMember, list: readonly StaffMember[]): boolean {
-  if (!(p.status === 'waiting' && p.by === undefined && p.calledT === undefined && p.kind !== 'return' && p.kind !== 'ambulance' && !(p.triaged !== false && p.triage === 'red'))) return false;
-  if (p.taught) return false;
+function colleagueTakes(db: ContentDb, s: ShiftState, p: ShiftPatient, m: StaffMember, list: readonly StaffMember[]): boolean {
+  if (!newcomer(p)) return false;
   if (db.roles[m.role]?.profile) return p.to === m.id;
-  return p.to === undefined || !list.some(x => x.id === p.to);
+  if (bookedHere(p, list)) return false;
+  return !forPlayer(db, s, p);
+}
+
+/** Новый, кого нанятый врач может позвать: ждёт, никем не взят и не вызван, не повторный, не со скорой, не «красный». */
+function newcomer(p: ShiftPatient): boolean {
+  return p.status === 'waiting' && p.by === undefined && p.calledT === undefined && p.kind !== 'return' && p.kind !== 'ambulance'
+    && !(p.triaged !== false && p.triage === 'red') && !p.taught;
+}
+
+/** Записан к специалисту, который сегодня принимает: его берёт только он. */
+const bookedHere = (p: ShiftPatient, list: readonly StaffMember[]): boolean => p.to !== undefined && list.some(x => x.id === p.to);
+
+/** Куда направили бы по жалобам — один раз на пациента: вывод по тому, что видно, от времени не зависит. */
+const routes = new WeakMap<Patient, BodySystem>();
+
+/**
+ * Куда регистратура направила бы нового больного (spec 2026-10-own-patients, часть 76): в группу болезней — систему
+ * органов, как в выборе диагноза, — самую вероятную по тому, что видно у двери: жалобы, возраст, пол, сезон, профессия.
+ * Тот же вывод, что считает «Похоже на», по болезням отделений, с какими его приняли. Скрытый диагноз не участвует:
+ * отметка «ждёт вас» его не выдаёт.
+ */
+export function routeOf(db: ContentDb, s: ShiftState, p: ShiftPatient): BodySystem {
+  const known = routes.get(p.patient);
+  if (known !== undefined) return known;
+  const obs = complaintObservations(p.patient);
+  const by = new Map<BodySystem, number>();
+  for (const b of posterior(db, candidatesOf(db, p.departments ?? s.meta.department), obs, contextOf(db, p.patient, obs))) {
+    const sys = db.conditions[b.id].system;
+    if (sys) by.set(sys, (by.get(sys) ?? 0) + b.p);
+  }
+  // ничья — по порядку групп в выборе диагноза
+  const r = SYSTEMS.reduce<BodySystem>((best, x) => ((by.get(x) ?? 0) > (by.get(best) ?? 0) ? x : best), SYSTEMS[0]);
+  routes.set(p.patient, r);
+  return r;
+}
+
+/** Новый больной — «ваш» (часть 76): его группа — среди выбранных в настройках. */
+export function forPlayer(db: ContentDb, s: ShiftState, p: ShiftPatient): boolean {
+  return (s.meta.mine?.length ?? 0) > 0 && s.meta.mine!.includes(routeOf(db, s, p));
+}
+
+/**
+ * Ждёт вас (часть 76): «ваш» новый больной, которого иначе позвал бы нанятый терапевт; записанного к специалисту,
+ * который сегодня принимает, тот возьмёт сам, а повторных, срочных и со скорой нанятые врачи и так не берут.
+ */
+export function leftForPlayer(db: ContentDb, s: ShiftState, p: ShiftPatient): boolean {
+  return newcomer(p) && forPlayer(db, s, p) && !bookedHere(p, colleaguesOf(db, s));
 }
 
 /**
@@ -2505,7 +2556,7 @@ function staffDesks(db: ContentDb, s: ShiftState) {
       continue;
     }
     const back = all.filter(p => p.status === 'waiting' && p.by === m.id).sort((a, b) => a.queuedT - b.queuedT || (a.id < b.id ? -1 : 1))[0];
-    const id = back?.id ?? s.queue.find(x => colleagueTakes(db, s.patients[x], m, list));
+    const id = back?.id ?? s.queue.find(x => colleagueTakes(db, s, s.patients[x], m, list));
     if (!id) continue;
     const p = s.patients[id];
     s.queue = s.queue.filter(x => x !== id);
@@ -2530,7 +2581,7 @@ function staffDesks(db: ContentDb, s: ShiftState) {
 function releaseWaiting(db: ContentDb, s: ShiftState, p: ShiftPatient, m: StaffMember, list: readonly StaffMember[]) {
   if (p.pending.length === 0 || p.results.some(r => r.at > s.t)) return;
   const step = s.events.find(e => e.event.kind === 'colleague' && e.event.id === p.id);
-  if (!step || step.t <= s.t || !s.queue.some(x => colleagueTakes(db, s.patients[x], m, list))) return;
+  if (!step || step.t <= s.t || !s.queue.some(x => colleagueTakes(db, s, s.patients[x], m, list))) return;
   s.events = s.events.filter(e => e !== step);
   p.spent.seconds -= step.t - s.t;
   p.status = 'away';
@@ -2623,7 +2674,7 @@ function colleagueStep(db: ContentDb, s: ShiftState, p: ShiftPatient, ev?: Shift
     if (!p.done.includes(r.step.exam)) p.done.push(r.step.exam); // сделать нельзя — дальше без него
     // результатов ждать, а в очереди есть кого принять, — отпустить ждать и позвать следующего, как вы
     const list = colleaguesOf(db, s);
-    if (p.pending.length > 0 && s.queue.some(x => colleagueTakes(db, s.patients[x], m, list))) {
+    if (p.pending.length > 0 && s.queue.some(x => colleagueTakes(db, s, s.patients[x], m, list))) {
       p.status = 'away';
       delete p.out;
       p.wait++;

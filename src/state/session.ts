@@ -23,7 +23,7 @@ import { levelOf } from '@/engine/economy/economy';
 import { askMinutes, skillsFor } from '@/engine/career/skills';
 import {
   apply, atDoctor, atDoorOf, bedsideEquipment, bedsideOf, boxBeds, brokenOf, current, freeBeds, freeBoxBeds, freeIcuBeds, freeRicuBeds, type HospitalCtx, hospitalCtx, icuBeds, inBox, inIcu, inpatientsOf, inRicu,
-  moreUrgent, newCampaign, newSandbox, ricuBeds,
+  leftForPlayer, moreUrgent, newCampaign, newSandbox, ricuBeds,
   newShift, newSingle, observationsOf, operationOf, type OrBlock, orBlock, orQueueOf, prepareReview, reviewFor, SANDBOX_VENUE, stayEquipment, targetPlace,
   wardBeds, catchUp, prepareFinish,
 } from '@/engine/shift/engine';
@@ -557,6 +557,9 @@ function run(sess: Session, cmd: Command, more?: () => boolean, clock = false): 
   // умения врача (spec 2026-10-skills) — так же: выросли или выключены за день — со следующего дня
   const skills = playerSkills();
   if (!sameIds(sess.s.meta.skillsNext ?? sess.s.meta.skills ?? [], skills)) apply(db, sess.s, { kind: 'skills', ids: skills });
+  // «свои больные» (spec 2026-10-own-patients, часть 76) — сразу: следующего нового врач уже оставит вам
+  const mine = settings().mine;
+  if (!sameIds(sess.s.meta.mine ?? [], mine)) apply(db, sess.s, { kind: 'mine', systems: mine });
   const notices = apply(db, sess.s, cmd, more);
   record(sess, notices);
   if (sess.s.t - sess.savedT >= SAVE_EVERY) save();
@@ -1619,6 +1622,8 @@ function row(s: ShiftState, p: ShiftPatient): QueueRow {
   }
   if (p.payer) badges.push(T.sandbox.payers[p.payer]);
   if (p.step > 0) badges.push(T.shift.badge.results);
+  // «свои больные» (часть 76): новых этой группы нанятые врачи оставляют вам
+  if (leftForPlayer(db, s, p)) badges.push(T.shift.badge.mine);
   return {
     id: p.id,
     name: nameOf(p),

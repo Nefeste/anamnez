@@ -7,8 +7,9 @@ import { useEffect } from 'react';
 import { Platform, useColorScheme } from 'react-native';
 import { applyMusic, play } from '@/audio/sounds';
 import { T } from '@/i18n';
+import { SYSTEMS } from '@/content/types';
 import { loadSettings, TEXT_SCALES, THEME_CHOICES, type ThemeChoice, updateSettings, useSettings, VOLUMES } from '@/state/settings';
-import { Button, Card, Choice, H, P, Screen, Tabs, Toggle } from '@/ui/components';
+import { Button, Card, Chip, Chips, Choice, H, P, Screen, Tabs, Toggle } from '@/ui/components';
 
 type Level = '0' | '1' | '2' | '3';
 type Size = '0' | '1' | '2';
@@ -75,6 +76,15 @@ export default function SettingsScreen() {
         />
         <P muted>{t.patientsNote}</P>
         <Toggle testID="settings-skills" title={t.skills} hint={t.skillsHint} value={s.skills} onChange={v => updateSettings({ skills: v })} />
+        {/* «свои больные» (spec 2026-10-own-patients, часть 76): группы — как в выборе диагноза */}
+        <P muted>{t.mine}</P>
+        <Chips>
+          {SYSTEMS.map(k => (
+            <Chip key={k} testID={`mine-${k}`} text={T.spikes.decision.system[k]} checked={s.mine.includes(k)}
+              onPress={() => updateSettings({ mine: SYSTEMS.filter(x => (x === k ? !s.mine.includes(k) : s.mine.includes(x))) })} />
+          ))}
+        </Chips>
+        <P muted>{t.mineNote}</P>
       </Card>
       <Card>
         <H>{t.screen}</H>

@@ -76,8 +76,9 @@ in Russian.
   and tasks without deadlines.
 - **Your own hospital.** Offices, a lab, X-ray, ultrasound, CT, MRI and endoscopy rooms, an
   emergency department, wards, isolation boxes and an operating room, hiring, the cash desk. Doctors
-  you hire see patients on their own, and specialists have their own appointments. Insurance pays
-  for a justified diagnosis and for tests that were indicated.
+  you hire see patients on their own, specialists have their own appointments, and new patients from
+  the disease groups you pick are left for you. Insurance pays for a justified diagnosis and for
+  tests that were indicated.
 - **Emergency department.** The ambulance brings in the seriously ill, and urgency is checked
   against the NEWS2 score. You do a ward round every morning and discharge patients when they are
   better; a surgical team works in the operating room — and the longer an appendicitis or a

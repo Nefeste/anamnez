@@ -961,6 +961,17 @@ try {
   // «Разнообразие» — тоже; дальше сценарий — на частотах жизни
   check((await page.getByTestId('patients-varied').getAttribute('aria-checked')) === 'true', 'настройки: «Разнообразие» — то же после перезапуска');
   await page.getByTestId('patients-real').click();
+  // «свои больные» (spec 2026-10-own-patients, часть 76): по умолчанию ничего; отмеченная группа — та же после
+  // перезапуска; дальше сценарий — без неё
+  check((await page.locator('[data-testid^="mine-"][aria-checked="false"]').count()) === 10 && (await page.locator('[data-testid^="mine-"]').count()) === 10,
+    `настройки: свои больные — ничего не отмечено из ${await page.locator('[data-testid^="mine-"]').count()}`);
+  await page.getByTestId('mine-heart').click();
+  // настройка пишется в хранилище не сразу (`updateSettings`): перезапуск — когда записана
+  await page.waitForFunction(() => Object.keys(localStorage).some(k => k.includes('settings') && /"mine":\s*\[\s*"heart"/.test(localStorage.getItem(k) ?? '')), undefined, { timeout: 10_000 });
+  await page.goto(`${base}/settings`);
+  await page.getByTestId('mine-heart').waitFor({ timeout: 10_000 });
+  check((await page.getByTestId('mine-heart').getAttribute('aria-checked')) === 'true', 'настройки: «Сердце и сосуды» — отмечено и после перезапуска');
+  await page.getByTestId('mine-heart').click();
   await page.getByTestId('settings-vibration').click();
   await page.getByTestId('sound-3').click();
   await page.getByTestId('music-2').click();
