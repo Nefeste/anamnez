@@ -5,6 +5,8 @@ import { lowerFirst } from '../case';
 export const sandbox = {
   menu: 'Песочница',
   menuHint: 'своя больница: стройка, аппараты, касса — дни без конца',
+  /** закрыта до главы кампании (spec 2026-10-rules, часть 72) */
+  menuLocked: (order: number, name: string) => `откроется после главы ${order} «${name}» в кампании`,
   menuSaved: (day: number, cash: string) => (day === 0 ? `перед открытием · касса ${cash}` : `день ${day} · касса ${cash}`),
   continueHint: (day: number, cash: string) => (day === 0 ? `песочница: перед открытием · касса ${cash}` : `песочница: день ${day} · касса ${cash}`),
   restartTitle: 'Начать песочницу заново?',

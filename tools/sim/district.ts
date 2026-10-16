@@ -77,6 +77,11 @@ if (errors.length) {
   console.error(errors.join('\n'));
   process.exit(1);
 }
+/** задание главы 4 о потерях тяжёлых (spec 2026-10-rules): дни, порог в % и сколько тяжёлых нужно за неделю */
+const HEAVY = (() => {
+  const m = db.chapters[CITY]?.missions.find(x => x.kind === 'mortality');
+  return m?.kind === 'mortality' ? { days: m.days, percent: m.percent, lying: m.lying } : undefined;
+})();
 if (MONTHS.some(c => c !== 'chapter.hospital' && c !== VASCULAR && c !== CITY)) {
   console.error(`--chapter: hospital, vascular или city, а не ${MONTHS[0].replace('chapter.', '')}`);
   process.exit(1);
@@ -181,7 +186,12 @@ interface Run {
   /** по отделению болезни, которой болен на самом деле: принято и верно */
   departments: Record<Id, { seen: number; correct: number }>;
   ambulance: { arrived: number; sorted: number; under: number; over: number };
-  ward: { admitted: number; discharged: number; early: number; transferred: number; died: number; severe: number; stayDays: number; stayNorm: number; returnsWorse: number };
+  ward: { admitted: number; discharged: number; early: number; transferred: number; died: number; severe: number; stayDays: number; stayNorm: number; returnsWorse: number; heavy: number; heavyDied: number; heavyEarly: number };
+  /**
+   * лучшая неделя задания о смертности главы 4 (spec 2026-10-rules): % тяжёлых, умерших и выписанных раньше срока; нет
+   * недели с нужным числом тяжёлых — Infinity
+   */
+  heavyWeek: number;
   ops: { done: number; onTime: number; late: number; complicated: number; waited: number; complications: number; good: number };
   /**
    * стационар и операционная за все дни, ₽: оплата случаев (из неё прибавка за операции), койко-дни
@@ -476,7 +486,8 @@ function run(seed: number, player: Player, chapter: Id): Run {
     profit: 0, minCash: s.economy!.cash, cash: 0, reputation: 0,
     arrived: 0, seen: 0, left: 0, unseen: 0, correct: 0, wrong: 0, departments: {},
     ambulance: { arrived: 0, sorted: 0, under: 0, over: 0 },
-    ward: { admitted: 0, discharged: 0, early: 0, transferred: 0, died: 0, severe: 0, stayDays: 0, stayNorm: 0, returnsWorse: 0 },
+    ward: { admitted: 0, discharged: 0, early: 0, transferred: 0, died: 0, severe: 0, stayDays: 0, stayNorm: 0, returnsWorse: 0, heavy: 0, heavyDied: 0, heavyEarly: 0 },
+    heavyWeek: Infinity,
     ops: { done: 0, onTime: 0, late: 0, complicated: 0, waited: 0, complications: 0, good: 0 },
     money: {
       income: 0, opIncome: 0, bedDays: 0, opConsumables: 0, closedBedDays: 0, closedOpCost: 0, opCases: 0, opCasesBedDays: 0,
@@ -523,6 +534,9 @@ function run(seed: number, player: Player, chapter: Id): Run {
       out.ward.transferred += w.transferred;
       out.ward.died += w.died ?? 0;
       out.ward.severe += w.severe ?? 0;
+      out.ward.heavy += w.heavy ?? 0;
+      out.ward.heavyDied += w.heavyDied ?? 0;
+      out.ward.heavyEarly += w.heavyEarly ?? 0;
       out.ward.stayDays += w.stayDays;
       out.ward.stayNorm += w.stayNorm;
     }
@@ -659,6 +673,16 @@ function run(seed: number, player: Player, chapter: Id): Run {
   for (const m of db.chapters[chapter].missions.filter(x => x.main)) {
     const at = s.campaign?.done[m.id];
     out.missions[m.id] = at === undefined ? undefined : at - s.campaign!.since;
+  }
+  // лучшая неделя задания о смертности (spec 2026-10-rules): как в задании — тяжёлые, лежавшие накануне, и поступившие;
+  // потери — умершие и выписанные раньше срока
+  if (HEAVY) {
+    for (let i = HEAVY.days; i <= s.history.length; i++) {
+      const week = s.history.slice(i - HEAVY.days, i);
+      const lying = (s.history[i - HEAVY.days - 1]?.ward?.heavyLying ?? 0) + week.reduce((a, h) => a + (h.ward?.heavy ?? 0), 0);
+      const lost = week.reduce((a, h) => a + (h.ward?.heavyDied ?? 0) + (h.ward?.heavyEarly ?? 0), 0);
+      if (lying >= HEAVY.lying) out.heavyWeek = Math.min(out.heavyWeek, (100 * lost) / lying);
+    }
   }
   return out;
 }
@@ -882,11 +906,6 @@ const endoIncomeOf = (r: Run) => r.city.endoFees + r.city.bleedIncome;
 const endoCostsOf = (r: Run) => unitOf(r, 'endo') + r.city.endoConsumables + r.city.bleedCosts;
 const mriIncomeOf = (r: Run) => r.city.mriFees;
 const mriCostsOf = (r: Run) => unitOf(r, 'mri') + r.city.mriConsumables;
-/** порог смертности в стационаре — из задания главы 4, % лежавших */
-const MORTALITY = (() => {
-  const m = db.chapters[CITY]?.missions.find(x => x.kind === 'mortality');
-  return m?.kind === 'mortality' ? m.percent : 0;
-})();
 function summarize(rs: Run[]) {
   return {
     profit: Math.round(mean(rs, r => r.profit)), profitMin: Math.min(...rs.map(r => r.profit)), profitMax: Math.max(...rs.map(r => r.profit)),
@@ -895,14 +914,20 @@ function summarize(rs: Run[]) {
     opSurcharge: Math.round(mean(rs, r => r.money.opIncome)),
     orIncome: Math.round(mean(rs, r => r.money.opCases)), orCosts: Math.round(mean(rs, orCostsOf)),
     ctIncome: Math.round(mean(rs, ctIncomeOf)), ctCosts: Math.round(mean(rs, ctCostsOf)),
+    wingIncome: Math.round(mean(rs, r => ctIncomeOf(r) + icuIncomeOf(r) + r.wing.other.ctFees + r.wing.other.icuIncome)),
+    wingCosts: Math.round(mean(rs, r => ctCostsOf(r) + icuCostsOf(r) + r.wing.other.ctConsumables + r.wing.other.icuBedDays)),
     icuIncome: Math.round(mean(rs, icuIncomeOf)), icuCosts: Math.round(mean(rs, icuCostsOf)),
     ricuIncome: Math.round(mean(rs, ricuIncomeOf)), ricuCosts: Math.round(mean(rs, ricuCostsOf)),
     boxIncome: Math.round(mean(rs, boxIncomeOf)), boxCosts: Math.round(mean(rs, boxCostsOf)),
     endoIncome: Math.round(mean(rs, endoIncomeOf)), endoCosts: Math.round(mean(rs, endoCostsOf)),
     mriIncome: Math.round(mean(rs, mriIncomeOf)), mriCosts: Math.round(mean(rs, mriCostsOf)),
-    // смертность в стационаре (часть 61б) — как в задании главы 4: умерли и в «мягком режиме» переведены в тяжёлом
-    // состоянии, на положенных за месяц (в начале главы стационар пуст)
+    // смертность в стационаре (часть 61б): умерли и в «мягком режиме» переведены в тяжёлом состоянии, на положенных за
+    // месяц (в начале главы стационар пуст); тяжёлых — как в задании главы 4 (spec 2026-10-rules)
     mortality: pct(sum(rs, r => r.ward.died + r.ward.severe), sum(rs, r => r.ward.admitted)),
+    heavyMortality: pct(sum(rs, r => r.ward.heavyDied), sum(rs, r => r.ward.heavy)),
+    heavyLost: pct(sum(rs, r => r.ward.heavyDied + r.ward.heavyEarly), sum(rs, r => r.ward.heavy)),
+    heavyWeeks: rs.map(r => r.heavyWeek),
+    mortalityDone: rs.filter(r => r.missions.mortality !== undefined).length,
     opsOnTime: pct(sum(rs, r => r.ops.onTime), sum(rs, r => r.ops.onTime + r.ops.late)),
     waited: pct(sum(rs, r => r.ops.waited), sum(rs, r => r.ops.done)),
     complicated: pct(sum(rs, r => r.ops.complicated), sum(rs, r => r.ops.done)),
@@ -951,9 +976,11 @@ function criteriaOf(chapter: Id): Record<string, Criterion> {
     // и неврологии; каждое помещение отдельно — в отчёте, для сведения
     ...(chapter === VASCULAR
       ? {
+        // с 0.5.15 — всеми своими больными (решение владельца 15.10.2026, вопрос 35): ПИТ лечит всех, и больные других
+        // отделений занимают до 40 % её коек-ночей; кардиология и неврология — для сведения
         wingPays: {
-          ok: ra.ctIncome + ra.icuIncome >= ra.ctCosts + ra.icuCosts,
-          text: `кабинет КТ и ПИТ окупаются больными кардиологии и неврологии: ${rub(ra.ctIncome + ra.icuIncome)} против ${rub(ra.ctCosts + ra.icuCosts)}`,
+          ok: ra.wingIncome >= ra.wingCosts,
+          text: `кабинет КТ и ПИТ окупаются всеми своими больными: ${rub(ra.wingIncome)} против ${rub(ra.wingCosts)} (больными кардиологии и неврологии — ${rub(ra.ctIncome + ra.icuIncome)} против ${rub(ra.ctCosts + ra.icuCosts)})`,
         },
       }
       : {}),
@@ -965,9 +992,11 @@ function criteriaOf(chapter: Id): Record<string, Criterion> {
           ok: ra.endoIncome >= ra.endoCosts,
           text: `эндоскопия окупается обследованиями и стационаром больных с кровотечением: ${rub(ra.endoIncome)} против ${rub(ra.endoCosts)}`,
         },
+        // задание о смертности — по тяжёлым, умершим и выписанным раньше срока (spec 2026-10-rules): разумный выполняет его
+        // за месяц, ленивый — реже
         mortality: {
-          ok: ra.mortality <= MORTALITY,
-          text: `в стационаре умерли не больше ${MORTALITY} % положенных: ${ra.mortality.toFixed(1)} % (у ленивого ${la.mortality.toFixed(1)} %)`,
+          ok: 4 * ra.mortalityDone >= 3 * ra.heavyWeeks.length && la.mortalityDone < ra.mortalityDone,
+          text: `задание «неделя, когда из тяжёлых умерли или выписаны раньше срока не больше ${HEAVY?.percent} %» за ${DAYS} дней — у разумного на ${ra.mortalityDone} зёрнах из ${ra.heavyWeeks.length}, у ленивого — на ${la.mortalityDone}; за месяц — ${ra.heavyLost.toFixed(1)} % тяжёлых (у ленивого ${la.heavyLost.toFixed(1)} %)`,
         },
       }
       : {}),
@@ -1031,7 +1060,8 @@ for (const chapter of MONTHS) {
       console.log(`  боксы: случаи ${rub(x.boxIncome)} (${avg(r => r.city.boxStays)}) против ${rub(x.boxCosts)} — боксы ${per(r => r.money.units.box.upkeep)}, медсёстры ${per(r => r.money.units.box.staff)}, койко-дни ${c(u => u.boxBedDays)}`);
       console.log(`  эндоскопия: ${rub(x.endoIncome)} против ${rub(x.endoCosts)} — обследования ${c(u => u.endoFees)} (${avg(r => r.city.endoExams)}), стационар больных с кровотечением ${c(u => u.bleedIncome)} (принято ${avg(r => r.city.bleedSeen)}); против — кабинет с эндоскопом ${per(r => r.money.units.endo.upkeep)}, эндоскопист и медсестра ${per(r => r.money.units.endo.staff)}, расходники ${c(u => u.endoConsumables)}, койко-дни больных с кровотечением ${c(u => u.bleedCosts)}`);
       console.log(`  МРТ (для сведения): ${rub(x.mriIncome)} (${avg(r => r.city.mriExams)} обследований) против ${rub(x.mriCosts)} — кабинет с томографом ${per(r => r.money.units.mri.upkeep)}, люди ${per(r => r.money.units.mri.staff)}, расходники ${c(u => u.mriConsumables)}`);
-      console.log(`  смертность в стационаре: ${x.mortality.toFixed(1)} % положенных`);
+      const week = (v: number) => (Number.isFinite(v) ? `${v.toFixed(1)} %` : '—');
+      console.log(`  смертность в стационаре: ${x.mortality.toFixed(1)} % положенных; тяжёлых — ${x.heavyMortality.toFixed(1)} %, с выписанными раньше срока — ${x.heavyLost.toFixed(1)} % (${avg(r => r.ward.heavy)} тяжёлых, умерли ${avg(r => r.ward.heavyDied)}, раньше срока ${avg(r => r.ward.heavyEarly)}); лучшая неделя по зёрнам: ${x.heavyWeeks.map(week).join(' / ')}`);
     }
     console.log(`  стало хуже (вернулись хуже или с реакцией, умерли): ${x.harmed.toFixed(1)} на 100 принятых`);
     console.log(`  прибыль за ${DAYS} дней: ${rub(x.profit)} (${rub(x.profitMin)} … ${rub(x.profitMax)}); касса не ниже ${rub(x.minCash)}; репутация ${x.reputation}`);

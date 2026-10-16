@@ -103,9 +103,11 @@ describe('ПИТ: поступление, обход, касса', () => {
     expect(p.stay!.room).toBe(icu);
     expect(inIcu(db, s, p)).toBe(true);
     expect(freeIcuBeds(db, s)).toHaveLength(1);
-    expect(s.summary.ward).toMatchObject({ admitted: 1, icu: 1 });
+    // в ПИТ — тяжёлый (spec 2026-10-rules, часть 72): по нему — задание главы 4 о смертности
+    expect(p.stay!.heavy).toBe(true);
+    expect(s.summary.ward).toMatchObject({ admitted: 1, icu: 1, heavy: 1 });
     apply(db, s, { kind: 'closeDay' });
-    expect(s.summary.ward).toMatchObject({ lying: 1, icuLying: 1 });
+    expect(s.summary.ward).toMatchObject({ lying: 1, icuLying: 1, heavyLying: 1 });
     expect(s.summary.economy!.ledger.expenses.ward).toBe(db.economy.icu.bedDay);
   });
 
@@ -124,6 +126,9 @@ describe('ПИТ: поступление, обход, касса', () => {
     expect(p.closed!.grades.setting).toBe('D');
     expect(p.closed!.notes).toContainEqual({ code: 'setting.under', recommended: 'icu' });
     expect(inIcu(db, s, p)).toBe(false);
+    // пришёл сам и лёг в палату — не тяжёлый для задания о смертности: тяжёлых считают по шкале листа передачи и по ПИТ
+    expect(p.stay!.heavy).toBeUndefined();
+    expect(s.summary.ward!.heavy).toBeUndefined();
   });
 
   test('свободных коек ПИТ нет — «В ПИТ» не выбрать; заняли последнюю, пока решали, — перевод', () => {

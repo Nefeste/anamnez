@@ -3,7 +3,7 @@
 // выписки: штат, построенное, лежащие, кто должен вернуться, репутация и касса с бюджетом главы —
 // прежние, участок шире на крыло, отмена стройки — с чистого листа; в крыле строят кабинет КТ и ПИТ.
 // Готовая больница главы — районная с крылом: КТ, ПИТ на четыре койки и УЗИ. Задания — срок у больных
-// подряд, тромболизис без противопоказаний, смены без пропущенного инфаркта — и итоги дня для них;
+// (с 0.5.15 — без «подряд»), тромболизис без противопоказаний, смены без пропущенного инфаркта — и итоги дня для них;
 // вид главы и «Смена». С частью 45б — первая смена отделения с заведующей: в первый день главы, когда
 // работает кабинет КТ, — инфаркт нижней стенки и инсульт в окне по скорой, паралич лица — пришедший сам,
 // всем троим обязательное лечение можно; подсказки заведующей.
@@ -224,18 +224,18 @@ describe('переход в главу 3', () => {
 });
 
 describe('задания главы 3', () => {
-  test('срок у больных подряд: серия идёт через дни и рвётся первым опозданием; ход — нынешняя серия, выполнено — по лучшей', () => {
+  test('срок у больных — без «подряд» (spec 2026-10-rules): в срок во всех днях главы, опоздание счёт не обнуляет', () => {
     const m = mission('ecg');
     const seq = (x: string, target = ECG) => ({ targetSeq: { [target]: x } });
     expect(missionProgress(db, view([day(1, seq('AAA')), day(2, seq('AA'))]), m)).toEqual({ value: 5, target: 5, done: true });
-    expect(missionProgress(db, view([day(1, seq('AAAA')), day(2, seq('B'))]), m)).toEqual({ value: 0, target: 5, done: false });
-    expect(missionProgress(db, view([day(1, seq('AAD')), day(2), day(3, seq('AAA'))]), m)).toEqual({ value: 3, target: 5, done: false });
-    // пять подряд были — выполнено, что бы ни было потом
-    expect(missionProgress(db, view([day(1, seq('AAAAA')), day(2, seq('C'))]), m)).toEqual({ value: 5, target: 5, done: true });
+    expect(missionProgress(db, view([day(1, seq('AAAA')), day(2, seq('B'))]), m)).toEqual({ value: 4, target: 5, done: false });
+    // опоздания между ними — не помеха: пятый в срок — выполнено
+    expect(missionProgress(db, view([day(1, seq('AAD')), day(2), day(3, seq('ABAA'))]), m)).toEqual({ value: 5, target: 5, done: true });
+    // выполнено раньше — выполнено, что бы ни было потом
     expect(missionProgress(db, view([day(1, seq('D'))], { ecg: 1 }), m)).toEqual({ value: 5, target: 5, done: true });
-    // чужой срок не в счёт; КТ при инсульте — пять подряд
+    // чужой срок не в счёт; КТ при инсульте — пять в срок
     expect(missionProgress(db, view([day(1, seq('AAAAAAAAAA', CT))]), m).value).toBe(0);
-    expect(missionProgress(db, view([day(1, seq('AAAAA', CT))]), mission('ct'))).toEqual({ value: 5, target: 5, done: true });
+    expect(missionProgress(db, view([day(1, seq('ADADADADA', CT))]), mission('ct'))).toEqual({ value: 5, target: 5, done: true });
   });
 
   test('тромболизис: в окне и без противопоказаний; с противопоказанием или не по показаниям — не в счёт', () => {
@@ -307,13 +307,13 @@ describe('глава 3 между сменами', () => {
     expect([v.title, v.place, v.day, v.complete, v.after, v.next]).toEqual([T.campaign.chapter(3, ch3.name.ru), ch3.place.ru, 0, false, undefined, undefined]);
     expect(v.letters.map(l => [l.id, l.from])).toEqual([...ch3.letters.filter(l => l.when === 'start')].reverse().map(l => [l.id, db.characters[l.from].short.ru]));
     expect(v.missions.map(m => [m.id, m.progress])).toEqual([
-      ['ecg', '0 из 5 больных подряд'],
-      ['ct', '0 из 5 больных подряд'],
+      ['ecg', '0 из 5 больных'],
+      ['ct', '0 из 5 больных'],
       ['lysis', '0 из 1'],
       ['ctRoom', T.campaign.notYet],
       ['icu', T.campaign.notYet],
       ['noMissedMI', T.campaign.dayProgress(0, 5)],
-      ['swallow', '0 из 5 больных подряд'],
+      ['swallow', '0 из 5 больных'],
     ]);
     expect(shiftState()!.hospital!.w).toBe(db.presets[ch2.preset].plot[0] + ch3.wing!);
     const games = await savedGames();

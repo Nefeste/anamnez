@@ -230,21 +230,35 @@ describe('задания главы 4', () => {
     expect(missionProgress(db, view([day(1)], { staff: 1 }), m).done).toBe(true);
   });
 
-  test('неделя смертности: семь дней подряд, лежавшие накануне и поступившие; умершие и переведённые в тяжёлом состоянии — поровну', () => {
+  test('неделя смертности — по тяжёлым (spec 2026-10-rules): семь дней, тяжёлые накануне и поступившие; потери — умершие и выписанные раньше срока', () => {
     const m = mission('mortality');
-    const week = (from: number, died = 0, severe = 0, admitted = 5) =>
-      Array.from({ length: 7 }, (_, i) => day(from + i, ward(admitted, 20, i === 2 ? died : 0, i === 2 ? severe : 0)));
-    expect(missionProgress(db, view(week(1).slice(0, 6)), m)).toEqual({ value: 6, target: 7, mortality: { died: 0, lying: 30 }, done: false });
-    expect(missionProgress(db, view(week(1)), m)).toEqual({ value: 7, target: 7, mortality: { died: 0, lying: 35 }, done: true });
-    // 1 из 35 — 2,9 %: больше двух
-    expect(missionProgress(db, view(week(1, 1)), m)).toEqual({ value: 7, target: 7, mortality: { died: 1, lying: 35 }, done: false });
-    expect(missionProgress(db, view(week(1, 0, 1)), m).done).toBe(false);
-    // лежавшие вечером накануне первого дня — в счёт, хоть это и день прежней главы: 1 из 55 — 1,8 %
-    expect(missionProgress(db, view([day(0, ward(0, 20)), ...week(1, 1)]), m)).toMatchObject({ mortality: { died: 1, lying: 55 }, done: true });
-    // лежало меньше 30 — не в счёт, хоть никто и не умер
-    expect(missionProgress(db, view(week(1, 0, 0, 4)), m)).toMatchObject({ mortality: { died: 0, lying: 28 }, done: false });
+    if (m.kind !== 'mortality') throw new Error('задание о смертности');
+    // тяжёлых в день — столько, чтобы неделя набрала нужное число; потерь — ровно в пороге и на одну больше
+    const per = Math.ceil(m.lying / 7);
+    const lying = 7 * per;
+    const ok = Math.floor((m.percent * lying) / 100);
+    expect(ok).toBeGreaterThan(0);
+    const heavyDay = (n: number, heavy: number, died = 0, heavyLying = 0, early = 0) => day(n, {
+      ward: {
+        admitted: heavy + 5, discharged: early, early, transferred: 0, lying: 40, stayDays: 0, stayNorm: 0, heavy,
+        ...(died ? { heavyDied: died } : {}), ...(early ? { heavyEarly: early } : {}), ...(heavyLying ? { heavyLying } : {}),
+      },
+    });
+    const week = (from: number, died = 0, heavy = per, early = 0) =>
+      Array.from({ length: 7 }, (_, i) => heavyDay(from + i, heavy, i === 2 ? died : 0, 0, i === 4 ? early : 0));
+    expect(missionProgress(db, view(week(1).slice(0, 6)), m)).toMatchObject({ value: 6, target: 7, done: false });
+    expect(missionProgress(db, view(week(1, ok)), m)).toEqual({ value: 7, target: 7, mortality: { died: ok, early: 0, lying }, done: true });
+    expect(missionProgress(db, view(week(1, ok + 1)), m)).toEqual({ value: 7, target: 7, mortality: { died: ok + 1, early: 0, lying }, done: false });
+    // выписанный раньше срока тяжёлый — потеря, как умерший: через день-два вернётся хуже
+    expect(missionProgress(db, view(week(1, 0, per, ok)), m)).toEqual({ value: 7, target: 7, mortality: { died: 0, early: ok, lying }, done: true });
+    expect(missionProgress(db, view(week(1, 0, per, ok + 1)), m).done).toBe(false);
+    expect(missionProgress(db, view(week(1, 1, per, ok)), m)).toMatchObject({ mortality: { died: 1, early: ok, lying }, done: false });
+    // лёгкие в счёт не идут: лежало много, а тяжёлых за неделю меньше нужного — не выполнено, хоть никто и не умер
+    expect(missionProgress(db, view(week(1, 0, per - 1)), m)).toMatchObject({ mortality: { died: 0, early: 0, lying: 7 * (per - 1) }, done: false });
+    // тяжёлые, лежавшие вечером накануне первого дня, — в счёт, хоть это и день прежней главы
+    expect(missionProgress(db, view([heavyDay(0, 0, 0, 3), ...week(1, ok)]), m)).toMatchObject({ mortality: { died: ok, early: 0, lying: lying + 3 }, done: true });
     // плохая неделя, потом хорошая — выполнено; ход — последняя неделя
-    expect(missionProgress(db, view([...week(1, 3), ...week(8)]), m)).toMatchObject({ mortality: { died: 0, lying: 55 }, done: true });
+    expect(missionProgress(db, view([...week(1, ok + 2), ...week(8)]), m)).toMatchObject({ mortality: { died: 0, early: 0, lying }, done: true });
   });
 
   test('смены без заразного в общей палате: заразные были, и ни один не лёг в общую палату', () => {
@@ -257,12 +271,14 @@ describe('задания главы 4', () => {
     expect(missionProgress(db, view([ok(1), ok(2), ok(3), ok(4), ok(5)]), m)).toEqual({ value: 5, target: 5, done: true });
   });
 
-  test('сепсис: антибиотик при шоке и без шока — одна серия; задание — по сроку серии', () => {
+  test('сепсис: антибиотик при шоке и без шока — одна серия; задание — три больных в срок, без «подряд» (spec 2026-10-rules)', () => {
     const m = mission('sepsis');
     expect([m.kind === 'deadline' && m.target, db.targets[SHOCK_T].series]).toEqual([SEPSIS_T, SEPSIS_T]);
     const seq = (x: Record<string, string>) => ({ targetSeq: x });
     expect(missionProgress(db, view([day(1, seq({ [SEPSIS_T]: 'A' })), day(2, seq({ [SEPSIS_T]: 'AA', [SHOCK_T]: 'A' }))]), m)).toEqual({ value: 3, target: 3, done: true });
-    expect(missionProgress(db, view([day(1, seq({ [SEPSIS_T]: 'AAB' })), day(2, seq({ [SEPSIS_T]: 'A' }))]), m)).toEqual({ value: 1, target: 3, done: false });
+    // опоздание счёт не обнуляет: третий в срок — выполнено; двое в срок — ещё нет
+    expect(missionProgress(db, view([day(1, seq({ [SEPSIS_T]: 'AAB' })), day(2, seq({ [SEPSIS_T]: 'A' }))]), m)).toEqual({ value: 3, target: 3, done: true });
+    expect(missionProgress(db, view([day(1, seq({ [SEPSIS_T]: 'ABD' })), day(2, seq({ [SEPSIS_T]: 'A' }))]), m)).toEqual({ value: 2, target: 3, done: false });
     // строка срока при шоке сама задание не двигает: её оценки уже в строке серии
     expect(missionProgress(db, view([day(1, seq({ [SHOCK_T]: 'AAAAA' }))]), m).value).toBe(0);
   });
@@ -384,15 +400,18 @@ describe('глава 4 между сменами', () => {
     expect((await singleVenues()).find(x => x.venue === city.id)).toMatchObject({ ok: true, name: city.name.ru });
   });
 
-  test('ход недели смертности словами', () => {
+  test('ход недели смертности словами — по тяжёлым (spec 2026-10-rules)', () => {
     const t = T.campaign;
-    expect(t.mortalityProgress(3, 7, { died: 0, lying: 12 }, 30)).toBe('3 из 7 дней');
-    expect(t.mortalityProgress(7, 7, { died: 0, lying: 20 }, 30)).toBe('за последние 7 дней лежали 20 — нужно не меньше 30');
-    expect(t.mortalityProgress(7, 7, { died: 0, lying: 1 }, 30)).toBe('за последние 7 дней лежал 1 — нужно не меньше 30');
-    expect(t.mortalityProgress(7, 7, { died: 0, lying: 21 }, 21)).toBe('за последние 7 дней лежал 21, умерших нет');
-    expect(t.mortalityProgress(7, 7, { died: 0, lying: 44 }, 30)).toBe('за последние 7 дней лежали 44, умерших нет');
-    expect(t.mortalityProgress(7, 7, { died: 1, lying: 56 }, 30)).toBe('за последние 7 дней умер 1 из 56 лежавших — 1,8 %');
-    expect(t.mortalityProgress(7, 7, { died: 2, lying: 41 }, 30)).toBe('за последние 7 дней умерли 2 из 41 лежавшего — 4,9 %');
+    const x = (died: number, lying: number, early = 0) => ({ died, early, lying });
+    expect(t.mortalityProgress(3, 7, x(0, 12), 30)).toBe('3 из 7\u00a0дней');
+    expect(t.mortalityProgress(7, 7, x(0, 20), 30)).toBe('за последние 7\u00a0дней было 20\u00a0тяжёлых — нужно не меньше 30');
+    expect(t.mortalityProgress(7, 7, x(0, 1), 30)).toBe('за последние 7\u00a0дней был 1\u00a0тяжёлый — нужно не меньше 30');
+    expect(t.mortalityProgress(7, 7, x(0, 21), 21)).toBe('за последние 7\u00a0дней был 21\u00a0тяжёлый, умерших и выписанных раньше срока нет');
+    expect(t.mortalityProgress(7, 7, x(0, 44), 30)).toBe('за последние 7\u00a0дней было 44\u00a0тяжёлых, умерших и выписанных раньше срока нет');
+    expect(t.mortalityProgress(7, 7, x(1, 56), 30)).toBe('за последние 7\u00a0дней из 56\u00a0тяжёлых умер 1 — 1,8\u00a0%');
+    expect(t.mortalityProgress(7, 7, x(2, 41), 30)).toBe('за последние 7\u00a0дней из 41\u00a0тяжёлого умерли 2 — 4,9\u00a0%');
+    expect(t.mortalityProgress(7, 7, x(0, 13, 1), 10)).toBe('за последние 7\u00a0дней из 13\u00a0тяжёлых выписан раньше срока 1 — 7,7\u00a0%');
+    expect(t.mortalityProgress(7, 7, x(1, 13, 2), 10)).toBe('за последние 7\u00a0дней из 13\u00a0тяжёлых умер 1, выписаны раньше срока 2 — 23,1\u00a0%');
   });
 
   test('глава 4 — последняя: выполнена — «следующей главы пока нет», кнопки нет', async () => {
