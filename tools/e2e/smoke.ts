@@ -3793,6 +3793,21 @@ try {
     && !(await page.getByTestId('venue-preset.vascular').isDisabled()) && !(await page.getByTestId('venue-preset.city').isDisabled())
     && (await page.locator('[data-testid^="venue-"]').count()) === 6,
     `смена: больницы — практика, посёлок, районная, с сосудистым отделением, городская, своя (${(await text(page, 'venue-sandbox')).replace(/\n/g, ' · ')})`);
+  // кто принимает (вопрос 16, часть 79): выбор — там, где работают нанятые врачи, — в городской больнице; «Только вы» —
+  // смена «принимаете один»
+  const whoAtClinic = await page.getByTestId('who-solo').count();
+  await page.getByTestId('venue-preset.city').click();
+  await page.getByTestId('who-solo').click();
+  check(whoAtClinic === 0 && (await page.getByTestId('who-solo').count()) === 1, 'смена: «Кто принимает» — в городской больнице, в амбулатории практики — нет');
+  await page.screenshot({ path: join(OUT, '18-single-solo.png'), fullPage: true });
+  await page.getByTestId('single-start').click();
+  await page.getByTestId('shift-clock').waitFor({ timeout: 15_000 });
+  await page.waitForTimeout(500); // запись смены — следующим тиком
+  await page.screenshot({ path: join(OUT, '18-single-solo-map.png') });
+  await page.goto(base);
+  await page.getByTestId('menu-continue').waitFor({ timeout: 10_000 });
+  check((await text(page, 'menu-continue')).includes('смена: Городская больница, принимаете один'),
+    `смена, где принимаете только вы: «Продолжить» — ${(await text(page, 'menu-continue')).replace(/\n/g, ' · ')}`);
   await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/single.json', singleEndOfDaySave()]);
   await page.goto(base);
   await page.getByTestId('menu-continue').waitFor({ timeout: 10_000 });

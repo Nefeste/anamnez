@@ -201,9 +201,11 @@ export const SANDBOX_VENUE = 'sandbox';
  */
 export function newSingle(
   db: ContentDb,
-  opts: { seed: number; season: Season; difficulty?: Difficulty; venue: Id; hospital?: HospitalState; staff?: StaffMember[] } & Variety,
+  opts: { seed: number; season: Season; difficulty?: Difficulty; venue: Id; hospital?: HospitalState; staff?: StaffMember[]; solo?: boolean } & Variety,
 ): ShiftState {
   const s = singleBase(db, opts);
+  // принимаете только вы (часть 79): записи к нанятым врачам нет, новых они не берут — до того, как разыграли день
+  if (opts.solo) s.meta.solo = true;
   // день — в этой больнице (spec 2026-10-variety, «Заодно»): прежде он разыгрывался до неё, и в
   // районной больнице приходили только с терапией, без скорой
   planDay(db, s);
@@ -2461,10 +2463,11 @@ function results(s: ShiftState, p: ShiftPatient, notices: Notice[]) {
 
 /**
  * Кто из нанятых врачей сегодня принимает: терапевт в работающем кабинете врача — не в вашем
- * и с местом в ординаторской. Порядок — по номеру кабинета, затем человека.
+ * и с местом в ординаторской. Порядок — по номеру кабинета, затем человека. «Смена», где принимаете только вы
+ * (часть 79), — никто.
  */
 function colleaguesOf(db: ContentDb, s: ShiftState): StaffMember[] {
-  if (!s.hospital || !s.staff) return [];
+  if (!s.hospital || !s.staff || s.meta.solo) return [];
   const ctx = hospitalCtx(db, s);
   const mine = doctorRoom(ctx.plan);
   return ctx.staff
@@ -2537,7 +2540,8 @@ export function forPlayer(db: ContentDb, s: ShiftState, p: ShiftPatient): boolea
  * который сегодня принимает, тот возьмёт сам, а повторных, срочных и со скорой нанятые врачи и так не берут.
  */
 export function leftForPlayer(db: ContentDb, s: ShiftState, p: ShiftPatient): boolean {
-  return newcomer(p) && forPlayer(db, s, p) && !bookedHere(p, colleaguesOf(db, s));
+  // принимаете только вы (часть 79) — оставлять некому: «ждёт вас» не нужно
+  return !s.meta.solo && newcomer(p) && forPlayer(db, s, p) && !bookedHere(p, colleaguesOf(db, s));
 }
 
 /**
