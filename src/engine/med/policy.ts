@@ -4,7 +4,7 @@
 import { byParams, byValue, type ContentDb, type Exam, type Id, paramsOf, type Target } from '../../content/types';
 import { Rng } from '../core/rng';
 import { complaintObservations, examFits, runExam } from './exams';
-import { type Belief, contextOf, expectedGain, knownFacts, likelyParams, paramBeliefs, paramGain, posterior, type Prior } from './infer';
+import { type Belief, contextOf, expectedGain, gainBound, knownFacts, likelyParams, paramBeliefs, paramGain, posterior, type Prior } from './infer';
 import { choiceFor, companionsOf, type Plan, possibleFor, settingOf, tacticsFor, txAvailable, type Venue, verdictOf, whenHolds } from './plan';
 import { checkRule, harmCheck, knownOf, openRuleExams, ruleExams, ruleFindings, type Who } from './rules';
 import type { Observation, Patient } from './types';
@@ -429,13 +429,25 @@ export function whole<T>(parts: Parts<T>): T {
   }
 }
 
-/** Самое полезное на единицу цены из несделанных; польза ниже `minGain` — не назначается. По обследованию за часть. */
+/**
+ * Запас к границе пользы (`gainBound`): польза и граница считаются разными действиями, и последние биты у них могут
+ * разойтись; округление пользы (`quantize`) — до 1e-9, расхождение — порядка 1e-13.
+ */
+const BOUND_SLACK = 1e-9;
+
+/**
+ * Самое полезное на единицу цены из несделанных; польза ниже `minGain` — не назначается. По обследованию за часть.
+ * Обследование, которое и с наибольшей возможной пользой (`gainBound`) не обгонит лучшее или не наберёт `minGain`, не
+ * считается (0.5.16): выбор тот же, а пользу считают почти вчетверо реже.
+ */
 function* bestExam(db: ContentDb, beliefs: Belief[], ctx: Parameters<typeof expectedGain>[3], obs: readonly Observation[], done: readonly Id[], opt: StepOptions): Parts<Id | undefined> {
   const observed = new Set(obs.map(o => o.f));
   let best: Id | undefined;
   let bestScore = 0;
   for (const id of opt.exams) {
     if (done.includes(id)) continue;
+    const most = gainBound(db, id, beliefs, ctx, observed) + BOUND_SLACK;
+    if (quantize(most) < quantize(opt.minGain) || quantize(most / examCost(db, id)) <= bestScore) continue;
     const gain = expectedGain(db, id, beliefs, ctx, observed);
     yield;
     if (quantize(gain) < quantize(opt.minGain)) continue;

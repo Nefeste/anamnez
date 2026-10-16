@@ -474,10 +474,14 @@ interface StepCache {
   byFinding: Map<Id, readonly number[]>;
   /** фон признака — как у кандидата, который его не меняет */
   base: Map<Id, number>;
+  /** живые гипотезы, которые меняют признак против фона (`ownersOf`): по признаку и те, что меняют всё */
+  owners?: { by: Map<Id, number[]>; all: number[]; total: number };
+  /** сколько признак уточнит самое большее (`splitEntropy`) */
+  split?: Map<Id, number>;
 }
 const stepCache = new WeakMap<readonly Belief[], StepCache>();
 
-function candidateP(db: ContentDb, beliefs: readonly Belief[], ctx: InferContext, f: Id): readonly number[] {
+function stepOf(db: ContentDb, beliefs: readonly Belief[], ctx: InferContext): StepCache {
   let c = stepCache.get(beliefs);
   if (!c || c.db !== db || c.ctx !== ctx) {
     const sets = beliefs.map(b => [b.id, ...(db.conditions[b.id].requires ?? []), ...ctx.knownConditions]);
@@ -485,6 +489,11 @@ function candidateP(db: ContentDb, beliefs: readonly Belief[], ctx: InferContext
     const own = beliefs.map((b, i) => ownFindings(db, db.conditions[b.id], shares[i], ctx.unknowns));
     stepCache.set(beliefs, (c = { db, ctx, sets, shares, own, byFinding: new Map(), base: new Map() }));
   }
+  return c;
+}
+
+function candidateP(db: ContentDb, beliefs: readonly Belief[], ctx: InferContext, f: Id): readonly number[] {
+  const c = stepOf(db, beliefs, ctx);
   let ps = c.byFinding.get(f);
   if (!ps) {
     const { sets, shares, own, base } = c;
@@ -574,6 +583,63 @@ function entropyOf(beliefs: readonly Belief[]): number {
   let h = entropies.get(beliefs);
   if (h === undefined) entropies.set(beliefs, (h = entropy(beliefs)));
   return h;
+}
+
+/** Живые гипотезы шага, меняющие признак против фона (`ownFindings`), — по признакам; одни на все обследования. */
+function ownersOf(c: StepCache, beliefs: readonly Belief[]): NonNullable<StepCache['owners']> {
+  if (!c.owners) {
+    const by = new Map<Id, number[]>();
+    const all: number[] = [];
+    let total = 0;
+    for (const i of liveOf(beliefs)) {
+      total += beliefs[i].p;
+      const mine = c.own[i];
+      if (!mine) all.push(i);
+      else for (const f of mine) (by.get(f) ?? by.set(f, []).get(f)!).push(i);
+    }
+    c.owners = { by, all, total };
+  }
+  return c.owners;
+}
+
+/**
+ * Больше чего признак не уточнит (0.5.16, NFR-PRF-1): у гипотез, которые его не меняют, вероятность признака одна — фон
+ * (`candidateP`), и исход его проверки их между собой не различит. Польза признака — не больше энтропии деления «верна
+ * одна из тех, что его меняют, — или любая из остальных»; у признака, который меняют немногие гипотезы, она мала.
+ */
+function splitEntropy(db: ContentDb, beliefs: readonly Belief[], ctx: InferContext, f: Id): number {
+  const c = stepOf(db, beliefs, ctx);
+  const split = (c.split ??= new Map());
+  let h = split.get(f);
+  if (h === undefined) {
+    const { by, all, total } = ownersOf(c, beliefs);
+    h = 0;
+    let rest = total;
+    for (const list of [all, by.get(f) ?? []]) {
+      for (const i of list) {
+        rest -= beliefs[i].p;
+        h -= beliefs[i].p * log2(beliefs[i].p);
+      }
+    }
+    if (rest > 0) h -= rest * log2(rest);
+    split.set(f, h);
+  }
+  return h;
+}
+
+/**
+ * Сколько обследование уточнит самое большее (0.5.16, NFR-PRF-1): по каждому признаку — не больше бита и не больше
+ * энтропии деления (`splitEntropy`); вероятностей признаков для этого не нужно. Польза (`expectedGain`) не больше этой
+ * границы — с точностью до последних битов логарифма: обследование, которое и с ней не обгонит лучшее, разумный врач не
+ * считает (`bestExam`), и выбор тот же.
+ */
+export function gainBound(db: ContentDb, examId: Id, beliefs: readonly Belief[], ctx: InferContext, observed: ReadonlySet<Id>): number {
+  let most = 0;
+  for (const check of db.exams[examId].checks) {
+    if (observed.has(check.f) || db.findings[check.f]?.evidence === false) continue;
+    most += Math.min(1, splitEntropy(db, beliefs, ctx, check.f));
+  }
+  return most;
 }
 
 /**

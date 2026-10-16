@@ -13,6 +13,9 @@ discomfort: 1
 routineFor: [sym.thirst, sym.weight_loss]
 checks:
   - { f: lab.glucose_high, sens: 97, spec: 97 }
+  # пороги ДКА и ГГС (часть 73; Алгоритмы, 2023, с. 43, 47)
+  - { f: lab.glucose_14, sens: 97, spec: 100 }
+  - { f: lab.glucose_35, sens: 97, spec: 100 }
 texts:
   hint:
     ru: "Сахар крови натощак в лаборатории: 7,0 ммоль/л и выше дважды — сахарный диабет."

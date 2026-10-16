@@ -91,6 +91,8 @@ describe('каталог', () => {
     // с частью 49б (spec 2026-10-chapter-4) — и антибиотики: энтероколит, вызванный C. difficile
     expect(m.checks.filter(k => k.f.startsWith('hx.') && k.f !== 'hx.nsaid_use' && k.f !== 'hx.anticoagulants').map(k => [k.f, k.sens, k.spec])).toEqual([
       [INSULIN, 9800, 9900], [SU, 9000, 9700], ['hx.missed_meal', 9000, 9500], ['hx.antibiotics_recent', 9000, 9700], ['hx.antibiotic_now', 9700, 9900],
+      // часть 73 (spec 2026-10-urticaria-dka): новое лекарство и выпитые таблетки от аллергии — при крапивнице, пропуск инсулина — при ДКА
+      ['hx.new_drug', 9000, 9700], ['hx.antihistamine_failed', 9500, 9900], ['hx.missed_insulin', 9500, 9900],
     ]);
     expect(db.exams['exam.ask_general'].checks.map(k => k.f)).toEqual(expect.arrayContaining(['sym.tremor', 'sym.sweating', 'sym.hunger', CONFUSED]));
   });

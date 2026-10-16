@@ -247,6 +247,7 @@ describe('на экране и в энциклопедии', () => {
 
   test('статья капельницы: «До приезда скорой при» — ожог с условием', () => {
     const rows = article(db, IV)!.blocks.find(b => b.key === 'usedAs')!.rows!;
-    expect(rows.find(r => r.label === 'До приезда скорой при')!.refs!.map(r => r.id)).toEqual([BURN]);
+    // с частью 73 (spec 2026-10-urticaria-dka) — и гиперосмолярное состояние: раствор до перевода у всех
+    expect(rows.find(r => r.label === 'До приезда скорой при')!.refs!.map(r => r.id)).toEqual(['cond.hhs', BURN]);
   });
 });

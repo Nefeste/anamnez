@@ -1,12 +1,14 @@
 // Быстродействие смены (0.5.11, NFR-PRF-1; spec 2026-10-performance): разбор приёма — и ваших, и нанятых врачей —
 // считается заранее, в паузах игры, и тот же, что подряд; время проматывается срезами — состояние то же, что одним
-// куском.
+// куском. С 0.5.16 разумный врач не считает пользу обследования, которое и с наибольшей возможной не обгонит лучшее.
 import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
 import { salaryOf, type StaffMember } from '../../src/engine/hospital/staff';
 import { runDoctor, startRational } from '../../src/engine/med/policy';
 import { Rng } from '../../src/engine/core/rng';
+import { complaintObservations, runExam } from '../../src/engine/med/exams';
 import { generatePatient } from '../../src/engine/med/generate';
+import { contextOf, expectedGain, gainBound, posterior } from '../../src/engine/med/infer';
 import { apply, candidatesOf, newSandbox, prepareReview, reviewOf } from '../../src/engine/shift/engine';
 import type { ShiftPatient, ShiftState } from '../../src/engine/shift/types';
 
@@ -133,5 +135,40 @@ describe('время срезами', () => {
       for (let k = 0; k < 4; k++) apply(db, four, { kind: 'advance', seconds: 15 });
     }
     expect(four).toEqual(one);
+  });
+});
+
+describe('граница пользы', () => {
+  test('польза обследования не больше границы — на каждом шаге разумного врача, у каждого обследования', () => {
+    const departments = ['dept.therapy', 'dept.surgery', 'dept.trauma', 'dept.neurology', 'dept.infectious'];
+    const candidates = candidatesOf(db, departments);
+    const exams = Object.keys(db.exams).sort();
+    let checked = 0;
+    let below = 0;
+    let excess = -Infinity;
+    for (let i = 0; i < 6; i++) {
+      const p = generatePatient(db, 9_400_000 + i, { department: 'dept.therapy', departments, season: 'winter' });
+      const r = runDoctor(db, p, 'rational', Rng.seeded(5).fork(`b:${i}`), { candidates: [...candidates], exams: [...exams] });
+      const rng = Rng.seeded(7).fork(`b:${i}`);
+      const obs = complaintObservations(p);
+      for (const done of [undefined, ...r.exams]) {
+        if (done) obs.push(...runExam(db, p, done, rng.fork(done)));
+        const ctx = contextOf(db, p, obs);
+        const beliefs = posterior(db, candidates, obs, ctx);
+        const observed = new Set(obs.map(o => o.f));
+        for (const id of exams) {
+          const gain = expectedGain(db, id, beliefs, ctx, observed);
+          const most = gainBound(db, id, beliefs, ctx, observed);
+          excess = Math.max(excess, gain - most);
+          if (most < 0.05) below++;
+          checked++;
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(5000);
+    // запас врача — 1e-9 (`BOUND_SLACK` в policy.ts): расхождение последних битов много меньше
+    expect(excess).toBeLessThan(1e-12);
+    // и граница не пустая: у многих обследований она мала — их и не считают
+    expect(below / checked).toBeGreaterThan(0.3);
   });
 });
