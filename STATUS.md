@@ -3,8 +3,8 @@
 Не длиннее 30 строк; правится в том же PR, что меняет версию, этап или вопросы владельцу
 ([устав, `docs/04-process.md`](https://github.com/Nefeste/gornitsa/blob/main/docs/04-process.md)).
 
-**Версия:** 0.5.16 «Крапивница и неотложные при диабете» — `versionCode` 115, база 77, [`README.md`](README.md); PR —
-после Nefeste/anamnez#133. Выпущена 0.5.14 ([v0.5.14](https://github.com/Nefeste/anamnez/releases/tag/v0.5.14)).
+**Версия:** 0.5.16 «Крапивница и неотложные при диабете» — `versionCode` 115, база 77, [`README.md`](README.md); PR
+Nefeste/anamnez#135. Выпущена 0.5.14 ([v0.5.14](https://github.com/Nefeste/anamnez/releases/tag/v0.5.14)).
 
 **Этап:** 7 — выход в магазины ([дорожная карта](docs/07-roadmap.md), «Путь к 1.0»): 0.5.1–0.5.11 — музыка, назначения,
 сборка, «Практикант», ложные находки, лицензии, тревога, портреты, гипотезы, дорога, поломки, профессия, пол, возраст,
