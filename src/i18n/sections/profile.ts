@@ -57,4 +57,22 @@ export const profile = {
   } as Record<string, string>,
   gotOn: (date: string) => `Получено ${date}`,
   achievementLine: (name: string) => `Достижение: «${name}»`,
+  // специальности и умения (spec 2026-10-skills, часть 75): отделения игры — специальности врача
+  specialties: 'Специальности',
+  specialty: {
+    'dept.therapy': 'Терапия',
+    'dept.surgery': 'Хирургия',
+    'dept.trauma': 'Травматология',
+    'dept.neurology': 'Неврология',
+    'dept.infectious': 'Инфекционные болезни',
+  } as Record<string, string>,
+  level: (name: string, n: number) => `${name} — уровень ${n}`,
+  // очки опыта бывают и с половиной (почти верный диагноз): до уровня — целым числом верных
+  toNext: (n: number) => `до следующего — ${n} ${pluralRu(n, 'верный диагноз', 'верных диагноза', 'верных диагнозов')}`,
+  topLevel: 'высший уровень',
+  skills: 'Умения',
+  skillLine: (name: string, text: string) => `«${name}»: ${lowerFirst(text)}`,
+  skillsNone: 'Умения появятся со второго уровня специальности.',
+  skillsOff: 'Умения выключены в настройках.',
+  skillsNote: 'Новое умение действует со следующего дня; в «Случае дня» и «Разобрать случай» умений нет.',
 };

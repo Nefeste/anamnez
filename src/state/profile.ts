@@ -9,6 +9,7 @@ import { useSyncExternalStore } from 'react';
 import { db } from '@/content';
 import type { Id } from '@/content/types';
 import { type CareerFacts, caseFacts, newAchievements } from '@/engine/career/achievements';
+import { pointsFor } from '@/engine/career/skills';
 import type { Grade } from '@/engine/med/score';
 import type { ShiftPatient } from '@/engine/shift/types';
 import { loadSlot, type RawStore, saveSlot } from './saves';
@@ -121,6 +122,11 @@ export interface Profile {
   daily: Record<string, DailyRecord>;
   /** «Смена»: больница (preset.* или sandbox) → лучший результат */
   best: Record<string, SingleBest>;
+  /**
+   * опыт специальностей (spec 2026-10-skills, часть 75): отделение → очки по настоящей болезни закрытого приёма — верный
+   * диагноз 1, почти верный 0,5; от них уровни и умения
+   */
+  experience: Record<Id, number>;
 }
 
 export interface ProfileView extends Profile {
@@ -133,7 +139,7 @@ const emptyStats = (): ProfileStats => ({
   minutes: 0, timed: 0, antibiotics: { given: 0, indicated: 0 }, danger: { met: 0, caught: 0 },
 });
 const emptyProgress = (): CareerProgress => ({ got: {}, days: 0, run: 0, gradeA: 0, thrift: 0, allergy: 0, noLeftDays: 0, daily: 0, closedDays: [] });
-const empty = (): Profile => ({ stats: emptyStats(), seen: {}, archive: [], achievements: emptyProgress(), daily: {}, best: {} });
+const empty = (): Profile => ({ stats: emptyStats(), seen: {}, archive: [], achievements: emptyProgress(), daily: {}, best: {}, experience: {} });
 const VERDICTS = ['correct', 'partly', 'wrong'] as const;
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -231,6 +237,29 @@ export function sanitizeProfile(data: unknown): Profile {
       })
       .slice(0, ARCHIVE_SIZE);
   }
+  // опыт специальностей (spec 2026-10-skills): у профиля до 0.5.18 его нет — прежние верные и почти верные диагнозы
+  // делятся между отделениями по тому, сколько раз встречались их болезни
+  if (isObject(d.experience)) {
+    for (const [dept, x] of Object.entries(d.experience)) if (typeof x === 'number' && Number.isFinite(x) && x > 0) out.experience[dept] = Math.floor(x * 2) / 2;
+  } else out.experience = experienceFrom(out.stats, out.seen);
+  return out;
+}
+
+/** Опыт профиля из прежних версий: верные и почти верные — по доле встреченных болезней отделения, с точностью до половины. */
+export function experienceFrom(stats: Pick<ProfileStats, 'correct' | 'partly'>, seen: Readonly<Record<Id, number>>): Record<Id, number> {
+  const points = stats.correct + stats.partly / 2;
+  const by: Record<Id, number> = {};
+  for (const [id, n] of Object.entries(seen)) {
+    const dept = db.conditions[id]?.department;
+    if (dept) by[dept] = (by[dept] ?? 0) + n;
+  }
+  const total = Object.values(by).reduce((a, n) => a + n, 0);
+  const out: Record<Id, number> = {};
+  if (points <= 0 || total <= 0) return out;
+  for (const [dept, n] of Object.entries(by)) {
+    const x = Math.floor(((points * n) / total) * 2) / 2;
+    if (x > 0) out[dept] = x;
+  }
   return out;
 }
 
@@ -324,6 +353,7 @@ export function recordCases(cases: readonly Omit<CaseRecord, 'key'>[]): number {
     ...current.stats, grades: { ...current.stats.grades }, antibiotics: { ...current.stats.antibiotics }, danger: { ...current.stats.danger },
   };
   const seen = { ...current.seen };
+  const experience = { ...current.experience };
   const ach = { ...current.achievements, got: { ...current.achievements.got } };
   const added: CaseRecord[] = [];
   for (const c of fresh) {
@@ -334,6 +364,9 @@ export function recordCases(cases: readonly Omit<CaseRecord, 'key'>[]): number {
     if (GRADES.includes(closed.grades.overall)) stats.grades[closed.grades.overall]++;
     stats.money += c.patient.spent.money;
     for (const cond of c.patient.patient.truth.conditions) seen[cond.id] = (seen[cond.id] ?? 0) + 1;
+    // опыт специальности (spec 2026-10-skills): отделение настоящей болезни, за верный и почти верный диагноз
+    const dept = db.conditions[c.patient.patient.truth.conditions[0]?.id ?? '']?.department;
+    if (dept && pointsFor(closed.verdict) > 0) experience[dept] = (experience[dept] ?? 0) + pointsFor(closed.verdict);
     const f = caseFacts(db, c.patient);
     stats.minutes += Math.round(c.patient.spent.seconds / 60);
     stats.timed++;
@@ -352,7 +385,7 @@ export function recordCases(cases: readonly Omit<CaseRecord, 'key'>[]): number {
     earn(ach, factsOf(stats, seen, ach), key);
     added.unshift({ ...c, key, patient: copy(c.patient) });
   }
-  current = { ...current, stats, seen, achievements: ach, archive: [...added, ...archive].slice(0, ARCHIVE_SIZE) };
+  current = { ...current, stats, seen, experience, achievements: ach, archive: [...added, ...archive].slice(0, ARCHIVE_SIZE) };
   changed();
   void persist();
   return added.length;

@@ -1,0 +1,9 @@
+# Терапия 4 (spec 2026-10-skills; spec 2026-09-profile, часть 17): нанятые терапевты под вашим началом вдвое реже
+# забывают спросить об аллергии и противопоказаниях перед лечением (`forget` навыка, spec 2026-09-hired-doctors). Игровая
+# оценка
+id: skill.therapy_mentor
+department: dept.therapy
+level: 4
+name: { ru: "Наставник" }
+text: { ru: "Нанятые терапевты вдвое реже забывают спросить об аллергии перед лечением." }
+effect: { kind: mentor, role: role.therapist, forget: 2 }

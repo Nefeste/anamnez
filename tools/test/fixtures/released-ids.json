@@ -1,6 +1,6 @@
 {
-  "version": "0.5.17",
-  "base": 77,
+  "version": "0.5.18",
+  "base": 78,
   "ids": {
     "achievements": [
       "ach.allergy_10",
@@ -1285,6 +1285,15 @@
     ],
     "scores": [
       "score.news2"
+    ],
+    "skills": [
+      "skill.infectious_history",
+      "skill.neurology_hammer",
+      "skill.surgery_hands",
+      "skill.therapy_hearing",
+      "skill.therapy_mentor",
+      "skill.therapy_questions",
+      "skill.trauma_exam"
     ],
     "targets": [
       "target.adrenal_saline",

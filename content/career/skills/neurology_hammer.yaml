@@ -1,0 +1,8 @@
+# Неврология 2 (spec 2026-10-skills): опытный неврологический осмотр — слабость, нарушения речи и менингеальные знаки
+# заметнее. Игровая оценка
+id: skill.neurology_hammer
+department: dept.neurology
+level: 2
+name: { ru: "Неврологический молоточек" }
+text: { ru: "Неврологический осмотр на 10 п. п. чувствительнее." }
+effect: { kind: examSens, exams: [exam.neuro_exam], pp: 10 }

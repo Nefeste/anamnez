@@ -2,7 +2,8 @@
 // имя по умолчанию. Всё — из записей профиля (profile.ts) и базы; разбор приёма из архива
 // строит session.ts.
 import { db } from '@/content';
-import type { AchievementCategory } from '@/content/types';
+import type { AchievementCategory, Id } from '@/content/types';
+import { levelOf, skillsFor, specialtiesOf, toNextLevel } from '@/engine/career/skills';
 import type { Grade } from '@/engine/med/score';
 import { T } from '@/i18n';
 import { patientName } from './caseView';
@@ -128,4 +129,19 @@ export function suggestDoctor(sex: 'm' | 'f', random: () => number): Doctor {
   const pick = (a: readonly string[]) => a[Math.floor(random() * a.length) % a.length];
   const surname = pick(n.surnames);
   return { sex, first: pick(sex === 'm' ? n.male : n.female), last: sex === 'm' ? surname : n.feminine(surname) };
+}
+
+/** Специальности профиля (spec 2026-10-skills, часть 75): уровень и сколько верных диагнозов до следующего. */
+export function specialtyRows(p: Pick<Profile, 'experience'>): { department: Id; title: string; hint: string }[] {
+  const t = T.profile;
+  return specialtiesOf(db).map(department => {
+    const points = p.experience[department] ?? 0;
+    const next = toNextLevel(points);
+    return { department, title: t.level(t.specialty[department] ?? department, levelOf(points)), hint: next > 0 ? t.toNext(Math.ceil(next)) : t.topLevel };
+  });
+}
+
+/** Умения профиля — строкой: название и что даёт. */
+export function skillRows(p: Pick<Profile, 'experience'>): { id: Id; line: string }[] {
+  return skillsFor(db, p.experience).map(id => ({ id, line: T.profile.skillLine(db.skills[id].name.ru, db.skills[id].text.ru) }));
 }

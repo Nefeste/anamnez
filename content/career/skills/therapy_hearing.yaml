@@ -1,0 +1,9 @@
+# Терапия 2 (spec 2026-10-skills, часть 75; spec 2026-09-profile, часть 17): опытный слух — хрипы и ослабленное дыхание
+# слышнее. Прибавка — та же, что у навыка нанятого человека (`ExamSkill.sensPp`): тот же бросок, другой порог. Число —
+# игровая оценка
+id: skill.therapy_hearing
+department: dept.therapy
+level: 2
+name: { ru: "Внимательный слух" }
+text: { ru: "Выслушивание лёгких на 10 п. п. чувствительнее." }
+effect: { kind: examSens, exams: [exam.lung_auscultation], pp: 10 }

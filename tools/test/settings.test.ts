@@ -15,7 +15,8 @@ beforeEach(() => {
 describe('настройки', () => {
   test('файла нет — умолчания: звук полный, музыка средне, фон и вибрация включены, автопауза тоже, оговорка не прочитана, текст обычный, тема как в телефоне, мягкий режим выключен, больные — как в жизни', async () => {
     await loadSettings();
-    expect(settings()).toEqual({ sound: 1, music: 0.7, ambience: true, vibration: true, pauseOnRed: true, pauseOnResults: true, disclaimerAccepted: false, textScale: 1, theme: 'system', softMode: false, variety: false });
+    // с 0.5.18 — и умения врача, включены (spec 2026-10-skills)
+    expect(settings()).toEqual({ sound: 1, music: 0.7, ambience: true, vibration: true, pauseOnRed: true, pauseOnResults: true, disclaimerAccepted: false, textScale: 1, theme: 'system', softMode: false, variety: false, skills: true });
   });
 
   test('поменяли — записано; после «перезапуска» — те же', async () => {

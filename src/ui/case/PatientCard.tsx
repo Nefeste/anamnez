@@ -229,7 +229,7 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
               const why = v.unavailable[id];
               return (
                 <Button key={id} testID={`exam-${id}`} kind="plain" disabled={!!why} title={info.name}
-                  hint={why ?? (v.bedside?.[id] !== undefined ? t.costBedside(v.bedside[id], info.cost) : t.cost(info.minutes, info.cost))} hintMono={!why}
+                  hint={why ?? (v.bedside?.[id] !== undefined ? t.costBedside(v.bedside[id], info.cost) : t.cost(v.minutes?.[id] ?? info.minutes, info.cost))} hintMono={!why}
                   onPress={() => doExam(id)} onInfo={() => explain(examTerm(id))} infoLabel={t.whatIsIt} />
               );
             })}

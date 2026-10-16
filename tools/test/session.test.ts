@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
 import { apply } from '../../src/engine/shift/engine';
 import type { ShiftState } from '../../src/engine/shift/types';
+import { forgetProfile } from '../../src/state/profile';
 import { loadSlot, memoryStore } from '../../src/state/saves';
 import {
   callPatient, chooseDiagnosis, chooseSetting, closeDay, examine, finishCase, forgetShift, leaveCase, loadShift, nextDay, openCase,
@@ -19,6 +20,8 @@ beforeEach(() => {
   setStore(store);
   forgetShift();
   forgetSettings();
+  // профиль общий для файлов прогона: опыт чужих тестов дал бы смене умения — строку в журнале (0.5.18)
+  forgetProfile();
 });
 
 /** Часы на карте до первого в очереди (не больше `limit` игровых минут). */

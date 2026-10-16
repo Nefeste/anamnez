@@ -74,6 +74,7 @@ export default function SettingsScreen() {
           items={PATIENTS.map(key => ({ key, title: t.patientChoices[key], hint: t.patientHints[key] }))}
         />
         <P muted>{t.patientsNote}</P>
+        <Toggle testID="settings-skills" title={t.skills} hint={t.skillsHint} value={s.skills} onChange={v => updateSettings({ skills: v })} />
       </Card>
       <Card>
         <H>{t.screen}</H>

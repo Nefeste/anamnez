@@ -18,7 +18,7 @@ import {
   BANDS, type ChapterSrc, chapterSchema, type CharacterSrc, characterSchema, type ConditionSrc, conditionSchema, type EconomySrc, economySchema, type EquipmentSrc, equipmentSchema, type ExamSrc, examSchema, type FindingSrc, findingSchema,
   type LinkSrc, PREVALENCE, type PresetSrc, presetSchema, type ProbabilitySrc, type ProfessionSrc, professionSchema, type RiskSrc, type RoleSrc, riskSchema, roleSchema, type RoomSrc, roomSchema,
   type TipSrc, tipSchema, type TreatmentSrc, treatmentSchema, versionSchema, type AchievementSrc, achievementSchema, type ScoreSrc, scoreSchema,
-  type RuleSrc, ruleSchema, type TargetSrc, targetSchema,
+  type RuleSrc, ruleSchema, type TargetSrc, targetSchema, type SkillSrc, skillSchema,
 } from './schema';
 
 export const CONTENT_DIR = join(import.meta.dir, '../../content');
@@ -152,6 +152,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   const scores: Record<string, ScoreSrc> = {};
   const rules: Record<string, RuleSrc> = {};
   const targets: Record<string, TargetSrc> = {};
+  const skills: Record<string, SkillSrc> = {};
   let economy: EconomySrc | undefined;
   let contentVersion = 0;
 
@@ -235,8 +236,11 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     } else if (top === 'targets') {
       const x = check(targetSchema);
       if (x) { expectId(x.id, 'target'); put(targets, x); }
+    } else if (top === 'career' && rel.split('/')[1] === 'skills') {
+      const x = check(skillSchema);
+      if (x) { expectId(x.id, 'skill'); put(skills, x); }
     } else {
-      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, people/professions, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/economy.yaml, campaign/characters, campaign/chapters, campaign/tips, achievements, scores, rules, targets)`);
+      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, people/professions, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/economy.yaml, campaign/characters, campaign/chapters, campaign/tips, achievements, scores, rules, targets, career/skills)`);
     }
   }
   if (!contentVersion) errors.push('version.yaml: нет contentVersion');
@@ -872,6 +876,8 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     scores: Object.fromEntries(Object.values(scores).sort((a, b) => (a.id < b.id ? -1 : 1)).map(x => [x.id, x])),
     rules: Object.fromEntries(Object.values(rules).sort((a, b) => (a.id < b.id ? -1 : 1)).map(x => [x.id, x])),
     targets: Object.fromEntries(Object.values(targets).sort((a, b) => (a.id < b.id ? -1 : 1)).map(x => [x.id, x])),
+    // умения — по специальности, затем по уровню: так их показывает профиль
+    skills: Object.fromEntries(Object.values(skills).sort((a, b) => (a.department < b.department ? -1 : a.department > b.department ? 1 : a.level - b.level || (a.id < b.id ? -1 : 1))).map(x => [x.id, x])),
     economy: economy
       ? { ...economy, sandbox: { ...economy.sandbox, corridor: rects(economy.sandbox.corridor) } }
       : NO_ECONOMY,
@@ -1082,6 +1088,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     checkPresets(db, errors);
     checkCampaign(db, errors);
     checkAchievements(db, errors);
+    checkSkills(db, errors);
     // скорая везёт болезнь отделения (engine.ts, ambulancePatient): раз смотровую приёмного
     // можно построить, у каждого отделения должно быть кого везти — иначе день не начнётся
     if (Object.values(db.rooms).some(r => r.emergency)) {
@@ -1233,6 +1240,23 @@ function checkAchievements(db: ContentDb, errors: string[]) {
     if (a.kind === 'roomWorks' && !db.rooms[a.room]) at(`помещение ${a.room} не найдено`);
     if (a.kind === 'chapter' && !db.chapters[a.chapter]) at(`глава ${a.chapter} не найдена`);
     if (a.kind === 'allergyAsked' && !db.exams[ALLERGY_EXAM]) at(`вопроса об аллергии ${ALLERGY_EXAM} в базе нет`);
+  }
+}
+
+/**
+ * Умения врача (spec 2026-10-skills, часть 75): специальность — отделение, с болезнями которого приходят; обследования и
+ * должность — существующие; у специальности на уровне — одно умение.
+ */
+function checkSkills(db: ContentDb, errors: string[]) {
+  const levels = new Set<string>();
+  for (const x of Object.values(db.skills)) {
+    const at = (what: string) => errors.push(`${x.id}: ${what}`);
+    if (!Object.values(db.conditions).some(c => c.presenting && c.department === x.department)) at(`в отделении ${x.department} нет болезней`);
+    const key = `${x.department}:${x.level}`;
+    if (levels.has(key)) at(`у ${x.department} на уровне ${x.level} уже есть умение`);
+    levels.add(key);
+    if (x.effect.kind === 'mentor' && !db.roles[x.effect.role]) at(`должность ${x.effect.role} не найдена`);
+    if (x.effect.kind === 'examSens') for (const e of x.effect.exams) if (!db.exams[e]) at(`обследование ${e} не найдено`);
   }
 }
 

@@ -946,6 +946,9 @@ try {
   // больные (spec 2026-10-variety): по умолчанию — «Реализм», выбор остаётся после перезапуска
   check((await page.getByTestId('patients-real').getAttribute('aria-checked')) === 'true' && (await text(page, 'patients-varied')).includes('редкие болезни чаще'),
     `настройки: больные — «Реализм»; ${(await text(page, 'patients-varied')).replace(/\n/g, ' · ')}`);
+  // умения врача (spec 2026-10-skills, часть 75): по умолчанию включены
+  check((await page.getByTestId('settings-skills').getAttribute('aria-checked')) === 'true' && (await text(page, 'settings-skills')).includes('уровни специальностей'),
+    `настройки: умения врача — включены, ${(await text(page, 'settings-skills')).replace(/\n/g, ' · ')}`);
   await page.getByTestId('settings-vibration').click();
   await page.getByTestId('sound-1').click();
   await page.getByTestId('music-0').click();
@@ -1406,6 +1409,10 @@ try {
   const profileLines = await page.locator('[data-testid^="profile-line-"]').allInnerTexts();
   check((await text(page, 'profile-rank')) === 'Интерн' && profileLines.some(l => /^В среднем на приём — \d+\s?мин$/.test(l.trim())),
     `профиль: звание «${await text(page, 'profile-rank')}», ${profileLines.find(l => l.startsWith('В среднем')) ?? 'нет строки о минутах'}`);
+  // специальности (spec 2026-10-skills, часть 75): после первого приёма — всё ещё первый уровень, умений нет
+  check((await text(page, 'specialty-dept.therapy')) === 'Терапия — уровень 1' && (await text(page, 'specialty-dept.infectious')) === 'Инфекционные болезни — уровень 1'
+    && (await text(page, 'profile-skills-note')).startsWith('Новое умение действует со следующего дня'),
+    `профиль: ${await text(page, 'specialty-dept.therapy')}; ${await text(page, 'profile-skills-note')}`);
   await page.screenshot({ path: join(OUT, '09-profile.png') });
   await archived.first().click();
   await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });

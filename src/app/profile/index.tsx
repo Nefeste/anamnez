@@ -8,7 +8,8 @@ import { Text } from '@/ui/text';
 import { T } from '@/i18n';
 import { Portrait } from '@/render/Portrait';
 import { loadProfile, useProfile } from '@/state/profile';
-import { achievementCount, archiveRows, DOCTOR_AGE, doctorName, portraitSeed, practiceLines, rankLadder, rankName } from '@/state/profileView';
+import { achievementCount, archiveRows, DOCTOR_AGE, doctorName, portraitSeed, practiceLines, rankLadder, rankName, skillRows, specialtyRows } from '@/state/profileView';
+import { useSettings } from '@/state/settings';
 import { CaseRow } from '@/ui/case/CaseRow';
 import { Button, Card, P, Screen } from '@/ui/components';
 import { makeStyles, space } from '@/ui/theme';
@@ -23,6 +24,8 @@ export default function ProfileScreen() {
   const lines = practiceLines(p);
   const rows = archiveRows(p.archive);
   const got = achievementCount(p);
+  const skillsOn = useSettings().skills;
+  const skills = skillRows(p);
   return (
     <Screen>
       <Card>
@@ -39,6 +42,18 @@ export default function ProfileScreen() {
       <Card>
         <Text style={styles.label}>{t.practice}</Text>
         {lines.length === 0 ? <P muted>{t.noCases}</P> : lines.map((l, i) => <P key={i} testID={`profile-line-${i}`}>{l}</P>)}
+      </Card>
+      <Card>
+        <Text style={styles.label}>{t.specialties}</Text>
+        {specialtyRows(p).map(r => (
+          <View key={r.department}>
+            <P testID={`specialty-${r.department}`}>{r.title}</P>
+            <P muted>{r.hint}</P>
+          </View>
+        ))}
+        <Text style={[styles.label, styles.gap]}>{t.skills}</Text>
+        {skills.length === 0 ? <P muted>{t.skillsNone}</P> : skills.map(s => <P key={s.id} testID={`skill-${s.id}`}>{s.line}</P>)}
+        <P muted testID="profile-skills-note">{skillsOn ? t.skillsNote : t.skillsOff}</P>
       </Card>
       <Card>
         <Text style={styles.label}>{t.achievements}</Text>
@@ -70,4 +85,5 @@ const useStyles = makeStyles(t => ({
   name: { fontSize: 22, fontWeight: '700', color: t.colors.ink },
   rank: { fontSize: 15, fontWeight: '600', color: t.colors.accent, marginTop: 2 },
   label: { fontSize: 13, fontWeight: '700', letterSpacing: 1.2, color: t.colors.muted, textTransform: 'uppercase', marginBottom: space.xs },
+  gap: { marginTop: space.s },
 }));

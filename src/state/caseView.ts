@@ -216,6 +216,8 @@ export interface VisitView {
   canStepOut?: boolean;
   /** смена: что делается у постели и сколько минут (часть 37: ЭКГ в смотровой приёмного) */
   bedside?: Record<Id, number>;
+  /** смена: обследования, которые с умениями дня идут дольше или короче базы (spec 2026-10-skills), — их минуты */
+  minutes?: Record<Id, number>;
   /** смена: сроки по рекомендации — строками (часть 37) */
   targets?: string[];
   /** смена: повторное обращение — строка для шапки */
@@ -273,6 +275,7 @@ export interface CaseInput {
   canSendAway?: boolean;
   canStepOut?: boolean;
   bedside?: Record<Id, number>;
+  minutes?: Record<Id, number>;
   /** аппараты у постели (часть 39а): лежит в смотровой приёмного — монитор; нет — в кабинете врача ничего */
   bedsideEquipment?: readonly Id[];
   /** своя реанимация (spec 2026-10-chapter-4, часть 47): есть свободная койка с ИВЛ — `free`, все заняты — `full`; нет — её нет */
@@ -895,6 +898,7 @@ export function makeCaseView(c: CaseInput): VisitView {
     ...(c.canSendAway ? { canSendAway: true } : {}),
     ...(c.canStepOut ? { canStepOut: true } : {}),
     ...(c.bedside ? { bedside: c.bedside } : {}),
+    ...(c.minutes ? { minutes: c.minutes } : {}),
     ...(c.targets && c.targets.length > 0 ? { targets: c.targets } : {}),
     ...(c.returnNote ? { returnNote: c.returnNote } : {}),
     ...(c.payerNote ? { payerNote: c.payerNote } : {}),
