@@ -135,7 +135,8 @@ in Russian.
 - Signs don’t always show up and tests are sometimes wrong — as in real life. A diagnosis is a
   probability, and the review shows how sure an experienced doctor would have been.
 - “What is this?” for every sign and test in plain words, and more in the in-game encyclopedia:
-  conditions, signs, tests, treatment, scores and rules.
+  conditions, signs, tests, treatment, scores and rules. From a condition’s article you can work
+  through a case — see one such patient where the condition is treated.
 - A doctor profile: practice totals, an archive of recent visits with reviews, and achievements —
   no deadlines and no streaks.
 - Two themes: the light “Chart” — paper and blue ink, like a patient’s record — and the dark
