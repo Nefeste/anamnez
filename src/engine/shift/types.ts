@@ -197,6 +197,12 @@ export interface ClosedCase {
   rooms?: Id[];
   /** до решения была фибрилляция желудочков, её сняли разрядом под монитором (часть 39б) */
   arrest?: true;
+  /**
+   * разбор приёма нанятого врача ещё не досчитан (spec 2026-10-engine-speed, ч. 1): бережливость и общая оценка —
+   * предварительные, цена разумного пути — 0; `lenient` — разбор «Практиканта». Досчитывает `settleReviews`, читает
+   * `reviewedCase`
+   */
+  review?: 'due' | 'lenient';
 }
 
 export type ShiftEvent =

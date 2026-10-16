@@ -9,7 +9,7 @@ import { Rng } from '../../src/engine/core/rng';
 import { complaintObservations, runExam } from '../../src/engine/med/exams';
 import { generatePatient } from '../../src/engine/med/generate';
 import { contextOf, expectedGain, gainBound, posterior } from '../../src/engine/med/infer';
-import { apply, candidatesOf, newSandbox, prepareReview, reviewOf } from '../../src/engine/shift/engine';
+import { apply, candidatesOf, newSandbox, prepareReview, reviewedCase, reviewOf } from '../../src/engine/shift/engine';
 import type { ShiftPatient, ShiftState } from '../../src/engine/shift/types';
 
 /** Амбулатория песочницы; первый пришедший — у вас в кабинете. */
@@ -119,8 +119,10 @@ describe('нанятый врач', () => {
     expect(theirs.length).toBeGreaterThan(3);
     for (const p of theirs) {
       const r = reviewOf(db, a, p, p.closed!.diagnosis).rational;
-      expect(p.closed!.rationalCost).toBe(r.cost);
-      expect(p.closed!.rationalMoney).toBe(r.money);
+      // разбор нанятого врача — по требованию: среди дня читается через reviewedCase (tools/test/lazy-review.test.ts)
+      const closed = reviewedCase(db, a, p)!;
+      expect(closed.rationalCost).toBe(r.cost);
+      expect(closed.rationalMoney).toBe(r.money);
     }
   }, 60_000);
 });

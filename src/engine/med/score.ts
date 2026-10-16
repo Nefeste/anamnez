@@ -106,15 +106,31 @@ const worst = (...g: Grade[]): Grade => g.reduce((a, b) => (POINTS[b] < POINTS[a
 export const worstGrade = (grades: readonly Grade[]): Grade => worst(...grades);
 
 export function scoreCase(x: CaseInput): CaseScore {
+  return scoreThrift(scoreBase(x), x.cost, x.rationalCost);
+}
+
+/**
+ * Оценка без бережливости (spec 2026-10-engine-speed, ч. 1): всё, для чего не нужен разумный врач разбора. Те же
+ * действия в том же порядке, что были в `scoreCase`; замечания — без замечания о бережливости и «мягком разборе», их
+ * добавляет `scoreThrift`.
+ */
+export interface ScoreBase {
+  verdict: CaseInput['verdict'];
+  accuracy: Grade;
+  defensibility: Grade;
+  treatment: Grade;
+  setting: Grade;
+  safety: Grade;
+  targets?: Grade;
+  lenient: boolean;
+  notes: ScoreNote[];
+}
+
+export function scoreBase(x: Omit<CaseInput, 'rationalCost'>): ScoreBase {
   const notes: ScoreNote[] = [];
   const accuracy: Grade = x.verdict === 'correct' ? 'A' : x.verdict === 'partly' ? 'B' : 'D';
   // верно при 30 % — «угадал», неверно при 90 % — «не повезло»: мерим рассуждение, а не удачу
   const defensibility: Grade = x.confidence >= 0.75 ? 'A' : x.confidence >= 0.5 ? 'B' : x.confidence >= 0.25 ? 'C' : 'D';
-
-  const floor = Math.max(x.rationalCost, 10);
-  const ratio = x.cost / floor;
-  const thrift: Grade = ratio <= 1.25 ? 'A' : ratio <= 2 ? 'B' : ratio <= 3 ? 'C' : 'D';
-  if (thrift !== 'A') notes.push({ code: 'thrift.over', times: Math.round(ratio * 10) / 10 });
 
   // лечение
   const roles = x.plan.roles;
@@ -222,6 +238,21 @@ export function scoreCase(x: CaseInput): CaseScore {
   // сроки (часть 37) — десятая доля общей; у приёма без срока общая — как прежде
   const targets = x.targets && x.targets.length > 0 ? worst(...x.targets) : undefined;
   const lenient = x.lenient === true;
+  return { verdict: x.verdict, accuracy, defensibility, treatment, setting, safety, ...(targets ? { targets } : {}), lenient, notes };
+}
+
+/**
+ * Бережливость и общая оценка (spec 2026-10-engine-speed, ч. 1): по цене обследований врача и разумного врача разбора.
+ * Замечание о бережливости — первым, «мягкий разбор» — последним, как было в `scoreCase`.
+ */
+export function scoreThrift(b: ScoreBase, cost: number, rationalCost: number): CaseScore {
+  const { verdict, accuracy, defensibility, treatment, setting, safety, targets, lenient } = b;
+  const notes: ScoreNote[] = [];
+  const floor = Math.max(rationalCost, 10);
+  const ratio = cost / floor;
+  const thrift: Grade = ratio <= 1.25 ? 'A' : ratio <= 2 ? 'B' : ratio <= 3 ? 'C' : 'D';
+  if (thrift !== 'A') notes.push({ code: 'thrift.over', times: Math.round(ratio * 10) / 10 });
+  notes.push(...b.notes);
   const reasoning = lenient ? 0 : POINTS[defensibility] + POINTS[thrift];
   const weighted = 2 * POINTS[accuracy] + 2 * POINTS[treatment] + 2 * POINTS[safety] + POINTS[setting] + reasoning + (targets ? POINTS[targets] : 0);
   const mean = weighted / ((lenient ? 7 : 9) + (targets ? 1 : 0));
@@ -229,7 +260,7 @@ export function scoreCase(x: CaseInput): CaseScore {
   if (safety === 'D') overall = worst(overall, 'C'); // опасное решение не бывает хорошим случаем
   // неверный диагноз — тоже (решение владельца 15.10.2026, вопрос 13): «B · неверно» читалось похвалой за ошибку;
   // у «Практиканта» итог — среднее: он учится на лечении и безопасности
-  if (x.verdict === 'wrong' && !lenient) overall = worst(overall, 'C');
+  if (verdict === 'wrong' && !lenient) overall = worst(overall, 'C');
   if (lenient && (defensibility !== 'A' || thrift !== 'A')) notes.push({ code: 'level.lenient' });
   return { accuracy, defensibility, thrift, treatment, setting, safety, ...(targets ? { targets } : {}), overall, notes };
 }

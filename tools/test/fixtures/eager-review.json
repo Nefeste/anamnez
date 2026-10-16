@@ -1,0 +1,32 @@
+[
+  {
+    "venue": "preset.city",
+    "seed": 1,
+    "atNoon": {
+      "count": 28,
+      "hash": "63b39b88ba4e853a"
+    },
+    "hired": 56,
+    "closed": "94ed2b83f5255eae"
+  },
+  {
+    "venue": "preset.city",
+    "seed": 2,
+    "atNoon": {
+      "count": 19,
+      "hash": "c4c33ddf7e9be114"
+    },
+    "hired": 46,
+    "closed": "688492db91256e9d"
+  },
+  {
+    "venue": "preset.city",
+    "seed": 3,
+    "atNoon": {
+      "count": 26,
+      "hash": "24a496b7d271a8e7"
+    },
+    "hired": 44,
+    "closed": "5ab88afede70fc09"
+  }
+]

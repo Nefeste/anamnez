@@ -25,11 +25,11 @@ import {
   apply, atDoctor, atDoorOf, bedsideEquipment, bedsideOf, boxBeds, brokenOf, current, freeBeds, freeBoxBeds, freeIcuBeds, freeRicuBeds, type HospitalCtx, hospitalCtx, icuBeds, inBox, inIcu, inpatientsOf, inRicu,
   leftForPlayer, moreUrgent, newCampaign, newSandbox, ricuBeds,
   newShift, newSingle, observationsOf, operationOf, type OrBlock, orBlock, orQueueOf, prepareReview, reviewFor, SANDBOX_VENUE, stayEquipment, targetPlace,
-  wardBeds, catchUp, prepareFinish,
+  wardBeds, catchUp, prepareFinish, reviewedCase,
 } from '@/engine/shift/engine';
 import { minutesTo, targetStart, targetsFor } from '@/engine/shift/targets';
 import {
-  type Command, DAY, type Difficulty, easyLevel, type Mode, type Notice, SHIFT_END, SHIFT_SCHEMA_VERSION, type ShiftPatient, type ShiftState, type Triage,
+  type ClosedCase, type Command, DAY, type Difficulty, easyLevel, type Mode, type Notice, SHIFT_END, SHIFT_SCHEMA_VERSION, type ShiftPatient, type ShiftState, type Triage,
 } from '@/engine/shift/types';
 import { T } from '@/i18n';
 import { lowerFirst } from '@/i18n/case';
@@ -2117,8 +2117,7 @@ function outcomeKnown(s: ShiftState, p: ShiftPatient): boolean {
   return c.plan.setting !== 'home' || lastClosed >= closedDay(p) + c.outcome.day;
 }
 
-function decisionFor(meta: Pick<ShiftState['meta'], 'seed' | 'department'>, p: ShiftPatient, arrived: Arrival[], known: boolean): Decision {
-  const c = p.closed!;
+function decisionFor(meta: Pick<ShiftState['meta'], 'seed' | 'department'>, p: ShiftPatient, arrived: Arrival[], known: boolean, c: ClosedCase = p.closed!): Decision {
   // исход лежащего меняется при выписке — ключ с ним
   const key = `${meta.seed}:${p.id}:${known}:${c.outcome.kind}`;
   const cached = decisions.get(key);
@@ -2315,7 +2314,8 @@ function buildCaseView(): VisitView | undefined {
     alarm: p.id === s.current && sess.alarm,
     done: p.done,
     draft: p.draft,
-    decision: p.closed ? decisionFor(s.meta, p, arrived, outcomeKnown(s, p)) : undefined,
+    // приём нанятого врача — с досчитанным разбором: среди дня его бережливость ещё отложена (`reviewedCase`)
+    decision: p.closed ? decisionFor(s.meta, p, arrived, outcomeKnown(s, p), reviewedCase(db, s, p)) : undefined,
     canSendAway: p.status === 'inRoom' && seen.pending.length > 0,
     // ждать нечего, а ждёт кто-то срочнее — «Попросить подождать» (часть 37)
     canStepOut: p.status === 'inRoom' && seen.pending.length === 0 && moreUrgent(db, s, p),
