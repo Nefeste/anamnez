@@ -25,7 +25,7 @@ import { scaleTriage } from '../med/news2';
 import { alsoSettings, choiceFor, evaluatePlan, primaryOf, recommendedSetting, selfLimits, settingFit, settingRoomsOf, STAYS, surgeriesOf, treatable, txAvailable, type Venue, verdictOf, whenHolds } from '../med/plan';
 import { type DoctorRun, examCost, indicated, ORDER_MINUTES, type Parts, startRational, type StepResult, stepParts, whole } from '../med/policy';
 import { buildReview, type ReviewData, reviewBeliefs } from '../med/review';
-import { scoreCase } from '../med/score';
+import { type Grade, scoreBase, type ScoreBase, scoreThrift, worstGrade } from '../med/score';
 import { askMinutes, examSkillWith, mentorOf } from '../career/skills';
 import type { Observation, Patient } from '../med/types';
 import {
@@ -806,6 +806,8 @@ function returningPatient(db: ContentDb, s: ShiftState, ret: PlannedReturn) {
 
 function closeDay(db: ContentDb, s: ShiftState) {
   if (!s.dayOpen) return;
+  // итоги дня — полные: отложенные разборы приёмов нанятых врачей досчитываются (spec 2026-10-engine-speed, ч. 1)
+  settleReviews(db, s);
   for (const p of Object.values(s.patients)) {
     if (p.status === 'waiting' || p.status === 'inRoom' || p.status === 'away' || p.status === 'coming') {
       if (p.status !== 'coming') s.summary.unseen++;
@@ -1335,7 +1337,8 @@ function closePatient(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase
     const c = colleagueDay(s, p.by);
     c.seen++;
     c[closed.verdict]++;
-    c.grades[closed.grades.overall]++;
+    // общая оценка — когда досчитан разбор (`settleReviews`)
+    if (!closed.review) c.grades[closed.grades.overall]++;
   } else {
     sum.seen++;
     sum[closed.verdict]++;
@@ -1419,18 +1422,19 @@ function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
   // обследования (часть 50а) — раньше всего
   const soft = s.meta.soft === true;
   const outcome = examHarmOutcome(db, plan, ev, branch(s, `outcome:${p.id}`), soft) ?? rscFor(db, s, p, plan) ?? observe(db, patient, plan, ev, branch(s, `outcome:${p.id}`), soft);
-  // разумный врач разбора — посчитанный заранее (0.5.11, NFR-PRF-1): у вашего приёма — пока вы думаете, у приёма нанятого
-  // врача — в паузах игры (`prepareReview`); не готов — досчитывается здесь. Цена и деньги — те же, что в разборе
-  const r = reviewEntry(db, s.meta, p).run.result();
-  const rational = { cost: r.exams.reduce((a, id) => a + examCost(db, id), 0), money: r.money };
+  // разумный врач разбора — посчитанный заранее (0.5.11, NFR-PRF-1): у вашего приёма — пока вы думаете; не готов —
+  // досчитывается здесь. У приёма нанятого врача — по требованию (spec 2026-10-engine-speed, ч. 1): бережливость и общая
+  // оценка досчитываются `settleReviews` (в свободное время и при закрытии дня), а читаются `reviewedCase`
+  const later = p.by !== undefined;
   const present = new Set(patient.truth.findings.map(f => f.f));
   // та же группа — частично; с частью 48а — и источник сепсиса (пневмония вместо сепсиса из неё)
   const verdict = verdictOf(db, dx, patient);
   // сроки (spec 2026-10-chapter-3, часть 37): лежит в смотровой с болью в груди — ЭКГ за 10 минут
   // с частью 39б — и решения: тромболизис и перевод сделаны в минуту, когда врач закрыл приём
   const targets = targetResults(db, p, targetPlace(db, s, p), { t: s.t, plan });
-  const score = scoreCase({
-    verdict, confidence, cost: p.done.reduce((a, id) => a + examCost(db, id), 0), rationalCost: rational.cost,
+  const cost = p.done.reduce((a, id) => a + examCost(db, id), 0);
+  const base = scoreBase({
+    verdict, confidence, cost,
     plan: ev, outcome, selfLimiting: selfLimits(db, primaryOf(patient)), ...(cond.settles ? { settles: true } : {}),
     redFlags: (cond.redFlags ?? []).filter(f => present.has(f)).map(f => ({ f, seen: obs.some(o => o.f === f && o.shown) })),
     // что было правильно выбрать здесь: со своей палатой — положить в неё, со своей операционной — оперировать
@@ -1439,12 +1443,90 @@ function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
     // «Практикант» (spec 2026-10-trainee): обоснованность и бережливость — для сведения
     ...(s.meta.difficulty === 'trainee' ? { lenient: true as const } : {}),
   });
+  const rational = later ? { cost: 0, money: 0 } : rationalOf(db, s.meta, p);
+  // отложенный разбор: бережливость пока «как у разумного» (A), общая — по ней; замечания — без бережливости
+  const score = scoreThrift(later ? { ...base, notes: [] } : base, cost, later ? cost : rational.cost);
   const { notes, targets: _worst, ...grades } = score;
   return {
-    at: s.t, diagnosis: dx, verdict, confidence, plan, outcome, grades, notes, rationalCost: rational.cost, rationalMoney: rational.money,
+    at: s.t, diagnosis: dx, verdict, confidence, plan, outcome, grades, notes: later ? [...base.notes] : notes, rationalCost: rational.cost, rationalMoney: rational.money,
     ...(targets.length > 0 ? { targets } : {}), ...(bedside.length > 0 ? { bedside } : {}), ...(rooms.length > 0 ? { rooms: [...rooms] } : {}),
     ...(p.arrest !== undefined ? { arrest: true as const } : {}),
+    ...(later ? { review: base.lenient ? 'lenient' as const : 'due' as const } : {}),
   };
+}
+
+/** Цена и деньги разумного врача разбора на этом пациенте. */
+function rationalOf(db: ContentDb, meta: Pick<ShiftState['meta'], 'seed' | 'department'>, p: ShiftPatient): { cost: number; money: number } {
+  const r = reviewEntry(db, meta, p).run.result();
+  return { cost: r.exams.reduce((a, id) => a + examCost(db, id), 0), money: r.money };
+}
+
+// --- разбор приёма нанятого врача по требованию (spec 2026-10-engine-speed, ч. 1) -------------------------------------
+
+/** Замечание, которое закрытие приёма дописывает после оценки: сверка сортировки привезённого скорой со шкалой. */
+const afterScore = (n: ClosedCase['notes'][number]) => n.code === 'triage.under' || n.code === 'triage.over';
+
+/** Оценка без бережливости — из закрытого приёма: оценки, сроки и замечания оценки, записанные при закрытии. */
+function baseOf(c: ClosedCase): ScoreBase {
+  const g = c.grades;
+  const targets: Grade[] = (c.targets ?? []).map(t => t.grade);
+  return {
+    verdict: c.verdict, accuracy: g.accuracy, defensibility: g.defensibility, treatment: g.treatment, setting: g.setting, safety: g.safety,
+    ...(targets.length > 0 ? { targets: worstGrade(targets) } : {}), lenient: c.review === 'lenient', notes: c.notes.filter(n => !afterScore(n)),
+  };
+}
+
+/** Досчитать разбор в `c` (тот же объект или его копию): бережливость, общая оценка, замечания, цена разумного пути. */
+function finishReview(db: ContentDb, meta: Pick<ShiftState['meta'], 'seed' | 'department'>, p: ShiftPatient, c: ClosedCase): ClosedCase {
+  const rational = rationalOf(db, meta, p);
+  const score = scoreThrift(baseOf(c), p.done.reduce((a, id) => a + examCost(db, id), 0), rational.cost);
+  c.grades.thrift = score.thrift;
+  c.grades.overall = score.overall;
+  c.notes.splice(0, c.notes.length, ...score.notes, ...c.notes.filter(afterScore));
+  c.rationalCost = rational.cost;
+  c.rationalMoney = rational.money;
+  delete c.review;
+  return c;
+}
+
+/**
+ * Закрытый приём с досчитанным разбором — для экранов, не меняя состояния: тот же до байта, что после `settleReviews`.
+ * Разбор досчитан — сам приём.
+ */
+export function reviewedCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase | undefined {
+  const c = p.closed;
+  if (!c?.review) return c;
+  const copy = JSON.parse(JSON.stringify(c)) as ClosedCase;
+  return finishReview(db, s.meta, p, copy);
+}
+
+/** Сколько приёмов ждут досчёта разбора. */
+export function reviewsDue(s: ShiftState): number {
+  let n = 0;
+  for (const p of Object.values(s.patients)) if (p.closed?.review) n++;
+  return n;
+}
+
+/**
+ * Досчитать отложенные разборы — по порядку закрытия, пока `more()` (разумный врач разбора — по частям); без `more` —
+ * все. Строка оценок нанятого врача в итогах того дня, когда приём закрыт, получает его общую оценку. true — всё
+ * досчитано.
+ */
+export function settleReviews(db: ContentDb, s: ShiftState, more?: () => boolean): boolean {
+  const due = Object.values(s.patients).filter(p => p.closed?.review).sort((a, b) => a.closed!.at - b.closed!.at || (a.id < b.id ? -1 : 1));
+  for (const p of due) {
+    const run = reviewEntry(db, s.meta, p).run;
+    while (!run.done()) {
+      if (more && !more()) return false;
+      run.part();
+    }
+    const c = finishReview(db, s.meta, p, p.closed!);
+    const day = Math.floor(c.at / DAY) + 1;
+    const sum = s.summary.day === day ? s.summary : s.history.find(h => h.day === day);
+    const col = sum?.colleagues?.[c.by!];
+    if (col) col.grades[c.grades.overall]++;
+  }
+  return true;
 }
 
 /**
@@ -1568,6 +1650,8 @@ export function prepareReview(db: ContentDb, s: ShiftState): boolean {
   }
   // затем — у приёмов нанятых врачей и у тех, кто ждёт в очереди: разумный врач разбора нужен при закрытии каждого
   for (const q of ahead(s)) if (reviewEntry(db, s.meta, q).run.part() !== true) return true;
+  // и у закрытых приёмов нанятых врачей, чей разбор отложен (spec 2026-10-engine-speed «Больницы»): закрытие дня возьмёт готовое
+  for (const q of Object.values(s.patients)) if (q.closed?.review && reviewEntry(db, s.meta, q).run.part() !== true) return true;
   return false;
 }
 
@@ -2750,10 +2834,6 @@ function colleagueReady(db: ContentDb, s: ShiftState, more: () => boolean): bool
     if (r.done) job.result = r.value;
     else if (!more()) return false;
   }
-  // решил — закроет приём: разумный врач разбора нужен сейчас (бережливость), он — тоже по частям
-  if (job.result.step.kind === 'decide') {
-    const run = reviewEntry(db, s.meta, p).run;
-    while (run.part() !== true) if (!more()) return false;
-  }
+  // решил — закроет приём; разумный врач разбора не нужен сейчас: бережливость — по требованию (spec 2026-10-engine-speed)
   return true;
 }
