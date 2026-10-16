@@ -288,11 +288,15 @@ export function Chips({ children }: { children: ReactNode }) {
 }
 
 /** `quote` — слова пациента: плашка контуром («Монитор»). */
-export function Chip({ text, strong, quote, onPress, testID }: { text: string; strong?: boolean; quote?: boolean; onPress?: () => void; testID?: string }) {
+/** `checked` — плашка-флажок выбора нескольких («Свои больные», часть 76): выбрана — выделена, читалке — «отмечено». */
+export function Chip({ text, strong, quote, onPress, testID, checked }: { text: string; strong?: boolean; quote?: boolean; onPress?: () => void; testID?: string; checked?: boolean }) {
   const styles = useStyles();
+  const bold = checked ?? strong;
   return (
-    <Pressable testID={testID} onPress={onPress} disabled={!onPress} style={({ pressed }) => [styles.chip, quote ? styles.chipQuote : strong ? styles.chipStrong : styles.chipWeak, pressed && styles.btnPressed]}>
-      <Text style={[styles.chipText, !strong && styles.muted]}>{text}</Text>
+    <Pressable testID={testID} onPress={onPress} disabled={!onPress}
+      {...(checked !== undefined ? { accessibilityRole: 'checkbox' as const, 'aria-checked': checked } : {})}
+      style={({ pressed }) => [styles.chip, quote ? styles.chipQuote : bold ? styles.chipStrong : styles.chipWeak, pressed && styles.btnPressed]}>
+      <Text style={[styles.chipText, !bold && styles.muted]}>{text}</Text>
     </Pressable>
   );
 }

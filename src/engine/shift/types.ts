@@ -3,7 +3,7 @@
 // Состояние — обычный сериализуемый объект: сохранение — снимок (ADR 0010). Случайность
 // в нём не хранится: всё берётся из именованных ветвей зерна смены (ADR 0004), поэтому
 // одинаковые зерно и команды дают одинаковую смену — на телефоне, в тестах и в повторе.
-import type { Id, Season, Setting } from '../../content/types';
+import type { BodySystem, Id, Season, Setting } from '../../content/types';
 import type { Scheduled } from '../core/events';
 import type { Outcome } from '../med/course';
 import type { BuildCommand, Built, HospitalState } from '../hospital/build';
@@ -261,6 +261,8 @@ export type Command =
   | { kind: 'variety'; on: boolean }
   /** умения врача из профиля (spec 2026-10-skills): со следующего дня; `today` — в начале игры, сразу */
   | { kind: 'skills'; ids: Id[]; today?: true }
+  /** «свои больные» из настроек (spec 2026-10-own-patients): сразу — нанятые врачи оставляют вам новых этих групп */
+  | { kind: 'mine'; systems: BodySystem[] }
   /** кампания (часть 34): основные задания главы выполнены — в больницу следующей главы */
   | { kind: 'nextChapter' };
 
@@ -428,6 +430,11 @@ export interface ShiftState {
     skills?: Id[];
     /** умения со следующего дня: профиль изменился за день — новое действует завтра */
     skillsNext?: Id[];
+    /**
+     * «свои больные» (spec 2026-10-own-patients, часть 76): новых, кого по жалобам направили бы в эти группы болезней,
+     * нанятые врачи оставляют вам; нет — берут всех, как прежде
+     */
+    mine?: BodySystem[];
   };
   t: number;
   day: number;

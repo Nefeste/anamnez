@@ -6,6 +6,7 @@
 // (ADR 0010): запись атомарная, с копиями. Модуль, как session.ts, не знает про платформу —
 // хранилище приходит снаружи (setSettingsStore).
 import { useSyncExternalStore } from 'react';
+import { type BodySystem, SYSTEMS } from '@/content/types';
 import { loadSlot, type RawStore, saveSlot } from './saves';
 
 export const SETTINGS_SLOT = 'settings';
@@ -46,11 +47,16 @@ export interface Settings {
   variety: boolean;
   /** «Умения врача» (spec 2026-10-skills, часть 75): умения специальностей действуют со следующего дня; выключены — ровная сложность */
   skills: boolean;
+  /**
+   * «Свои больные» (spec 2026-10-own-patients, часть 76): новых, кого по жалобам направили бы в эти группы болезней,
+   * нанятые врачи оставляют вам; пусто — берут всех, как прежде
+   */
+  mine: BodySystem[];
 }
 
 export const DEFAULTS: Settings = {
   sound: 1, music: 0.7, ambience: true, vibration: true, pauseOnRed: true, pauseOnResults: true, disclaimerAccepted: false, textScale: 1, theme: 'system', softMode: false, variety: false,
-  skills: true,
+  skills: true, mine: [],
 };
 
 export interface SettingsView extends Settings {
@@ -95,6 +101,8 @@ export function sanitize(data: unknown): Settings {
   return {
     sound: level('sound'), music: level('music'), ambience: flag('ambience'), vibration: flag('vibration'), pauseOnRed: flag('pauseOnRed'), pauseOnResults: flag('pauseOnResults'), disclaimerAccepted: flag('disclaimerAccepted'),
     textScale, theme, softMode: flag('softMode'), variety: flag('variety'), skills: flag('skills'),
+    // группы — только известные, без повторов, в порядке выбора диагноза
+    mine: Array.isArray(d.mine) ? SYSTEMS.filter(x => (d.mine as unknown[]).includes(x)) : [],
   };
 }
 
