@@ -2,11 +2,20 @@
 // Вид — из темы (spec 2026-09-own-look): в «Медкарте» главная кнопка — оттиск штампа с
 // рамкой внутри, листы — бумага, вкладки действий — закладки картотеки; в «Мониторе» — панели
 // и зелёная кнопка.
-import { type ReactNode, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, View, type ViewStyle } from 'react-native';
+import { type ReactNode, type Ref, useImperativeHandle, useRef, useState } from 'react';
+import { type LayoutChangeEvent, Modal, Pressable, ScrollView, StyleSheet, View, type ViewStyle } from 'react-native';
 import { Text } from './text';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { makeStyles, space, touch, useTheme } from './theme';
+
+/**
+ * Прокрутка экрана снаружи (0.5.20): поставить место листа — `y` от начала прокрутки и высота — посередине видимого.
+ * Карта пациента так держит на виду ответ на только что сделанное (отзыв владельца 16.10.2026); `onDrag` — игрок
+ * листает сам.
+ */
+export interface ScreenScroll {
+  center: (y: number, height: number) => void;
+}
 
 /**
  * Экран с прокруткой. Смена `resetKey` возвращает прокрутку наверх (новый пациент).
@@ -14,13 +23,27 @@ import { makeStyles, space, touch, useTheme } from './theme';
  * пальцем, а не в конце длинного листа. `header` — закреплён сверху (карта смены). `bare` —
  * экран без шапки (меню с обложкой): отступ от строки состояния — свой, черты под шапкой нет.
  */
-export function Screen({ children, scroll = true, resetKey, footer, header, bare }: { children: ReactNode; scroll?: boolean; resetKey?: string | number; footer?: ReactNode; header?: ReactNode; bare?: boolean }) {
+export function Screen({ children, scroll = true, resetKey, footer, header, bare, scrollRef, onDrag }: {
+  children: ReactNode; scroll?: boolean; resetKey?: string | number; footer?: ReactNode; header?: ReactNode; bare?: boolean;
+  scrollRef?: Ref<ScreenScroll>; onDrag?: () => void;
+}) {
   const styles = useStyles();
+  const view = useRef<ScrollView>(null);
+  // высота видимой части: ставить место посередине
+  const box = useRef(0);
+  useImperativeHandle(scrollRef, () => ({
+    center: (y, height) => view.current?.scrollTo({ y: Math.max(0, y - Math.max(0, box.current - height) / 2), animated: true }),
+  }), []);
   return (
     <SafeAreaView style={styles.screen} edges={bare ? ['top', 'bottom', 'left', 'right'] : ['bottom', 'left', 'right']}>
       {bare ? null : <Rule />}
       {header ? <View style={styles.header}>{header}</View> : null}
-      {scroll ? <ScrollView key={resetKey} contentContainerStyle={styles.content}>{children}</ScrollView> : <View style={styles.fill}>{children}</View>}
+      {scroll ? (
+        <ScrollView ref={view} key={resetKey} onLayout={e => { box.current = e.nativeEvent.layout.height; }} onScrollBeginDrag={onDrag}
+          contentContainerStyle={styles.content}>
+          {children}
+        </ScrollView>
+      ) : <View style={styles.fill}>{children}</View>}
       {footer ? <View style={styles.footer}><View style={styles.footerInner}>{footer}</View></View> : null}
     </SafeAreaView>
   );
@@ -39,9 +62,9 @@ function Rule() {
   );
 }
 
-export function Card({ children, style, testID }: { children: ReactNode; style?: ViewStyle; testID?: string }) {
+export function Card({ children, style, testID, onLayout }: { children: ReactNode; style?: ViewStyle; testID?: string; onLayout?: (e: LayoutChangeEvent) => void }) {
   const styles = useStyles();
-  return <View testID={testID} style={[styles.card, style]}>{children}</View>;
+  return <View testID={testID} onLayout={onLayout} style={[styles.card, style]}>{children}</View>;
 }
 
 /** Шаг линовки листа «Медкарты» и отступ поля — в точках. */

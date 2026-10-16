@@ -971,7 +971,12 @@ try {
   await page.goto(`${base}/settings`);
   await page.getByTestId('mine-heart').waitFor({ timeout: 10_000 });
   check((await page.getByTestId('mine-heart').getAttribute('aria-checked')) === 'true', 'настройки: «Сердце и сосуды» — отмечено и после перезапуска');
-  await page.getByTestId('mine-heart').click();
+  // 0.5.20: плитками; сколько отмечено — словами, и «Снять все отметки»
+  const mineStatus = await page.getByTestId('settings-mine-status').innerText();
+  check(mineStatus.startsWith('Отмечена 1'), `настройки: свои больные — «${mineStatus}»`);
+  await page.getByTestId('settings-mine-clear').click();
+  check((await page.locator('[data-testid^="mine-"][aria-checked="true"]').count()) === 0 && (await page.getByTestId('settings-mine-clear').count()) === 0,
+    'настройки: «Снять все отметки» — ничего не отмечено');
   await page.getByTestId('settings-vibration').click();
   await page.getByTestId('sound-3').click();
   await page.getByTestId('music-2').click();
@@ -1126,8 +1131,18 @@ try {
   await page.getByTestId('done-exam.ask_complaints').waitFor({ timeout: 5000 });
   const asked = await text(page, 'done-exam.ask_complaints');
   check(asked.split('\n').length > 1 && (await page.getByTestId('exam-exam.ask_complaints').count()) === 0, `П4: ответ под вопросом — «${asked.replace(/\n/g, ' · ')}»`);
+  // ответ на обследование — посередине экрана (0.5.20, отзыв владельца 16.10.2026): «Известно» выше растёт вместе с
+  // ответом, а прокрутка на Android места не держит — здесь так же, без удержания прокрутки браузером
+  const noAnchor = await page.addStyleTag({ content: '* { overflow-anchor: none !important; }' });
   await page.getByTestId('tab-examine').click();
   await page.getByTestId('exam-exam.lung_auscultation').click();
+  await page.getByTestId('done-exam.lung_auscultation').waitFor({ timeout: 5000 });
+  await page.waitForTimeout(1200);
+  const heard = await page.getByTestId('done-exam.lung_auscultation').boundingBox();
+  const screenH = page.viewportSize()?.height ?? 0;
+  check(heard !== null && heard.y >= 0 && heard.y + heard.height <= screenH && Math.abs(heard.y + heard.height / 2 - screenH / 2) < screenH / 4,
+    `П4: ответ на выслушивание — посередине экрана (${Math.round(heard?.y ?? -1)}–${Math.round((heard?.y ?? 0) + (heard?.height ?? 0))} из ${screenH})`);
+  await noAnchor.evaluate(el => el.remove());
   await page.getByTestId('visit-fresh').first().waitFor({ timeout: 5000 });
   check(await page.getByTestId('visit-fresh').first().isVisible(), `П4: новые результаты выделены — ${await text(page, 'visit-fresh-count')}`);
   await page.getByTestId('visit-fresh').first().scrollIntoViewIfNeeded();
