@@ -34,7 +34,8 @@ import {
 import { T } from '@/i18n';
 import { lowerFirst } from '@/i18n/case';
 import {
-  type Arrival, type Decision, decisionOf, hhmm, makeCaseView, outcomeText, patientName, resultName, type SettingOption, treatmentGroupsFor, type VisitView,
+  type Arrival, type CaseTarget, type Decision, decisionOf, hhmm, makeCaseView, outcomeText, patientName, resultName, type SettingOption, treatmentGroupsFor,
+  type VisitView,
 } from './caseView';
 import { daysIn, stayNorm, vitalOn, WARD_VITALS, type WardState, wardState } from '@/engine/shift/ward';
 import { staffAge, type StaffPortrait } from '@/render/look';
@@ -2248,14 +2249,14 @@ function orBlockText(b: OrBlock): string {
  * обещаниям студии»): сколько даёт рекомендация и сколько прошло с прихода; сделано — через
  * сколько минут (часть 37).
  */
-function targetLines(s: ShiftState, p: ShiftPatient): string[] {
+function targetLines(s: ShiftState, p: ShiftPatient): CaseTarget[] {
   const t = T.spikes.patient;
   return targetsFor(db, p, targetPlace(db, s, p)).map(target => {
     const done = minutesTo(db, p, target);
     // от находки (часть 39б): «в первые 10 минут от ЭКГ с подъёмом ST; прошло — N мин»; от правила (часть 48а) — так же
     const start = targetStart(db, p, target) ?? p.arriveT;
-    if (done !== undefined) return t.targetDone(target.name.ru, done, target.minutes, target.texts.after?.ru);
-    return t.target(target.name.ru, target.minutes, Math.round((s.t - start) / 60), target.texts.from?.ru);
+    if (done !== undefined) return { text: t.targetDone(target.name.ru, done, target.minutes, target.texts.after?.ru), done: true };
+    return { text: t.target(target.name.ru, target.minutes, Math.round((s.t - start) / 60), target.texts.from?.ru), done: false };
   });
 }
 

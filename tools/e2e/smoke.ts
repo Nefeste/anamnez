@@ -44,6 +44,14 @@ const text = async (page: Page, id: string) => (await page.getByTestId(id).inner
 /** Только видимое: в веб-стеке предыдущий экран может остаться в DOM (статья поверх статьи). */
 const visible = (page: Page, id: string) => page.locator(`[data-testid="${id}"]:visible`);
 const visibleText = async (page: Page, id: string) => (await visible(page, id).first().innerText()).trim();
+/**
+ * Вкладка карты пациента (0.6.0, spec 2026-10-patient-card): у каждой — свой лист; «Известно», «Похоже на» и гипотезы —
+ * на «Карте». Приём закончен или его ведёт нанятый врач — вкладок нет, касаться нечего.
+ */
+async function tab(page: Page, key: 'card' | 'ask' | 'examine' | 'order'): Promise<void> {
+  const it = visible(page, `tab-${key}`);
+  if ((await it.count()) > 0 && (await it.first().getAttribute('aria-selected')) !== 'true') await it.first().click();
+}
 
 /**
  * «×4», если кнопкам скорости не мешает лист поверх экрана (подсказка наставника, лист передачи):
@@ -1110,8 +1118,18 @@ try {
   await page.goto(`${base}/spikes/patient`);
   await page.getByTestId('exam-exam.ask_complaints').waitFor({ timeout: 30_000 });
   await page.screenshot({ path: join(OUT, '04-patient-start.png') });
-  // «Что это?» у обследования и у жалобы
-  await page.getByTestId('exam-exam.ask_complaints-info').click();
+  // новый пациент — с «Спросить» (0.6.0): вопросы внизу, над вкладками; долгое касание вопроса — «Что это?», вопрос не
+  // задан
+  check((await page.getByTestId('tab-ask').getAttribute('aria-selected')) === 'true', 'П4: новый пациент — с вкладки «Спросить»');
+  await page.getByTestId('exam-exam.ask_onset').click({ delay: 900 });
+  await page.getByTestId('term-sheet').waitFor({ timeout: 5000 });
+  check((await page.getByTestId('done-exam.ask_onset').count()) === 0 && (await text(page, 'term-sheet')).includes('Как началась болезнь'),
+    'П4: долгое касание вопроса — «Что это?», а не ответ');
+  await page.getByTestId('term-sheet-close').click();
+  await page.getByTestId('term-sheet').waitFor({ state: 'detached', timeout: 5000 });
+  // «Что это?» у обследования
+  await tab(page, 'examine');
+  await page.getByTestId('exam-exam.lung_auscultation-info').click();
   await page.getByTestId('term-sheet').waitFor({ timeout: 5000 });
   // innerText учитывает text-transform: заголовки справки — прописными
   check((await page.getByTestId('term-sheet').innerText()).toLowerCase().includes('что проверяет'), 'П4: «Что это?» объясняет обследование');
@@ -1124,17 +1142,19 @@ try {
   const termArticle = await visibleText(page, 'enc-article-title');
   check(sheet.includes(termArticle), `П4: «Подробнее» в «Что это?» — статья «${termArticle}»`);
   await page.goBack();
-  await page.getByTestId('exam-exam.ask_complaints').waitFor({ timeout: 5000 });
-  check((await page.getByTestId('term-sheet').count()) === 0, 'П4: из статьи «назад» — в карту пациента');
+  await page.getByTestId('exam-exam.lung_auscultation').waitFor({ timeout: 5000 });
+  check((await page.getByTestId('term-sheet').count()) === 0, 'П4: из статьи «назад» — в карту пациента, на ту же вкладку «Осмотреть»');
+  // беседа (0.6.0): вопрос врача живой речью — реплика пациента; заданный вопрос уходит из списка внизу
+  await tab(page, 'ask');
   await page.getByTestId('exam-exam.ask_complaints').click();
-  // ответ — на месте вопроса, листать вверх к «Известно» не нужно (отзыв на 0.0.37)
   await page.getByTestId('done-exam.ask_complaints').waitFor({ timeout: 5000 });
   const asked = await text(page, 'done-exam.ask_complaints');
-  check(asked.split('\n').length > 1 && (await page.getByTestId('exam-exam.ask_complaints').count()) === 0, `П4: ответ под вопросом — «${asked.replace(/\n/g, ' · ')}»`);
+  check(asked.includes('Кашель, насморк, температура?') && asked.split('\n').length > 2 && (await page.getByTestId('exam-exam.ask_complaints').count()) === 0,
+    `П4: беседа — вопрос и ответ пациента: «${asked.replace(/\n/g, ' · ')}»`);
   // ответ на обследование — посередине экрана (0.5.20, отзыв владельца 16.10.2026): «Известно» выше растёт вместе с
   // ответом, а прокрутка на Android места не держит — здесь так же, без удержания прокрутки браузером
   const noAnchor = await page.addStyleTag({ content: '* { overflow-anchor: none !important; }' });
-  await page.getByTestId('tab-examine').click();
+  await tab(page, 'examine');
   await page.getByTestId('exam-exam.lung_auscultation').click();
   await page.getByTestId('done-exam.lung_auscultation').waitFor({ timeout: 5000 });
   await page.waitForTimeout(1200);
@@ -1143,13 +1163,17 @@ try {
   check(heard !== null && heard.y >= 0 && heard.y + heard.height <= screenH && Math.abs(heard.y + heard.height / 2 - screenH / 2) < screenH / 4,
     `П4: ответ на выслушивание — посередине экрана (${Math.round(heard?.y ?? -1)}–${Math.round((heard?.y ?? 0) + (heard?.height ?? 0))} из ${screenH})`);
   await noAnchor.evaluate(el => el.remove());
+  // новое — числом на «Карте»; там же — выделено (0.6.0)
+  check(/^[1-9]\d*$/.test(await text(page, 'visit-card-count')), `П4: на вкладке «Карта» — число нового: ${await text(page, 'visit-card-count')}`);
+  await tab(page, 'card');
   await page.getByTestId('visit-fresh').first().waitFor({ timeout: 5000 });
   check(await page.getByTestId('visit-fresh').first().isVisible(), `П4: новые результаты выделены — ${await text(page, 'visit-fresh-count')}`);
   await page.getByTestId('visit-fresh').first().scrollIntoViewIfNeeded();
   await page.waitForTimeout(500);
   await page.screenshot({ path: join(OUT, '04-fresh.png') });
+  await tab(page, 'examine');
   await page.getByTestId('exam-exam.vitals').click();
-  await page.getByTestId('tab-order').click();
+  await tab(page, 'order');
   await page.getByTestId('exam-exam.xray_chest').click();
   await page.getByTestId('exam-exam.cbc').click();
   const clockBefore = await text(page, 'visit-clock');
@@ -1173,7 +1197,8 @@ try {
   await page.screenshot({ path: join(OUT, '04-xray-abdomen.png') });
   await page.screenshot({ path: join(OUT, '04-patient-exams.png'), fullPage: true });
   // дифференциальный ряд (spec 2026-10-differential, 0.5.8): пневмония — поиском в ряд; в карточке — за, против, не
-  // проверено и чем подтвердить; на экране решения «Ваш ряд» — первым
+  // проверено и чем подтвердить; на экране решения «Ваш ряд» — первым. Ряд — на «Карте» (0.6.0)
+  await tab(page, 'card');
   await page.getByTestId('hyp-add').click();
   await page.getByTestId('hyp-search').fill('пневмон');
   await page.getByTestId('hyp-pick-cond.pneumonia_cap').click();
@@ -1190,8 +1215,8 @@ try {
   await page.waitForTimeout(500);
   await page.screenshot({ path: join(OUT, '04-hypothesis.png'), fullPage: true });
   await page.getByTestId('hyp-sheet-close').click();
-  // решение — отдельный экран в два шага, а не четвёртая вкладка (отзыв на 0.0.5)
-  check((await page.locator('[data-testid^="tab-"]').count()) === 3 && (await page.getByTestId('visit-decide').isVisible()), 'П4: три вкладки действий, «Решение» — отдельной кнопкой внизу');
+  // вкладки внизу (0.6.0): «Карта · Спросить · Осмотреть · Назначить», «Решение» — рядом, отдельным экраном в два шага
+  check((await page.locator('[role="tab"][data-testid^="tab-"]').count()) === 4 && (await page.getByTestId('visit-decide').isVisible()), 'П4: четыре вкладки внизу, «Решение» — рядом');
   await page.getByTestId('visit-decide').click();
   await page.getByTestId('dx-cond.pneumonia_cap').waitFor({ timeout: 5000 });
   check((await page.getByTestId('row-cond.pneumonia_cap').count()) === 1, 'решение: «Ваш ряд» — пневмония из ряда гипотез');
@@ -1382,6 +1407,9 @@ try {
   // кем работает — под именем, с регистратуры (0.5.10)
   const job = await visibleText(page, 'visit-job');
   check(/^[А-ЯЁ][а-яё]+( [а-яё]+)?$/.test(job), `смена: в карте пациента — профессия «${job}»`);
+  // «Похоже на» — полосой под шапкой с любой вкладки, в ряд — на «Карте» (0.6.0)
+  check((await text(page, 'likely-strip')).startsWith('Похоже на'), `смена: «Похоже на» — полосой: ${(await text(page, 'likely-strip')).replace(/\n/g, ' ')}`);
+  await tab(page, 'card');
   const likely = page.locator('[data-testid^="likely-cond."]');
   check((await likely.count()) > 0 && (await likely.first().innerText()).includes('из 10 похожих пациентов'), `смена: «Студент» — «Похоже на»: ${(await likely.first().innerText()).trim()}`);
   // из «Похоже на» — в ряд гипотез (0.5.8)
@@ -1391,8 +1419,9 @@ try {
   const roomClock = await text(page, 'visit-clock');
   await page.waitForTimeout(1500);
   check((await text(page, 'visit-clock')) === roomClock, 'смена: в кабинете часы идут только делами');
+  await tab(page, 'ask');
   await page.getByTestId('exam-exam.ask_complaints').click();
-  await page.getByTestId('tab-order').click();
+  await tab(page, 'order');
   // кабинета УЗИ в амбулатории нет (часть 29): обследование серым, с причиной
   const usHere = page.getByTestId('exam-exam.us_abdomen');
   check(await usHere.isDisabled() && (await usHere.innerText()).includes('нет кабинета УЗИ'), `смена: УЗИ в амбулатории — «${(await usHere.innerText()).replace(/\n/g, ' · ')}»`);
@@ -1669,6 +1698,7 @@ try {
   check(await tsh.isDisabled() && (await tsh.innerText()).includes('нет иммунохимического анализатора'), `песочница: ТТГ — «${(await tsh.innerText()).replace(/\n/g, ' · ')}»`);
   check(!(await page.getByTestId('exam-exam.cbc').isDisabled()), 'песочница: общий анализ крови — можно');
   await page.screenshot({ path: join(OUT, '13-sandbox-card.png') });
+  await tab(page, 'card');
   check(/^(ОМС|ДМС|Платно): /.test(await visibleText(page, 'visit-payer')), `песочница: кто платит — ${await visibleText(page, 'visit-payer')}`);
 
   // поломка (FR-EQ-3, spec 2026-10-walk-breakdowns): с утра сломан рентген — у рентген-кабинета на карте знак «Аппарат в
@@ -1746,6 +1776,7 @@ try {
   await page.screenshot({ path: join(OUT, '14-hired-colleague-case.png'), fullPage: true });
   await page.getByTestId('colleague-take').click();
   await visible(page, 'visit-decide').waitFor({ timeout: 10_000 });
+  await tab(page, 'ask');
   check((await page.locator('[data-testid="visit-colleague"]:visible').count()) === 0 && (await visible(page, 'exam-exam.ask_onset').count()) + (await visible(page, 'done-exam.ask_onset').count()) === 1,
     'забрали себе: пациент у вас в кабинете, карта — ваша');
 
@@ -1922,6 +1953,9 @@ try {
   // у постели — сразу, без «будет в …»
   const ecgDone = await text(page, 'done-exam.ecg');
   check(!ecgDone.includes('Будет в') && (await page.getByTestId('visit-wait').count()) === 0, `ЭКГ у постели: сразу — «${ecgDone.replace(/\n/g, ' · ').slice(0, 120)}»`);
+  // сделанный срок — на «Карте», в шапке — только идущие (0.6.0)
+  check((await visible(page, 'visit-target-0').count()) === 0, 'сроки: сделанный срок ушёл из шапки');
+  await tab(page, 'card');
   const doneLine = await text(page, 'visit-target-0');
   check(/^ЭКГ при боли в груди — через \d+\u00a0мин после прихода, в срок$/.test(doneLine), `сроки: сделано — «${doneLine}»`);
   await page.waitForTimeout(500);
@@ -2028,6 +2062,7 @@ try {
   const tropDone = await text(page, 'done-exam.troponin_hs');
   check(/Через час тропонин T вырос на \d+\sнг\/л — 5 и больше/.test(tropDone) && /Тропонин T \d+\sнг\/л — (52 и выше|ниже 12)/.test(tropDone),
     `тропонин 0/1 час: «${tropDone.replace(/\n/g, ' · ').slice(0, 220)}»`);
+  await tab(page, 'card');
   const ruleLine = await text(page, 'rule-rule.acs_invasive');
   check(ruleLine.startsWith('Коронарография в первые сутки при ОКС. Коронарография в первые сутки — перевод в сосудистый центр'), `правило коронарографии: «${ruleLine.slice(0, 160)}»`);
   await page.waitForTimeout(500);
@@ -2057,6 +2092,7 @@ try {
   await pa.getByTestId('tab-pause').click();
   await pa.getByTestId(`queue-${angina.id}`).click();
   await visible(pa, 'visit-decide').waitFor({ timeout: 15_000 });
+  await tab(pa, 'ask');
   await pa.getByTestId('exam-exam.ask_chest_pain').click();
   await pa.getByTestId('done-exam.ask_chest_pain').waitFor({ timeout: 5000 });
   const anginaAsk = await text(pa, 'done-exam.ask_chest_pain');
@@ -3441,6 +3477,7 @@ try {
   const dysphagia = (await text(page, 'done-exam.swallow_test')).includes('не пройден');
   // ждать заключения КТ (привезённая скорая обрывает ожидание — ещё раз)
   for (let i = 0; i < 8 && (await page.getByTestId('visit-wait').count()) > 0; i++) await page.getByTestId('visit-wait').click();
+  await tab(page, 'card');
   await visible(page, 'result-ct').waitFor({ timeout: 10_000 });
   check(await page.locator('text=Крови внутри черепа нет').first().isVisible().catch(() => false), 'глава 3: инсульт — КТ срезом в карте, крови внутри черепа нет');
   await visible(page, 'visit-decide').click();
@@ -3584,8 +3621,9 @@ try {
   await visible(page, 'exam-exam.egd').click();
   await page.getByTestId('done-exam.egd').waitFor({ timeout: 10_000 });
   for (let i = 0; i < 8 && (await page.getByTestId('visit-wait').count()) > 0; i++) await page.getByTestId('visit-wait').click();
+  // снимок эндоскопа — тут же, в строке назначения (0.6.0)
   await visible(page, 'result-egd').waitFor({ timeout: 10_000 });
-  await visible(page, 'visit-fresh').first().evaluate(el => el.scrollIntoView({ block: 'start' }));
+  await visible(page, 'done-exam.egd').first().evaluate(el => el.scrollIntoView({ block: 'start' }));
   await page.waitForTimeout(700);
   await page.screenshot({ path: join(OUT, '16-chapter4-egd.png') });
   await visible(page, 'visit-decide').click();

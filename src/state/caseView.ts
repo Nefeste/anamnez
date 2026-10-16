@@ -140,6 +140,12 @@ export interface SettingOption {
   disabled?: boolean;
 }
 
+/** Срок по рекомендации на приёме (часть 37): строка и сделано ли уже. */
+export interface CaseTarget {
+  text: string;
+  done: boolean;
+}
+
 /** Решение до «Завершить приём»: можно менять и дальше обследовать. */
 export interface Draft {
   diagnosis?: Id;
@@ -167,6 +173,8 @@ export interface VisitView {
   groups: ResultGroup[];
   /** сколько результатов пришло за последнее действие */
   freshCount: number;
+  /** игрок на этом приёме уже что-то сделал: карта открывается «Картой», а не «Спросить» (0.6.0) */
+  acted: boolean;
   pending: { exam: Id; name: string; at: string }[];
   /** ушёл на обследование в другой кабинет (0.5.12): строка — когда вернётся */
   away?: string;
@@ -218,9 +226,12 @@ export interface VisitView {
   bedside?: Record<Id, number>;
   /** смена: обследования, которые с умениями дня идут дольше или короче базы (spec 2026-10-skills), — их минуты */
   minutes?: Record<Id, number>;
-  /** смена: сроки по рекомендации — строками (часть 37) */
-  targets?: string[];
-  /** смена: повторное обращение — строка для шапки */
+  /**
+   * смена: сроки по рекомендации — строками (часть 37); `done` — уже сделано: идущие — в шапке карты, сделанные — на
+   * «Карте» (0.6.0)
+   */
+  targets?: CaseTarget[];
+  /** смена: повторное обращение — строка для «Карты» */
   returnNote?: string;
   /** песочница: кто платит и что оплатит — строка для шапки */
   payerNote?: string;
@@ -282,7 +293,7 @@ export interface CaseInput {
   ricu?: 'free' | 'full';
   /** работающие кабинеты больницы (часть 53а): гемостаз — где работает эндоскопический кабинет */
   rooms?: readonly Id[];
-  targets?: string[];
+  targets?: CaseTarget[];
   returnNote?: string;
   /** сложность: «Похоже на» — только у «Студента» (09-game-design.md §14); нет — «Студент» (прототип П4) */
   difficulty?: Difficulty;
@@ -873,6 +884,7 @@ export function makeCaseView(c: CaseInput): VisitView {
       })
       .reverse(),
     freshCount: c.arrived.filter(a => c.step > 0 && a.step === c.step).reduce((n, a) => n + a.obs.filter(visible).length, 0),
+    acted: c.step > 0,
     pending: c.pending.map(x => ({ exam: x.exam, name: resultName(x.exam, x.repeat), at: hhmm(x.readyAt) })),
     ...(c.away ? { away: T.spikes.patient.away(resultName(c.away.exam), hhmm(c.away.back)) } : {}),
     ...(c.finishing ? { finishing: true as const } : {}),
@@ -1080,6 +1092,9 @@ export function noteText(n: ScoreNote): string {
   }
 }
 
+/** Вопрос об анамнезе жизни — аллергия, лекарства, болезни родных: все его признаки — из анамнеза (`hx.`). */
+export const lifeHistory = (id: Id): boolean => db.exams[id].checks.every(c => c.f.startsWith('hx.'));
+
 /**
  * Обследования по разделам действий карты пациента — те, что ему подходят по полу, возрасту и
  * жалобе: о месячных и беременности мужчину не спрашивают, о травме головы — без травмы головы.
@@ -1087,7 +1102,7 @@ export function noteText(n: ScoreNote): string {
 export function examsByAction(patient: Pick<Patient, 'sex' | 'age' | 'complaints'>): Record<'ask' | 'examine' | 'order', Id[]> {
   // по названию; в «Спросить» сначала расспрос о жалобах по системам, потом анамнез жизни
   const byName = (a: Id, b: Id) => (db.exams[a].name.ru < db.exams[b].name.ru ? -1 : 1);
-  const history = (id: Id) => (db.exams[id].checks.every(c => c.f.startsWith('hx.')) ? 1 : 0);
+  const history = (id: Id) => (lifeHistory(id) ? 1 : 0);
   const ids = Object.keys(db.exams).filter(id => examFits(db.exams[id], patient)).sort(byName);
   return {
     ask: ids.filter(id => db.exams[id].kind === 'ask').sort((a, b) => history(a) - history(b) || byName(a, b)),
