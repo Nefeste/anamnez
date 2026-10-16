@@ -1,6 +1,7 @@
 // «Смена» (spec 2026-09-campaign, часть 14): один день в выбранной больнице — амбулатории
 // практики, больнице главы (если глава открыта в какой-нибудь карьере) или копии своей из
-// песочницы; сложность; зерно — случайное или своё. Где смену не открыть — с причиной.
+// песочницы; сложность; кто принимает — вы и нанятые врачи или только вы (вопрос 16, часть 79); зерно — случайное или
+// своё. Где смену не открыть — с причиной.
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import type { Difficulty } from '@/engine/shift/types';
@@ -18,6 +19,7 @@ export default function SingleScreen() {
   const [venue, setVenue] = useState('preset.clinic');
   const [difficulty, setDifficulty] = useState<Difficulty>('student');
   const [own, setOwn] = useState(false);
+  const [solo, setSolo] = useState(false);
   const [seed, setSeed] = useState('');
   const [failed, setFailed] = useState(false);
   useFocusEffect(
@@ -32,10 +34,12 @@ export default function SingleScreen() {
     }, []),
   );
   const n = Number.parseInt(seed, 10);
+  // кто принимает — только там, где работают нанятые врачи
+  const doctors = venues.find(v => v.venue === venue)?.doctors ?? false;
   const valid = !own || (Number.isFinite(n) && n >= 0);
   const start = async () => {
     setFailed(false);
-    const ok = await startSingle({ venue, difficulty, ...(own ? { seed: n } : {}) });
+    const ok = await startSingle({ venue, difficulty, ...(own ? { seed: n } : {}), ...(solo && doctors ? { solo: true } : {}) });
     if (ok) router.push('/shift');
     else setFailed(true);
   };
@@ -54,6 +58,16 @@ export default function SingleScreen() {
       <Card>
         <DifficultyChoice value={difficulty} onChange={setDifficulty} />
       </Card>
+      {doctors && (
+        <Card>
+          <Text style={styles.label}>{t.who}</Text>
+          <Chips>
+            <Chip testID="who-staff" text={t.withStaff} strong={!solo} onPress={() => setSolo(false)} />
+            <Chip testID="who-solo" text={t.solo} strong={solo} onPress={() => setSolo(true)} />
+          </Chips>
+          <P muted>{t.whoHint}</P>
+        </Card>
+      )}
       <Card>
         <Text style={styles.label}>{t.seed}</Text>
         <Chips>

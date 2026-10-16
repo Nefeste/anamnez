@@ -166,3 +166,45 @@ describe('«Смена» в игре', () => {
     expect(shiftState()!.hospital!.rooms.length).toBe(rooms);
   });
 });
+
+describe('«Смена», где принимаете только вы (вопрос 16, часть 79)', () => {
+  /** Городская больница с зерном 21, шесть часов смены: сколько записалось и скольких приняли нанятые врачи. */
+  function city(solo: boolean) {
+    const s = newSingle(db, { seed: 21, season: 'winter', venue: 'preset.city', ...(solo ? { solo: true } : {}) });
+    const booked = Object.values(s.patients).filter(p => p.kind === 'appointment').length;
+    for (let i = 0; i < 6 * 60; i++) apply(db, s, { kind: 'advance', seconds: 60 });
+    return { s, booked, hired: Object.values(s.patients).filter(p => p.by !== undefined).length };
+  }
+  const people = (s: ShiftState, kind: ShiftPatient['kind']) => Object.values(s.patients).filter(p => p.kind === kind).map(p => p.patient);
+
+  test('нанятые врачи не принимают: записи к ним нет, новых не берут; без выбора — как прежде', () => {
+    const base = city(false);
+    const solo = city(true);
+    expect([base.s.meta.solo, solo.s.meta.solo]).toEqual([undefined, true]);
+    expect(base.hired).toBeGreaterThan(0);
+    expect(solo.hired).toBe(0);
+    expect(solo.booked).toBeLessThan(base.booked);
+    // без записи и со скорой — те же люди: их ветви от нанятых врачей не зависят
+    expect(people(solo.s, 'walkIn')).toEqual(people(base.s, 'walkIn'));
+    expect(people(solo.s, 'ambulance')).toEqual(people(base.s, 'ambulance'));
+  });
+
+  test('выбор — где работают нанятые врачи; итог — «принимаете один», лучший результат — свой', async () => {
+    await loadProfile();
+    const v = Object.fromEntries((await singleVenues()).map(x => [x.venue, x]));
+    expect([v['preset.clinic'].doctors, v['preset.village'].doctors, v['preset.city'].doctors]).toEqual([false, false, true]);
+    expect(await startSingle({ venue: 'preset.city', difficulty: 'student', seed: 21, season: 'winter', solo: true })).toBe(true);
+    expect(shiftState()!.meta.solo).toBe(true);
+    skipIdle();
+    callPatient(shiftView().queue[0].id);
+    examine('exam.ask_complaints');
+    chooseDiagnosis(shiftCaseView()!.hints[0].id);
+    finishCase();
+    closeDay();
+    expect(shiftView().summary!.single!.venue).toBe('Городская больница, принимаете один');
+    expect(profile().best['preset.city:solo']?.seed).toBe(21);
+    expect(profile().best['preset.city']).toBeUndefined();
+    await saved();
+    expect((await savedGames()).find(g => g.mode === 'single')?.venue).toBe('Городская больница, принимаете один');
+  });
+});
