@@ -104,6 +104,9 @@ export default function RootLayout() {
           <Stack.Screen name="daily/patient" options={{ title: T.spikes.patient.title }} />
           <Stack.Screen name="daily/decision" options={{ title: T.spikes.decision.title }} />
           <Stack.Screen name="daily/outcome" options={{ title: T.spikes.decision.outcomeTitle }} />
+          <Stack.Screen name="study/patient" options={{ title: T.study.title }} />
+          <Stack.Screen name="study/decision" options={{ title: T.spikes.decision.title }} />
+          <Stack.Screen name="study/outcome" options={{ title: T.spikes.decision.outcomeTitle }} />
           <Stack.Screen name="profile/index" options={{ title: T.profile.title }} />
           <Stack.Screen name="profile/doctor" options={{ title: T.profile.editTitle }} />
           <Stack.Screen name="profile/achievements" options={{ title: T.profile.achievements }} />

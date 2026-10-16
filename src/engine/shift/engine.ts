@@ -202,6 +202,25 @@ export function newSingle(
   db: ContentDb,
   opts: { seed: number; season: Season; difficulty?: Difficulty; venue: Id; hospital?: HospitalState; staff?: StaffMember[] } & Variety,
 ): ShiftState {
+  const s = singleBase(db, opts);
+  // день — в этой больнице (spec 2026-10-variety, «Заодно»): прежде он разыгрывался до неё, и в
+  // районной больнице приходили только с терапией, без скорой
+  planDay(db, s);
+  return s;
+}
+
+/**
+ * Готовая больница «Смены» без разыгранного дня (spec 2026-10-study-case, часть 74): по ней «Разобрать случай» знает,
+ * какие отделения, места и обследования есть там, куда он кладёт больного из статьи.
+ */
+export function venueState(db: ContentDb, venue: Id): ShiftState {
+  return singleBase(db, { seed: 0, season: 'winter', venue });
+}
+
+function singleBase(
+  db: ContentDb,
+  opts: { seed: number; season: Season; difficulty?: Difficulty; venue: Id; hospital?: HospitalState; staff?: StaffMember[] } & Variety,
+): ShiftState {
   const s = shiftBase(db, opts);
   s.meta.mode = 'single';
   s.meta.venue = opts.venue;
@@ -215,9 +234,6 @@ export function newSingle(
     s.hospital = JSON.parse(JSON.stringify(opts.hospital)) as HospitalState;
     s.staff = JSON.parse(JSON.stringify(opts.staff ?? [])) as StaffMember[];
   }
-  // день — в этой больнице (spec 2026-10-variety, «Заодно»): прежде он разыгрывался до неё, и в
-  // районной больнице приходили только с терапией, без скорой
-  planDay(db, s);
   return s;
 }
 

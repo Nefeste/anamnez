@@ -7,8 +7,11 @@ export type MusicScene = 'menu' | 'shift';
 /** Экраны, которые музыку не меняют: справочное открывают и из меню, и с приёма — переключать её туда-обратно резко. */
 const REFERENCE = ['/encyclopedia', '/settings', '/sources', '/licenses', '/about', '/report'];
 
-/** Сцена для экрана: приём — на смене и в «Случае дня» (его карта, решение и разбор); справочное — та же, что была. */
+/**
+ * Сцена для экрана: приём — на смене, в «Случае дня» и в «Разобрать случай» (spec 2026-10-study-case: карта, решение и
+ * разбор); справочное — та же, что была.
+ */
 export function musicSceneOf(path: string, now: MusicScene): MusicScene {
   if (REFERENCE.some(r => path === r || path.startsWith(`${r}/`))) return now;
-  return path.startsWith('/shift') || path.startsWith('/daily/') ? 'shift' : 'menu';
+  return path.startsWith('/shift') || path.startsWith('/daily/') || path.startsWith('/study/') ? 'shift' : 'menu';
 }

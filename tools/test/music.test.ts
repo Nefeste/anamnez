@@ -4,10 +4,12 @@ import { describe, expect, test } from 'bun:test';
 import { musicSceneOf } from '../../src/audio/scene';
 
 describe('музыка по экрану', () => {
-  test('смена и «Случай дня» — музыка приёма, меню — своя', () => {
+  test('смена, «Случай дня» и «Разобрать случай» — музыка приёма, меню — своя', () => {
     expect(musicSceneOf('/shift', 'menu')).toBe('shift');
     expect(musicSceneOf('/shift/patient', 'menu')).toBe('shift');
     expect(musicSceneOf('/daily/case', 'menu')).toBe('shift');
+    // с 0.5.17 (spec 2026-10-study-case): приём больного из статьи
+    expect(musicSceneOf('/study/patient', 'menu')).toBe('shift');
     expect(musicSceneOf('/', 'shift')).toBe('menu');
     expect(musicSceneOf('/campaign', 'shift')).toBe('menu');
   });

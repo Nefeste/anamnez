@@ -11,7 +11,8 @@ import { openArticle } from '@/ui/encyclopedia';
 import { makeStyles, space, type Theme, useTheme } from '@/ui/theme';
 import type { FooterAction } from './actions';
 
-export function OutcomeScreen({ view, next, back }: { view: VisitView | undefined; next: FooterAction; back: FooterAction }) {
+/** `more` — ещё одно действие под разбором («Разобрать случай», часть 74: ещё один такой больной). */
+export function OutcomeScreen({ view, next, back, more }: { view: VisitView | undefined; next: FooterAction; back: FooterAction; more?: FooterAction }) {
   const styles = useStyles();
   const theme = useTheme();
   const t = T.spikes.patient;
@@ -123,6 +124,7 @@ export function OutcomeScreen({ view, next, back }: { view: VisitView | undefine
         {x.diagnosis !== x.truth && (
           <Button testID="visit-chosen-article" kind="plain" title={T.encyclopedia.truthArticle(db.conditions[x.diagnosis].name.ru)} onPress={() => openArticle(x.diagnosis)} />
         )}
+        {more && <Button testID={more.testID} kind="plain" title={more.title} onPress={more.run} />}
       </Card>
     </Screen>
   );

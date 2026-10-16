@@ -1,14 +1,17 @@
 // Статья энциклопедии (11-content.md §4): разделы из записи базы, ссылки на другие статьи —
 // плашками. Открывается и из «Что это?» в карте пациента, и из разбора случая. У болезни —
-// сколько раз она встречалась в практике игрока (профиль).
-import { Stack, useLocalSearchParams } from 'expo-router';
+// сколько раз она встречалась в практике игрока (профиль) и «Разобрать случай» (spec 2026-10-study-case,
+// часть 74): один больной с ней там, где её лечат.
+import { router, Stack, useLocalSearchParams } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { Text } from '@/ui/text';
 import { db } from '@/content';
 import { T } from '@/i18n';
 import { article } from '@/state/encyclopedia';
 import { useProfile } from '@/state/profile';
-import { Card, Chips, P, Screen } from '@/ui/components';
+import { openStudy, studyable, studyWhere } from '@/state/study';
+import { Button, Card, Chips, P, Screen } from '@/ui/components';
 import { EncyclopediaNote, RefChip } from '@/ui/encyclopedia';
 import { makeStyles, space } from '@/ui/theme';
 
@@ -18,6 +21,16 @@ export default function ArticleScreen() {
   const t = T.encyclopedia;
   const a = article(db, String(id));
   const profile = useProfile();
+  const study = a?.section === 'conditions' && studyable(a.id);
+  // где будет больной — по больницам «Смены»: считается после первого кадра статьи, один раз на базу
+  const shown = a?.id;
+  const [place, setPlace] = useState<{ id: string; where?: string }>();
+  useEffect(() => {
+    if (!study || shown === undefined) return;
+    const t = setTimeout(() => setPlace({ id: shown, where: studyWhere(shown) }), 0);
+    return () => clearTimeout(t);
+  }, [shown, study]);
+  const where = place?.id === shown ? place?.where : undefined;
   if (!a) {
     return (
       <Screen>
@@ -36,6 +49,12 @@ export default function ArticleScreen() {
         <Text testID="enc-article-title" style={styles.title}>{a.title}</Text>
         {a.subtitle ? <P muted>{a.subtitle}</P> : null}
         {a.section === 'conditions' ? <P muted testID="enc-practice">{T.profile.practiceTimes(profile.seen[a.id] ?? 0)}</P> : null}
+        {study ? (
+          <>
+            <Button testID="enc-study" title={T.study.start} onPress={() => (openStudy(a.id) ? router.push('/study/patient') : undefined)} />
+            <P muted testID="enc-study-where">{where ? T.study.hint(where) : T.study.hintSoon}</P>
+          </>
+        ) : null}
       </Card>
       {a.blocks.map(b => (
         <Card key={b.key}>
