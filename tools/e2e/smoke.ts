@@ -3626,6 +3626,29 @@ try {
   await page.waitForTimeout(500);
   await page.screenshot({ path: join(OUT, '17-daily.png') });
 
+  // «Разобрать случай» (spec 2026-10-study-case, часть 74): из статьи инсульта — больной в больнице с сосудистым
+  // отделением, привезённый скорой; разбор, «К статье»; в практику приём не идёт
+  await page.goto(`${base}/encyclopedia/article/cond.stroke_ischemic`);
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const seenBefore = await visibleText(page, 'enc-practice');
+  await page.waitForFunction(() => [...document.querySelectorAll('[data-testid="enc-study-where"]')].some(e => e.textContent?.includes('отделением')), undefined, { timeout: 10_000 }).catch(() => undefined);
+  check((await visibleText(page, 'enc-study-where')).includes('в районной больнице с сосудистым отделением'), `разобрать случай: где — ${await visibleText(page, 'enc-study-where')}`);
+  await visible(page, 'enc-study').click();
+  await page.getByTestId('visit-decide').waitFor({ timeout: 10_000 });
+  check((await page.locator('body').innerText()).includes('Привезла скорая: давление, пульс и сатурацию померил фельдшер'), 'разобрать случай: привезла скорая — давление уже померил фельдшер');
+  await page.getByTestId('visit-decide').click();
+  await page.getByTestId('dx-cond.stroke_ischemic').click();
+  await page.getByTestId('decision-to-plan').click();
+  await page.getByTestId('setting-icu').click();
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
+  check((await text(page, 'visit-truth')).includes('Ишемический инсульт'), `разобрать случай: разбор — ${await text(page, 'visit-truth')}`);
+  check(await page.getByTestId('study-again').isVisible(), 'разобрать случай: под разбором — «Ещё один такой больной»');
+  await page.getByTestId('study-to-article').click();
+  await visible(page, 'enc-article-title').waitFor({ timeout: 10_000 });
+  check((await visibleText(page, 'enc-article-title')) === 'Ишемический инсульт' && (await visibleText(page, 'enc-practice')) === seenBefore,
+    `разобрать случай: к статье, в практику не идёт — ${seenBefore} → ${await visibleText(page, 'enc-practice')}`);
+
   // «Смена»: больница главы открыта (карьера есть), своя — есть песочница; смена в посёлке из
   // сохранения в конце дня — «Продолжить», закрыть день, итог по категориям, лучший результат
   await page.goto(base);

@@ -13,6 +13,7 @@ import { sandbox } from './sections/sandbox';
 import { settings } from './sections/settings';
 import { shift } from './sections/shift';
 import { spikes } from './sections/spikes';
+import { study } from './sections/study';
 import { transfer } from './sections/transfer';
 
-export const ru = { common, menu, settings, about, encyclopedia, spikes, shift, names, profile, report, sandbox, campaign, daily, single, transfer };
+export const ru = { common, menu, settings, about, encyclopedia, spikes, shift, names, profile, report, sandbox, campaign, daily, single, transfer, study };
