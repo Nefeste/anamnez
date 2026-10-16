@@ -15,4 +15,4 @@ export const BUILD: number = app.expo.android.versionCode;
 export const SITE_URL = 'https://gornitsa.games';
 export const SUPPORT_EMAIL = 'support@gornitsa.games';
 /** Политика конфиденциальности — одна на всю студию; у каждой игры в ней свой раздел (устав, docs/07-privacy.md). */
-export const PRIVACY_URL = 'https://gornitsa.games/privacy.html';
+export const PRIVACY_URL = 'https://gornitsa.games/privacy.html#anamnez';
