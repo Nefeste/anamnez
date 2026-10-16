@@ -8,7 +8,7 @@ import type { ShiftState } from '../../src/engine/shift/types';
 import { forgetProfile } from '../../src/state/profile';
 import { loadSlot, memoryStore } from '../../src/state/saves';
 import {
-  callPatient, chooseDiagnosis, chooseSetting, closeDay, examine, finishCase, forgetShift, leaveCase, loadShift, nextDay, openCase,
+  callPatient, chooseDiagnosis, chooseSetting, closeDay, examine, examineAll, finishCase, forgetShift, leaveCase, loadShift, nextDay, openCase,
   pauseClock, saved, sendAway, setSpeed, setStore, shiftCaseView, shiftState, shiftView, skipIdle, startShift, tick, toggleTreatment,
 } from '../../src/state/session';
 import { forgetSettings, updateSettings } from '../../src/state/settings';
@@ -354,5 +354,32 @@ describe('смена на экране: сохранение', () => {
     startShift(1, 'winter');
     await saved();
     expect(store.files.has('shift.json')).toBe(true);
+  });
+});
+
+describe('бланк направления (0.6.0, вопрос 45)', () => {
+  /** Смена с зерном 9: первый в очереди — в кабинете, ему назначено `run`; что стало со сменой. */
+  function ordered(run: () => void) {
+    forgetShift();
+    startShift(9, 'winter');
+    untilQueue();
+    callPatient(shiftView().queue[0].id);
+    run();
+    return { state: JSON.stringify(shiftState()), view: shiftCaseView()! };
+  }
+
+  test('«Отправить» — то же, что назначить по одному: по порядку отметки', () => {
+    const exams = ['exam.cbc', 'exam.xray_chest', 'exam.crp'];
+    const all = ordered(() => examineAll(exams));
+    const one = ordered(() => exams.forEach(examine));
+    expect(all.state).toBe(one.state);
+    expect(exams.every(id => all.view.done.includes(id))).toBe(true);
+    expect(all.view.pending.map(p => p.exam).sort()).toEqual(one.view.pending.map(p => p.exam).sort());
+  });
+
+  test('отмечать нечего — ничего не меняется', () => {
+    const none = ordered(() => examineAll([]));
+    const idle = ordered(() => undefined);
+    expect(none.state).toBe(idle.state);
   });
 });

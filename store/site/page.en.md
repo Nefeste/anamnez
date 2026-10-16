@@ -61,11 +61,13 @@ in Russian.
 - **A shift at the clinic.** Patients come with and without appointments. The nurse takes
   temperature, pulse, blood pressure and oxygen saturation and sees urgent patients in first. The
   map shows who is where: at reception, in the waiting room, at the X-ray, in your office.
-- **Examination.** Questions about complaints and history, a physical exam, lab tests, X-rays,
-  ECGs, ultrasound, CT, MRI and endoscopy — each with its own cost and time. While a test is
-  running, you can send the patient to wait and see the next one; those who wait too long leave.
-- **Decision.** A diagnosis, a treatment and where to treat: at home, on a ward or in the operating
-  room — or, if needed, a referral to another hospital or an ambulance.
+- **Examination.** A patient chart with tabs at the bottom, under your thumb. The history is a
+  conversation: you ask, the patient tells. The physical exam is a tap on a body figure. Lab tests,
+  X-rays, ECGs, ultrasound, CT, MRI and endoscopy go on a referral form — each with its own cost and
+  time. While a test is running, you can send the patient to wait and see the next one; those who
+  wait too long leave.
+- **Decision.** A diagnosis, a treatment sheet and where to treat: at home, on a ward or in the
+  operating room — or, if needed, a referral to another hospital or an ambulance.
 - **Review.** What it really was, a score for accuracy, justification, thrift and safety, and how
   an experienced doctor would have reasoned. Patients sent home sometimes get worse and come back,
   and the end-of-day summary tells you what happened to earlier patients.

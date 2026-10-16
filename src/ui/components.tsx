@@ -17,6 +17,11 @@ export interface ScreenScroll {
   center: (y: number, height: number) => void;
 }
 
+/** Место листа — посередине видимой части; выше видимой высоты — к верху. */
+function centerIn(view: ScrollView | null, box: number, y: number, height: number) {
+  view?.scrollTo({ y: Math.max(0, y - Math.max(0, box - height) / 2), animated: true });
+}
+
 /**
  * Экран с прокруткой. Смена `resetKey` возвращает прокрутку наверх (новый пациент).
  * `footer` — полоса внизу поверх прокрутки: главная кнопка экрана всегда под большим
@@ -31,9 +36,7 @@ export function Screen({ children, scroll = true, resetKey, footer, header, bare
   const view = useRef<ScrollView>(null);
   // высота видимой части: ставить место посередине
   const box = useRef(0);
-  useImperativeHandle(scrollRef, () => ({
-    center: (y, height) => view.current?.scrollTo({ y: Math.max(0, y - Math.max(0, box.current - height) / 2), animated: true }),
-  }), []);
+  useImperativeHandle(scrollRef, () => ({ center: (y, height) => centerIn(view.current, box.current, y, height) }), []);
   return (
     <SafeAreaView style={styles.screen} edges={bare ? ['top', 'bottom', 'left', 'right'] : ['bottom', 'left', 'right']}>
       {bare ? null : <Rule />}
@@ -46,6 +49,36 @@ export function Screen({ children, scroll = true, resetKey, footer, header, bare
       ) : <View style={styles.fill}>{children}</View>}
       {footer ? <View style={styles.footer}><View style={styles.footerInner}>{footer}</View></View> : null}
     </SafeAreaView>
+  );
+}
+
+/**
+ * Лист с прокруткой внутри экрана (0.6.0): у каждой вкладки карты пациента — свой. `startAt` — где был лист, когда с
+ * вкладки ушли: вернулись — там же; `Infinity` — в конец (беседа: новое — внизу). `onScrollY` — где он сейчас.
+ * `scrollRef` и `onDrag` — как у `Screen`.
+ */
+export function Pane({ children, startAt, onScrollY, scrollRef, onDrag, testID }: {
+  children: ReactNode; startAt?: () => number; onScrollY?: (y: number) => void; scrollRef?: Ref<ScreenScroll>; onDrag?: () => void; testID?: string;
+}) {
+  const styles = useStyles();
+  const view = useRef<ScrollView>(null);
+  const box = useRef(0);
+  // на прежнее место — один раз, когда лист разложился
+  const placed = useRef(false);
+  useImperativeHandle(scrollRef, () => ({ center: (y, height) => centerIn(view.current, box.current, y, height) }), []);
+  return (
+    <ScrollView ref={view} testID={testID} style={styles.fill} contentContainerStyle={styles.content}
+      onLayout={e => { box.current = e.nativeEvent.layout.height; }}
+      onContentSizeChange={() => {
+        if (placed.current) return;
+        placed.current = true;
+        const y = startAt?.() ?? 0;
+        if (y === Infinity) view.current?.scrollToEnd({ animated: false });
+        else if (y > 0) view.current?.scrollTo({ y, animated: false });
+      }}
+      onScroll={e => onScrollY?.(e.nativeEvent.contentOffset.y)} scrollEventThrottle={100} onScrollBeginDrag={onDrag}>
+      {children}
+    </ScrollView>
   );
 }
 
@@ -156,18 +189,19 @@ export function Button({ title, onPress, hint, kind = 'primary', disabled, testI
           </View>
         ) : label}
       </Pressable>
-      {onInfo ? (
-        <Pressable
-          testID={testID ? `${testID}-info` : undefined}
-          accessibilityRole="button"
-          accessibilityLabel={infoLabel}
-          hitSlop={8}
-          onPress={onInfo}
-          style={({ pressed }) => [styles.info, pressed && styles.btnPressed]}>
-          <Text style={styles.infoText}>?</Text>
-        </Pressable>
-      ) : null}
+      {onInfo ? <InfoButton testID={testID ? `${testID}-info` : undefined} label={infoLabel} onPress={onInfo} /> : null}
     </View>
+  );
+}
+
+/** «?» справа от кнопки или строки — что это (справка). */
+export function InfoButton({ testID, label, onPress }: { testID?: string; label?: string; onPress: () => void }) {
+  const styles = useStyles();
+  return (
+    <Pressable testID={testID} accessibilityRole="button" accessibilityLabel={label} hitSlop={8} onPress={onPress}
+      style={({ pressed }) => [styles.info, pressed && styles.btnPressed]}>
+      <Text style={styles.infoText}>?</Text>
+    </Pressable>
   );
 }
 

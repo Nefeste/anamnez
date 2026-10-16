@@ -1,7 +1,8 @@
 // Решение по пациенту — отдельный экран в два шага (09-game-design.md §5): сначала диагноз,
 // потом лечение и место. На одной вкладке с осмотром это было тесно (отзыв на 0.0.5).
-// Выбор — черновик приёма: можно вернуться, дообследовать и продолжить. Лечение (вопрос 34): сверху — выбор при
-// поставленном диагнозе, остальное — свёрнуто, с поиском по названию.
+// Выбор — черновик приёма: можно вернуться, дообследовать и продолжить. Лечение — листом назначений (вопросы 34 и 45,
+// 0.6.0): сверху — выбор при поставленном диагнозе, остальное — группами, свёрнуто, с поиском по названию; галочки, как в
+// бланке направления; место лечения — внизу листа.
 import { router } from 'expo-router';
 import { useState } from 'react';
 import { View } from 'react-native';
@@ -15,6 +16,7 @@ import { SYSTEM_ICONS } from '@/ui/iconShapes';
 import { TermSheet } from '@/ui/TermSheet';
 import { makeStyles, space, touch, useTheme } from '@/ui/theme';
 import type { CaseActions } from './actions';
+import { CheckRow, SectionHead } from './FormRow';
 
 type Step = 'diagnosis' | 'plan';
 
@@ -23,8 +25,10 @@ export function DecisionScreen({ view: v, actions }: { view: VisitView; actions:
   const theme = useTheme();
   const [step, setStep] = useState<Step>('diagnosis');
   const [term, setTerm] = useState<TermInfo | null>(null);
-  // остальное лечение — свёрнуто, с поиском (вопрос 34)
-  const [restOpen, setRestOpen] = useState(false);
+  // лист назначений: раскрытые группы («Выбор при этом диагнозе» — раскрыт, пока его не свернули) и поиск
+  const [opened, setOpened] = useState<string[]>([]);
+  const isOpen = (key: string) => opened.includes(key) !== (key === 'suggested');
+  const toggle = (key: string) => setOpened(opened.includes(key) ? opened.filter(k => k !== key) : [...opened, key]);
   const [query, setQuery] = useState('');
   const t = T.spikes.patient;
   const d = T.spikes.decision;
@@ -46,14 +50,14 @@ export function DecisionScreen({ view: v, actions }: { view: VisitView; actions:
   };
 
   const top = new Set(v.suggested.map(x => x.id));
-  const rest = v.treatmentGroups
-    .map(g => ({ ...g, items: g.items.filter(x => !top.has(x.id) && matchesQuery(query, x.name)) }))
-    .filter(g => g.items.length > 0);
-  const restCount = v.treatments.filter(x => !top.has(x.id)).length;
-  const txButton = (x: VisitView['treatments'][number]) => (
-    <Button key={x.id} testID={`tx-${x.id}`} kind={v.draft.treatments.includes(x.id) ? 'primary' : 'plain'} title={x.name} hint={x.warning}
-      disabled={x.disabled && !v.draft.treatments.includes(x.id)}
-      onPress={() => actions.toggleTreatment(x.id)} onInfo={() => setTerm(treatmentTerm(x.id))} infoLabel={t.whatIsIt} />
+  const rest = v.treatmentGroups.map(g => ({ ...g, items: g.items.filter(x => !top.has(x.id)) })).filter(g => g.items.length > 0);
+  const found = query.trim() ? v.treatments.filter(x => matchesQuery(query, x.name)) : undefined;
+  const chosen = (items: VisitView['treatments']) => items.filter(x => v.draft.treatments.includes(x.id)).length;
+  // строка листа — с галочкой; противопоказание, о котором врач знает, и почему здесь не назначить — под названием
+  const txRow = (x: VisitView['treatments'][number]) => (
+    <CheckRow key={x.id} testID={`tx-${x.id}`} title={x.name} hint={x.warning} on={v.draft.treatments.includes(x.id)}
+      disabled={x.disabled && !v.draft.treatments.includes(x.id)} onPress={() => actions.toggleTreatment(x.id)}
+      onInfo={() => setTerm(treatmentTerm(x.id))} infoLabel={t.whatIsIt} indent={!found} />
   );
 
   const footer = step === 'diagnosis'
@@ -114,34 +118,39 @@ export function DecisionScreen({ view: v, actions }: { view: VisitView; actions:
         </>
       ) : (
         <>
-          {v.suggested.length > 0 && (
-            <Card testID="tx-suggested">
-              <Text style={styles.label}>{d.suggested}</Text>
-              <P muted>{d.suggestedNote}</P>
-              {v.suggested.map(txButton)}
-            </Card>
+          <TextInput testID="tx-search" value={query} onChangeText={setQuery} placeholder={d.search} autoCorrect={false} returnKeyType="search"
+            clearButtonMode="while-editing" style={styles.search} />
+          {found ? (found.length > 0 ? found.map(txRow) : <P muted>{d.nothing}</P>) : (
+            <>
+              {v.suggested.length > 0 && (
+                <View testID="tx-suggested" style={styles.sheet}>
+                  <SectionHead testID="tx-sec-suggested" title={d.suggested} state={d.sheetState(chosen(v.suggested), v.suggested.length)}
+                    marked={chosen(v.suggested) > 0} open={isOpen('suggested')} onPress={() => toggle('suggested')} />
+                  {isOpen('suggested') && (
+                    <>
+                      <P muted>{d.suggestedNote}</P>
+                      {v.suggested.map(txRow)}
+                    </>
+                  )}
+                </View>
+              )}
+              {rest.map(g => (
+                <View key={g.key} style={styles.sheet}>
+                  <SectionHead testID={`tx-sec-${g.key}`} title={g.title} state={d.sheetState(chosen(g.items), g.items.length)} marked={chosen(g.items) > 0}
+                    open={isOpen(g.key)} onPress={() => toggle(g.key)} />
+                  {isOpen(g.key) && g.items.map(txRow)}
+                </View>
+              ))}
+            </>
           )}
-          <Card>
-            <Button testID="tx-rest" kind="plain" title={restOpen ? d.restHide : d.restShow(restCount)} onPress={() => setRestOpen(!restOpen)} />
-            {restOpen && (
-              <TextInput testID="tx-search" value={query} onChangeText={setQuery} placeholder={d.search} autoCorrect={false} returnKeyType="search" style={styles.search} />
-            )}
-            {restOpen && rest.length === 0 && <P muted>{d.nothing}</P>}
-          </Card>
-          {restOpen && rest.map(g => (
-            <Card key={g.key}>
-              <Text style={styles.label}>{g.title}</Text>
-              {g.items.map(txButton)}
-            </Card>
-          ))}
-          <Card>
+          {/* место лечения — внизу листа, одно из нескольких; столбиком: в ряд «В стационар» рвётся посреди слова */}
+          <View style={styles.sheet}>
             <Text style={styles.label}>{t.settingLabel}</Text>
-            {/* столбиком: в ряд «В стационар» рвётся посреди слова, а шрифт на телефоне бывает крупнее */}
             {v.settings.map(o => (
-              <Button key={o.key} testID={`setting-${o.key}`} kind={v.draft.setting === o.key ? 'primary' : 'plain'} title={o.title} hint={o.hint}
-                disabled={o.disabled} onPress={() => actions.chooseSetting(o.key)} />
+              <CheckRow key={o.key} radio testID={`setting-${o.key}`} title={o.title} hint={o.hint} on={v.draft.setting === o.key} disabled={o.disabled}
+                onPress={() => actions.chooseSetting(o.key)} />
             ))}
-          </Card>
+          </View>
         </>
       )}
 
@@ -152,6 +161,7 @@ export function DecisionScreen({ view: v, actions }: { view: VisitView; actions:
 
 const useStyles = makeStyles(t => ({
   label: { fontSize: 13, fontWeight: '700', letterSpacing: 1.2, color: t.colors.muted, textTransform: 'uppercase', marginTop: space.s },
+  sheet: { gap: space.s },
   groupHead: { flexDirection: 'row', alignItems: 'center', gap: space.s, marginTop: space.s },
   groupLabel: { flex: 1, marginTop: 0 },
   search: {

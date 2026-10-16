@@ -54,6 +54,9 @@ export interface Palette {
   lamp: string;
   /** затемнение под листом поверх экрана */
   backdrop: string;
+  /** фигура человека в «Осмотреть» (0.6.0): тело и его контур */
+  figure: string;
+  figureLine: string;
 }
 
 export interface Fonts {
@@ -91,6 +94,7 @@ export const LIGHT: Theme = {
     accent: '#2B4E8C', onAccent: '#FFFFFF', onAccentHint: '#DCE5F4', accentSoft: '#E6ECF6', mark: '#2B4E8C', markSoft: '#DCE5F4', info: '#2B4E8C',
     red: '#B8392F', yellow: '#D9A21B', green: '#2F7A40', yellowText: '#8A5A00', onRed: '#FFFFFF', onYellow: '#3B2A00', onGreen: '#FFFFFF', danger: '#B3261E',
     fresh: '#FFF6DE', freshLine: '#D9A21B', chip: '#EEE8DA', margin: '#C0766B', lamp: '#FFC94D', backdrop: 'rgba(31,45,61,0.45)',
+    figure: '#E7DFCE', figureLine: '#A99E87',
   },
   fonts: { title: 'PT Serif', body: 'PT Sans', mono: 'PT Mono' },
   shape: { radius: 6, card: 3, stamp: true, folderTabs: true, doubleRule: true, ruled: true },
@@ -103,6 +107,7 @@ export const DARK: Theme = {
     accent: '#3DDC84', onAccent: '#052B1A', onAccentHint: '#0B4A2D', accentSoft: '#173A2E', mark: '#12804A', markSoft: '#CDEBDB', info: '#56C8E8',
     red: '#FF6B5E', yellow: '#F2C14E', green: '#3DDC84', yellowText: '#F2C14E', onRed: '#2A0703', onYellow: '#2A1F00', onGreen: '#052B1A', danger: '#FF6B5E',
     fresh: '#2C2A16', freshLine: '#F2C14E', chip: '#1C3035', margin: '#26393E', lamp: '#FFC94D', backdrop: 'rgba(0,0,0,0.6)',
+    figure: '#1F363B', figureLine: '#4A6A70',
   },
   fonts: { title: 'Golos Text', body: 'Golos Text', mono: 'JetBrains Mono' },
   shape: { radius: 12, card: 12, stamp: false, folderTabs: false, doubleRule: false, ruled: false },
