@@ -5,6 +5,8 @@ import type { Id, Setting } from '@/content/types';
 
 export interface CaseActions {
   act(exam: Id): void;
+  /** бланк направления (0.6.0): отмеченное — разом; нет — по одному через `act` */
+  actAll?(exams: readonly Id[]): void;
   waitForResults(): void;
   /** смена: отпустить ждать результатов и пока принять другого */
   sendAway?(): void;

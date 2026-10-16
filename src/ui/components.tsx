@@ -189,18 +189,19 @@ export function Button({ title, onPress, hint, kind = 'primary', disabled, testI
           </View>
         ) : label}
       </Pressable>
-      {onInfo ? (
-        <Pressable
-          testID={testID ? `${testID}-info` : undefined}
-          accessibilityRole="button"
-          accessibilityLabel={infoLabel}
-          hitSlop={8}
-          onPress={onInfo}
-          style={({ pressed }) => [styles.info, pressed && styles.btnPressed]}>
-          <Text style={styles.infoText}>?</Text>
-        </Pressable>
-      ) : null}
+      {onInfo ? <InfoButton testID={testID ? `${testID}-info` : undefined} label={infoLabel} onPress={onInfo} /> : null}
     </View>
+  );
+}
+
+/** «?» справа от кнопки или строки — что это (справка). */
+export function InfoButton({ testID, label, onPress }: { testID?: string; label?: string; onPress: () => void }) {
+  const styles = useStyles();
+  return (
+    <Pressable testID={testID} accessibilityRole="button" accessibilityLabel={label} hitSlop={8} onPress={onPress}
+      style={({ pressed }) => [styles.info, pressed && styles.btnPressed]}>
+      <Text style={styles.infoText}>?</Text>
+    </Pressable>
   );
 }
 

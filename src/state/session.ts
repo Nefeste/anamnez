@@ -825,6 +825,21 @@ export function examine(exam: Id) {
   doctor({ kind: 'exam', exam }, exam);
 }
 
+/**
+ * Бланк направления (0.6.0, вопрос 45): отмеченное — разом, по порядку, как касаниями по одному, и время — целиком:
+ * назначения короткие. «За это время» и тревога — за всё отправленное, а не только за последнее.
+ */
+export function examineAll(exams: readonly Id[]) {
+  const sess = live();
+  const p = sess && current(sess.s);
+  if (!sess || !p || sess.finishing || exams.length === 0) return;
+  const notices = exams.flatMap(exam => run(sess, { kind: 'exam', exam }));
+  sess.meanwhile = meanwhileOf(sess.s, p, notices, exams[exams.length - 1]);
+  sess.urgent = urgentIn(notices);
+  sess.alarm = notices.some(n => n.kind === 'arrest');
+  changed();
+}
+
 export function waitForResults() {
   doctor({ kind: 'waitResults' });
 }

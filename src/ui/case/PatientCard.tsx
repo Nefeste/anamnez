@@ -10,7 +10,7 @@ import { buzz, play } from '@/audio/sounds';
 import { T } from '@/i18n';
 import type { StaffPortrait } from '@/render/look';
 import { Portrait } from '@/render/Portrait';
-import { examInfo, examsByAction, examTerm, findingInfo, type Line, type ResultGroup, type TermInfo, type VisitView } from '@/state/caseView';
+import { examInfo, examsByAction, findingInfo, type Line, type ResultGroup, type TermInfo, type VisitView } from '@/state/caseView';
 import { Button, Card, Chip, Chips, H, P, Pane, Screen, type ScreenScroll } from '@/ui/components';
 import { TermSheet } from '@/ui/TermSheet';
 import { makeStyles, space } from '@/ui/theme';
@@ -18,10 +18,12 @@ import { Text } from '../text';
 import type { CaseActions, FooterAction } from './actions';
 import { type CardTab, CardTabs } from './CardTabs';
 import { Differential } from './Differential';
+import { BodyMap, PlacePanel } from './Examine';
+import type { ExamPlace } from './places';
+import { longestOf, partsOf, Referral } from './Referral';
 import { ResultPicture } from './ResultPicture';
 import { Questions, Talk } from './Talk';
 
-type Action = Exclude<CardTab, 'card'>;
 type Where = 'known' | 'list';
 
 /** Сколько после действия держать ответ посередине: пока раскладка выше не улеглась; листаете сами — сразу перестаём. */
@@ -37,15 +39,23 @@ const FIRST_FRESH = 'fresh';
 const firstTab = (v: VisitView, readOnly: boolean): CardTab => (v.acted || v.decision || readOnly ? 'card' : 'ask');
 
 /**
- * Последняя вкладка пациента — и после того, как экран карты собрали заново: из справки «Подробнее» в веб-сборке
- * назад — там же. Немного: только что принятые.
+ * Последнее у пациента — вкладка, место на фигуре, отмеченное в бланке — и после того, как экран карты собрали заново:
+ * из справки «Подробнее» в веб-сборке назад — там же. Немного: только что принятые.
  */
-const lastTab = new Map<number, CardTab>();
-const rememberTab = (patient: number, tab: CardTab) => {
-  lastTab.delete(patient);
-  lastTab.set(patient, tab);
-  if (lastTab.size > 20) lastTab.delete(lastTab.keys().next().value!);
-};
+function recent<V>() {
+  const seen = new Map<number, V>();
+  return {
+    get: (patient: number) => seen.get(patient),
+    set: (patient: number, value: V | undefined) => {
+      seen.delete(patient);
+      if (value !== undefined) seen.set(patient, value);
+      if (seen.size > 20) seen.delete(seen.keys().next().value!);
+    },
+  };
+}
+const lastTab = recent<CardTab>();
+const lastPlace = recent<ExamPlace>();
+const lastMarked = recent<string[]>();
 const startTab = (v: VisitView, readOnly: boolean): CardTab => lastTab.get(v.portrait.key) ?? firstTab(v, readOnly);
 
 /**
@@ -66,6 +76,21 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
   const openKeys = opened.patient === key ? opened.keys : [];
   const isOpen = (k: string) => openKeys.includes(k);
   const toggle = (k: string) => setOpened({ patient: key, keys: isOpen(k) ? openKeys.filter(x => x !== k) : [...openKeys, k] });
+  // место на фигуре, чьи осмотры открыты, — у этого пациента; касание открытого закрывает
+  const [where, setWhere] = useState<{ patient: number; place?: ExamPlace }>(() => ({ patient: key, place: lastPlace.get(key) }));
+  const place = where.patient === key ? where.place : lastPlace.get(key);
+  const pickPlace = (next: ExamPlace) => {
+    const open = place === next ? undefined : next;
+    lastPlace.set(key, open);
+    setWhere({ patient: key, place: open });
+  };
+  // отмеченное в бланке направления, по порядку отметки, — у этого пациента; сделанное и недоступное — не в счёт
+  const [marks, setMarks] = useState<{ patient: number; ids: string[] }>(() => ({ patient: key, ids: lastMarked.get(key) ?? [] }));
+  const marked = (marks.patient === key ? marks.ids : lastMarked.get(key) ?? []).filter(id => !v.done.includes(id) && !v.unavailable[id]);
+  const setMarked = (ids: string[]) => {
+    lastMarked.set(key, ids.length > 0 ? ids : undefined);
+    setMarks({ patient: key, ids });
+  };
   // подсказка «нажмите, чтобы узнать» — пока игрок ни разу не открыл справку
   const [hinted, setHinted] = useState(false);
   const t = T.spikes.patient;
@@ -134,27 +159,33 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
   const setTab = (next: CardTab) => {
     want.current = null;
     rows.current.clear();
-    rememberTab(key, next);
+    lastTab.set(key, next);
     setPicked({ patient: key, tab: next });
   };
 
-  // список вкладки действия: «Практикант» (spec 2026-10-trainee) — сверху то, что относится к жалобе, и сделанное
+  // «Практикант» (spec 2026-10-trainee): сверху то, что относится к жалобе, и сделанное; остальное — свёрнуто
   const focus = v.focus ? new Set(v.focus) : undefined;
-  const listOf = (a: Action) => {
-    const main = focus ? groups[a].filter(id => focus.has(id) || v.done.includes(id)) : groups[a];
-    return { main, rest: focus ? groups[a].filter(id => !main.includes(id)) : [] };
-  };
-  const list = tab === 'card' ? undefined : listOf(tab);
-  const restKey = `rest:${tab}`;
-  const shown = list ? [...list.main, ...(isOpen(restKey) ? list.rest : [])] : [];
-  // первое новое в списке вкладки — к нему после «Подождать»
-  const freshRow = shown.find(id => v.done.includes(id) && v.groups.some(g => g.exam === id && g.fresh));
+  const askMain = focus ? groups.ask.filter(id => focus.has(id) || v.done.includes(id)) : groups.ask;
+  const askRest = focus ? groups.ask.filter(id => !askMain.includes(id)) : [];
+  // первое новое на листе вкладки — к нему после «Подождать»; в бланке — по порядку разделов
+  const rowsOfTab = tab === 'order' ? partsOf(groups.order, focus).flatMap(x => x.ids) : tab === 'ask' ? groups.ask : [];
+  const freshRow = rowsOfTab.find(id => v.done.includes(id) && v.groups.some(g => g.exam === id && g.fresh));
 
   // касание — вибрацией: звук касания на телефоне не понравился (отзыв на 0.0.2)
   const doExam = (id: string) => {
     buzz('tap');
     follow(`done:${id}`);
     actions.act(id);
+  };
+  // бланк: галочка — отметить или снять; «Отправить» — отмеченное разом, по порядку отметки; к первому — ответ
+  const mark = (id: string) => setMarked(marked.includes(id) ? marked.filter(x => x !== id) : [...marked, id]);
+  const send = () => {
+    if (marked.length === 0) return;
+    buzz('tap');
+    follow(`done:${marked[0]}`);
+    setMarked([]);
+    if (actions.actAll) actions.actAll(marked);
+    else for (const id of marked) actions.act(id);
   };
   // пришли результаты — к первому новому; часы доживают ожидание в следующих кадрах, поэтому дольше
   const wait = () => {
@@ -167,7 +198,9 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
   };
   // отпустили ждать или попросили подождать — вернётся с новым: тогда с «Карты», а не с прежней вкладки
   const sendAway = actions.sendAway ? () => {
-    lastTab.delete(key);
+    lastTab.set(key, undefined);
+    lastPlace.set(key, undefined);
+    lastMarked.set(key, undefined);
     actions.sendAway?.();
   } : undefined;
 
@@ -285,61 +318,42 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
                   if (id === freshRow) placeRow(FIRST_FRESH, 'list', e, id);
                 }} />
             </View>
-          ) : list ? (
-            <>
-              {focus && <P muted testID="visit-focus">{t.focusNote}</P>}
-              <Card onLayout={e => placeCard('list', e)}>
-                {shown.map(id => {
-                  const info = examInfo(id);
-                  // сделанное — с ответом на месте: не нужно искать его на «Карте» (отзыв на 0.0.37);
-                  // только что пришедшее — целиком, прежнее — строкой «что нашли», касание раскрывает
-                  if (v.done.includes(id)) {
-                    // все результаты назначения — и повторного забора (часть 39в: тропонин через час), новые сверху
-                    const gs = v.groups.filter(x => x.exam === id);
-                    const g = gs[0];
-                    const lines = gs.flatMap(x => x.lines);
-                    const ready = v.pending.find(x => x.exam === id);
-                    const k = `done:${id}`;
-                    const open = !!g && (g.fresh || isOpen(k));
-                    const seen = lines.filter(l => l.shown).map(l => l.text).join('; ') || t.nothingFound;
-                    const summary = g ? (ready ? `${seen} · ${t.readyAt(ready.at)}` : seen) : ready ? t.readyAt(ready.at) : t.done;
-                    return (
-                      <Animated.View key={id} entering={FadeInDown.duration(250)} testID={`done-${id}`}
-                        onLayout={e => {
-                          placeRow(k, 'list', e);
-                          if (id === freshRow) placeRow(FIRST_FRESH, 'list', e, id);
-                        }}
-                        style={[styles.done, g?.fresh && styles.groupFresh]}>
-                        <Pressable accessibilityRole="button" aria-expanded={open} accessibilityLabel={`${info.name}: ${open ? t.collapse : t.expand}`} disabled={!g || g.fresh}
-                          onPress={() => toggle(k)} style={({ pressed }) => [styles.groupHead, pressed && styles.pressed]}>
-                          <Text style={styles.groupTitle}>{`✓ ${info.name}`}</Text>
-                          {g?.fresh ? <Text style={styles.badge}>{t.fresh}</Text> : g ? <Text style={styles.chevron}>{open ? '▴' : '▾'}</Text> : null}
-                        </Pressable>
-                        {/* снимок, лента, срез — тут же, где назначили, и всегда на виду, как на «Карте» (отзыв на 0.0.37) */}
-                        {g?.image ? <ResultPicture image={g.image} /> : null}
-                        {open ? <Chips>{lines.map((r, i) => <Chip key={`${r.f}${i}`} text={r.text} strong={r.shown} onPress={() => explain(findingInfo(r.f))} />)}</Chips>
-                          : <Text numberOfLines={2} style={styles.summary}>{summary}</Text>}
-                      </Animated.View>
-                    );
-                  }
-                  // своя больница: нет помещения, аппарата или человека — серым, с причиной
-                  const why = v.unavailable[id];
-                  return (
-                    <Button key={id} testID={`exam-${id}`} kind="plain" disabled={!!why} title={info.name}
-                      hint={why ?? (v.bedside?.[id] !== undefined ? t.costBedside(v.bedside[id], info.cost) : t.cost(v.minutes?.[id] ?? info.minutes, info.cost))} hintMono={!why}
-                      onPress={() => doExam(id)} onInfo={() => explain(examTerm(id))} infoLabel={t.whatIsIt} />
-                  );
-                })}
-                {list.rest.length > 0 && (
-                  <Button testID={`visit-rest-${tab}`} kind="plain" title={isOpen(restKey) ? t.restHide : t.restShow(list.rest.length)} onPress={() => toggle(restKey)} />
-                )}
-              </Card>
-            </>
-          ) : null}
+          ) : tab === 'examine' ? (
+            <BodyMap v={v} ids={groups.examine} place={place} onPlace={pickPlace} focus={focus} />
+          ) : (
+            // бланк направления: строки — прямо в столбце, где легла каждая — от его начала
+            <View onLayout={e => placeCard('list', e)} style={styles.form}>
+              <Referral v={v} ids={groups.order} focus={focus} marked={marked} onMark={mark} isOpen={isOpen} toggle={toggle} explain={explain}
+                onRow={(id, e) => {
+                  placeRow(`done:${id}`, 'list', e);
+                  if (id === freshRow) placeRow(FIRST_FRESH, 'list', e, id);
+                }} />
+            </View>
+          )}
         </Pane>
 
-        {tab === 'ask' && list ? (
-          <Questions v={v} ids={list.main} rest={list.rest} restOpen={isOpen(restKey)} onRest={() => toggle(restKey)} onAsk={doExam} explain={explain} />
+        {tab === 'ask' ? (
+          <Questions v={v} ids={askMain} rest={askRest} restOpen={isOpen('rest:ask')} onRest={() => toggle('rest:ask')} onAsk={doExam} explain={explain} />
+        ) : null}
+        {tab === 'examine' && place ? (
+          <PlacePanel v={v} place={place} ids={groups.examine} focus={focus} isOpen={isOpen} toggle={toggle}
+            onExam={id => {
+              buzz('tap');
+              actions.act(id);
+            }}
+            explain={explain} onClose={() => pickPlace(place)} />
+        ) : null}
+        {tab === 'order' && marked.length > 0 ? (
+          // бланк: сколько отмечено, во что обойдётся, сколько ждать самого долгого — и «Отправить»
+          <View testID="order-bar" style={[styles.strip, styles.orderBar]}>
+            <Text testID="order-sum" style={[styles.stripText, styles.stripLine]}>
+              {T.spikes.referral.marked(marked.length, T.common.rub(marked.reduce((a, id) => a + examInfo(id).cost, 0)), longestOf(v, marked))}
+            </Text>
+            <Pressable testID="order-send" accessibilityRole="button" accessibilityHint={T.spikes.referral.sendHint} onPress={send}
+              style={({ pressed }) => [styles.stripButton, styles.sendButton, pressed && styles.pressed]}>
+              <Text style={[styles.stripButtonText, styles.sendText]}>{T.spikes.referral.send}</Text>
+            </Pressable>
+          </View>
         ) : null}
         {waiting ? (
           // две кнопки — под строками: иначе строки зажаты в узкий столбец
@@ -502,6 +516,11 @@ const useStyles = makeStyles(t => ({
     borderColor: t.colors.freshLine, backgroundColor: t.colors.card,
   },
   stripButtonText: { fontSize: 13, fontWeight: '700', color: t.colors.ink },
+  // бланк направления: строки — столбцом; «Отправить» — главной кнопкой полосы
+  form: { gap: space.s },
+  orderBar: { backgroundColor: t.colors.accentSoft, borderTopColor: t.colors.accent },
+  sendButton: { minWidth: 120, alignItems: 'center', backgroundColor: t.colors.accent, borderColor: t.colors.accent },
+  sendText: { fontSize: 15, color: t.colors.onAccent },
   hint: { flexDirection: 'row', gap: space.s, alignItems: 'center' },
   label: { fontSize: 13, fontWeight: '700', letterSpacing: 1.2, color: t.colors.muted, textTransform: 'uppercase', marginTop: space.s },
   knownHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: space.s },
@@ -511,8 +530,6 @@ const useStyles = makeStyles(t => ({
   groupHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.s },
   groupTitle: { flex: 1, fontSize: 13, fontWeight: '600', color: t.colors.muted },
   badge: { fontSize: 12, fontWeight: '700', color: t.colors.onYellow, backgroundColor: t.colors.yellow, borderRadius: 10, paddingHorizontal: space.s, paddingVertical: 2, overflow: 'hidden' },
-  done: { gap: space.xs, padding: space.m, borderRadius: t.shape.radius, borderWidth: 1, borderColor: t.colors.line },
-  summary: { fontSize: 14, color: t.colors.ink },
   chevron: { fontSize: 14, color: t.colors.muted },
   pressed: { opacity: 0.7 },
   quiet: { flexDirection: 'row', alignItems: 'center', gap: space.s, minHeight: 44, paddingHorizontal: space.s, borderRadius: t.shape.radius, backgroundColor: t.colors.chip },

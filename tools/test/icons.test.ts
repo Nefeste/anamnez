@@ -2,7 +2,7 @@
 // контуры — строки SVG только из команд, которые понимают Skia и браузер, и в пределах сетки 24 × 24 (iconShapes.ts).
 import { describe, expect, test } from 'bun:test';
 import { SYSTEMS } from '../../src/content/types';
-import { CARD_ICONS, ICON_GRID, SYSTEM_ICONS } from '../../src/ui/iconShapes';
+import { CARD_ICONS, ICON_GRID, SHELF_ICONS, SYSTEM_ICONS } from '../../src/ui/iconShapes';
 
 /** Числа контура по командам: у дуги A флаги — не координаты, их не проверяем. */
 function coords(d: string): number[] {
@@ -25,7 +25,7 @@ describe('значки кодом', () => {
   });
 
   test('контуры — абсолютными командами SVG, координаты — в сетке 24 × 24', () => {
-    for (const [k, shape] of [...Object.entries(SYSTEM_ICONS), ...Object.entries(CARD_ICONS)]) {
+    for (const [k, shape] of [...Object.entries(SYSTEM_ICONS), ...Object.entries(CARD_ICONS), ...Object.entries(SHELF_ICONS)]) {
       const all = [...shape.stroke, ...(shape.fill ?? [])];
       expect(all.length, k).toBeGreaterThan(0);
       for (const d of all) {
