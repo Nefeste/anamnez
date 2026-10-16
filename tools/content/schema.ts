@@ -996,6 +996,23 @@ export const achievementSchema = z.discriminatedUnion('kind', [
 ]);
 
 /**
+ * Умение врача (spec 2026-10-skills, часть 75): отделение, уровень специальности, эффект — обследования
+ * чувствительнее, вопросы расспроса короче, нанятые врачи должности реже забывают спросить. Числа — игровая оценка.
+ */
+export const skillSchema = z.strictObject({
+  id: z.string().regex(/^skill\.[a-z0-9_]+$/),
+  department: z.string().regex(/^dept\.[a-z0-9_]+$/),
+  level: z.number().int().min(2).max(5),
+  name: text,
+  text,
+  effect: z.discriminatedUnion('kind', [
+    z.strictObject({ kind: z.literal('examSens'), exams: z.array(z.string()).min(1), pp: z.number().int().min(1).max(20) }),
+    z.strictObject({ kind: z.literal('askTime'), minutes: z.number().int().min(1).max(5) }),
+    z.strictObject({ kind: z.literal('mentor'), role: z.string().regex(/^role\.[a-z0-9_]+$/), forget: z.number().min(1).max(10) }),
+  ]),
+});
+
+/**
  * Шкала раннего предупреждения по витальным (NEWS2, spec 2026-09-chapter-2, часть 27): баллы по
  * измеренному значению признака — [от, до, баллы], `null` — без границы; отдельные строки — дышит
  * кислородом и спутанность; уровни ответа — средний с `medium` баллов или `single` по одному
@@ -1153,5 +1170,6 @@ export type AchievementSrc = z.infer<typeof achievementSchema>;
 export type ScoreSrc = z.infer<typeof scoreSchema>;
 export type RuleSrc = z.infer<typeof ruleSchema>;
 export type TargetSrc = z.infer<typeof targetSchema>;
+export type SkillSrc = z.infer<typeof skillSchema>;
 export type LinkSrc = z.infer<typeof link>;
 export type ProbabilitySrc = z.infer<typeof probability>;

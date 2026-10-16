@@ -1,0 +1,8 @@
+# Терапия 3 (spec 2026-10-skills; spec 2026-09-profile, часть 17): опытный врач спрашивает быстрее — каждый вопрос
+# расспроса на минуту короче, но не меньше минуты. Игровая оценка
+id: skill.therapy_questions
+department: dept.therapy
+level: 3
+name: { ru: "Быстрый опрос" }
+text: { ru: "Вопросы расспроса на минуту короче, но не меньше минуты." }
+effect: { kind: askTime, minutes: 1 }

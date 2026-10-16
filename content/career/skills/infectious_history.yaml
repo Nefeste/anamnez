@@ -1,0 +1,8 @@
+# Инфекционные болезни 2 (spec 2026-10-skills): опытный эпиданамнез — больной вспоминает контакты, поездки, еду и укус
+# клеща, о которых сам бы не сказал. Игровая оценка
+id: skill.infectious_history
+department: dept.infectious
+level: 2
+name: { ru: "Эпиданамнез" }
+text: { ru: "Расспрос о контактах, еде и укусе клеща на 10 п. п. чувствительнее." }
+effect: { kind: examSens, exams: [exam.ask_contacts, exam.ask_food, exam.ask_tick], pp: 10 }

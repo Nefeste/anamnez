@@ -20,6 +20,7 @@ import { type ClinicLayout, cropPlan, layoutOf } from '@/engine/hospital/clinic'
 import { memberAt, type StaffMember, staffingOf } from '@/engine/hospital/staff';
 import { type MissionProgress, missionProgress, nextChapterOf, tutorialDayOf } from '@/engine/campaign/campaign';
 import { levelOf } from '@/engine/economy/economy';
+import { askMinutes, skillsFor } from '@/engine/career/skills';
 import {
   apply, atDoctor, atDoorOf, bedsideEquipment, bedsideOf, boxBeds, brokenOf, current, freeBeds, freeBoxBeds, freeIcuBeds, freeRicuBeds, type HospitalCtx, hospitalCtx, icuBeds, inBox, inIcu, inpatientsOf, inRicu,
   moreUrgent, newCampaign, newSandbox, ricuBeds,
@@ -504,8 +505,21 @@ export async function startSingle(opts: { venue: Id; difficulty: Difficulty; see
   return true;
 }
 
+/**
+ * Умения врача сейчас (spec 2026-10-skills, часть 75): по опыту специальностей в профиле; настройка выключена — без них.
+ * Смене — через команду: новые действуют со следующего дня.
+ */
+export function playerSkills(): Id[] {
+  return settings().skills ? skillsFor(db, profile().experience) : [];
+}
+
+const sameIds = (a: readonly Id[], b: readonly Id[]) => a.length === b.length && a.every((x, i) => x === b[i]);
+
 function begin(s: ShiftState) {
   if (session) save(true); // прежняя партия — в свой слот
+  // новая игра — с умениями врача сразу: её первый день открывается сейчас; без умений — без команды в журнале
+  const skills = playerSkills();
+  if (skills.length > 0) apply(db, s, { kind: 'skills', ids: skills, today: true });
   session = fresh(s, false);
   mode = s.meta.mode;
   if (s.meta.career) career = s.meta.career;
@@ -540,6 +554,9 @@ function run(sess: Session, cmd: Command, more?: () => boolean, clock = false): 
   // кампании его нет
   const variety = settings().variety && sess.s.meta.mode !== 'campaign';
   if ((sess.s.meta.variety ?? false) !== variety) apply(db, sess.s, { kind: 'variety', on: variety });
+  // умения врача (spec 2026-10-skills) — так же: выросли или выключены за день — со следующего дня
+  const skills = playerSkills();
+  if (!sameIds(sess.s.meta.skillsNext ?? sess.s.meta.skills ?? [], skills)) apply(db, sess.s, { kind: 'skills', ids: skills });
   const notices = apply(db, sess.s, cmd, more);
   record(sess, notices);
   if (sess.s.t - sess.savedT >= SAVE_EVERY) save();
@@ -2261,6 +2278,14 @@ function buildCaseView(): VisitView | undefined {
     for (const [eid, e] of Object.entries(db.exams)) if (e.bedside && bedsideOf(db, s, p, eid)) bedside[eid] = e.bedside.time.procedure;
   }
   const unavailable: Record<Id, string> = Object.fromEntries(Object.entries(unavailableOf(s)).filter(([eid]) => bedside[eid] === undefined));
+  // умения дня (spec 2026-10-skills): вопрос расспроса у вас — короче, и в списке — его настоящие минуты
+  const minutes: Record<Id, number> = {};
+  if (!p.closed && !watching) {
+    for (const [eid, e] of Object.entries(db.exams)) {
+      const m = askMinutes(db, s.meta.skills, e, e.time.procedure);
+      if (m !== e.time.procedure) minutes[eid] = m + (e.time.report ?? 0) + (e.time.turnaround ?? 0);
+    }
+  }
   // ушёл на обследование в другой кабинет (0.5.12): что делают при нём — когда вернётся; в другой кабинет — можно
   if (mine && p.out !== undefined && p.out.back > now) {
     const why = T.spikes.patient.awayExam(hhmm(minuteOfDay(p.out!.back)));
@@ -2294,6 +2319,7 @@ function buildCaseView(): VisitView | undefined {
     // и в практике: кабинета УЗИ в амбулатории нет (часть 29)
     unavailable,
     ...(Object.keys(bedside).length > 0 ? { bedside } : {}),
+    ...(Object.keys(minutes).length > 0 ? { minutes } : {}),
     // лечение у постели (часть 39а): тромболизис — лежащему под монитором
     bedsideEquipment: bedsideEquipment(db, s, p),
     // лечение в кабинете (spec 2026-10-chapter-4, часть 53а): гемостаз — где работает эндоскопический кабинет

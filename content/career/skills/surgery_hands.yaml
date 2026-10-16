@@ -1,0 +1,7 @@
+# Хирургия 2 (spec 2026-10-skills): опытные руки — напряжение мышц и болезненность живота заметнее. Игровая оценка
+id: skill.surgery_hands
+department: dept.surgery
+level: 2
+name: { ru: "Чуткие руки" }
+text: { ru: "Пальпация живота и симптомы раздражения брюшины на 10 п. п. чувствительнее." }
+effect: { kind: examSens, exams: [exam.abdomen_palpation, exam.peritoneal_signs], pp: 10 }

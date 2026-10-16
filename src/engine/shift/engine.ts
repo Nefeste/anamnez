@@ -26,6 +26,7 @@ import { alsoSettings, choiceFor, evaluatePlan, primaryOf, recommendedSetting, s
 import { type DoctorRun, examCost, indicated, ORDER_MINUTES, type Parts, startRational, type StepResult, stepParts, whole } from '../med/policy';
 import { buildReview, type ReviewData, reviewBeliefs } from '../med/review';
 import { scoreCase } from '../med/score';
+import { askMinutes, examSkillWith, mentorOf } from '../career/skills';
 import type { Observation } from '../med/types';
 import {
   type ClosedCase, type ColleagueDay, type Command, DAY, type DaySummary, type Difficulty, easyLevel, type Notice, type PlannedReturn, REGISTRATION, SHIFT_END, SHIFT_SCHEMA_VERSION,
@@ -531,11 +532,25 @@ function command(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
       if (cmd.on) s.meta.variety = true;
       else delete s.meta.variety;
       return [];
+    // умения врача (spec 2026-10-skills, часть 75): умения дня — те, что были, когда он открылся; новое — завтра
+    case 'skills':
+      if (cmd.today) setSkills(s, cmd.ids);
+      else if (sameIds(cmd.ids, s.meta.skills ?? [])) delete s.meta.skillsNext;
+      else s.meta.skillsNext = [...cmd.ids];
+      return [];
     case 'nextChapter':
       nextChapter(db, s);
       return [];
   }
 }
+
+/** Умения дня (spec 2026-10-skills): пусто — без поля, как в сохранениях до 0.5.18. */
+function setSkills(s: ShiftState, ids: readonly Id[]) {
+  if (ids.length > 0) s.meta.skills = [...ids];
+  else delete s.meta.skills;
+}
+
+const sameIds = (a: readonly Id[], b: readonly Id[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 
 /** Найм — только в песочнице и между сменами. Назначенный на занятое место сменяет того, кто там был, — тот в резерв. */
 function hiring(db: ContentDb, s: ShiftState, cmd: Extract<Command, { kind: 'hire' | 'fire' | 'assign' }>) {
@@ -899,6 +914,11 @@ function nextDay(db: ContentDb, s: ShiftState) {
   s.dayOpen = true;
   // утром врач — в своём кабинете (FR-HOS-4)
   delete s.doctorAt;
+  // умения врача (spec 2026-10-skills): выросшие за вчера — с утра
+  if (s.meta.skillsNext) {
+    setSkills(s, s.meta.skillsNext);
+    delete s.meta.skillsNext;
+  }
   // аппараты, сломавшиеся с утра (FR-EQ-3): до конца дня их нет, к завтра починят
   const broken = breakdowns(db, s);
   if (broken.length > 0) s.broken = broken;
@@ -1062,7 +1082,9 @@ function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pc
   const how = examSetup(db, s, p, examId);
   if (!how) return null;
   const { e, ctx, bed, queued, room, eqId, roomPct, walk, to } = how;
-  const skill = room && e.kind === 'imaging' ? imagingSkill(db, ctx.staff, room, eqId) : NORMAL_SKILL;
+  const reading = room && e.kind === 'imaging' ? imagingSkill(db, ctx.staff, room, eqId) : NORMAL_SKILL;
+  // ваше обследование — с умениями дня (spec 2026-10-skills, часть 75); у нанятого врача — без них
+  const skill = p.by ? reading : examSkillWith(db, s.meta.skills, examId, reading);
 
   // песочница: показано ли — по тому, что известно сейчас; показанные оплачивают ОМС и ДМС
   if (s.economy && e.cost > 0 && indicated(db, p.patient, observationsOf(p), candidatesOf(db, p.departments ?? s.meta.department), examId, Math.round((s.t - p.arriveT) / 60))) (p.indicated ??= []).push(examId);
@@ -1091,7 +1113,9 @@ function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pc
     goOut(ctx, p, examId, room.id, end);
     return order;
   }
-  const cost = Math.round((e.time.procedure * MIN * pct) / 100);
+  // вопрос расспроса у вас — короче с «Быстрым опросом» (spec 2026-10-skills)
+  const minutes = p.by ? e.time.procedure : askMinutes(db, s.meta.skills, e, e.time.procedure);
+  const cost = Math.round((minutes * MIN * pct) / 100);
   // анализ: пока лаборатория готовит, — с поправкой лаборатории
   const wait = room ? Math.round((after * MIN * roomPct) / 100) : after * MIN;
   // повторный забор (spec 2026-10-chapter-3, часть 39в): его проверки — через `minutes` минут после
@@ -2631,6 +2655,8 @@ function colleagueOf(db: ContentDb, s: ShiftState, p: ShiftPatient): StaffMember
 /** Шаг нанятого врача по частям (`stepParts`): по тому, что он знает о пациенте сейчас. */
 function colleagueParts(db: ContentDb, s: ShiftState, p: ShiftPatient, m: StaffMember): Parts<StepResult> {
   const how = doctorOf(db, m);
+  // «Наставник» (spec 2026-10-skills): нанятый врач под вашим началом реже забывает спросить
+  const forget = how.forget / mentorOf(db, s.meta.skills, m.role);
   // специалист знает, с чем к нему записываются (spec 2026-10-chapter-4, часть 60а): у записанного к нему болезни профиля
   // вероятнее — во столько раз
   const profile = p.to === m.id ? db.roles[m.role]?.profile : undefined;
@@ -2638,7 +2664,7 @@ function colleagueParts(db: ContentDb, s: ShiftState, p: ShiftPatient, m: StaffM
     candidates: candidatesOf(db, p.departments ?? s.meta.department), exams: examsHere(db, s), threshold: how.threshold, minGain: how.minGain,
     ...(profile ? { prior: { ids: profile, x: PROFILE_PRIOR } } : {}),
     // навык 1–2 иногда забывает спросить перед лечением — жребий своей ветви
-    skipAsk: q => how.forget > 0 && branch(s, `forget:${p.id}:${q}`).chance(how.forget * 100),
+    skipAsk: q => forget > 0 && branch(s, `forget:${p.id}:${q}`).chance(forget * 100),
     // и что у постели (часть 39а): под монитором — тромболизис; и сколько прошло с прихода (часть 41а)
     venue: { ...venueOf(db, s), bedside: bedsideEquipment(db, s, p), minutes: Math.round((s.t - p.arriveT) / 60), ready: id => readyIn(db, s, p, id) },
   });

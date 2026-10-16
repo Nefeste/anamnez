@@ -1,0 +1,8 @@
+# Травматология 2 (spec 2026-10-skills): опытный осмотр суставов и конечностей — болезненность, отёк и нестабильность
+# заметнее. Игровая оценка
+id: skill.trauma_exam
+department: dept.trauma
+level: 2
+name: { ru: "Точный осмотр" }
+text: { ru: "Осмотр суставов и конечностей на 10 п. п. чувствительнее." }
+effect: { kind: examSens, exams: [exam.ankle_exam, exam.knee_exam, exam.wrist_exam, exam.foot_exam, exam.hip_exam, exam.clavicle_exam, exam.leg_exam], pp: 10 }

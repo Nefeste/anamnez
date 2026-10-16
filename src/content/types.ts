@@ -1111,6 +1111,26 @@ export type Achievement = { id: Id; order: number; category: AchievementCategory
 );
 
 /**
+ * Умение врача (spec 2026-10-skills, часть 75): за уровень специальности — отделения игры. Эффект один: обследования
+ * чувствительнее (`examSens`, п. п.), вопросы расспроса короче (`askTime`, минуты, не меньше минуты), нанятые врачи
+ * должности реже забывают спросить перед лечением (`mentor`, во сколько раз).
+ */
+export interface Skill {
+  id: Id;
+  /** отделение — специальность */
+  department: Id;
+  /** уровень специальности, с которого умение есть: 2–5 */
+  level: number;
+  name: Text;
+  /** что даёт — строка профиля */
+  text: Text;
+  effect:
+    | { kind: 'examSens'; exams: Id[]; pp: number }
+    | { kind: 'askTime'; minutes: number }
+    | { kind: 'mentor'; role: Id; forget: number };
+}
+
+/**
  * Шкала раннего предупреждения по витальным (NEWS2, spec 2026-09-chapter-2, часть 27): баллы по
  * значению признака — [от, до, баллы], `null` — без границы; дышит кислородом и спутанность —
  * отдельные строки; уровни ответа.
@@ -1283,6 +1303,8 @@ export interface ContentDb {
   rules: Record<Id, Rule>;
   /** сроки: ЭКГ при боли в груди за 10 минут (spec 2026-10-chapter-3, часть 37) */
   targets: Record<Id, Target>;
+  /** умения врача по специальностям (spec 2026-10-skills, часть 75) */
+  skills: Record<Id, Skill>;
   /** производное: какие обследования проверяют признак */
   revealedBy: Record<Id, Id[]>;
 }

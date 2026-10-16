@@ -44,10 +44,13 @@ export interface Settings {
    * чаще, чем в жизни; false — «Реализм»
    */
   variety: boolean;
+  /** «Умения врача» (spec 2026-10-skills, часть 75): умения специальностей действуют со следующего дня; выключены — ровная сложность */
+  skills: boolean;
 }
 
 export const DEFAULTS: Settings = {
   sound: 1, music: 0.7, ambience: true, vibration: true, pauseOnRed: true, pauseOnResults: true, disclaimerAccepted: false, textScale: 1, theme: 'system', softMode: false, variety: false,
+  skills: true,
 };
 
 export interface SettingsView extends Settings {
@@ -85,13 +88,13 @@ export function setSettingsStore(s: RawStore) {
  */
 export function sanitize(data: unknown): Settings {
   const d = (data !== null && typeof data === 'object' ? data : {}) as Record<string, unknown>;
-  const flag = (k: 'ambience' | 'vibration' | 'pauseOnRed' | 'pauseOnResults' | 'disclaimerAccepted' | 'softMode' | 'variety') => (typeof d[k] === 'boolean' ? (d[k] as boolean) : DEFAULTS[k]);
+  const flag = (k: 'ambience' | 'vibration' | 'pauseOnRed' | 'pauseOnResults' | 'disclaimerAccepted' | 'softMode' | 'variety' | 'skills') => (typeof d[k] === 'boolean' ? (d[k] as boolean) : DEFAULTS[k]);
   const level = (k: 'sound' | 'music') => (typeof d[k] === 'number' && (d[k] as number) >= 0 && (d[k] as number) <= 1 ? (d[k] as number) : DEFAULTS[k]);
   const textScale = (TEXT_SCALES as readonly number[]).includes(d.textScale as number) ? (d.textScale as number) : DEFAULTS.textScale;
   const theme = (THEME_CHOICES as readonly unknown[]).includes(d.theme) ? (d.theme as ThemeChoice) : DEFAULTS.theme;
   return {
     sound: level('sound'), music: level('music'), ambience: flag('ambience'), vibration: flag('vibration'), pauseOnRed: flag('pauseOnRed'), pauseOnResults: flag('pauseOnResults'), disclaimerAccepted: flag('disclaimerAccepted'),
-    textScale, theme, softMode: flag('softMode'), variety: flag('variety'),
+    textScale, theme, softMode: flag('softMode'), variety: flag('variety'), skills: flag('skills'),
   };
 }
 
