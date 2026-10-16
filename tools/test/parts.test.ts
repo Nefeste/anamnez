@@ -7,6 +7,7 @@ import { salaryOf, type StaffMember } from '../../src/engine/hospital/staff';
 import { apply, catchUp, newSandbox, prepareFinish } from '../../src/engine/shift/engine';
 import { type Command, DAY, type Notice, type ShiftState } from '../../src/engine/shift/types';
 import { hhmm } from '../../src/state/caseView';
+import { forgetProfile } from '../../src/state/profile';
 import { memoryStore } from '../../src/state/saves';
 import {
   assign, buildAction, buildView, callPatient, chooseDiagnosis, endBuild, examine, finishCase, forgetShift, hire, loadShift, nextDay, saved,
@@ -125,6 +126,8 @@ describe('сессия: время команды по частям', () => {
   beforeEach(() => {
     setStore(memoryStore());
     forgetShift();
+    // профиль общий для файлов прогона: опыт чужих тестов или первой игры дал бы второй умения (0.5.18)
+    forgetProfile();
   });
   afterEach(() => timeInParts(false));
 
