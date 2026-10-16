@@ -1519,16 +1519,23 @@ try {
   // профиль: приём — в практике и в архиве; из архива — тот же разбор; в энциклопедии — «встречалось»
   await page.getByTestId('menu-profile').click();
   await page.getByTestId('profile-name').waitFor({ timeout: 5000 });
-  const cases = await text(page, 'profile-line-0');
+  // итоги (0.6.2) — плитками: подпись и цифра
+  const cases = (await text(page, 'kpi-cases')).split('\n');
   const archived = page.locator('[data-testid^="archive-"]');
-  check((await text(page, 'profile-name')) === 'Анна Петрова' && cases === 'Принято: 1' && (await archived.count()) === 1, `профиль: «${cases}», в архиве — ${await archived.count()}`);
-  const profileLines = await page.locator('[data-testid^="profile-line-"]').allInnerTexts();
-  check((await text(page, 'profile-rank')) === 'Интерн' && profileLines.some(l => /^В среднем на приём — \d+\s?мин$/.test(l.trim())),
-    `профиль: звание «${await text(page, 'profile-rank')}», ${profileLines.find(l => l.startsWith('В среднем')) ?? 'нет строки о минутах'}`);
+  check((await text(page, 'profile-name')) === 'Анна Петрова' && cases.join(': ') === 'Принято: 1' && (await archived.count()) === 1,
+    `профиль: «${cases.join(': ')}», в архиве — ${await archived.count()}`);
+  const minutes = (await text(page, 'kpi-minutes')).split('\n');
+  check((await text(page, 'profile-rank')) === 'Интерн' && minutes[0] === 'В среднем на приём' && /^\d+\s?мин$/.test(minutes[1] ?? ''),
+    `профиль: звание «${await text(page, 'profile-rank')}», ${minutes.join(' — ')}`);
+  // итог диагноза — полосой с легендой: у единственного приёма вся полоса — одна часть
+  const verdicts = (await page.locator('[data-testid^="profile-verdicts-"]').allInnerTexts()).map(l => l.trim().replace(/\n/g, ' '));
+  check(verdicts.length === 3 && verdicts.filter(l => /1 · 100\s%$/.test(l)).length === 1, `профиль: диагнозы — ${verdicts.join('; ')}`);
   // специальности (spec 2026-10-skills, часть 75): после первого приёма — всё ещё первый уровень, умений нет
-  check((await text(page, 'specialty-dept.therapy')) === 'Терапия — уровень 1' && (await text(page, 'specialty-dept.infectious')) === 'Инфекционные болезни — уровень 1'
+  const therapy = (await text(page, 'specialty-dept.therapy')).split('\n');
+  const infectious = (await text(page, 'specialty-dept.infectious')).split('\n');
+  check(therapy.slice(0, 2).join(' — ') === 'Терапия — уровень 1' && infectious.slice(0, 2).join(' — ') === 'Инфекционные болезни — уровень 1'
     && (await text(page, 'profile-skills-note')).startsWith('Новое умение действует со следующего дня'),
-    `профиль: ${await text(page, 'specialty-dept.therapy')}; ${await text(page, 'profile-skills-note')}`);
+    `профиль: ${therapy.join(' · ')}; ${await text(page, 'profile-skills-note')}`);
   await page.screenshot({ path: join(OUT, '09-profile.png') });
   await archived.first().click();
   await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });

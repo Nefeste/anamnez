@@ -57,6 +57,20 @@ export interface Palette {
   /** фигура человека в «Осмотреть» (0.6.0): тело и его контур */
   figure: string;
   figureLine: string;
+  /**
+   * графики профиля (0.6.2, правила визуализации данных): ряд величин и заполнение шкалы — один цвет в полосе
+   * светлоты темы, не меньше 3 к 1 к карточке; дорожка шкалы — светлый шаг того же цвета; не похож на «верно» (ΔE ≥ 15),
+   * чтобы ряд не читался итогом. Проверены валидатором палитр: светлая — на #FFFDF8, тёмная — на #15262A
+   */
+  chart: string;
+  chartTrack: string;
+  /**
+   * итог диагноза — верно, почти, неверно — частями одной полосы: соседи различимы и при нарушении цветового зрения
+   * (ΔE OKLab ≥ 8); всегда со значком и подписью — жёлтый на светлой бумаге слабее 3 к 1 нарочно
+   */
+  good: string;
+  warn: string;
+  bad: string;
 }
 
 export interface Fonts {
@@ -95,6 +109,7 @@ export const LIGHT: Theme = {
     red: '#B8392F', yellow: '#D9A21B', green: '#2F7A40', yellowText: '#8A5A00', onRed: '#FFFFFF', onYellow: '#3B2A00', onGreen: '#FFFFFF', danger: '#B3261E',
     fresh: '#FFF6DE', freshLine: '#D9A21B', chip: '#EEE8DA', margin: '#C0766B', lamp: '#FFC94D', backdrop: 'rgba(31,45,61,0.45)',
     figure: '#E7DFCE', figureLine: '#A99E87',
+    chart: '#2B4E8C', chartTrack: '#DCE5F4', good: '#2F7A40', warn: '#D9A21B', bad: '#B8392F',
   },
   fonts: { title: 'PT Serif', body: 'PT Sans', mono: 'PT Mono' },
   shape: { radius: 6, card: 3, stamp: true, folderTabs: true, doubleRule: true, ruled: true },
@@ -108,6 +123,9 @@ export const DARK: Theme = {
     red: '#FF6B5E', yellow: '#F2C14E', green: '#3DDC84', yellowText: '#F2C14E', onRed: '#2A0703', onYellow: '#2A1F00', onGreen: '#052B1A', danger: '#FF6B5E',
     fresh: '#2C2A16', freshLine: '#F2C14E', chip: '#1C3035', margin: '#26393E', lamp: '#FFC94D', backdrop: 'rgba(0,0,0,0.6)',
     figure: '#1F363B', figureLine: '#4A6A70',
+    // зелёный и жёлтый «Монитора» под протанопией почти сливаются (ΔE 5,6) — у итога диагноза свои шаги; ряд — голубой,
+    // как кривая сатурации на мониторе: зелёный ряда рядом с «верно» сливался (ΔE 7)
+    chart: '#2B9FC4', chartTrack: '#173B47', good: '#0CA30C', warn: '#FAB219', bad: '#D03B3B',
   },
   fonts: { title: 'Golos Text', body: 'Golos Text', mono: 'JetBrains Mono' },
   shape: { radius: 12, card: 12, stamp: false, folderTabs: false, doubleRule: false, ruled: false },
