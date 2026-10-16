@@ -29,7 +29,7 @@ function png(file: string): { w: number; h: number; alpha: boolean } {
   return { w: b.readUInt32BE(16), h: b.readUInt32BE(20), alpha: b[25] === 6 || b[25] === 4 };
 }
 
-const TEXTS = ['listing.ru.md', 'forms.md', 'privacy.ru.md', 'privacy.en.md', 'site/page.ru.md', 'site/page.en.md', 'site/press.ru.md'];
+const TEXTS = ['listing.ru.md', 'forms.md', 'site/page.ru.md', 'site/page.en.md', 'site/press.ru.md'];
 
 // чужие игры, сериалы и прошлые прототипы (12-publishing.md §2); бренды лекарств — findBrand (ADR 0012)
 const FORBIDDEN = [
@@ -69,9 +69,9 @@ describe('store: тексты', () => {
   test('почта поддержки — везде та же, что в игре; в карточке и политике нет заглушек «⟨…⟩»', () => {
     for (const f of TEXTS) expect({ file: f, has: read(f).includes(SUPPORT_EMAIL) }).toEqual({ file: f, has: true });
     expect(listing).toContain(PRIVACY_URL);
-    // карточка и политика уходят в магазин и на сайт как есть; на страницах сайта ждёт
-    // ссылка на карточку RuStore — её вписывают, когда карточка появится
-    for (const f of ['listing.ru.md', 'privacy.ru.md', 'privacy.en.md']) {
+    // карточка уходит в магазин как есть (политика — раздел «Анамнез» на сайте студии); на страницах
+    // сайта ждёт ссылка на карточку RuStore — её вписывают, когда карточка появится
+    for (const f of ['listing.ru.md']) {
       expect({ file: f, placeholder: read(f).match(/⟨[^⟩]*⟩/)?.[0] ?? null }).toEqual({ file: f, placeholder: null });
     }
   });

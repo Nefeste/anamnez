@@ -98,6 +98,5 @@
 ## Контакты
 
 - сайт — https://gornitsa.games
-- политика конфиденциальности — https://gornitsa.games/privacy.html, единая для игр студии (текст раздела —
-  [`privacy.ru.md`](privacy.ru.md), [`privacy.en.md`](privacy.en.md))
+- политика конфиденциальности — https://gornitsa.games/privacy.html#anamnez, единая для игр студии, раздел «Анамнез»
 - почта поддержки — support@gornitsa.games
