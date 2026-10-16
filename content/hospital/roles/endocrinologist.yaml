@@ -6,6 +6,6 @@ dat: { ru: "эндокринологу" }
 salary: [4000, 7000]
 stands: role.doctor
 needs: room.staff
-profile: [cond.hypothyroidism, cond.thyrotoxicosis, cond.thyroid_storm, cond.diabetes2_new, cond.hypoglycemia, cond.adrenal_crisis, cond.hypocalcemia_acute]
+profile: [cond.hypothyroidism, cond.thyrotoxicosis, cond.thyroid_storm, cond.diabetes2_new, cond.hypoglycemia, cond.adrenal_crisis, cond.hypocalcemia_acute, cond.dka, cond.hhs]
 texts:
   hint: { ru: "Нанятый врач со специальностью: у его кабинета своя запись — к нему записываются с болезнями щитовидной железы, сахарным диабетом, надпочечниками. Принимает только своих, ведёт приём сам, как терапевт. Нужно место в ординаторской." }

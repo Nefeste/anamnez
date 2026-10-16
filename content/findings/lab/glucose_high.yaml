@@ -4,7 +4,8 @@ leak: { pct: 2 }
 value:
   unit: "ммоль/л"
   ref: [3.9, 6.0]
-  present: [7.1, 16.0]
+  # выше 13,9 — только порогом lab.glucose_14 (spec 2026-10-urticaria-dka, часть 73): число одно, «не выше 13,9» не спорит с ним
+  present: [7.1, 13.9]
   absent: [4.2, 5.9]
   decimals: 1
 texts:

@@ -20,6 +20,9 @@ routineFor: [sym.tremor, sym.hunger, sym.confusion, sym.weakness_one_side, sym.s
 routineSeen: [sign.gcs_low, hx.insulin, hx.sulfonylurea, sign.gcs_coma]
 checks:
   - { f: lab.glucose_high, sens: 90, spec: 93 }
+  # пороги ДКА и ГГС (часть 73; Алгоритмы, 2023, с. 43, 47): «экспресс-анализ гликемии» — первым делом (с. 45, 48)
+  - { f: lab.glucose_14, sens: 93, spec: 100 }
+  - { f: lab.glucose_35, sens: 93, spec: 100 }
   # гипогликемия — то же измерение (spec 2026-10-chapter-3, часть 41а): перед тромболизисом глюкоза —
   # единственный нужный анализ (814_1, раздел 2.3); точность — из измерения
   - { f: lab.glucose_low, sens: 93, spec: 100 }

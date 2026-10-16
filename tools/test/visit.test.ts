@@ -129,8 +129,10 @@ describe('приём', () => {
 
   test('решение: диагнозы по системам органов, лечение по группам — каждый ровно один раз', () => {
     const dx = diagnosisGroups();
-    // с частью 57а (spec 2026-10-chapter-4) — и отравления: их лечит терапия
-    expect(dx.map(g => g.key)).toEqual(['airways', 'lungs', 'heart', 'digestive', 'urinary', 'metabolic', 'nerves', 'poisoning']);
+    // с частью 57а (spec 2026-10-chapter-4) — и отравления: их лечит терапия; с частью 73 (spec 2026-10-urticaria-dka) —
+    // и кожа: острая крапивница
+    expect(dx.map(g => g.key)).toEqual(['airways', 'lungs', 'heart', 'digestive', 'urinary', 'metabolic', 'nerves', 'skin', 'poisoning']);
+    expect(dx.find(g => g.key === 'skin')!.items.map(c => c.id)).toEqual(['cond.urticaria_acute']);
     const dxIds = dx.flatMap(g => g.items.map(c => c.id));
     expect(dxIds.sort()).toEqual(conditionChoices().map(c => c.id).sort());
     expect(dx.find(g => g.key === 'lungs')!.items.map(c => c.id)).toContain('cond.pneumonia_cap');
