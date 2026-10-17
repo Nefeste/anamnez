@@ -1,17 +1,12 @@
 // Действия «Случая дня» для общих экранов приёма: один пациент дня; после итога — к списку дней.
 import { router } from 'expo-router';
 import { T } from '@/i18n';
-import { dailyVisit } from '@/state/daily';
+import { dailyPlay } from '@/state/daily';
 import type { CaseActions, FooterAction } from './actions';
 
+// шаги записываются: «Назад» с приёма и снова в тот же день — то же место (0.6.3)
 export const dailyActions: CaseActions = {
-  act: dailyVisit.act,
-  waitForResults: dailyVisit.waitForResults,
-  chooseDiagnosis: dailyVisit.chooseDiagnosis,
-  toggleTreatment: dailyVisit.toggleTreatment,
-  chooseSetting: dailyVisit.chooseSetting,
-  toggleHypothesis: dailyVisit.toggleHypothesis,
-  finish: dailyVisit.finish,
+  ...dailyPlay,
   routes: { decision: '/daily/decision', outcome: '/daily/outcome' },
 };
 

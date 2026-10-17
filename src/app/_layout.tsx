@@ -12,6 +12,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { musicSceneOf } from '@/audio/scene';
 import { musicScene, setMusicScene, startMusic } from '@/audio/sounds';
 import { T } from '@/i18n';
+import { loadDaily, setDailyStore } from '@/state/daily';
 import { installErrorLog } from '@/state/errors';
 import { loadProfile, setProfileStore } from '@/state/profile';
 import { saveNow, setStore, timeInParts } from '@/state/session';
@@ -25,11 +26,14 @@ setStore(rawStore);
 timeInParts();
 setSettingsStore(rawStore);
 setProfileStore(rawStore);
+setDailyStore(rawStore);
 // сбои — в журнал для «Сообщить об ошибке»; только на телефоне
 void installErrorLog(rawStore);
 // громкость и вибрация нужны и тому, кто пришёл не через меню; профиль — чтобы записывать приёмы
 loadSettings();
 loadProfile();
+// начатый «Случай дня» — с того же места и после перезапуска (0.6.3)
+loadDaily();
 // веб: шрифты из сборки правилами @font-face; на телефоне они встроены плагином expo-font
 installFonts();
 

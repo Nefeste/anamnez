@@ -13,7 +13,7 @@ import { Portrait } from '@/render/Portrait';
 import { examInfo, examsByAction, findingInfo, type Line, type ResultGroup, type TermInfo, type VisitView } from '@/state/caseView';
 import { Button, Card, Chip, Chips, H, P, Pane, Screen, type ScreenScroll } from '@/ui/components';
 import { TermSheet } from '@/ui/TermSheet';
-import { makeStyles, space } from '@/ui/theme';
+import { makeStyles, space, touch } from '@/ui/theme';
 import { Text } from '../text';
 import type { CaseActions, FooterAction } from './actions';
 import { type CardTab, CardTabs } from './CardTabs';
@@ -532,6 +532,6 @@ const useStyles = makeStyles(t => ({
   badge: { fontSize: 12, fontWeight: '700', color: t.colors.onYellow, backgroundColor: t.colors.yellow, borderRadius: 10, paddingHorizontal: space.s, paddingVertical: 2, overflow: 'hidden' },
   chevron: { fontSize: 14, color: t.colors.muted },
   pressed: { opacity: 0.7 },
-  quiet: { flexDirection: 'row', alignItems: 'center', gap: space.s, minHeight: 44, paddingHorizontal: space.s, borderRadius: t.shape.radius, backgroundColor: t.colors.chip },
+  quiet: { flexDirection: 'row', alignItems: 'center', gap: space.s, minHeight: touch, paddingHorizontal: space.s, borderRadius: t.shape.radius, backgroundColor: t.colors.chip },
   quietText: { flex: 1, fontSize: 13, color: t.colors.muted },
 }));

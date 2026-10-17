@@ -108,11 +108,18 @@ export default function SettingsScreen() {
       <Button testID="settings-transfer" kind="plain" title={T.transfer.title} hint={T.transfer.menuHint} onPress={() => router.push('/transfer')} />
       <Button testID="settings-report" kind="plain" title={t.report} hint={t.reportHint} onPress={() => router.push('/report')} />
       <Button testID="settings-about" kind="plain" title={t.about} hint={t.aboutHint} onPress={() => router.push('/about')} />
-      <H>{t.checks}</H>
-      <P muted>{t.checksHint}</P>
-      {checks.map(it => (
-        <Button key={it.id} testID={`check-${it.id}`} kind="plain" title={it.title} hint={it.hint} onPress={() => router.push(it.href)} />
-      ))}
+      {/* режим разработчика (0.6.3, просьба владельца 17.10.2026): проверки первого этапа — только в нём; включают семь
+          касаний строки версии в «Об игре», выключатель — здесь */}
+      {s.devMode ? (
+        <>
+          <H>{t.checks}</H>
+          <Toggle testID="settings-dev" title={t.devMode} hint={t.devModeHint} value onChange={() => updateSettings({ devMode: false })} />
+          <P muted>{t.checksHint}</P>
+          {checks.map(it => (
+            <Button key={it.id} testID={`check-${it.id}`} kind="plain" title={it.title} hint={it.hint} onPress={() => router.push(it.href)} />
+          ))}
+        </>
+      ) : null}
     </Screen>
   );
 }

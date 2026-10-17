@@ -182,7 +182,9 @@ const useStyles = makeStyles(t => ({
   foundMark: { width: 10, height: 10, borderRadius: 5, backgroundColor: t.colors.danger },
   cold: { opacity: 0.45 },
   focus: { fontSize: 13, lineHeight: 17, color: t.colors.muted },
-  panel: { backgroundColor: t.colors.card, borderTopWidth: 1, borderTopColor: t.colors.edge },
+  // не выше 45 % экрана — и сжимается, если места меньше: с крупным текстом шапка пациента выше, и панель без этого
+  // сдвигала вкладки за нижний край (NFR-ACC-1, разбор 0.6.3)
+  panel: { flexShrink: 1, backgroundColor: t.colors.card, borderTopWidth: 1, borderTopColor: t.colors.edge },
   panelHead: { flexDirection: 'row', alignItems: 'center', gap: space.s, paddingLeft: space.l, paddingRight: space.s, paddingTop: space.s },
   panelTitle: { flex: 1, fontFamily: t.fonts.title, fontSize: 16, fontWeight: '700', color: t.colors.ink },
   close: { minHeight: 36, justifyContent: 'center', paddingHorizontal: space.m },

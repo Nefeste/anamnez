@@ -4,13 +4,15 @@ import { router } from 'expo-router';
 import { useEffect } from 'react';
 import { db } from '@/content';
 import { T } from '@/i18n';
-import { dailyRows, openDaily } from '@/state/daily';
+import { dailyRows, openDaily, useDailyStarted } from '@/state/daily';
 import { loadProfile, useProfile } from '@/state/profile';
 import { Button, Card, P, Screen } from '@/ui/components';
 
 export default function DailyScreen() {
   // список — из профиля: сыгранный день отмечается, как только закрыт приём
   const p = useProfile();
+  // начатые приёмы: «Назад» с приёма — и строка дня говорит, что он начат
+  const begun = useDailyStarted();
   useEffect(() => {
     loadProfile();
   }, []);
@@ -26,7 +28,7 @@ export default function DailyScreen() {
         <P muted testID="daily-base">{t.base(db.contentVersion)}</P>
       </Card>
       <Card>
-        {dailyRows(p.daily).map((r, i) => (
+        {dailyRows(p.daily, new Date(), begun).map((r, i) => (
           <Button key={r.day} testID={`daily-${r.day}`} kind={i === 0 && !r.played ? 'primary' : 'plain'} title={r.title} hint={r.hint} onPress={() => open(r.day)} />
         ))}
       </Card>

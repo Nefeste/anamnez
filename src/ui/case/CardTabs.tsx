@@ -38,7 +38,7 @@ export function CardTabs({ value, onChange, fresh, decide }: {
           );
         })}
       </View>
-      <Pressable testID="visit-decide" accessibilityRole="button" accessibilityHint={decide.hint} onPress={decide.onPress}
+      <Pressable testID="visit-decide" accessibilityRole="button" accessibilityHint={decide.hint} onPress={decide.onPress} hitSlop={DECIDE_SLOP}
         style={({ pressed }) => [styles.decide, pressed && styles.pressed]}>
         {/* оттиск штампа «Медкарты», как у главной кнопки */}
         {theme.shape.stamp ? <View style={styles.stamp} /> : null}
@@ -48,6 +48,9 @@ export function CardTabs({ value, onChange, fresh, decide }: {
     </View>
   );
 }
+
+/** «Решение» — с отступом от края полосы: касание — на всю её высоту, не 44 dp (NFR-ACC-1). */
+const DECIDE_SLOP = { top: space.s - 2, bottom: space.s - 2 };
 
 const useStyles = makeStyles(t => ({
   bar: { flexDirection: 'row', alignItems: 'stretch', backgroundColor: t.colors.card, borderTopWidth: 1, borderTopColor: t.colors.edge },
