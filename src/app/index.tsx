@@ -1,23 +1,27 @@
 // Главное меню (09-game-design.md §10; spec 2026-09-campaign): продолжить последнюю партию,
 // кампания, быстрая игра (практика и песочница), энциклопедия, профиль, настройки. При первом
 // запуске вместо меню — медицинская оговорка (12-publishing.md §3), потом — имя и пол врача.
-// Шапки нет: сверху — обложка в виде темы (spec 2026-09-own-look, часть 25).
+// Шапки нет: сверху — обложка в виде темы (spec 2026-09-own-look, часть 25), под ней — бейдж врача, ниже, под большим
+// пальцем, — «Случай дня» и пункты (вопрос 47, 0.6.5, spec 2026-10-menu).
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import { db } from '@/content';
 import { T } from '@/i18n';
 import { VERSION } from '@/info';
+import { dailyMenuHint, useDailyStarted } from '@/state/daily';
 import { loadProfile, setDoctor, useProfile } from '@/state/profile';
-import { doctorName } from '@/state/profileView';
+import { DOCTOR_AGE, doctorName, portraitSeed, practiceView, rankName } from '@/state/profileView';
 import { type GameSummary, loadShift, savedGames } from '@/state/session';
 import { loadSettings, updateSettings, useSettings } from '@/state/settings';
 import { Button, Card, H, P, Screen } from '@/ui/components';
-import { Cover, type MenuItem, MenuList } from '@/ui/menu';
+import { Badge, Cover, DailyCard, MenuFoot, type MenuItem, MenuList, MenuSpacer } from '@/ui/menu';
 import { DoctorForm } from '@/ui/profile';
 
 export default function Menu() {
   const settings = useSettings();
   const profile = useProfile();
+  // начатый сегодняшний случай дня — «начат» на его карточке
+  const begun = useDailyStarted();
   // null — сохранения ещё не прочитаны: меню ждёт их, чтобы «Продолжить» не появлялось
   // позже остальных и не сдвигало пункты под пальцем
   const [games, setGames] = useState<GameSummary[] | null>(null);
@@ -58,16 +62,28 @@ export default function Menu() {
     ...(last ? [campaign] : []),
     { testID: 'menu-quick', title: T.campaign.quick, hint: T.campaign.quickHint, onPress: () => router.push('/quick') },
     { testID: 'menu-encyclopedia', title: t.encyclopedia, hint: t.encyclopediaHint, onPress: () => router.push('/encyclopedia') },
-    { testID: 'menu-profile', title: t.profile, hint: T.profile.menuHint(doctorName(profile.doctor), profile.stats.cases), onPress: () => router.push('/profile') },
+    { testID: 'menu-profile', title: t.profile, hint: t.profileHint, onPress: () => router.push('/profile') },
     { testID: 'menu-settings', title: t.settings, onPress: () => router.push('/settings') },
   ];
+  const doctor = profile.doctor;
+  const toProfile = () => router.push('/profile');
+  const today = new Date();
+  const dailyHint = dailyMenuHint(profile.daily, today, begun);
   return (
-    <Screen bare>
+    <Screen bare grow>
       <Cover version={VERSION} />
+      <Badge onPress={toProfile} d={{
+        name: doctorName(doctor), rank: rankName(profile.stats.cases), first: doctor.first, last: doctor.last, cases: profile.stats.cases,
+        correctPct: practiceView(profile)?.correctPct, seed: portraitSeed(doctor), sex: doctor.sex, age: DOCTOR_AGE,
+      }} />
+      <MenuSpacer />
+      <DailyCard day={today.getDate()} month={T.daily.monthOf(today.getMonth())} hint={dailyHint}
+        label={T.daily.menuLabel(T.daily.date(today.getDate(), today.getMonth()), dailyHint)} onPress={() => router.push('/daily')} />
       {last
         ? <Button testID="menu-continue" title={t.continue} hint={continueHint(last)} onPress={() => open(last)} />
         : <Button testID={campaign.testID} title={campaign.title} hint={campaign.hint} onPress={campaign.onPress} />}
       <MenuList items={items} />
+      <MenuFoot version={VERSION} />
     </Screen>
   );
 }

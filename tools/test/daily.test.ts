@@ -5,8 +5,8 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
 import {
-  DAILY_SCHEMA_VERSION, DAILY_SLOT, dailyDays, dailyPlay, dailyRows, dailySaved, dailySeed, dailyStarted, dailyView, dailyVisit, dayOf, forgetDaily,
-  loadDaily, openDaily, sanitizeDaily, seasonOfDay, setDailyStore, subscribeDailyStarted,
+  DAILY_SCHEMA_VERSION, DAILY_SLOT, dailyDays, dailyMenuHint, dailyPlay, dailyRows, dailySaved, dailySeed, dailyStarted, dailyView, dailyVisit, dayOf,
+  forgetDaily, loadDaily, openDaily, sanitizeDaily, seasonOfDay, setDailyStore, subscribeDailyStarted,
 } from '../../src/state/daily';
 import { achievementsBy, DAILY_KEEP, dailyKey, forgetProfile, loadProfile, PROFILE_SLOT, profile, profileSaved, recordDaily, sanitizeProfile, setProfileStore } from '../../src/state/profile';
 import { memoryStore, saveSlot } from '../../src/state/saves';
@@ -124,6 +124,20 @@ describe('случай дня: начатый приём (0.6.3)', () => {
     openDaily('2026-09-28');
     expect(where()).toEqual(there);
     expect(where()).not.toEqual(fresh);
+  });
+
+  test('подпись в главном меню (0.6.5): что это, сегодня начат, сегодня сыгран — с оценкой', async () => {
+    await loadProfile();
+    const today = new Date(2026, 8, 28);
+    expect(dailyMenuHint(profile().daily, today)).toBe('один пациент в день, одинаковый у всех');
+    openDaily('2026-09-28');
+    dailyPlay.act('exam.ask_complaints');
+    expect(dailyMenuHint(profile().daily, today)).toBe('сегодня начат — продолжить с того же места');
+    // начат вчерашний — сегодняшний не начат
+    expect(dailyMenuHint(profile().daily, new Date(2026, 8, 29))).toBe('один пациент в день, одинаковый у всех');
+    dailyPlay.chooseDiagnosis(dailyView().hints[0].id);
+    dailyPlay.finish();
+    expect(dailyMenuHint(profile().daily, today)).toMatch(/^сегодня сыгран: [A-D]$/);
   });
 
   test('список дней узнаёт о начатом по своему сигналу — когда шаг уже записан', async () => {

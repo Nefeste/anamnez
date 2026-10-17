@@ -322,6 +322,10 @@ export const spikes = {
     targetsDone: 'Сроки по рекомендации',
     targetDone: (name: string, minutes: number, limit: number, after = 'после прихода') =>
       minutes <= limit ? `${name} — через ${minutes}\u00a0мин ${after}, в срок` : `${name} — через ${minutes}\u00a0мин ${after}, позже срока на ${minutes - limit}\u00a0мин`,
+    // «Карта» из двух частей (вопрос 46, 0.6.5): журнал результатов и доска гипотез; у результатов — число новых
+    partResults: 'Результаты',
+    partResultsFresh: (n: number) => `Результаты · ${n}`,
+    partBoard: 'Гипотезы',
   },
   // решение и итог приёма — отдельные экраны (09-game-design.md §5; отзыв на 0.0.5:
   // диагноз и лечение на одной вкладке — тесно)

@@ -1,7 +1,8 @@
 // Карта пациента (09-game-design.md §5, spec 2026-10-patient-card): сверху закреплены шапка пациента и «Похоже на»,
 // внизу — вкладки «Карта · Спросить · Осмотреть · Назначить» и «Решение»; у каждой вкладки своя прокрутка (0.6.0,
-// решение владельца по вопросу 43). Решение — отдельный экран. Общая для прототипа П4, смены, «Случая дня» и
-// «Разобрать случай»: вид и действия приходят снаружи.
+// решение владельца по вопросу 43). «Карта» — из двух частей с переключателем сверху: «Результаты» — журнал, «Гипотезы»
+// — «Похоже на», «Ваш ряд» и правила; у каждой части своя прокрутка (0.6.5, вопрос 46). Решение — отдельный экран.
+// Общая для прототипа П4, смены, «Случая дня» и «Разобрать случай»: вид и действия приходят снаружи.
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { type LayoutChangeEvent, Pressable, View } from 'react-native';
@@ -11,7 +12,7 @@ import { T } from '@/i18n';
 import type { StaffPortrait } from '@/render/look';
 import { Portrait } from '@/render/Portrait';
 import { examInfo, examsByAction, findingInfo, type Line, type ResultGroup, type TermInfo, type VisitView } from '@/state/caseView';
-import { Button, Card, Chip, Chips, H, P, Pane, Screen, type ScreenScroll } from '@/ui/components';
+import { Button, Card, Chip, Chips, H, P, Pane, Screen, type ScreenScroll, Tabs } from '@/ui/components';
 import { TermSheet } from '@/ui/TermSheet';
 import { makeStyles, space, touch } from '@/ui/theme';
 import { Text } from '../text';
@@ -25,6 +26,8 @@ import { ResultPicture } from './ResultPicture';
 import { Questions, Talk } from './Talk';
 
 type Where = 'known' | 'list';
+/** Часть «Карты» (вопрос 46): журнал результатов или доска гипотез. */
+type CardPart = 'results' | 'board';
 
 /** Сколько после действия держать ответ посередине: пока раскладка выше не улеглась; листаете сами — сразу перестаём. */
 const CENTER_MS = 900;
@@ -56,6 +59,7 @@ function recent<V>() {
 const lastTab = recent<CardTab>();
 const lastPlace = recent<ExamPlace>();
 const lastMarked = recent<string[]>();
+const lastPart = recent<CardPart>();
 const startTab = (v: VisitView, readOnly: boolean): CardTab => lastTab.get(v.portrait.key) ?? firstTab(v, readOnly);
 
 /**
@@ -70,6 +74,11 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
   if (picked.patient !== key) setPicked({ patient: key, tab: startTab(v, !!readOnly) });
   const tabbed = !readOnly && !v.decision;
   const tab: CardTab = !tabbed ? 'card' : picked.patient === key ? picked.tab : startTab(v, !!readOnly);
+  // часть «Карты» — у этого пациента; приём закончен или его ведёт нанятый врач — только результаты
+  const [partPicked, setPartPicked] = useState<{ patient: number; part: CardPart }>(() => ({ patient: key, part: lastPart.get(key) ?? 'results' }));
+  const part: CardPart = !tabbed ? 'results' : partPicked.patient === key ? partPicked.part : lastPart.get(key) ?? 'results';
+  // свой лист — у каждой вкладки и у каждой части «Карты»
+  const pane = tab === 'card' ? `card:${part}` : tab;
   const [term, setTerm] = useState<TermInfo | null>(null);
   // что раскрыл игрок — у этого пациента; новый пациент начинается свёрнутым
   const [opened, setOpened] = useState<{ patient: number; keys: string[] }>({ patient: key, keys: [] });
@@ -120,7 +129,7 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const expiry = useRef<ReturnType<typeof setTimeout> | null>(null);
   // где был лист каждой вкладки — у этого пациента: вернулись на вкладку — там же
-  const offsets = useRef<{ patient: number; y: Partial<Record<CardTab, number>> }>({ patient: key, y: {} });
+  const offsets = useRef<{ patient: number; y: Record<string, number> }>({ patient: key, y: {} });
   useEffect(() => () => {
     if (timer.current) clearTimeout(timer.current);
     if (expiry.current) clearTimeout(expiry.current);
@@ -154,13 +163,19 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
   };
   const remember = (y: number) => {
     if (offsets.current.patient !== key) offsets.current = { patient: key, y: {} };
-    offsets.current.y[tab] = y;
+    offsets.current.y[pane] = y;
   };
   const setTab = (next: CardTab) => {
     want.current = null;
     rows.current.clear();
     lastTab.set(key, next);
     setPicked({ patient: key, tab: next });
+  };
+  const setPart = (next: CardPart) => {
+    want.current = null;
+    rows.current.clear();
+    lastPart.set(key, next);
+    setPartPicked({ patient: key, part: next });
   };
 
   // «Практикант» (spec 2026-10-trainee): сверху то, что относится к жалобе, и сделанное; остальное — свёрнуто
@@ -189,6 +204,8 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
   };
   // пришли результаты — к первому новому; часы доживают ожидание в следующих кадрах, поэтому дольше
   const wait = () => {
+    // новое придёт в журнал: с доски гипотез — к нему
+    if (tab === 'card' && part === 'board') setPart('results');
     follow(FIRST_FRESH, WAIT_MS, tab === 'card' ? firstFresh?.key : freshRow);
     actions.waitForResults();
   };
@@ -201,6 +218,7 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
     lastTab.set(key, undefined);
     lastPlace.set(key, undefined);
     lastMarked.set(key, undefined);
+    lastPart.set(key, undefined);
     actions.sendAway?.();
   } : undefined;
 
@@ -240,9 +258,19 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
           </View>
         ) : null}
 
-        <Pane key={`${key}:${tab}`} startAt={() => (offsets.current.patient === key ? offsets.current.y[tab] : undefined) ?? (tab === 'ask' ? Infinity : 0)}
+        {/* «Карта»: переключатель частей — над листом, не уезжает с прокруткой */}
+        {tab === 'card' && tabbed ? (
+          <View style={styles.parts}>
+            <Tabs<CardPart> testPrefix="part" value={part} onChange={setPart} items={[
+              { key: 'results', title: v.freshCount > 0 ? t.partResultsFresh(v.freshCount) : t.partResults },
+              { key: 'board', title: t.partBoard },
+            ]} />
+          </View>
+        ) : null}
+
+        <Pane key={`${key}:${pane}`} startAt={() => (offsets.current.patient === key ? offsets.current.y[pane] : undefined) ?? (tab === 'ask' ? Infinity : 0)}
           onScrollY={remember} scrollRef={scroll} onDrag={() => { want.current = null; }} testID={`pane-${tab}`}>
-          {tab === 'card' ? (
+          {tab === 'card' && part === 'results' ? (
             <>
               {v.returnNote ? <P testID="visit-return">{v.returnNote}</P> : null}
               {v.payerNote ? <P muted testID="visit-payer">{v.payerNote}</P> : null}
@@ -283,6 +311,10 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
                 )}
                 {!hinted && <P muted>{t.tapForHint}</P>}
               </Card>
+            </>
+          ) : tab === 'card' ? (
+            // доска гипотез: «Похоже на» — в ряд, «Ваш ряд», правила решения
+            <>
               {tabbed && v.hints.length > 0 && (
                 <Card>
                   <Text style={styles.label}>{t.likely}</Text>
@@ -499,6 +531,7 @@ const useStyles = makeStyles(t => ({
     backgroundColor: t.colors.accentSoft, borderBottomWidth: 1, borderBottomColor: t.colors.edge,
   },
   likelyLabel: { fontSize: 13, fontWeight: '700', color: t.colors.accent },
+  parts: { paddingHorizontal: space.l, paddingTop: space.s },
   likelyText: { flex: 1, fontSize: 13, lineHeight: 18, color: t.colors.ink },
   meanwhile: { gap: 2, paddingHorizontal: space.l, paddingVertical: space.xs + 2, backgroundColor: t.colors.fresh, borderBottomWidth: 1, borderBottomColor: t.colors.freshLine },
   meanwhileLabel: { fontWeight: '700' },

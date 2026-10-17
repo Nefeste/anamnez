@@ -169,10 +169,11 @@ export function dailyRows(
   });
 }
 
-/** Подпись в меню: сегодняшний случай сыгран — с оценкой. */
-export function dailyMenuHint(done: Readonly<Record<string, DailyRecord>>, today: Date = new Date()): string {
-  const r = done[dayOf(today)];
-  return r ? T.daily.menuToday(r.grade) : T.daily.menuHint;
+/** Подпись в меню: сегодняшний случай сыгран — с оценкой; начат и не закончен — «начат» (0.6.5). */
+export function dailyMenuHint(done: Readonly<Record<string, DailyRecord>>, today: Date = new Date(), open: Readonly<Record<string, DailyStarted>> = started): string {
+  const day = dayOf(today);
+  const r = done[day];
+  return r ? T.daily.menuToday(r.grade) : open[day] ? T.daily.menuStarted : T.daily.menuHint;
 }
 
 // --- приём случая дня ------------------------------------------------------------------------
