@@ -30,7 +30,17 @@ export interface FontEntry {
   text: string;
 }
 
-export function readNative(): { android: NativeEntry[]; fonts: FontEntry[] } {
+/** Запись под CC BY в звуках игры (ADR 0019): название, автор, что с ней сделано и откуда взята. */
+export interface SoundEntry {
+  name: string;
+  holder: string;
+  license: string;
+  via: string;
+  source: string;
+  texts: string[];
+}
+
+export function readNative(): { android: NativeEntry[]; fonts: FontEntry[]; sounds: SoundEntry[] } {
   return parse(readFileSync(join(import.meta.dir, 'native.yaml'), 'utf8'));
 }
 
@@ -105,7 +115,7 @@ function nativeText(file: string): string {
   return readFileSync(join(TEXTS, file), 'utf8');
 }
 
-/** Всё вместе: шрифты, код JS, библиотеки Android; тексты — по отпечатку, без повторов. */
+/** Всё вместе: шрифты, код JS, библиотеки Android, записи звуков; тексты — по отпечатку, без повторов. */
 export function assemble(jsPaths: readonly string[]): Licenses {
   const texts: Record<string, string> = {};
   const store = (text: string) => {
@@ -124,7 +134,12 @@ export function assemble(jsPaths: readonly string[]): Licenses {
   const android: LicenseItem[] = native.android.map(n => ({
     name: n.name, version: n.version, license: n.license, holder: n.holder, via: n.via, texts: n.texts.map(t => store(nativeText(t))),
   }));
-  const groups: LicenseGroup[] = [{ key: 'fonts', items: fonts }, { key: 'js', items: js }, { key: 'android', items: android }];
+  const sounds: LicenseItem[] = native.sounds.map(n => ({
+    name: n.name, license: n.license, holder: n.holder, via: n.via, source: n.source, texts: n.texts.map(t => store(nativeText(t))),
+  }));
+  const groups: LicenseGroup[] = [
+    { key: 'fonts', items: fonts }, { key: 'js', items: js }, { key: 'android', items: android }, { key: 'sounds', items: sounds },
+  ];
   const sorted: Record<string, string> = {};
   for (const k of Object.keys(texts).sort()) sorted[k] = texts[k];
   return { groups, texts: sorted };

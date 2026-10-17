@@ -1,6 +1,7 @@
 // Лицензии открытых компонентов (spec 2026-10-licenses, 0.5.6; 12-publishing.md §8): готовый список совпадает с тем,
 // что стоит в node_modules и записано в `tools/licenses/native.yaml`; лицензии — разрешающие, у каждого компонента —
-// правообладатель и текст; нативные библиотеки сборки — React Native, Skia, модули Expo — и шрифты все в списке.
+// правообладатель и текст; нативные библиотеки сборки — React Native, Skia, модули Expo — и шрифты все в списке; записи
+// звуков под CC BY (0.6.6, ADR 0019) — те же, что в реестре звуков, с источником и тем, что изменено.
 import { describe, expect, test } from 'bun:test';
 import { closeSync, existsSync, openSync, readdirSync, readFileSync, readSync } from 'node:fs';
 import { join } from 'node:path';
@@ -11,10 +12,13 @@ import { LICENSES, licenseCount } from '../../src/licenses';
 const items = (key: string) => LICENSES.groups.find(g => g.key === key)!.items;
 const read = (path: string) => readFileSync(join(ROOT, path), 'utf8');
 
-/** Разрешающие лицензии: условия — назвать авторов и приложить текст; копилефта нет. */
+/**
+ * Разрешающие лицензии: условия — назвать авторов и приложить текст; копилефта нет. Записи звуков — CC BY (ADR 0019):
+ * без «на тех же условиях» (SA) и «некоммерческого» (NC).
+ */
 const ALLOWED = new Set([
   'MIT', 'ISC', 'BSD-2-Clause', 'BSD-3-Clause', 'Apache-2.0', 'LLVM-exception', 'BSL-1.0', 'Zlib', 'Libpng-2.0', 'FTL', 'IJG',
-  'OFL-1.1', 'MIT-Modern-Variant', 'Adobe-DNG-SDK',
+  'OFL-1.1', 'MIT-Modern-Variant', 'Adobe-DNG-SDK', 'CC-BY-3.0', 'CC-BY-4.0',
 ]);
 const tokens = (license: string) => license.split(/\s+(?:AND|OR|WITH)\s+|[()]/).map(x => x.trim()).filter(Boolean);
 
@@ -140,6 +144,21 @@ describe('нативные библиотеки сборки — все в сп�
     // FreeType, libpng, libjpeg-turbo, HarfBuzz и другие — там, где их ждём
     for (const lib of ['libfreetype2', 'libpng', 'libjpeg', 'libharfbuzz', 'libexpat', 'libwebp', 'libdng_sdk']) expect(prefixes.has(lib)).toBe(true);
     expect([...prefixes].filter(p => !listed.has(p)).sort()).toEqual([]);
+  });
+
+  test('записи звуков под CC BY — те же, что в реестре assets/audio/LICENSES.md: автор, источник, что изменено, текст CC BY', () => {
+    const registry = read('assets/audio/LICENSES.md');
+    const sounds = items('sounds');
+    expect(sounds.length).toBe(native.sounds.length);
+    for (const s of sounds) {
+      expect({ name: s.name, license: /^CC-BY-[34]\.0$/.test(s.license) }).toEqual({ name: s.name, license: true });
+      expect({ name: s.name, source: registry.includes(s.source ?? '—'), holder: registry.includes(s.holder) }).toEqual({ name: s.name, source: true, holder: true });
+      expect((s.via ?? '').length).toBeGreaterThan(20);
+      expect(LICENSES.texts[s.texts[0]]).toContain(s.license === 'CC-BY-3.0' ? 'Attribution 3.0 Unported' : 'Attribution 4.0 International');
+    }
+    // в реестре нет записей под CC BY, которых нет на экране
+    const cited = [...new Set([...registry.matchAll(/<(https:\/\/archive\.org\/details\/[^>]+)>[^|\n]*\|[^|\n]*CC BY/g)].map(m => m[1]))];
+    expect(cited.sort()).toEqual(sounds.map(s => s.source!).sort());
   });
 
   test('шрифты из сборки (app.json, expo-font) — с текстом OFL рядом со шрифтом', () => {

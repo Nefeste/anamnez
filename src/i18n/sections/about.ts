@@ -9,9 +9,9 @@ export const about = {
   whatsNew: 'Что нового',
   // то же, что раздел версии в README.md (05-process.md, чек-лист выпуска)
   news: [
-    'Главное меню: бейдж вашего врача — портрет, звание, итоги.',
-    '«Случай дня» — прямо в главном меню, листком календаря.',
-    '«Карта» пациента — из двух частей: «Результаты» и «Гипотезы».',
+    'В фоне амбулатории — далёкие голоса: очередь за стеной.',
+    'Телефон регистратуры звонит изредка, пока играет фон.',
+    '«Лицензии» — раздел «Звуки»: голоса и телефон с авторами.',
   ],
   baseTitle: 'Медицинская база',
   base: (version: number, conditions: number, findings: number, exams: number, treatments: number) =>
@@ -29,9 +29,10 @@ export const about = {
     score: 'Шкалы',
     dataset: 'Наборы данных',
   },
-  // звук и музыка (часть 62): CC0 упоминания не требует, но автор «Vaporware» его просит (assets/audio/LICENSES.md)
+  // звук и музыка (часть 62): CC0 упоминания не требует, но автор «Vaporware» его просит; записи под CC BY (0.6.6, ADR 0019)
+  // — с автором, названием и ссылкой в «Лицензиях» (assets/audio/LICENSES.md)
   soundTitle: 'Звук и музыка',
-  sound: 'Музыка: «Vaporware» — The Cynic Project, «Contemplation» — Joth. Звуки: набор «RPG Audio» — Kenney. Всё — под лицензией CC0, с OpenGameArt и kenney.nl; сигналы игры — свои.',
+  sound: 'Музыка: «Vaporware» — The Cynic Project, «Contemplation» — Joth. Звуки: набор «RPG Audio» — Kenney. Они — под лицензией CC0, с OpenGameArt и kenney.nl. Голоса в фоне амбулатории — запись Ed Visoso, телефон регистратуры — Cloud16 Films; они — под CC BY, с названиями и ссылками — в «Лицензиях». Сигналы игры — свои.',
   developerTitle: 'Разработчик',
   // строка студии по брендбуку (ADR 0017): рядом — знак студии
   studio: 'Игра студии «Горница»',
@@ -43,12 +44,12 @@ export const about = {
   cantOpen: (what: string) => `Не открылось. Адрес: ${what}`,
   // лицензии открытых компонентов (spec 2026-10-licenses, 0.5.6; 12-publishing.md §8)
   openTitle: 'Открытые компоненты',
-  open: 'В игре — шрифты, код и библиотеки других авторов под открытыми лицензиями.',
+  open: 'В игре — шрифты, код, библиотеки и записи звуков других авторов под открытыми лицензиями.',
   licenses: (n: number) => `Лицензии — ${n}`,
   licensesTitle: 'Лицензии',
   licensesIntro:
-    'Шрифты, код и библиотеки других авторов, из которых собрана игра, — под открытыми лицензиями. Их условия просят назвать авторов и приложить тексты лицензий: они здесь. Касание строки открывает текст.',
-  licenseGroups: { fonts: 'Шрифты', js: 'Код JavaScript', android: 'Библиотеки Android' } as Record<string, string>,
+    'Шрифты, код, библиотеки и записи звуков других авторов, из которых собрана игра, — под открытыми лицензиями. Их условия просят назвать авторов и приложить тексты лицензий: они здесь. Касание строки открывает текст.',
+  licenseGroups: { fonts: 'Шрифты', js: 'Код JavaScript', android: 'Библиотеки Android', sounds: 'Звуки' } as Record<string, string>,
   licenseName: (name: string, version: string) => `${name} ${version}`,
   licenseVia: (license: string, via: string) => `${license} · ${via}`,
   dataTitle: 'Данные',

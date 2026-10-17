@@ -1,8 +1,9 @@
 # Что в сборке для Android, кроме кода JS, и под какими лицензиями (spec 2026-10-licenses, 0.5.6): нативные библиотеки
-# React Native, модулей Expo и Skia — и шрифты. Код JS в сборке и его лицензии собирает `tools/licenses/build.ts` из
-# карты кода сборки. Тексты лицензий — в `texts/`, дословно из источника по ссылке `source`; общий текст Apache 2.0 —
-# с apache.org, а правообладатель — в `holder`. `maven` — группы и артефакты Gradle, которые запись покрывает
-# (`licenses.test.ts` сверяет их с `android/build.gradle` модулей); `version` сверяется с тем, что стоит в node_modules.
+# React Native, модулей Expo и Skia, шрифты и, с 0.6.6, записи звуков под CC BY. Код JS в сборке и его лицензии собирает
+# `tools/licenses/build.ts` из карты кода сборки. Тексты лицензий — в `texts/`, дословно из источника по ссылке
+# `source`; общий текст Apache 2.0 — с apache.org, а правообладатель — в `holder`. `maven` — группы и артефакты Gradle,
+# которые запись покрывает (`licenses.test.ts` сверяет их с `android/build.gradle` модулей); `version` сверяется с тем,
+# что стоит в node_modules.
 
 android:
   # React Native: движок Hermes и библиотеки, собранные в react-android (ReactAndroid/src/main/jni/third-party)
@@ -352,3 +353,21 @@ fonts:
     files: [JetBrainsMono-Medium.ttf, JetBrainsMono-Bold.ttf]
     holder: The JetBrains Mono Project Authors
     text: OFL-JetBrainsMono.txt
+
+# Записи под CC BY в звуках игры (ADR 0019, assets/audio/LICENSES.md): условия лицензий — назвать название, автора и
+# источник, указать лицензию и что запись изменена (`via`). Тексты лицензий — дословно с creativecommons.org.
+sounds:
+  - name: >-
+      Av. Pradera 1101, Azteca, 37520 León de los Aldama, Gto., Mexico - Gente formada esperando su turno en el área
+      para sacar cita con un doctor especialista que necesite ver en el hospital del ISSSTE.
+    holder: Ed Visoso
+    license: CC-BY-3.0
+    via: голоса в фоне амбулатории — отрезок 42 с, глуше и тише, стуки приглушены, смешан с гулом
+    source: https://archive.org/details/aporee_66705_77139
+    texts: [cc-by-3.0.txt]
+  - name: Automatic Electric (AE) Telephone Ringing
+    holder: Cloud16 Films
+    license: CC-BY-4.0
+    via: телефон регистратуры — звонок укорочен до секунды, три звонка, глуше и тише
+    source: https://archive.org/details/yellow-ae-80
+    texts: [cc-by-4.0.txt]
