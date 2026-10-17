@@ -48,7 +48,8 @@ export function Talk({ v, asks, explain, isOpen, toggle, onRow }: {
                 ))}
               </Text>
               {!g.fresh && g.lines.filter(l => !l.shown).length > NO_SAID ? (
-                <Pressable testID={`more-${g.exam}`} accessibilityRole="button" aria-expanded={open} onPress={() => toggle(k)} hitSlop={8}>
+                <Pressable testID={`more-${g.exam}`} accessibilityRole="button" aria-expanded={open} onPress={() => toggle(k)} hitSlop={space.s}
+                  style={styles.moreTap}>
                   <Text style={styles.more}>{open ? t.less : t.moreNo(more)}</Text>
                 </Pressable>
               ) : null}
@@ -136,7 +137,10 @@ const useStyles = makeStyles(t => ({
   ptText: { fontFamily: t.fonts.title, fontStyle: 'italic', fontSize: 15, lineHeight: 21, color: t.colors.ink },
   found: { fontWeight: '700' },
   more: { fontSize: 13, color: t.colors.muted },
-  panel: { backgroundColor: t.colors.card, borderTopWidth: 1, borderTopColor: t.colors.edge },
+  // строка в 17 пикселей: с полем сверху и снизу и hitSlop касание — 49 dp (NFR-ACC-1)
+  moreTap: { paddingVertical: space.s },
+  // как панель места: сжимается, если с крупным текстом места меньше, — вкладки не уходят за край (NFR-ACC-1)
+  panel: { flexShrink: 1, backgroundColor: t.colors.card, borderTopWidth: 1, borderTopColor: t.colors.edge },
   panelScroll: { flexGrow: 0 },
   panelContent: { paddingHorizontal: space.l, paddingVertical: space.s, gap: space.s },
   part: { gap: space.xs },

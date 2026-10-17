@@ -34,7 +34,7 @@ export function ExamRow({ v, id, open: opened, onToggle, onExam, explain, onLayo
     return (
       <Animated.View entering={FadeInDown.duration(250)} testID={`done-${id}`} onLayout={onLayout} style={[styles.done, indent && styles.indent, g?.fresh && styles.fresh]}>
         <Pressable accessibilityRole="button" aria-expanded={open} accessibilityLabel={`${info.name}: ${open ? t.collapse : t.expand}`} disabled={!g || g.fresh}
-          onPress={onToggle} style={({ pressed }) => [styles.head, pressed && styles.pressed]}>
+          hitSlop={HEAD_SLOP} onPress={onToggle} style={({ pressed }) => [styles.head, pressed && styles.pressed]}>
           <Text style={styles.title}>{`✓ ${info.name}`}</Text>
           {g?.fresh ? <Text style={styles.badge}>{t.fresh}</Text> : g ? <Text style={styles.chevron}>{open ? '▴' : '▾'}</Text> : null}
         </Pressable>
@@ -53,6 +53,12 @@ export function ExamRow({ v, id, open: opened, onToggle, onExam, explain, onLayo
       onPress={() => onExam(id)} onInfo={() => explain(examTerm(id))} infoLabel={t.whatIsIt} />
   );
 }
+
+/**
+ * Шапка сделанного — строка в 18 пикселей: касанию не хватало до 48 dp (NFR-ACC-1, разбор 0.6.3). Поле касания — внутри
+ * своей строки: сверху на её отступ, снизу на строку итога; находки под шапкой нажимаются сами — они выше в порядке касаний.
+ */
+const HEAD_SLOP = { top: space.m, bottom: space.m + space.s - 2, left: space.m, right: space.m };
 
 const useStyles = makeStyles(t => ({
   done: { gap: space.xs, padding: space.m, borderRadius: t.shape.radius, borderWidth: 1, borderColor: t.colors.line },

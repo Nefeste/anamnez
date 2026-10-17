@@ -15,6 +15,8 @@ export const daily = {
   played: (grade: string, verdict: string) => `Сыгран: ${grade} · ${verdict}`,
   playedBase: (grade: string, verdict: string, base: number) => `Сыгран: ${grade} · ${verdict} · база ${base}`,
   notPlayed: 'можно сыграть',
+  // начатый и не законченный приём (0.6.3): вошли снова — с того же места
+  started: 'начат — продолжить с того же места',
   firstTry: (grade: string, verdict: string) => `Засчитана первая попытка: ${grade}, ${verdict}.`,
   toList: 'К списку дней',
 };
