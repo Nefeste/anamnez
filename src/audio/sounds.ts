@@ -1,7 +1,8 @@
 // Звуки, музыка и вибрация (09-game-design.md §13, 02-architecture.md §10). В движке звуков нет:
 // их вызывает интерфейс по событиям. Короткие звуки загружаются один раз в проигрыватели.
 // Громкость, фон и вибрация — из настроек игрока. Приход пациента, фон амбулатории и музыка (часть 62) — из
-// наборов CC0 (tools/audio/clinic.ts, tools/audio/music.mjs, assets/audio/LICENSES.md). Тревога монитора при остановке
+// наборов CC0, далёкие голоса в фоне и телефон регистратуры (0.6.6) — из записей под CC BY, авторы — в «Лицензиях»
+// (ADR 0019; tools/audio/clinic.ts, tools/audio/music.mjs, assets/audio/LICENSES.md). Тревога монитора при остановке
 // сердца (0.5.7) — синтезирована, как касание и сигналы (tools/audio/gen.ts).
 import { type AudioPlayer, createAudioPlayer } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
@@ -10,21 +11,24 @@ import { settings } from '@/state/settings';
 import type { MusicScene } from './scene';
 
 export type SoundName = 'tap' | 'ready' | 'urgent' | 'arrived' | 'alarm';
+/** Звуки фона: петля амбулатории и телефон регистратуры, что звонит в ней изредка. */
+type Background = 'ambient' | 'phone';
 
-const SOURCES: Record<SoundName | 'ambient', number> = {
+const SOURCES: Record<SoundName | Background, number> = {
   tap: require('../../assets/audio/tap.wav'),
   ready: require('../../assets/audio/ready.wav'),
   urgent: require('../../assets/audio/urgent.wav'),
   arrived: require('../../assets/audio/arrived.wav'),
   alarm: require('../../assets/audio/alarm.wav'),
   ambient: require('../../assets/audio/ambient.wav'),
+  phone: require('../../assets/audio/phone.wav'),
 };
 
-const players: Partial<Record<SoundName | 'ambient', AudioPlayer>> = {};
+const players: Partial<Record<SoundName | Background, AudioPlayer>> = {};
 // приход пациента — тише сигналов: он частый и ничего не требует
 const volume = { ui: 0.6, events: 0.9, arrived: 0.6, ambient: 0.25 };
 
-function player(name: SoundName | 'ambient'): AudioPlayer {
+function player(name: SoundName | Background): AudioPlayer {
   let p = players[name];
   if (!p) {
     p = createAudioPlayer(SOURCES[name]);
@@ -55,6 +59,25 @@ export function setAmbient(on: boolean) {
   applyAmbient(AppState.currentState === 'active');
 }
 
+/**
+ * Телефон регистратуры (0.6.6): пока играет фон, звонит изредка — первый раз через одну-две минуты, дальше раз в
+ * 2–5 минут; три звонка, и трубку сняли. Не в петле фона: звонок каждые 40 с надоел бы.
+ */
+const PHONE_FIRST_MS: [number, number] = [45_000, 120_000];
+const PHONE_EVERY_MS: [number, number] = [120_000, 300_000];
+let phoneTimer: ReturnType<typeof setTimeout> | null = null;
+
+function ringLater([from, to]: [number, number]) {
+  phoneTimer = setTimeout(() => {
+    phoneTimer = null;
+    const p = player('phone');
+    p.volume = volume.ambient * settings().sound;
+    p.seekTo(0).catch(() => undefined);
+    p.play();
+    ringLater(PHONE_EVERY_MS);
+  }, from + Math.random() * (to - from));
+}
+
 function applyAmbient(active: boolean) {
   if (Platform.OS === 'web') return;
   const s = settings();
@@ -63,8 +86,15 @@ function applyAmbient(active: boolean) {
   const p = player('ambient');
   p.loop = true;
   p.volume = volume.ambient * s.sound;
-  if (audible) p.play();
-  else p.pause();
+  if (audible) {
+    p.play();
+    if (!phoneTimer) ringLater(PHONE_FIRST_MS);
+  } else {
+    p.pause();
+    if (phoneTimer) clearTimeout(phoneTimer);
+    phoneTimer = null;
+    players.phone?.pause();
+  }
 }
 
 export type { MusicScene } from './scene';

@@ -1140,7 +1140,9 @@ try {
   await page.getByTestId('about-version').waitFor({ timeout: 5000 });
   check((await text(page, 'about-disclaimer')).includes('112') && (await text(page, 'about-write')).includes('support@gornitsa.games'), '«Об игре»: полная оговорка, почта разработчика');
   // звук и музыка (часть 62): авторы треков и набора звуков
-  check((await text(page, 'about-sound')).includes('The Cynic Project') && (await text(page, 'about-sound')).includes('Kenney'), '«Об игре»: авторы музыки и звуков');
+  const soundCredits = await text(page, 'about-sound');
+  check(soundCredits.includes('The Cynic Project') && soundCredits.includes('Kenney') && soundCredits.includes('Ed Visoso') && soundCredits.includes('Cloud16 Films'),
+    '«Об игре»: авторы музыки и звуков, с 0.6.6 — и записей голосов и телефона');
   // студия по брендбуку (ADR 0017, 0.5.3): знак со строкой «Игра студии „Горница“», внизу — полоса-рушник во всю ширину листа
   const studio = page.getByTestId('about-studio');
   const band = await page.getByTestId('about-rushnik').boundingBox();
@@ -1152,8 +1154,8 @@ try {
   await page.getByTestId('source').first().waitFor({ timeout: 5000 });
   const sources = await page.getByTestId('source').count();
   check(sources > 50, `«Об игре»: источники медицинской базы — ${sources}`);
-  // лицензии открытых компонентов (spec 2026-10-licenses, 0.5.6): шрифты, код JS, библиотеки Android; строка Skia
-  // раскрывается текстом лицензии
+  // лицензии открытых компонентов (spec 2026-10-licenses, 0.5.6): шрифты, код JS, библиотеки Android и, с 0.6.6, записи
+  // звуков; строка Skia раскрывается текстом лицензии
   await page.goBack();
   await page.getByTestId('about-licenses').click();
   await page.getByTestId('licenses-android').waitFor({ timeout: 5000 });
@@ -1163,7 +1165,16 @@ try {
   await page.getByTestId(`license-android-${skia}`).click();
   const skiaText = await text(page, `license-android-${skia}-text`);
   check(rows > 100 && await page.getByTestId('licenses-fonts').isVisible() && await page.getByTestId('licenses-js').isVisible() && skiaText.includes('Google Inc.'),
-    `«Об игре»: лицензии — ${rows} строк в трёх разделах, у Skia — текст лицензии`);
+    `«Об игре»: лицензии — ${rows} строк в четырёх разделах, у Skia — текст лицензии`);
+  // записи звуков под CC BY (0.6.6, ADR 0019): автор и ссылка на запись видны в строке, текст — CC BY
+  const soundsCard = await text(page, 'licenses-sounds');
+  await page.getByTestId('license-sounds-1').click();
+  const ccText = await text(page, 'license-sounds-1-text');
+  check(soundsCard.includes('Ed Visoso') && soundsCard.includes('Cloud16 Films') && soundsCard.includes('https://archive.org/details/aporee_66705_77139')
+    && soundsCard.includes('https://archive.org/details/yellow-ae-80') && ccText.includes('Attribution 4.0 International'),
+    '«Об игре»: лицензии — раздел «Звуки»: голоса Ed Visoso и телефон Cloud16 Films со ссылками, у телефона — текст CC BY 4.0 (смотреть 10-licenses-sounds.png)');
+  await page.getByTestId('license-sounds-1').click();
+  await page.getByTestId('licenses-sounds').screenshot({ path: join(OUT, '10-licenses-sounds.png') });
 
   // энциклопедия: оговорка вверху; раздел → статья → ссылка в статью обследования; поиск
   await page.goto(base);

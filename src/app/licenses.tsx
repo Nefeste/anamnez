@@ -1,6 +1,7 @@
 // Лицензии открытых компонентов (spec 2026-10-licenses, 0.5.6; 12-publishing.md §8): шрифты, код JS и библиотеки
-// Android, которые попали в сборку, с правообладателями и полными текстами лицензий — их условия требуют приложить
-// тексты к выпущенной игре. Строка раскрывается касанием; список собирает `tools/licenses/build.ts`.
+// Android, которые попали в сборку, и записи звуков под CC BY (0.6.6, ADR 0019) — с правообладателями и полными текстами
+// лицензий: их условия требуют приложить тексты к выпущенной игре, а у записей — ещё и назвать, откуда они и что в них
+// изменено. Строка раскрывается касанием; список собирает `tools/licenses/build.ts`.
 import { useState } from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { T } from '@/i18n';
@@ -18,6 +19,7 @@ function Row({ item, id, open, onToggle }: { item: LicenseItem; id: string; open
         <Text style={styles.name}>{item.version ? t.licenseName(item.name, item.version) : item.name}</Text>
         <Text style={styles.meta}>{item.via ? t.licenseVia(item.license, item.via) : item.license}</Text>
         <Text style={styles.meta}>{item.holder}</Text>
+        {item.source ? <Text style={styles.meta} selectable>{item.source}</Text> : null}
       </Pressable>
       {open ? item.texts.map(key => <Text key={key} testID={`license-${id}-text`} style={styles.text}>{licenses.texts[key]}</Text>) : null}
     </View>
