@@ -93,6 +93,21 @@ async function tab(page: Page, key: 'card' | 'ask' | 'examine' | 'order'): Promi
   const it = visible(page, `tab-${key}`);
   if ((await it.count()) > 0 && (await it.first().getAttribute('aria-selected')) !== 'true') await it.first().click();
 }
+/** «Карта» из двух частей (0.6.5, вопрос 46): «Результаты» — журнал, «Гипотезы» — «Похоже на», ряд и правила. */
+async function part(page: Page, key: 'results' | 'board'): Promise<void> {
+  await tab(page, 'card');
+  const it = visible(page, `part-${key}`);
+  if ((await it.count()) > 0 && (await it.first().getAttribute('aria-selected')) !== 'true') await it.first().click();
+}
+/** Всё, что видно в карте пациента: журнал и доска гипотез с правилами; после — снова журнал. */
+async function cardText(page: Page): Promise<string> {
+  await part(page, 'results');
+  const results = await page.locator('body').innerText();
+  await part(page, 'board');
+  const board = await page.locator('body').innerText();
+  await part(page, 'results');
+  return `${results}\n${board}`;
+}
 /**
  * Осмотры — на фигуре человека (0.6.0, вопрос 44): «Осмотреть», место на теле или полка — откроется панель места.
  * Открытое место не трогаем: касание закрыло бы его.
@@ -1003,7 +1018,11 @@ try {
   await page.screenshot({ path: join(OUT, '01-doctor.png') });
   await page.getByTestId('doctor-submit').click();
   await page.getByTestId('menu-settings').waitFor({ timeout: 5000 });
-  check((await text(page, 'menu-profile')).includes('Анна Петрова'), `меню: профиль — «${(await text(page, 'menu-profile')).replace(/\n/g, ' · ')}»`);
+  // бейдж врача и «Случай дня» на виду (0.6.5, вопрос 47 — вариант А)
+  const badgeLabel = (await page.getByTestId('menu-badge').getAttribute('aria-label')) ?? '';
+  check(badgeLabel === 'Профиль: Анна Петрова, интерн; пока ни одного приёма' && (await text(page, 'menu-badge')).includes('Анна Петрова'), `меню: бейдж врача — «${badgeLabel}»`);
+  const dailyLabel = (await page.getByTestId('menu-daily').getAttribute('aria-label')) ?? '';
+  check(dailyLabel.startsWith('Случай дня, ') && dailyLabel.endsWith('один пациент в день, одинаковый у всех'), `меню: «Случай дня» — не в подменю: «${dailyLabel}»`);
   await page.screenshot({ path: join(OUT, '01-menu.png') });
   check(!(await page.getByTestId('menu-campaign').isDisabled()) && await page.getByTestId('menu-quick').isVisible(), 'меню: кампания, быстрая игра, энциклопедия, профиль, настройки');
   await page.goto(base);
@@ -1310,8 +1329,18 @@ try {
   await page.screenshot({ path: join(OUT, '04-xray-abdomen.png') });
   await page.screenshot({ path: join(OUT, '04-patient-exams.png'), fullPage: true });
   // дифференциальный ряд (spec 2026-10-differential, 0.5.8): пневмония — поиском в ряд; в карточке — за, против, не
-  // проверено и чем подтвердить; на экране решения «Ваш ряд» — первым. Ряд — на «Карте» (0.6.0)
+  // проверено и чем подтвердить; на экране решения «Ваш ряд» — первым. Ряд — на «Карте» (0.6.0), с 0.6.5 — в её части
+  // «Гипотезы»: журнал и доска — порознь (вопрос 46)
   await tab(page, 'card');
+  const resultsFirst = (await page.getByTestId('part-results').getAttribute('aria-selected')) === 'true';
+  const resultsPane = await text(page, 'pane-card');
+  const boardHidden = (await page.getByTestId('differential').count()) === 0;
+  await part(page, 'board');
+  const boardPane = await text(page, 'pane-card');
+  // подписи карточек набраны прописными — сравнение без регистра
+  check(resultsFirst && boardHidden && resultsPane.toLowerCase().includes('известно') && !boardPane.toLowerCase().includes('известно')
+    && (await page.getByTestId('differential').count()) === 1,
+    '«Карта»: две части — «Результаты» (журнал, по умолчанию) и «Гипотезы» (ряд)');
   await page.getByTestId('hyp-add').click();
   await page.getByTestId('hyp-search').fill('пневмон');
   await page.getByTestId('hyp-pick-cond.pneumonia_cap').click();
@@ -1524,13 +1553,14 @@ try {
   check(/^[А-ЯЁ][а-яё]+( [а-яё]+)?$/.test(job), `смена: в карте пациента — профессия «${job}»`);
   // «Похоже на» — полосой под шапкой с любой вкладки, в ряд — на «Карте» (0.6.0)
   check((await text(page, 'likely-strip')).startsWith('Похоже на'), `смена: «Похоже на» — полосой: ${(await text(page, 'likely-strip')).replace(/\n/g, ' ')}`);
-  await tab(page, 'card');
+  await part(page, 'board');
   const likely = page.locator('[data-testid^="likely-cond."]');
   check((await likely.count()) > 0 && (await likely.first().innerText()).includes('из 10 похожих пациентов'), `смена: «Студент» — «Похоже на»: ${(await likely.first().innerText()).trim()}`);
   // из «Похоже на» — в ряд гипотез (0.5.8)
   const firstLikely = ((await likely.first().getAttribute('data-testid')) ?? '').slice('likely-'.length);
   await page.getByTestId(`likely-add-${firstLikely}`).click();
   check((await page.getByTestId(`hyp-${firstLikely}`).count()) === 1 && (await text(page, `likely-add-${firstLikely}`)) === '✓ в ряду', `смена: из «Похоже на» в ряд — ${firstLikely}`);
+  await part(page, 'results');
   const roomClock = await text(page, 'visit-clock');
   await page.waitForTimeout(1500);
   check((await text(page, 'visit-clock')) === roomClock, 'смена: в кабинете часы идут только делами');
@@ -2181,7 +2211,7 @@ try {
   const tropDone = await text(page, 'done-exam.troponin_hs');
   check(/Через час тропонин T вырос на \d+\sнг\/л — 5 и больше/.test(tropDone) && /Тропонин T \d+\sнг\/л — (52 и выше|ниже 12)/.test(tropDone),
     `тропонин 0/1 час: «${tropDone.replace(/\n/g, ' · ').slice(0, 220)}»`);
-  await tab(page, 'card');
+  await part(page, 'board');
   const ruleLine = await text(page, 'rule-rule.acs_invasive');
   check(ruleLine.startsWith('Коронарография в первые сутки при ОКС. Коронарография в первые сутки — перевод в сосудистый центр'), `правило коронарографии: «${ruleLine.slice(0, 160)}»`);
   await page.waitForTimeout(500);
@@ -2495,7 +2525,7 @@ try {
   await page.getByTestId('tab-pause').click();
   await page.getByTestId('shift-continue').click();
   await visible(page, 'visit-decide').waitFor({ timeout: 10_000 });
-  const tiaCard = await page.locator('body').innerText();
+  const tiaCard = await cardText(page);
   check(tiaCard.includes('Шкала ABCD2 после транзиторной ишемической атаки') && /Риск инсульта выше — нужны два антиагреганта, ацетилсалициловая кислота и клопидогрел: \d\u00a0балл/.test(tiaCard),
     `ТИА: в карте — строка ABCD2 с баллами («${tiaCard.replace(/\n/g, ' · ').slice(0, 300)}»)`);
   await page.screenshot({ path: join(OUT, '21-tia-card.png'), fullPage: true });
@@ -2539,7 +2569,7 @@ try {
   await page.getByTestId('tab-pause').click();
   await page.getByTestId('shift-continue').click();
   await visible(page, 'visit-decide').waitFor({ timeout: 10_000 });
-  const ichCard = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  const ichCard = (await cardText(page)).replace(/\u00a0/g, ' ');
   check(ichCard.includes('Внутри черепа свежая кровь') && /Гематома в (правом|левом) полушарии — \d+ см³/.test(ichCard) && ichCard.includes('Тромболизис нельзя: кровь внутри черепа')
     && ichCard.includes('Антикоагулянтов не принимает — нейтрализовать нечего'),
     `ВМК: в карте — КТ с гематомой, «тромболизис нельзя» и правило об антикоагулянте («${ichCard.replace(/\n/g, ' · ').slice(0, 300)}»)`);
@@ -2582,7 +2612,7 @@ try {
   await page.getByTestId('tab-pause').click();
   await page.getByTestId('shift-continue').click();
   await visible(page, 'visit-decide').waitFor({ timeout: 10_000 });
-  const afCard = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  const afCard = (await cardText(page)).replace(/\u00a0/g, ' ');
   check(afCard.includes('Пилообразные волны F вместо зубцов P — трепетание предсердий') && afCard.includes('Шкала CHA₂DS₂-VASc при фибрилляции предсердий')
     && /Риск инсульта высокий — нужен антикоагулянт постоянно: \d балл/.test(afCard),
     `ФП: в карте — ЭКГ с трепетанием и строка CHA₂DS₂-VASc с баллами («${afCard.replace(/\n/g, ' · ').slice(0, 300)}»)`);
@@ -2766,7 +2796,7 @@ try {
   await page.getByTestId('tab-pause').click();
   await page.getByTestId('shift-continue').click();
   await visible(page, 'visit-decide').waitFor({ timeout: 10_000 });
-  const peCard = (await page.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  const peCard = (await cardText(page)).replace(/\u00a0/g, ' ');
   check(/Вдруг стало нечем дышать|Резко начала? задыхаться/.test(peCard) && peCard.includes('Дефекты наполнения')
     && peCard.includes('0 баллов: риск низкий — можно лечить дома пероральным антикоагулянтом'),
     `ТЭЛА: в карте — внезапная одышка, тромбы на КТ-ангиографии и sPESI 0 («${peCard.replace(/\n/g, ' · ').slice(0, 300)}»)`);
@@ -3796,7 +3826,6 @@ try {
 
   // «Случай дня»: последние 30 дней, приём, разбор, отметка в списке (spec 2026-09-campaign, часть 14)
   await page.goto(base);
-  await page.getByTestId('menu-quick').click();
   await page.getByTestId('menu-daily').click();
   await page.getByTestId('daily-base').waitFor({ timeout: 10_000 });
   const days = page.locator('[data-testid^="daily-20"]');
@@ -3810,11 +3839,17 @@ try {
   await page.goBack();
   await page.getByTestId('daily-base').waitFor({ timeout: 10_000 });
   const begun = (await today.innerText()).replace(/\n/g, ' · ');
+  // в главном меню — тоже «начат» (0.6.5); оттуда — снова в список и в день
+  await page.goto(base);
+  await page.getByTestId('menu-daily').waitFor({ timeout: 10_000 });
+  const menuBegun = (await text(page, 'menu-daily')).replace(/\n/g, ' · ');
+  await page.getByTestId('menu-daily').click();
+  await page.getByTestId('daily-base').waitFor({ timeout: 10_000 });
   await today.click();
   // приём открывается на «Карте»: часы и время приёма — те же, что до «Назад»
   await page.getByTestId('visit-clock').waitFor({ timeout: 10_000 });
-  check(begun.includes('начат') && (await text(page, 'visit-clock')) === dailyClock,
-    `случай дня: «Назад» и снова в день — с того же места («${begun}», ${dailyClock})`);
+  check(begun.includes('начат') && menuBegun.includes('сегодня начат') && (await text(page, 'visit-clock')) === dailyClock,
+    `случай дня: «Назад» и снова в день — с того же места («${begun}», в меню — «${menuBegun}», ${dailyClock})`);
   await page.getByTestId('visit-decide').click();
   await page.locator('[data-testid^="hint-"]').first().click();
   await page.getByTestId('decision-to-plan').click();
@@ -3827,6 +3862,9 @@ try {
   check((await today.innerText()).includes('Сыгран: '), `случай дня: в списке — ${(await today.innerText()).replace(/\n/g, ' · ')}`);
   await page.waitForTimeout(500);
   await page.screenshot({ path: join(OUT, '17-daily.png') });
+  await page.goto(base);
+  await page.getByTestId('menu-daily').waitFor({ timeout: 10_000 });
+  check((await text(page, 'menu-daily')).includes('сегодня сыгран: '), `случай дня: в главном меню — ${(await text(page, 'menu-daily')).replace(/\n/g, ' · ')}`);
 
   // «Разобрать случай» (spec 2026-10-study-case, часть 74): из статьи инсульта — больной в больнице с сосудистым
   // отделением, привезённый скорой; разбор, «К статье»; в практику приём не идёт
@@ -3942,8 +3980,8 @@ try {
   await p4.getByTestId('transfer-note').waitFor({ timeout: 5000 });
   check((await text(p4, 'transfer-note')) === 'Готово: прогресс из файла на месте.', `перенос: ${await text(p4, 'transfer-note')}`);
   await p4.goto(base);
-  await p4.getByTestId('menu-profile').waitFor({ timeout: 10_000 });
-  check((await text(p4, 'menu-profile')).includes('Анна Петрова') && (await p4.getByTestId('menu-continue').count()) === 1,
+  await p4.getByTestId('menu-badge').waitFor({ timeout: 10_000 });
+  check(((await p4.getByTestId('menu-badge').getAttribute('aria-label')) ?? '').includes('Анна Петрова') && (await p4.getByTestId('menu-continue').count()) === 1,
     'перенос: на другом телефоне — сразу меню, свой врач и «Продолжить»');
   await phone2.close();
 
@@ -3997,6 +4035,9 @@ try {
     await tab(p3, key);
     await look(key);
   }
+  await part(p3, 'board');
+  await look('гипотезы');
+  await part(p3, 'results');
   await openPlace(p3, 'exam.lung_auscultation');
   await look('грудь на фигуре');
   await p3.getByTestId('visit-decide').click();
@@ -4009,7 +4050,11 @@ try {
   await p3.goto(`${base}/profile`);
   await p3.getByTestId('kpi-cases').waitFor({ timeout: 10_000 });
   await look('профиль');
-  check(wide.length === 0, `крупный текст на маленьком экране: карта, решение, профиль — ничего за краем${wide.length ? ` (${wide.slice(0, 4).join('; ')})` : ''}`);
+  // главное меню с бейджем врача (0.6.5): длиннее экрана — листается, но в ширину помещается
+  await p3.goto(base);
+  await p3.getByTestId('menu-badge').waitFor({ timeout: 10_000 });
+  for (const x of await overflowing(p3)) if (!x.startsWith('страница выше окна')) wide.push(`меню: ${x}`);
+  check(wide.length === 0, `крупный текст на маленьком экране: карта, гипотезы, решение, профиль, меню — ничего за краем${wide.length ? ` (${wide.slice(0, 4).join('; ')})` : ''}`);
   await p3.screenshot({ path: join(OUT, '19-small-large-text.png') });
   await small.close();
 

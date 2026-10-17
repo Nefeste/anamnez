@@ -20,7 +20,6 @@ export const profile = {
   edit: 'Изменить имя',
   editTitle: 'Имя врача',
   doctor: (first: string, last: string) => `${first} ${last}`,
-  menuHint: (name: string, cases: number) => (cases > 0 ? `${name} · принято: ${cases}` : name),
   // практика — всё время, во всех сменах; с 0.6.2 — плитками и графиками (правила визуализации данных)
   practice: 'Практика',
   noCases: 'Пока ни одного приёма: итоги появятся после первого.',

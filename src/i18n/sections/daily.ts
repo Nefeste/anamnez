@@ -19,4 +19,8 @@ export const daily = {
   started: 'начат — продолжить с того же места',
   firstTry: (grade: string, verdict: string) => `Засчитана первая попытка: ${grade}, ${verdict}.`,
   toList: 'К списку дней',
+  // в главном меню (вопрос 47, 0.6.5): листок календаря — число и месяц; сегодняшний начат — «начат»
+  monthOf: (month: number) => MONTHS[month],
+  menuStarted: 'сегодня начат — продолжить с того же места',
+  menuLabel: (date: string, hint: string) => `Случай дня, ${date}: ${hint}`,
 };

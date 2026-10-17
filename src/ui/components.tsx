@@ -28,8 +28,10 @@ function centerIn(view: ScrollView | null, box: number, y: number, height: numbe
  * пальцем, а не в конце длинного листа. `header` — закреплён сверху (карта смены). `bare` —
  * экран без шапки (меню с обложкой): отступ от строки состояния — свой, черты под шапкой нет.
  */
-export function Screen({ children, scroll = true, resetKey, footer, header, bare, scrollRef, onDrag }: {
+export function Screen({ children, scroll = true, resetKey, footer, header, bare, grow, scrollRef, onDrag }: {
   children: ReactNode; scroll?: boolean; resetKey?: string | number; footer?: ReactNode; header?: ReactNode; bare?: boolean;
+  /** лист растягивается на весь экран: пустое место (flexGrow) отодвигает то, что ниже, к нижнему краю — меню (0.6.5) */
+  grow?: boolean;
   scrollRef?: Ref<ScreenScroll>; onDrag?: () => void;
 }) {
   const styles = useStyles();
@@ -43,7 +45,7 @@ export function Screen({ children, scroll = true, resetKey, footer, header, bare
       {header ? <View style={styles.header}>{header}</View> : null}
       {scroll ? (
         <ScrollView ref={view} key={resetKey} onLayout={e => { box.current = e.nativeEvent.layout.height; }} onScrollBeginDrag={onDrag}
-          contentContainerStyle={styles.content}>
+          contentContainerStyle={grow ? [styles.content, styles.grow] : styles.content}>
           {children}
         </ScrollView>
       ) : <View style={styles.fill}>{children}</View>}
@@ -362,6 +364,7 @@ const useStyles = makeStyles(t => ({
   screen: { flex: 1, backgroundColor: t.colors.bg },
   fill: { flex: 1 },
   content: { padding: space.l, gap: space.m, maxWidth: 640, width: '100%', alignSelf: 'center' },
+  grow: { flexGrow: 1 },
   line: { height: 1, backgroundColor: t.colors.line },
   rule: { gap: 2, backgroundColor: t.colors.card, paddingBottom: 1 },
   ruleThick: { height: 2, backgroundColor: t.colors.accent, opacity: 0.55 },
