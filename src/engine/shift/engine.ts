@@ -29,7 +29,7 @@ import { type Grade, scoreBase, type ScoreBase, scoreThrift, worstGrade } from '
 import { askMinutes, examSkillWith, mentorOf } from '../career/skills';
 import type { Observation, Patient } from '../med/types';
 import {
-  type ClosedCase, type ColleagueDay, type Command, DAY, type DaySummary, type Difficulty, easyLevel, type Notice, type PlannedReturn, REGISTRATION, SHIFT_END, SHIFT_SCHEMA_VERSION,
+  type ClosedCase, type ColleagueDay, type Command, DAY, type DaySummary, type Difficulty, easyLevel, hospitalDay, type Notice, type PlannedReturn, REGISTRATION, SHIFT_END, SHIFT_SCHEMA_VERSION,
   SHIFT_START, type ShiftEvent, type ShiftPatient, type ShiftState, TRIAGE, type Triage, type VisitKind, type WardDay, type AmbulanceDay, type SurgeryDay,
 } from './types';
 import { COMPLICATION_DAYS, complicationAt, complicationsOf, deathsOf, onsetHours, operationFor } from './surgery';
@@ -1922,10 +1922,10 @@ function admit(db: ContentDb, s: ShiftState, p: ShiftPatient) {
   // суток, раньше любой другой
   if (closed.outcome.examHarm) p.stay.dies = 0;
   // фибрилляция желудочков после поступления (часть 39б): в ПИТ под монитором её снимут разрядом —
-  // строка обхода; в палате без монитора — смерть в ночь этих суток
+  // строка обхода; в палате без монитора — смерть в ночь этих суток (сутки — с 08:00: после полуночи — ещё те же)
   const vf = p.arrest === undefined ? arrestAfter(db, s, p) : undefined;
   if (vf !== undefined && p.arriveT + vf >= s.t) {
-    const night = Math.floor((p.arriveT + vf) / DAY) + 1 - s.day;
+    const night = hospitalDay(p.arriveT + vf) - s.day;
     if (icu) p.stay.shock = night;
     else p.stay.dies = Math.min(p.stay.dies ?? night, night);
   }
