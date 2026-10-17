@@ -1,9 +1,9 @@
-// Профиль для экранов: итоги практики строками, архив приёмов строками, достижения по группам,
-// имя по умолчанию. Всё — из записей профиля (profile.ts) и базы; разбор приёма из архива
-// строит session.ts.
+// Профиль для экранов: итоги практики числами — для плиток и графиков (0.6.2), архив приёмов строками, достижения
+// по группам, имя по умолчанию. Всё — из записей профиля (profile.ts) и базы; разбор приёма из архива строит
+// session.ts.
 import { db } from '@/content';
 import type { AchievementCategory, Id } from '@/content/types';
-import { levelOf, skillsFor, specialtiesOf, toNextLevel } from '@/engine/career/skills';
+import { LEVELS, levelOf, skillsFor, specialtiesOf, toNextLevel } from '@/engine/career/skills';
 import type { Grade } from '@/engine/med/score';
 import { T } from '@/i18n';
 import { patientName } from './caseView';
@@ -53,24 +53,43 @@ export function seenCount(p: Profile): { seen: number; total: number } {
   return { seen: ids.filter(id => (p.seen[id] ?? 0) > 0).length, total: ids.length };
 }
 
-/** Итоги практики — всё время, во всех сменах; приёмов нет — пусто. */
-export function practiceLines(p: Profile): string[] {
-  const s = p.stats;
-  if (s.cases === 0) return [];
-  const t = T.profile;
-  const { seen, total } = seenCount(p);
-  return [
-    t.cases(s.cases),
-    t.verdicts(s.correct, s.partly, s.wrong, Math.round((s.correct / s.cases) * 100)),
-    t.grades(s.grades.A, s.grades.B, s.grades.C, s.grades.D),
-    t.money(T.common.rub(Math.round(s.money / s.cases))),
-    // с 0.0.30: у прежних приёмов этих счётчиков нет — у строк своё «из скольких»
-    ...(s.timed > 0 ? [t.minutes(Math.round(s.minutes / s.timed))] : []),
-    ...(s.antibiotics.given > 0 ? [t.antibiotics(s.antibiotics.indicated, s.antibiotics.given)] : []),
-    ...(s.danger.met > 0 ? [t.danger(s.danger.caught, s.danger.met)] : []),
-    t.seen(seen, total),
-  ];
+/**
+ * Итоги практики — всё время, во всех сменах — числами для плиток и графиков (0.6.2); приёмов нет — нет и итогов.
+ * Минуты, антибиотики и опасное — с 0.0.30: у прежних приёмов этих счётчиков нет — у них своё «из скольких».
+ */
+export interface PracticeView {
+  cases: number;
+  /** доля верных диагнозов, % — округлённо */
+  correctPct: number;
+  verdicts: { correct: number; partly: number; wrong: number };
+  grades: Record<Grade, number>;
+  /** обследования — в среднем на приём, ₽ */
+  money: number;
+  minutes?: number;
+  antibiotics?: { ok: number; of: number };
+  danger?: { ok: number; of: number };
+  seen: { n: number; of: number };
 }
+
+export function practiceView(p: Profile): PracticeView | undefined {
+  const s = p.stats;
+  if (s.cases === 0) return undefined;
+  const { seen, total } = seenCount(p);
+  return {
+    cases: s.cases,
+    correctPct: Math.round((s.correct / s.cases) * 100),
+    verdicts: { correct: s.correct, partly: s.partly, wrong: s.wrong },
+    grades: { A: s.grades.A, B: s.grades.B, C: s.grades.C, D: s.grades.D },
+    money: Math.round(s.money / s.cases),
+    ...(s.timed > 0 ? { minutes: Math.round(s.minutes / s.timed) } : {}),
+    ...(s.antibiotics.given > 0 ? { antibiotics: { ok: s.antibiotics.indicated, of: s.antibiotics.given } } : {}),
+    ...(s.danger.met > 0 ? { danger: { ok: s.danger.caught, of: s.danger.met } } : {}),
+    seen: { n: seen, of: total },
+  };
+}
+
+/** Доля в процентах — для легенды: у трёх частей сумма может разойтись со 100 на единицу, как у любых округлений. */
+export const pctOf = (n: number, of: number) => (of > 0 ? Math.round((n / of) * 100) : 0);
 
 export function archiveRows(archive: readonly CaseRecord[]): ArchiveRow[] {
   return archive.map(r => {
@@ -131,13 +150,22 @@ export function suggestDoctor(sex: 'm' | 'f', random: () => number): Doctor {
   return { sex, first: pick(sex === 'm' ? n.male : n.female), last: sex === 'm' ? surname : n.feminine(surname) };
 }
 
-/** Специальности профиля (spec 2026-10-skills, часть 75): уровень и сколько верных диагнозов до следующего. */
-export function specialtyRows(p: Pick<Profile, 'experience'>): { department: Id; title: string; hint: string }[] {
+/**
+ * Специальности профиля (spec 2026-10-skills, часть 75): уровень и сколько верных диагнозов до следующего; для шкалы
+ * (0.6.2) — очки, порог нынешнего уровня и следующего: шкала идёт от одного к другому, у высшего — без порога.
+ */
+export function specialtyRows(p: Pick<Profile, 'experience'>): {
+  department: Id; name: string; level: string; hint: string; points: number; from: number; of?: number;
+}[] {
   const t = T.profile;
   return specialtiesOf(db).map(department => {
     const points = p.experience[department] ?? 0;
     const next = toNextLevel(points);
-    return { department, title: t.level(t.specialty[department] ?? department, levelOf(points)), hint: next > 0 ? t.toNext(Math.ceil(next)) : t.topLevel };
+    const of = LEVELS.find(x => points < x);
+    return {
+      department, name: t.specialty[department] ?? department, level: t.levelShort(levelOf(points)), hint: next > 0 ? t.toNext(Math.ceil(next)) : t.topLevel,
+      points, from: [0, ...LEVELS].filter(x => x <= points).at(-1) ?? 0, ...(of !== undefined ? { of } : {}),
+    };
   });
 }
 

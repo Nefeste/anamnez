@@ -9,7 +9,7 @@ import { lookOf } from '../../src/render/look';
 import {
   ARCHIVE_SIZE, caseKey, forgetProfile, loadProfile, PORTRAITS, PROFILE_SLOT, profile, profileSaved, recordCases, sanitizeProfile, setDoctor, setProfileStore,
 } from '../../src/state/profile';
-import { DOCTOR_AGE, DOCTOR_PORTRAITS, practiceLines, portraitSeed, rankLadder, rankName, rankOf } from '../../src/state/profileView';
+import { DOCTOR_AGE, DOCTOR_PORTRAITS, pctOf, portraitSeed, practiceView, rankLadder, rankName, rankOf } from '../../src/state/profileView';
 import { loadSlot, memoryStore, saveSlot } from '../../src/state/saves';
 import {
   archiveCaseView, callPatient, chooseDiagnosis, chooseSetting, examine, finishCase, forgetShift, loadShift, saved, setStore, shiftCaseView, shiftState,
@@ -195,12 +195,28 @@ describe('профиль: портрет, звание, статистика (sp
     expect(st.antibiotics).toEqual({ given: 2, indicated: 1 });
     expect(st.danger).toEqual({ met: 2, caught: 1 });
     expect([st.timed, st.minutes]).toEqual([4, cases.reduce((a, p) => a + Math.round(p.spent.seconds / 60), 0)]);
-    expect(practiceLines(profile())).toContain('Антибиотик по показаниям — 1 из 2\u00a0назначений');
-    expect(practiceLines(profile())).toContain('Нужны были стационар или скорая — направлено 1 из 2');
-    expect(practiceLines(profile()).some(l => /^В среднем на приём — \d+ мин$/.test(l))).toBe(true);
-    // профиль до 0.0.30 — без новых счётчиков: нули, и строк о них нет
+    // на экране (0.6.2) — шкалами «N из M» и плиткой минут
+    const v = practiceView(profile())!;
+    expect([v.antibiotics, v.danger]).toEqual([{ ok: 1, of: 2 }, { ok: 1, of: 2 }]);
+    expect(v.minutes).toBe(Math.round(st.minutes / st.timed));
+    // профиль до 0.0.30 — без новых счётчиков: нули, и шкал о них нет
     const old = sanitizeProfile({ stats: { cases: 5, correct: 5 } });
     expect([old.stats.timed, old.stats.antibiotics.given, old.stats.danger.met]).toEqual([0, 0, 0]);
-    expect(practiceLines(old).some(l => l.startsWith('В среднем') || l.startsWith('Антибиотик') || l.startsWith('Нужны'))).toBe(false);
+    const ov = practiceView(old)!;
+    expect([ov.minutes, ov.antibiotics, ov.danger, ov.correctPct]).toEqual([undefined, undefined, undefined, 100]);
+  });
+});
+
+describe('профиль на экране (0.6.2): числа для плиток, шкал и полос', () => {
+  test('приёмов нет — итогов нет, пустых графиков тоже', () => {
+    expect(practiceView(sanitizeProfile({}))).toBeUndefined();
+  });
+
+  test('итоги — числами: доля верных, оценки, рубли на приём, встречавшиеся болезни', () => {
+    const v = practiceView(sanitizeProfile({ stats: { cases: 4, correct: 3, partly: 1, grades: { A: 2, B: 1, C: 1 }, money: 3000 }, seen: { 'cond.arvi': 2 } }))!;
+    expect([v.cases, v.correctPct, v.verdicts, v.grades, v.money]).toEqual([4, 75, { correct: 3, partly: 1, wrong: 0 }, { A: 2, B: 1, C: 1, D: 0 }, 750]);
+    expect(v.seen.n).toBe(1);
+    expect(v.seen.of).toBe(Object.keys(db.conditions).length);
+    expect([pctOf(1, 3), pctOf(0, 0)]).toEqual([33, 0]);
   });
 });

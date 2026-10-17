@@ -91,9 +91,10 @@ describe('профиль', () => {
 
   test('в профиле — специальности с уровнем и сколько до следующего, умения строкой', () => {
     const rows = specialtyRows({ experience: { 'dept.therapy': 37.5 } });
-    expect(rows[0]).toEqual({ department: 'dept.therapy', title: 'Терапия — уровень 2', hint: 'до следующего — 3 верных диагноза' });
-    expect(rows[1].title).toBe('Хирургия — уровень 1');
-    expect(specialtyRows({ experience: { 'dept.therapy': 300 } })[0].hint).toBe('высший уровень');
+    expect(rows[0]).toEqual({ department: 'dept.therapy', name: 'Терапия', level: 'уровень 2', hint: 'до следующего — 3 верных диагноза', points: 37.5, from: 10, of: 40 });
+    expect([rows[1].name, rows[1].level, rows[1].from, rows[1].of]).toEqual(['Хирургия', 'уровень 1', 0, 10]);
+    const top = specialtyRows({ experience: { 'dept.therapy': 300 } })[0];
+    expect([top.hint, top.from, top.of]).toEqual(['высший уровень', 250, undefined]);
     expect(skillRows({ experience: { 'dept.therapy': 10 } })).toEqual([{ id: HEARING, line: '«Внимательный слух»: выслушивание лёгких на 10 п. п. чувствительнее.' }]);
   });
 });

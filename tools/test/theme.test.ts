@@ -54,6 +54,10 @@ const LARGE: [Key, Key[]][] = [
   ['yellowText', ['bg', 'card', 'accentSoft']],
   ['red', ['bg', 'card', 'accentSoft']],
   ['accent', ['bg', 'card']],
+  // графики профиля (0.6.2): полосы и шкалы на карточке; жёлтое «почти» — со значком и подписью, без порога
+  ['chart', ['card']],
+  ['good', ['card']],
+  ['bad', ['card']],
 ];
 
 const opaque = (c: string) => /^#[0-9A-F]{6}$/i.test(c);
