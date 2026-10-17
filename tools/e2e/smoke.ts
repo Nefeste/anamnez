@@ -49,6 +49,15 @@ const text = async (page: Page, id: string) => (await page.getByTestId(id).inner
 const visible = (page: Page, id: string) => page.locator(`[data-testid="${id}"]:visible`);
 const visibleText = async (page: Page, id: string) => (await visible(page, id).first().innerText()).trim();
 /**
+ * Очистить поле ввода. `fill('')` выделяет текст и стирает его нажатием Delete — в сборке тега v0.6.0 стирание до поля
+ * не дошло: поиск в листе назначений остался «тромбол», строки амоксициллина в списке не было, касание ждало 30 с.
+ * Повторяем, пока поле не пусто.
+ */
+async function clearField(page: Page, id: string): Promise<void> {
+  const field = page.getByTestId(id);
+  for (let i = 0; i < 3 && (await field.inputValue()) !== ''; i++) await field.fill('');
+}
+/**
  * Вкладка карты пациента (0.6.0, spec 2026-10-patient-card): у каждой — свой лист; «Известно», «Похоже на» и гипотезы —
  * на «Карте». Приём закончен или его ведёт нанятый врач — вкладок нет, касаться нечего.
  */
@@ -1297,7 +1306,7 @@ try {
   // тромболизис (часть 39а) — только лежащему под монитором: в кабинете кнопка серая, причина под названием
   check(await page.getByTestId('tx-tx.thrombolysis').isDisabled() && (await text(page, 'tx-tx.thrombolysis')).includes('У постели нет монитора с дефибриллятором'),
     'решение в кабинете: «Тромболизис при инфаркте» серый — у постели нет монитора с дефибриллятором');
-  await page.getByTestId('tx-search').fill('');
+  await clearField(page, 'tx-search');
   await page.getByTestId('tx-tx.amoxicillin').click();
   await page.getByTestId('setting-home').click();
   check((await page.getByTestId('tx-tx.amoxicillin').getAttribute('aria-checked')) === 'true' && (await page.getByTestId('setting-home').getAttribute('aria-checked')) === 'true'
