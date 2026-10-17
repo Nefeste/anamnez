@@ -1,7 +1,7 @@
 // Настройки игрока (09-game-design.md §12, spec 2026-09-first-shift): громкость звуков и музыки (часть 62), фон
 // амбулатории, вибрация, автопауза смены, «мягкий режим», больные — реализм или разнообразие (spec
-// 2026-10-variety), размер текста, тема (spec 2026-09-own-look) и отметка, что оговорка первого
-// запуска прочитана
+// 2026-10-variety), размер текста, тема (spec 2026-09-own-look), режим разработчика (0.6.3) и отметка, что оговорка
+// первого запуска прочитана
 // (12-publishing.md §3). Лежат в слоте `settings` тем же сырым хранилищем, что и смена
 // (ADR 0010): запись атомарная, с копиями. Модуль, как session.ts, не знает про платформу —
 // хранилище приходит снаружи (setSettingsStore).
@@ -52,11 +52,16 @@ export interface Settings {
    * нанятые врачи оставляют вам; пусто — берут всех, как прежде
    */
   mine: BodySystem[];
+  /**
+   * режим разработчика (0.6.3, просьба владельца 17.10.2026): «Проверки на телефоне» в настройках — только в нём.
+   * Включают семь касаний строки версии в «Об игре», выключают в настройках
+   */
+  devMode: boolean;
 }
 
 export const DEFAULTS: Settings = {
   sound: 1, music: 0.7, ambience: true, vibration: true, pauseOnRed: true, pauseOnResults: true, disclaimerAccepted: false, textScale: 1, theme: 'system', softMode: false, variety: false,
-  skills: true, mine: [],
+  skills: true, mine: [], devMode: false,
 };
 
 export interface SettingsView extends Settings {
@@ -94,7 +99,7 @@ export function setSettingsStore(s: RawStore) {
  */
 export function sanitize(data: unknown): Settings {
   const d = (data !== null && typeof data === 'object' ? data : {}) as Record<string, unknown>;
-  const flag = (k: 'ambience' | 'vibration' | 'pauseOnRed' | 'pauseOnResults' | 'disclaimerAccepted' | 'softMode' | 'variety' | 'skills') => (typeof d[k] === 'boolean' ? (d[k] as boolean) : DEFAULTS[k]);
+  const flag = (k: 'ambience' | 'vibration' | 'pauseOnRed' | 'pauseOnResults' | 'disclaimerAccepted' | 'softMode' | 'variety' | 'skills' | 'devMode') => (typeof d[k] === 'boolean' ? (d[k] as boolean) : DEFAULTS[k]);
   const level = (k: 'sound' | 'music') => (typeof d[k] === 'number' && (d[k] as number) >= 0 && (d[k] as number) <= 1 ? (d[k] as number) : DEFAULTS[k]);
   const textScale = (TEXT_SCALES as readonly number[]).includes(d.textScale as number) ? (d.textScale as number) : DEFAULTS.textScale;
   const theme = (THEME_CHOICES as readonly unknown[]).includes(d.theme) ? (d.theme as ThemeChoice) : DEFAULTS.theme;
@@ -103,6 +108,7 @@ export function sanitize(data: unknown): Settings {
     textScale, theme, softMode: flag('softMode'), variety: flag('variety'), skills: flag('skills'),
     // группы — только известные, без повторов, в порядке выбора диагноза
     mine: Array.isArray(d.mine) ? SYSTEMS.filter(x => (d.mine as unknown[]).includes(x)) : [],
+    devMode: flag('devMode'),
   };
 }
 

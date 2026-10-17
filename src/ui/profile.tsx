@@ -57,6 +57,7 @@ export function DoctorForm({ initial, submitTitle, onSubmit, bare }: { initial?:
         <Text style={styles.label}>{t.first}</Text>
         <TextInput
           testID="doctor-first"
+          accessibilityLabel={t.first}
           value={d.first}
           maxLength={MAX}
           autoCorrect={false}
@@ -70,6 +71,7 @@ export function DoctorForm({ initial, submitTitle, onSubmit, bare }: { initial?:
         <Text style={styles.label}>{t.last}</Text>
         <TextInput
           testID="doctor-last"
+          accessibilityLabel={t.last}
           value={d.last}
           maxLength={MAX}
           autoCorrect={false}

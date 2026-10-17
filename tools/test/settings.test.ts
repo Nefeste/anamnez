@@ -16,7 +16,8 @@ describe('настройки', () => {
   test('файла нет — умолчания: звук полный, музыка средне, фон и вибрация включены, автопауза тоже, оговорка не прочитана, текст обычный, тема как в телефоне, мягкий режим выключен, больные — как в жизни', async () => {
     await loadSettings();
     // с 0.5.18 — и умения врача, включены (spec 2026-10-skills); с 0.5.19 — «свои больные», ничего (spec 2026-10-own-patients)
-    expect(settings()).toEqual({ sound: 1, music: 0.7, ambience: true, vibration: true, pauseOnRed: true, pauseOnResults: true, disclaimerAccepted: false, textScale: 1, theme: 'system', softMode: false, variety: false, skills: true, mine: [] });
+    // с 0.6.3 — режим разработчика, выключен: «Проверки на телефоне» в настройках скрыты
+    expect(settings()).toEqual({ sound: 1, music: 0.7, ambience: true, vibration: true, pauseOnRed: true, pauseOnResults: true, disclaimerAccepted: false, textScale: 1, theme: 'system', softMode: false, variety: false, skills: true, mine: [], devMode: false });
   });
 
   test('поменяли — записано; после «перезапуска» — те же', async () => {
@@ -62,6 +63,10 @@ describe('настройки', () => {
     expect(sanitize({ music: 0 }).music).toBe(0);
     expect(sanitize({ music: 1.5 }).music).toBe(0.7);
     expect(sanitize({ music: 'loud' }).music).toBe(0.7);
+    // режим разработчика (0.6.3): файл до 0.6.3 — выключен; испорченное — выключен
+    expect(sanitize({ sound: 0.35 }).devMode).toBe(false);
+    expect(sanitize({ devMode: true }).devMode).toBe(true);
+    expect(sanitize({ devMode: 1 }).devMode).toBe(false);
     expect(sanitize(null)).toEqual(DEFAULTS);
     expect(sanitize([1, 2])).toEqual(DEFAULTS);
   });

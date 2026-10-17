@@ -13,6 +13,7 @@ import { DAY, SHIFT_END, SHIFT_SCHEMA_VERSION } from '../../src/engine/shift/typ
 import { placeOf } from '../../src/ui/case/places';
 import { sectionOf } from '../../src/ui/case/sections';
 import { buildDb } from '../content/load';
+import { envelope, pneumoniaCase } from '../store/states';
 
 const ROOT = join(import.meta.dir, '../..');
 const DIST = join(ROOT, 'dist-web');
@@ -56,6 +57,33 @@ const visibleText = async (page: Page, id: string) => (await visible(page, id).f
 async function clearField(page: Page, id: string): Promise<void> {
   const field = page.getByTestId(id);
   for (let i = 0; i < 3 && (await field.inputValue()) !== ''; i++) await field.fill('');
+}
+/**
+ * Что не помещается в окно (NFR-ACC-1): видимое правее окна, кроме горизонтальной прокрутки и холстов, — экран, уехавший
+ * вбок в веб-стеке, не в счёт; и страница выше окна — тогда нижние вкладки уходят за край.
+ */
+async function overflowing(page: Page): Promise<string[]> {
+  return page.evaluate(() => {
+    const scrollsX = (e: Element) => {
+      for (let x = e.parentElement; x; x = x.parentElement) {
+        const s = getComputedStyle(x);
+        if ((s.overflowX === 'auto' || s.overflowX === 'scroll') && x.scrollWidth > x.clientWidth + 1) return true;
+      }
+      return false;
+    };
+    const out: string[] = [];
+    for (const el of Array.from(document.querySelectorAll('body *'))) {
+      const e = el as HTMLElement;
+      const b = e.getBoundingClientRect();
+      if (b.width === 0 || b.height === 0 || b.left >= innerWidth || b.right <= 0 || e.closest('canvas')) continue;
+      const s = getComputedStyle(e);
+      if (s.visibility === 'hidden' || Number(s.opacity) < 0.01) continue;
+      if (b.right > innerWidth + 1 && !scrollsX(e)) out.push(e.dataset.testid ?? (e.innerText ?? '').trim().slice(0, 30));
+    }
+    const height = document.scrollingElement?.scrollHeight ?? 0;
+    if (height > innerHeight + 1) out.push(`страница выше окна: ${height} из ${innerHeight}`);
+    return out;
+  });
 }
 /**
  * Вкладка карты пациента (0.6.0, spec 2026-10-patient-card): у каждой — свой лист; «Известно», «Похоже на» и гипотезы —
@@ -1070,10 +1098,27 @@ try {
   check(report.startsWith('Проверка отчёта') && report.includes(`сборка ${JSON.parse(readFileSync(join(ROOT, 'app.json'), 'utf8')).expo.android.versionCode}`) && report.includes('Практики нет'), `отчёт об ошибке: «${report.split('\n').slice(0, 5).join(' · ')}»`);
   await page.goto(`${base}/settings`);
   await page.getByTestId('settings-about').waitFor({ timeout: 10_000 });
+  // режим разработчика (0.6.3, просьба владельца 17.10.2026): «Проверки на телефоне» в настройках скрыты, пока его не
+  // включат семь касаний строки версии в «Об игре»; с третьего касания — сколько ещё; выключатель — в настройках
+  check((await page.locator('[data-testid^="check-"]').count()) === 0 && (await page.getByTestId('settings-dev').count()) === 0,
+    'настройки: «Проверки на телефоне» скрыты — режим разработчика выключен');
   await page.getByTestId('settings-about').click();
   await page.getByTestId('about-version').waitFor({ timeout: 5000 });
   const version = JSON.parse(readFileSync(join(ROOT, 'app.json'), 'utf8')).expo.version;
   check((await text(page, 'about-version')).includes(version), `«Об игре»: версия ${version}`);
+  for (let i = 0; i < 3; i++) await page.getByTestId('about-version').click();
+  const devHint = await text(page, 'about-dev');
+  for (let i = 0; i < 4; i++) await page.getByTestId('about-version').click();
+  const devOn = await text(page, 'about-dev');
+  await page.goBack();
+  await page.getByTestId('check-engine').waitFor({ timeout: 5000 });
+  const devChecks = await page.locator('[data-testid^="check-"]').count();
+  await page.getByTestId('settings-dev').click();
+  await page.getByTestId('check-engine').waitFor({ state: 'detached', timeout: 5000 });
+  check(devHint.startsWith('Ещё 4') && devHint.endsWith('откроется режим разработчика.') && devOn.startsWith('Режим разработчика включён') && devChecks === 6,
+    `режим разработчика: «${devHint}» → «${devOn}»; в настройках — проверок: ${devChecks}, выключили — скрыты`);
+  await page.getByTestId('settings-about').click();
+  await page.getByTestId('about-version').waitFor({ timeout: 5000 });
   check((await text(page, 'about-disclaimer')).includes('112') && (await text(page, 'about-write')).includes('support@gornitsa.games'), '«Об игре»: полная оговорка, почта разработчика');
   // звук и музыка (часть 62): авторы треков и набора звуков
   check((await text(page, 'about-sound')).includes('The Cynic Project') && (await text(page, 'about-sound')).includes('Kenney'), '«Об игре»: авторы музыки и звуков');
@@ -3760,6 +3805,16 @@ try {
   await today.click();
   await page.getByTestId('exam-exam.ask_complaints').waitFor({ timeout: 10_000 });
   await page.getByTestId('exam-exam.ask_complaints').click();
+  // «Назад» посреди приёма (замечание владельца 17.10.2026): в списке — «начат», снова в день — тот же приём
+  const dailyClock = await text(page, 'visit-clock');
+  await page.goBack();
+  await page.getByTestId('daily-base').waitFor({ timeout: 10_000 });
+  const begun = (await today.innerText()).replace(/\n/g, ' · ');
+  await today.click();
+  // приём открывается на «Карте»: часы и время приёма — те же, что до «Назад»
+  await page.getByTestId('visit-clock').waitFor({ timeout: 10_000 });
+  check(begun.includes('начат') && (await text(page, 'visit-clock')) === dailyClock,
+    `случай дня: «Назад» и снова в день — с того же места («${begun}», ${dailyClock})`);
   await page.getByTestId('visit-decide').click();
   await page.locator('[data-testid^="hint-"]').first().click();
   await page.getByTestId('decision-to-plan').click();
@@ -3914,6 +3969,48 @@ try {
   await p3.getByTestId('room-type-room.xray').click();
   await p3.getByTestId('build-place').waitFor({ timeout: 5000 });
   check(await p3.getByTestId('build-place').isVisible(), 'маленький экран: последний тип в листе выбирается прокруткой — призрак рентген-кабинета');
+  // крупный текст (NFR-ACC-1, 0.6.3): на 360 × 640 с текстом 1,3 всё помещается — карта пациента смены на всех вкладках
+  // и с открытым местом на фигуре (панель места сдвигала вкладки за нижний край), решение в два шага, профиль с итогами
+  await p3.evaluate(([settings, profile, shift]) => {
+    localStorage.setItem('anamnez:saves/settings.json', settings);
+    localStorage.setItem('anamnez:saves/profile.json', profile);
+    localStorage.setItem('anamnez:saves/shift.json', shift);
+  }, [
+    JSON.stringify({ schemaVersion: 1, savedAt: 'e2e', data: { textScale: 1.3, disclaimerAccepted: true, sound: 0, music: 0 } }),
+    JSON.stringify({ schemaVersion: 1, savedAt: 'e2e', data: {
+      doctor: { first: 'Анна', last: 'Петрова', sex: 'f' },
+      stats: { cases: 40, correct: 28, partly: 7, wrong: 5, grades: { A: 15, B: 14, C: 8, D: 3 }, money: 360_000, minutes: 440, timed: 40,
+        antibiotics: { given: 12, indicated: 10 }, danger: { met: 5, caught: 4 } },
+      seen: { 'cond.arvi': 3 }, experience: { 'dept.therapy': 14 },
+    } }),
+    envelope(pneumoniaCase(buildDb().db)),
+  ]);
+  const wide: string[] = [];
+  const look = async (where: string) => {
+    await p3.waitForTimeout(400);
+    wide.push(...(await overflowing(p3)).map(x => `${where}: ${x}`));
+  };
+  await p3.goto(`${base}/shift`);
+  await p3.getByTestId('shift-continue').click();
+  await p3.getByTestId('tab-card').waitFor({ timeout: 30_000 });
+  for (const key of ['ask', 'examine', 'order', 'card'] as const) {
+    await tab(p3, key);
+    await look(key);
+  }
+  await openPlace(p3, 'exam.lung_auscultation');
+  await look('грудь на фигуре');
+  await p3.getByTestId('visit-decide').click();
+  await p3.getByTestId('dx-cond.pneumonia_cap').waitFor({ timeout: 5000 });
+  await look('решение');
+  await p3.getByTestId('dx-cond.pneumonia_cap').click();
+  await p3.getByTestId('decision-to-plan').click();
+  await p3.getByTestId('tx-tx.amoxicillin').waitFor({ timeout: 5000 });
+  await look('лист назначений');
+  await p3.goto(`${base}/profile`);
+  await p3.getByTestId('kpi-cases').waitFor({ timeout: 10_000 });
+  await look('профиль');
+  check(wide.length === 0, `крупный текст на маленьком экране: карта, решение, профиль — ничего за краем${wide.length ? ` (${wide.slice(0, 4).join('; ')})` : ''}`);
+  await p3.screenshot({ path: join(OUT, '19-small-large-text.png') });
   await small.close();
 
   const real = errors.filter(e => !/favicon/.test(e));
