@@ -81,6 +81,8 @@ describe('store: тексты', () => {
     const come = Object.values(db.conditions).filter(c => c.presenting);
     const ill = come.filter(c => c.kind === 'disease' || c.kind === 'syndrome');
     const diseases = ill.length;
+    // всё в базе — болезни, травмы, отравления и фоновые хронические: «128 болезней, травм и отравлений»
+    const all = Object.keys(db.conditions).length;
     const injuries = come.filter(c => c.kind === 'injury').length;
     // в поликлинике — терапия без тех, с кем приходят только со скорой (часть 43а: расслоение аорты)
     const therapy = ill.filter(c => c.department === 'dept.therapy' && c.arrival !== 'ambulance').length;
@@ -96,7 +98,7 @@ describe('store: тексты', () => {
       expect({
         file,
         total: ills.includes(diseases) && hurt.includes(injuries),
-        ill: ills.filter(n => n !== diseases && n !== therapy),
+        ill: ills.filter(n => n !== diseases && n !== therapy && n !== all),
         injury: hurt.filter(n => n !== injuries),
         surgery: nums(text, re.surgery).filter(n => n !== surgery),
       }).toEqual({ file, total: true, ill: [], injury: [], surgery: [] });
