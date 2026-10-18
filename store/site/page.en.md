@@ -66,6 +66,9 @@ in Russian.
   X-rays, ECGs, ultrasound, CT, MRI and endoscopy go on a referral form — each with its own cost and
   time. While a test is running, you can send the patient to wait and see the next one; those who
   wait too long leave.
+- **Hypotheses.** The patient chart holds a log of results and a hypothesis board: your own differential,
+  and for each hypothesis what speaks for it, what speaks against it, what is still unchecked and what
+  would confirm it.
 - **Decision.** A diagnosis, a treatment sheet and where to treat: at home, on a ward or in the
   operating room — or, if needed, a referral to another hospital or an ambulance.
 - **Review.** What it really was, a score for accuracy, justification, thrift and safety, and how
