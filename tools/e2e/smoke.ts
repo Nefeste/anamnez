@@ -50,13 +50,23 @@ const text = async (page: Page, id: string) => (await page.getByTestId(id).inner
 const visible = (page: Page, id: string) => page.locator(`[data-testid="${id}"]:visible`);
 const visibleText = async (page: Page, id: string) => (await visible(page, id).first().innerText()).trim();
 /**
- * Очистить поле ввода. `fill('')` выделяет текст и стирает его нажатием Delete — в сборке тега v0.6.0 стирание до поля
- * не дошло: поиск в листе назначений остался «тромбол», строки амоксициллина в списке не было, касание ждало 30 с.
- * Повторяем, пока поле не пусто.
+ * Очистить поле ввода. `fill('')` выделяет текст и стирает его нажатием Delete — на машине сборки стирание до поля
+ * доходило не всегда: в сборках тегов v0.6.0, v0.6.4 и v0.6.6 поиск в листе назначений остался «тромбол», строки
+ * амоксициллина не было, касание ждало 30 с. Повтор `fill('')`, пока поле не пусто (с v0.6.1), не помог: на снимке v0.6.6
+ * в поле снова «тромбол». Поэтому без клавиш — как в тестах React: значение — через сеттер прототипа и событие `input`; а
+ * пусто ли поле, решает игра — `ready`, например полный лист назначений снова на месте. Вернёт, очистилось ли.
  */
-async function clearField(page: Page, id: string): Promise<void> {
+async function clearField(page: Page, id: string, ready: () => Promise<boolean>): Promise<boolean> {
   const field = page.getByTestId(id);
-  for (let i = 0; i < 3 && (await field.inputValue()) !== ''; i++) await field.fill('');
+  for (let i = 0; i < 5; i++) {
+    if ((await field.inputValue()) === '' && (await ready())) return true;
+    await field.evaluate((el: HTMLInputElement) => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(el, '');
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await page.waitForTimeout(200);
+  }
+  return false;
 }
 /**
  * Что не помещается в окно (NFR-ACC-1): видимое правее окна, кроме горизонтальной прокрутки и холстов, — экран, уехавший
@@ -1391,7 +1401,7 @@ try {
   // тромболизис (часть 39а) — только лежащему под монитором: в кабинете кнопка серая, причина под названием
   check(await page.getByTestId('tx-tx.thrombolysis').isDisabled() && (await text(page, 'tx-tx.thrombolysis')).includes('У постели нет монитора с дефибриллятором'),
     'решение в кабинете: «Тромболизис при инфаркте» серый — у постели нет монитора с дефибриллятором');
-  await clearField(page, 'tx-search');
+  check(await clearField(page, 'tx-search', () => page.getByTestId('tx-suggested').isVisible()), 'решение, шаг 2: поиск очищен — лист назначений снова полный');
   await page.getByTestId('tx-tx.amoxicillin').click();
   await page.getByTestId('setting-home').click();
   check((await page.getByTestId('tx-tx.amoxicillin').getAttribute('aria-checked')) === 'true' && (await page.getByTestId('setting-home').getAttribute('aria-checked')) === 'true'
