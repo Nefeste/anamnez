@@ -37,7 +37,7 @@ shots:
 card:
   text: Patients come to you with real illnesses and injuries, and almost every sign stays hidden until you ask, examine or order a test. Make a diagnosis, choose a treatment and see the outcome — and between shifts, build your own hospital.
   points:
-    - 128 illnesses, injuries and poisonings; each patient’s own scans and ECGs
+    - Over 120 illnesses, injuries and poisonings; each patient’s own scans and ECGs
     - Your own hospital with an emergency department, wards and an operating room
     - A review of every visit, a campaign with a mentor and a case of the day
     - Free, offline and ad-free
@@ -88,19 +88,20 @@ in Russian.
   against the NEWS2 score. You do a ward round every morning and discharge patients when they are
   better; a surgical team works in the operating room — and the longer an appendicitis or a
   perforated ulcer waits, the more dangerous it gets.
-- **Three difficulty levels.** Trainee: “Looks like” hints, what relates to the complaint comes first
+- **Four difficulty levels.** Trainee: “Looks like” hints, what relates to the complaint comes first
   in questions, examination and tests, and the review is gentler. Student: hints, and tests never
-  err. Doctor: no hints, and tests sometimes err, as in real life.
+  err. Resident: up to three “Looks like” conditions with confidence in words, and tests sometimes err.
+  Doctor: no hints, and tests sometimes err, as in real life.
 
 ## What’s inside
 
-The game’s medical database holds 128 illnesses, injuries and poisonings. Patients come to you with
-93 conditions and 24 injuries; the rest are poisonings and chronic illnesses that run in the
-background of the main one.
+The game’s medical database holds over 120 illnesses, injuries and poisonings, and it grows with every
+version. Patients come to you with over 110 conditions and injuries; the rest are poisonings and
+chronic illnesses that run in the background of the main one.
 
 ### Clinic
 
-- 57 conditions a general practitioner sees: from colds and flu to pneumonia, angina, heart attack,
+- Conditions a general practitioner sees: from colds and flu to pneumonia, angina, heart attack,
   hypertensive crisis, pericarditis and acute heart failure.
 - Rhythm problems: atrial fibrillation, tachycardias, heart block.
 - Pulmonary embolism, hypoglycaemia and diabetic ketoacidosis, nosebleeds, hives and anaphylactic
@@ -108,7 +109,7 @@ background of the main one.
 
 ### Emergency department and surgery
 
-- 15 more surgical conditions: from biliary colic to a perforated ulcer, bowel obstruction, deep
+- Surgical conditions: from biliary colic to a perforated ulcer, bowel obstruction, deep
   vein thrombosis and acute ischaemia of the leg.
 - Injuries: fractures, knee ligament tears, a torn calf muscle, hand and scalp wounds, burns, chest
   trauma, concussion.

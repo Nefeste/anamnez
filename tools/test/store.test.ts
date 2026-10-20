@@ -89,19 +89,40 @@ describe('store: тексты', () => {
     const surgery = ill.filter(c => c.department === 'dept.surgery').length;
     const ru = { ill: /(\d+)\s+болезн/g, injury: /(\d+)\s+травм/g, surgery: /(\d+)\s+хирургическ/g };
     const en = { ill: /(\d+)\s+conditions?\b/g, injury: /(\d+)\s+injur/g, surgery: /(\d+)\s+more surgical/g };
+    // «больше N …» — нижняя граница (с 20.10.2026): карточку вставляют в консоль RuStore руками, база растёт с каждым
+    // релизом, а «больше 110» остаётся правдой. Граница — не больше того, что в базе; сначала узкие обороты.
+    const atLeast: [RegExp, number][] = [
+      [/(?:больше|более)\s+(\d+)\s+болезней,\s+травм и отравлений/gi, all],
+      [/(?:больше|более)\s+(\d+)\s+болезней и травм/gi, diseases + injuries],
+      [/(?:больше|более)\s+(\d+)\s+болезн/gi, diseases],
+      [/(?:больше|более)\s+(\d+)\s+травм/gi, injuries],
+      [/(?:over|more than)\s+(\d+)\s+illnesses,\s+injuries and poisonings/gi, all],
+      [/(?:over|more than)\s+(\d+)\s+(?:illnesses|conditions) and injuries/gi, diseases + injuries],
+    ];
     const nums = (text: string, re: RegExp) => [...text.matchAll(re)].map(m => Number(m[1]));
     const files = [['listing.ru.md', ru], ['site/page.ru.md', ru], ['site/press.ru.md', ru], ['site/page.en.md', en]] as const;
     for (const [file, re] of files) {
-      const text = read(file);
+      let text = read(file);
+      const bounds: string[] = [];
+      let bounded = false;
+      for (const [pattern, max] of atLeast) {
+        for (const m of text.matchAll(pattern)) {
+          bounded = true;
+          const n = Number(m[1]);
+          if (n < 10 || n > max) bounds.push(`${m[0]} — в базе ${max}`);
+        }
+        text = text.replace(pattern, '');
+      }
       const ills = nums(text, re.ill), hurt = nums(text, re.injury);
-      // всего — хоть раз; другое число болезней — только терапия (поликлиника без приёмного)
+      // всего — хоть раз точно или границей; другое число болезней — только терапия (поликлиника без приёмного)
       expect({
         file,
-        total: ills.includes(diseases) && hurt.includes(injuries),
+        total: bounded || (ills.includes(diseases) && hurt.includes(injuries)),
+        bounds,
         ill: ills.filter(n => n !== diseases && n !== therapy && n !== all),
         injury: hurt.filter(n => n !== injuries),
         surgery: nums(text, re.surgery).filter(n => n !== surgery),
-      }).toEqual({ file, total: true, ill: [], injury: [], surgery: [] });
+      }).toEqual({ file, total: true, bounds: [], ill: [], injury: [], surgery: [] });
     }
   });
 
