@@ -1,4 +1,4 @@
-// из votchina: tools/test/guardrails.test.ts @ 00d89c0
+// из votchina: tools/test/guardrails.test.ts @ 1cd15dc
 // Порядок работы с репозиторием (ADR студии 0018 и 0019): пути владельца в CODEOWNERS,
 // проверки на PR, автослияние по метке, сборка APK только по тегу. Тест держит то, что
 // легко сломать правкой одного файла: список путей, разбор CODEOWNERS для automerge.yml,

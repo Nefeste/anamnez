@@ -1,4 +1,4 @@
-# из votchina: .github/workflows/rustore.yml @ 0605847
+# из votchina: .github/workflows/rustore.yml @ 00d89c0
 name: RuStore
 
 # Выкладывает APK из релиза в черновик новой версии RuStore (docs/05-process.md, «Выкладывание
