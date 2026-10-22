@@ -58,6 +58,10 @@ const LARGE: [Key, Key[]][] = [
   ['chart', ['card']],
   ['good', ['card']],
   ['bad', ['card']],
+  // значки строк карты (0.6.8): кружок и рисунок — на карточке и на плашке строки
+  ['present', ['card', 'chip', 'bg']],
+  ['absent', ['card', 'chip', 'bg']],
+  ['unknown', ['card', 'chip', 'bg']],
 ];
 
 const opaque = (c: string) => /^#[0-9A-F]{6}$/i.test(c);

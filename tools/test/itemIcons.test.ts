@@ -61,6 +61,14 @@ describe('значки строк карты', () => {
     expect(lack).toEqual([]);
   });
 
+  test('каждый рисунок — у какой-нибудь строки: лишних нет', () => {
+    const used = new Set<ItemIcon>([
+      ...Object.keys(db.findings).map(findingIcon), ...Object.keys(db.exams).map(examIcon),
+      ...Object.keys(db.treatments).map(treatmentIcon), ...Object.keys(db.conditions).map(conditionIcon),
+    ]);
+    expect(Object.keys(ITEM_SHAPES).filter(k => !used.has(k as ItemIcon))).toEqual([]);
+  });
+
   test('анализ, снимок и ЭКГ — значком обследования, которое их находит', () => {
     expect(findingIcon('img.cxr_infiltrate')).toBe('xray');
     expect(findingIcon('img.ct_blood')).toBe('ct');

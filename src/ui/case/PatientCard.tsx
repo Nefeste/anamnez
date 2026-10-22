@@ -13,6 +13,7 @@ import type { StaffPortrait } from '@/render/look';
 import { Portrait } from '@/render/Portrait';
 import { examInfo, examsByAction, findingInfo, type Line, type ResultGroup, type TermInfo, type VisitView } from '@/state/caseView';
 import { Button, Card, Chip, Chips, H, P, Pane, Screen, type ScreenScroll, Tabs } from '@/ui/components';
+import { examIcon } from '@/ui/itemIcons';
 import { TermSheet } from '@/ui/TermSheet';
 import { makeStyles, space, touch } from '@/ui/theme';
 import { Text } from '../text';
@@ -20,6 +21,7 @@ import type { CaseActions, FooterAction } from './actions';
 import { type CardTab, CardTabs } from './CardTabs';
 import { Differential } from './Differential';
 import { BodyMap, PlacePanel } from './Examine';
+import { lineMark } from './marks';
 import type { ExamPlace } from './places';
 import { longestOf, partsOf, Referral } from './Referral';
 import { ResultPicture } from './ResultPicture';
@@ -504,8 +506,8 @@ function KnownGroup({ g, open, onToggle, explain, onLayout }: {
       </View>
       {g.image && <ResultPicture image={g.image} />}
       <Chips>
-        {lines.map((r, i) => <Chip key={`${r.f}${i}`} text={r.text} strong={r.shown} onPress={() => explain(findingInfo(r.f))} />)}
-        {hidden > 0 && onToggle && <Chip testID={`more-${g.exam}`} text={t.moreQuiet(hidden)} onPress={onToggle} />}
+        {lines.map((r, i) => <Chip key={`${r.f}${i}`} text={r.text} strong={r.shown} icon={lineMark(r)} onPress={() => explain(findingInfo(r.f))} />)}
+        {hidden > 0 && onToggle && <Chip testID={`more-${g.exam}`} text={t.moreQuiet(hidden)} icon={{ icon: examIcon(g.exam), state: 'absent' }} onPress={onToggle} />}
         {open && !g.fresh && onToggle && found(g) && g.lines.some(l => !l.shown) && <Chip text={t.collapse} onPress={onToggle} />}
       </Chips>
     </Animated.View>

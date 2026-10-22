@@ -4,6 +4,8 @@
 // и зелёная кнопка.
 import { type ReactNode, type Ref, useImperativeHandle, useRef, useState } from 'react';
 import { type LayoutChangeEvent, Modal, Pressable, ScrollView, StyleSheet, View, type ViewStyle } from 'react-native';
+import type { ItemIcon } from './itemIcons';
+import { RowIcon, type RowState } from './RowIcon';
 import { Text } from './text';
 import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { makeStyles, space, touch, useTheme } from './theme';
@@ -348,14 +350,26 @@ export function Chips({ children }: { children: ReactNode }) {
 
 /** `quote` — слова пациента: плашка контуром («Монитор»). */
 /** `checked` — плашка-флажок выбора нескольких («Свои больные», часть 76): выбрана — выделена, читалке — «отмечено». */
-export function Chip({ text, strong, quote, onPress, testID, checked }: { text: string; strong?: boolean; quote?: boolean; onPress?: () => void; testID?: string; checked?: boolean }) {
+/**
+ * `icon` — значок строки карты (0.6.8, вопрос 49): что известно — цветом значка, а не плашки; плашка — нейтральная,
+ * текст «нет» — серее.
+ */
+export function Chip({ text, strong, quote, onPress, testID, checked, icon }: {
+  text: string; strong?: boolean; quote?: boolean; onPress?: () => void; testID?: string; checked?: boolean; icon?: { icon: ItemIcon; state: RowState };
+}) {
   const styles = useStyles();
   const bold = checked ?? strong;
+  const look = quote ? styles.chipQuote : bold && !icon ? styles.chipStrong : styles.chipWeak;
   return (
     <Pressable testID={testID} onPress={onPress} disabled={!onPress}
       {...(checked !== undefined ? { accessibilityRole: 'checkbox' as const, 'aria-checked': checked } : {})}
-      style={({ pressed }) => [styles.chip, quote ? styles.chipQuote : bold ? styles.chipStrong : styles.chipWeak, pressed && styles.btnPressed]}>
-      <Text style={[styles.chipText, !bold && styles.muted]}>{text}</Text>
+      style={({ pressed }) => [styles.chip, look, icon && styles.chipIcon, pressed && styles.btnPressed]}>
+      {icon ? (
+        <View style={styles.chipRow}>
+          <RowIcon icon={icon.icon} state={icon.state} size={20} testID={`ic-${icon.state}`} />
+          <Text style={[styles.chipText, styles.chipTextIcon, !bold && styles.muted]}>{text}</Text>
+        </View>
+      ) : <Text style={[styles.chipText, !bold && styles.muted]}>{text}</Text>}
     </Pressable>
   );
 }
@@ -430,4 +444,8 @@ const useStyles = makeStyles(t => ({
   chipQuote: { backgroundColor: t.colors.card, borderWidth: 1.5, borderColor: t.colors.info, paddingVertical: 5 },
   chipWeak: { backgroundColor: t.colors.chip },
   chipText: { fontSize: 14, color: t.colors.ink },
+  // со значком: слева — значок, отступ меньше; длинная находка переносится рядом с ним
+  chipIcon: { paddingLeft: space.xs + 1 },
+  chipRow: { flexDirection: 'row', alignItems: 'center', gap: space.s - 2 },
+  chipTextIcon: { flexShrink: 1 },
 }));

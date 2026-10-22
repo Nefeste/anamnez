@@ -1315,6 +1315,10 @@ try {
   await page.getByTestId('visit-fresh').first().scrollIntoViewIfNeeded();
   await page.waitForTimeout(500);
   await page.screenshot({ path: join(OUT, '04-fresh.png') });
+  // значки строк (0.6.8, вопрос 49): в «Известно» — есть или нет у пациента, «неизвестно» в журнале не бывает
+  const known = page.getByTestId('pane-card');
+  const [present, absent, unknown] = [await known.getByTestId('ic-present').count(), await known.getByTestId('ic-absent').count(), await known.getByTestId('ic-unknown').count()];
+  check(present + absent > 0 && unknown === 0, `П4: в «Известно» у строк значки — есть ${present}, нет ${absent}, неизвестно ${unknown}`);
   await examine(page, 'exam.vitals');
   // «Назначить» — бланком направления (0.6.0): разделы свёрнуты; отмеченное — внизу числом, суммой и сроком,
   // «Отправить» — разом; отправленное — со временем, когда будет
@@ -1322,6 +1326,7 @@ try {
   const closed = await page.locator('[data-testid^="order-sec-"][aria-expanded="false"]').count();
   await mark(page, 'exam.xray_chest');
   await mark(page, 'exam.cbc');
+  check((await page.getByTestId('exam-exam.cbc').getByTestId('ic-unknown').count()) === 1, 'П4: в бланке у не сделанного — значок «неизвестно»');
   const sum = await text(page, 'order-sum');
   check(closed >= 5 && /^Отмечено 2 · [\d\s]+₽ · дольше всего — \d+\sмин$/.test(sum) && (await page.getByTestId('exam-exam.cbc').getAttribute('aria-checked')) === 'true',
     `П4: бланк направления — разделов свёрнуто ${closed}, «${sum}»`);
@@ -1374,6 +1379,11 @@ try {
   const hypConfirm = await text(page, 'hyp-confirm');
   const hypPro = await text(page, 'hyp-pro');
   check(hypConfirm.includes('— сделано') && hypPro.includes('из 10 с этой болезнью'), `карточка гипотезы: ${hypPro.split('\n')[1] ?? ''} · ${hypConfirm.replace(/\n/g, ' · ')}`);
+  // значки доводов (0.6.8): за — «есть»; не проверено — только «неизвестно»; снимок сделан — не «неизвестно»
+  const marks = (id: string, state: string) => page.getByTestId(id).getByTestId(`ic-${state}`).count();
+  const allUnchecked = await page.getByTestId('hyp-unchecked').locator('[data-testid^="ic-"]').count();
+  check((await marks('hyp-pro', 'present')) > 0 && (await marks('hyp-unchecked', 'unknown')) === allUnchecked && (await marks('hyp-confirm', 'unknown')) === 0,
+    `карточка гипотезы: значки — за «есть» ${await marks('hyp-pro', 'present')}, не проверено «неизвестно» ${allUnchecked}`);
   // лист поиска ещё уезжает вниз — снимок после его анимации
   await page.waitForTimeout(500);
   await page.screenshot({ path: join(OUT, '04-hypothesis.png'), fullPage: true });
@@ -1406,6 +1416,8 @@ try {
   await page.getByTestId('setting-home').click();
   check((await page.getByTestId('tx-tx.amoxicillin').getAttribute('aria-checked')) === 'true' && (await page.getByTestId('setting-home').getAttribute('aria-checked')) === 'true'
     && (await text(page, 'tx-sec-suggested')).includes('назначено 1'), 'решение, шаг 2: амоксициллин отмечен, место — дома, у группы — «назначено 1»');
+  check((await page.getByTestId('tx-tx.amoxicillin').getByTestId('ic-chosen').count()) === 1 && (await page.getByTestId('tx-suggested').getByTestId('ic-off').count()) > 0,
+    'решение, шаг 2: у назначенного — значок цветом выбора, у остального — серым');
   await page.screenshot({ path: join(OUT, '05-decision-plan.png') });
   await page.getByTestId('visit-finish').click();
   await page.getByTestId('visit-truth').waitFor({ timeout: 5000 });

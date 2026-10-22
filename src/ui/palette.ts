@@ -71,6 +71,14 @@ export interface Palette {
   good: string;
   warn: string;
   bad: string;
+  /**
+   * значки строк карты (0.6.8, вопрос 49): есть у пациента — красными чернилами, нет — синими, ещё неизвестно — карандашом,
+   * пунктиром и «?». «Есть» и «нет» различимы и при нарушении цветового зрения (валидатор палитр: ΔE OKLab 16 и 18);
+   * серый к красному ближе (ΔE 7,6) — его отличают пунктир и «?»
+   */
+  present: string;
+  absent: string;
+  unknown: string;
 }
 
 export interface Fonts {
@@ -110,6 +118,7 @@ export const LIGHT: Theme = {
     fresh: '#FFF6DE', freshLine: '#D9A21B', chip: '#EEE8DA', margin: '#C0766B', lamp: '#FFC94D', backdrop: 'rgba(31,45,61,0.45)',
     figure: '#E7DFCE', figureLine: '#A99E87',
     chart: '#2B4E8C', chartTrack: '#DCE5F4', good: '#2F7A40', warn: '#D9A21B', bad: '#B8392F',
+    present: '#B8392F', absent: '#2B4E8C', unknown: '#857B69',
   },
   fonts: { title: 'PT Serif', body: 'PT Sans', mono: 'PT Mono' },
   shape: { radius: 6, card: 3, stamp: true, folderTabs: true, doubleRule: true, ruled: true },
@@ -126,6 +135,8 @@ export const DARK: Theme = {
     // зелёный и жёлтый «Монитора» под протанопией почти сливаются (ΔE 5,6) — у итога диагноза свои шаги; ряд — голубой,
     // как кривая сатурации на мониторе: зелёный ряда рядом с «верно» сливался (ΔE 7)
     chart: '#2B9FC4', chartTrack: '#173B47', good: '#0CA30C', warn: '#FAB219', bad: '#D03B3B',
+    // «есть» — коралловым, как тревога монитора; «нет» — голубым, как кривая сатурации
+    present: '#FF6B5E', absent: '#56C8E8', unknown: '#7C9592',
   },
   fonts: { title: 'Golos Text', body: 'Golos Text', mono: 'JetBrains Mono' },
   shape: { radius: 12, card: 12, stamp: false, folderTabs: false, doubleRule: false, ruled: false },

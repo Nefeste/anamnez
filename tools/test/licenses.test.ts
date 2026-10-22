@@ -144,7 +144,8 @@ describe('нативные библиотеки сборки — все в сп�
     // FreeType, libpng, libjpeg-turbo, HarfBuzz и другие — там, где их ждём
     for (const lib of ['libfreetype2', 'libpng', 'libjpeg', 'libharfbuzz', 'libexpat', 'libwebp', 'libdng_sdk']) expect(prefixes.has(lib)).toBe(true);
     expect([...prefixes].filter(p => !listed.has(p)).sort()).toEqual([]);
-  });
+    // заголовки 218 МБ архивов: с диска без кэша — до 12 с (полный прогон 0.6.8), из кэша — доли секунды
+  }, 30_000);
 
   test('записи звуков под CC BY — те же, что в реестре assets/audio/LICENSES.md: автор, источник, что изменено, текст CC BY', () => {
     const registry = read('assets/audio/LICENSES.md');

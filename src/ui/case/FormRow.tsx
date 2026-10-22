@@ -1,13 +1,18 @@
 // Строки бланка (0.6.0, вопрос 45): бланк направления в «Назначить» и лист назначений в «Решении» — одного вида.
-// Обследование или лечение отмечают галочкой, место лечения — кружком; «?» — что это; разделы — свёрнуты.
+// Обследование или лечение отмечают галочкой, место лечения — кружком; «?» — что это; разделы — свёрнуты. Со значком строки
+// (0.6.8, вопрос 49): обследование — рисунок способа, ещё не сделано — серым пунктиром с «?»; лечение — путь введения.
 import { Pressable, View } from 'react-native';
 import { InfoButton } from '@/ui/components';
+import type { ItemIcon } from '@/ui/itemIcons';
+import { RowIcon, type RowState } from '@/ui/RowIcon';
 import { makeStyles, space, touch } from '@/ui/theme';
 import { Text } from '../text';
 
 /** Строка с галочкой (`radio` — с кружком: одно из нескольких). Не сделать — серым, с причиной в `hint`. */
-export function CheckRow({ testID, title, hint, hintMono, on, disabled, onPress, onInfo, infoLabel, radio, indent }: {
+export function CheckRow({ testID, title, hint, hintMono, on, disabled, onPress, onInfo, infoLabel, radio, indent, icon }: {
   testID: string; title: string; hint?: string;
+  /** значок строки: рисунок и что известно */
+  icon?: { icon: ItemIcon; state: RowState };
   /** пояснение — минуты и рубли: моноширинным, как у кнопок */
   hintMono?: boolean;
   on: boolean; disabled?: boolean; onPress: () => void; onInfo?: () => void; infoLabel?: string; radio?: boolean;
@@ -22,6 +27,7 @@ export function CheckRow({ testID, title, hint, hintMono, on, disabled, onPress,
         <View style={[radio ? styles.round : styles.box, on && styles.boxOn]}>
           {on ? radio ? <View style={styles.dot} /> : <Text style={styles.tick}>✓</Text> : null}
         </View>
+        {icon ? <RowIcon icon={icon.icon} state={icon.state} size={26} testID={`ic-${icon.state}`} /> : null}
         <View style={styles.fill}>
           <Text style={styles.title}>{title}</Text>
           {hint ? <Text style={[styles.hint, hintMono && styles.mono]}>{hint}</Text> : null}

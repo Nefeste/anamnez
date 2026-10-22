@@ -13,6 +13,7 @@ import { matchesQuery } from '@/state/encyclopedia';
 import { Button, Card, Chip, Chips, H, P, Screen } from '@/ui/components';
 import { Icon } from '@/ui/Icon';
 import { SYSTEM_ICONS } from '@/ui/iconShapes';
+import { treatmentIcon } from '@/ui/itemIcons';
 import { TermSheet } from '@/ui/TermSheet';
 import { makeStyles, space, touch, useTheme } from '@/ui/theme';
 import type { CaseActions } from './actions';
@@ -57,7 +58,8 @@ export function DecisionScreen({ view: v, actions }: { view: VisitView; actions:
   const txRow = (x: VisitView['treatments'][number]) => (
     <CheckRow key={x.id} testID={`tx-${x.id}`} title={x.name} hint={x.warning} on={v.draft.treatments.includes(x.id)}
       disabled={x.disabled && !v.draft.treatments.includes(x.id)} onPress={() => actions.toggleTreatment(x.id)}
-      onInfo={() => setTerm(treatmentTerm(x.id))} infoLabel={t.whatIsIt} indent={!found} />
+      onInfo={() => setTerm(treatmentTerm(x.id))} infoLabel={t.whatIsIt} indent={!found}
+      icon={{ icon: treatmentIcon(x.id), state: v.draft.treatments.includes(x.id) ? 'chosen' : 'off' }} />
   );
 
   const footer = step === 'diagnosis'

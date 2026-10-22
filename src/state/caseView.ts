@@ -804,6 +804,16 @@ function rulesOf(p: Patient, obs: readonly Observation[]): VisitView['rules'] {
   });
 }
 
+/** Что о строке известно врачу (0.6.8, вопрос 49): есть у пациента, нет или ещё неизвестно — цветом значка строки. */
+export type Known = 'present' | 'absent' | 'unknown';
+
+/** Довод карточки гипотезы — строкой; признак и что о нём известно — для значка (0.6.8). */
+export interface Evidence {
+  text: string;
+  f: Id;
+  state: Known;
+}
+
 /** Гипотеза дифференциального ряда игрока (FR-DX-7, spec 2026-10-differential): доводы — строками, по убыванию частоты. */
 export interface HypothesisView {
   id: Id;
@@ -811,12 +821,25 @@ export interface HypothesisView {
   /** «7 из 10» — у «Практиканта» и «Студента»; у «Ординатора» — словом (`word`); у «Врача» уверенности нет (§14) */
   outOf10?: number;
   word?: string;
-  pro: string[];
-  con: string[];
-  unchecked: string[];
-  /** чем подтвердить: обследования из записи болезни — сделано ли; пусто и `clinical` — по расспросу и осмотру */
-  confirm: { name: string; done: boolean }[];
+  /** найденное, что при ней чаще, — есть */
+  pro: Evidence[];
+  /** найденное, чего она не объясняет, — есть; типичное, которого нет, — нет */
+  con: Evidence[];
+  /** типичное, которое не искали, — неизвестно */
+  unchecked: Evidence[];
+  /**
+   * чем подтвердить: обследования из записи болезни — сделано ли и что показало (`state`: пришло и что-то нашло — есть,
+   * ничего — нет, не сделано или ещё не пришло — неизвестно); пусто и `clinical` — по расспросу и осмотру
+   */
+  confirm: { name: string; done: boolean; exam: Id; state: Known }[];
   clinical?: true;
+}
+
+/** Что показало обследование (0.6.8): пришло и что-то нашло — есть, ничего — нет; не сделано или не пришло — неизвестно. */
+function arrivedState(arrived: readonly Arrival[], exam: Id): Known {
+  const got = arrived.filter(a => a.exam === exam);
+  if (got.length === 0) return 'unknown';
+  return got.some(a => a.obs.some(o => o.shown)) ? 'present' : 'absent';
 }
 
 /**
@@ -839,10 +862,15 @@ function differentialOf(p: Patient, obs: readonly Observation[], c: CaseInput, c
       id,
       name: cond.name.ru,
       ...(beliefs ? (c.difficulty === 'resident' ? { word: confidenceWord(share.get(id) ?? 0) } : { outOf10: n(share.get(id) ?? 0) }) : {}),
-      pro: ev.pro.map(x => t.pro(name(x.f), n(x.p))),
-      con: ev.con.map(x => (x.kind === 'absent' ? t.absent(name(x.f), n(x.p)) : t.unexplained(name(x.f)))),
-      unchecked: ev.unchecked.map(x => t.unchecked(name(x.f), n(x.p), x.exam ? lowerFirst(db.exams[x.exam].name.ru) : undefined, x.exam ? c.unavailable?.[x.exam] : undefined)),
-      confirm: cond.confirm === 'clinical' ? [] : cond.confirm.map(e => ({ name: db.exams[e]?.name.ru ?? e, done: c.done.includes(e) })),
+      pro: ev.pro.map(x => ({ text: t.pro(name(x.f), n(x.p)), f: x.f, state: 'present' as const })),
+      con: ev.con.map(x => (x.kind === 'absent'
+        ? { text: t.absent(name(x.f), n(x.p)), f: x.f, state: 'absent' as const }
+        : { text: t.unexplained(name(x.f)), f: x.f, state: 'present' as const })),
+      unchecked: ev.unchecked.map(x => ({
+        text: t.unchecked(name(x.f), n(x.p), x.exam ? lowerFirst(db.exams[x.exam].name.ru) : undefined, x.exam ? c.unavailable?.[x.exam] : undefined),
+        f: x.f, state: 'unknown' as const,
+      })),
+      confirm: cond.confirm === 'clinical' ? [] : cond.confirm.map(e => ({ name: db.exams[e]?.name.ru ?? e, done: c.done.includes(e), exam: e, state: arrivedState(c.arrived, e) })),
       ...(cond.confirm === 'clinical' ? { clinical: true as const } : {}),
     };
   });

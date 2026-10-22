@@ -1,14 +1,17 @@
 // Дифференциальный ряд игрока (FR-DX-7, spec 2026-10-differential, 0.5.8; 09-game-design.md §5 «Гипотезы»): болезни,
 // которые подозревает врач, по порядку добавления. Карточка гипотезы — что за неё и против, что типичное не проверено и
 // чем подтвердить; уверенность — по уровню сложности (§14): у «Врача» её нет. Добавить — из «Похоже на» или поиском по
-// болезням больницы; из карточки — сразу к решению с этим диагнозом.
+// болезням больницы; из карточки — сразу к решению с этим диагнозом. У доводов — значки признаков (0.6.8, вопрос 49):
+// что есть — красным, чего нет — синим, что не проверено — серым пунктиром с «?»; у гипотез ряда — система органов.
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { View } from 'react-native';
 import { T } from '@/i18n';
-import type { HypothesisView, VisitView } from '@/state/caseView';
+import type { Evidence, HypothesisView, VisitView } from '@/state/caseView';
 import { matchesQuery } from '@/state/encyclopedia';
 import { Button, Card, H, P, Sheet } from '@/ui/components';
+import { conditionIcon, examIcon, findingIcon } from '@/ui/itemIcons';
+import { RowIcon } from '@/ui/RowIcon';
 import { makeStyles, space, touch } from '@/ui/theme';
 import { Text, TextInput } from '../text';
 import type { CaseActions } from './actions';
@@ -19,12 +22,25 @@ function rowHint(h: HypothesisView): string {
   return [h.outOf10 !== undefined ? t.outOf10(h.outOf10) : h.word, t.count(h.pro.length, h.con.length)].filter(Boolean).join(' · ');
 }
 
-function Lines({ title, lines, testID }: { title: string; lines: readonly string[]; testID: string }) {
+/** Довод строкой со значком признака: значок — сверху строки, длинный довод переносится рядом с ним. */
+function Line({ children, icon }: { children: string; icon: ReactNode }) {
   const styles = useStyles();
   return (
-    <View testID={testID}>
+    <View style={styles.line}>
+      {icon}
+      <View style={styles.lineText}><P>{children}</P></View>
+    </View>
+  );
+}
+
+function Lines({ title, lines, testID }: { title: string; lines: readonly Evidence[]; testID: string }) {
+  const styles = useStyles();
+  return (
+    <View testID={testID} style={styles.lines}>
       <Text style={styles.label}>{title}</Text>
-      {lines.length === 0 ? <P muted>{T.spikes.differential.none}</P> : lines.map(l => <P key={l}>{l}</P>)}
+      {lines.length === 0 ? <P muted>{T.spikes.differential.none}</P> : lines.map(l => (
+        <Line key={l.text} icon={<RowIcon icon={findingIcon(l.f)} state={l.state} size={22} testID={`ic-${l.state}`} />}>{l.text}</Line>
+      ))}
     </View>
   );
 }
@@ -39,9 +55,13 @@ function HypothesisCard({ h, actions, close }: { h: HypothesisView; actions: Cas
       <Lines title={t.proTitle} lines={h.pro} testID="hyp-pro" />
       <Lines title={t.conTitle} lines={h.con} testID="hyp-con" />
       <Lines title={t.uncheckedTitle} lines={h.unchecked} testID="hyp-unchecked" />
-      <View testID="hyp-confirm">
+      <View testID="hyp-confirm" style={styles.lines}>
         <Text style={styles.label}>{t.confirmTitle}</Text>
-        {h.clinical ? <P>{t.clinical}</P> : h.confirm.map(x => <P key={x.name}>{x.done ? `${x.name} — ${t.done}` : x.name}</P>)}
+        {h.clinical ? <P>{t.clinical}</P> : h.confirm.map(x => (
+          <Line key={x.name} icon={<RowIcon icon={examIcon(x.exam)} state={x.state} size={22} testID={`ic-${x.state}`} />}>
+            {x.done ? `${x.name} — ${t.done}` : x.name}
+          </Line>
+        ))}
       </View>
       <Button testID="hyp-diagnose" title={t.diagnose} onPress={() => {
         actions.chooseDiagnosis(h.id);
@@ -76,7 +96,8 @@ export function Differential({ v, actions }: { v: VisitView; actions: CaseAction
       <Text style={styles.label}>{t.title}</Text>
       {v.differential.length === 0 ? <P muted testID="differential-empty">{t.empty}</P> : null}
       {v.differential.map(h => (
-        <Button key={h.id} testID={`hyp-${h.id}`} kind="plain" title={h.name} hint={rowHint(h)} onPress={() => setOpen(h.id)} />
+        <Button key={h.id} testID={`hyp-${h.id}`} kind="plain" title={h.name} hint={rowHint(h)} onPress={() => setOpen(h.id)}
+          picture={<RowIcon icon={conditionIcon(h.id)} state="neutral" size={30} />} />
       ))}
       <Button testID="hyp-add" kind="plain" title={t.add} onPress={() => setAdding(true)} />
 
@@ -103,6 +124,9 @@ export function Differential({ v, actions }: { v: VisitView; actions: CaseAction
 
 const useStyles = makeStyles(t => ({
   label: { fontSize: 13, fontWeight: '700', letterSpacing: 1.2, color: t.colors.muted, textTransform: 'uppercase', marginTop: space.s },
+  lines: { gap: space.xs },
+  line: { flexDirection: 'row', alignItems: 'flex-start', gap: space.s },
+  lineText: { flex: 1 },
   search: {
     minHeight: touch,
     backgroundColor: t.colors.card,
