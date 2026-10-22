@@ -1,22 +1,12 @@
 // Значок кодом (0.5.20): контуры из iconShapes.ts — линией, мелочь — заливкой, в сетке 24 × 24, растянутой до
 // `size`. На телефоне рисует Skia; на вебе — картинка SVG из тех же контуров: WebGL у браузера немного, а холст,
 // который отдаёт его после рисунка, на скрытом экране стека перерисовывается в нулевой размер с ошибкой в консоли.
-import { Canvas, Group, Path, Skia, type SkPath } from '@shopify/react-native-skia';
+import { Canvas, Group, Path } from '@shopify/react-native-skia';
 import { Image, Platform } from 'react-native';
 import { ICON_GRID, ICON_LINE, type IconShape } from './iconShapes';
+import { pathOf } from './skPath';
 
 const WEB = Platform.OS === 'web';
-const paths = new Map<string, SkPath>();
-
-/** Контур из строки SVG — один раз на строку: Skia на вебе грузится после модулей, поэтому не при загрузке. */
-function pathOf(d: string): SkPath {
-  let p = paths.get(d);
-  if (!p) {
-    p = Skia.Path.MakeFromSVGString(d) ?? Skia.Path.Make();
-    paths.set(d, p);
-  }
-  return p;
-}
 
 /** Тот же значок картинкой SVG — для веба. */
 function svgOf(shape: IconShape, color: string): string {

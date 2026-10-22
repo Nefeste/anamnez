@@ -7,6 +7,7 @@ import { db } from '@/content';
 import { T } from '@/i18n';
 import { examInfo, examTerm, type TermInfo, type VisitView } from '@/state/caseView';
 import { matchesQuery } from '@/state/encyclopedia';
+import { examIcon } from '@/ui/itemIcons';
 import { P } from '@/ui/components';
 import { makeStyles, space, touch } from '@/ui/theme';
 import { TextInput } from '../text';
@@ -59,7 +60,7 @@ export function Referral({ v, ids, focus, marked, onMark, isOpen, toggle, explai
     const hint = why ?? (v.bedside?.[id] !== undefined ? p.costBedside(v.bedside[id], info.cost) : p.cost(v.minutes?.[id] ?? info.minutes, info.cost));
     return (
       <CheckRow key={id} testID={`exam-${id}`} title={info.name} hint={hint} hintMono={!why} on={marked.includes(id)} disabled={!!why} onPress={() => onMark(id)}
-        onInfo={() => explain(examTerm(id))} infoLabel={p.whatIsIt} indent={!found} />
+        onInfo={() => explain(examTerm(id))} infoLabel={p.whatIsIt} indent={!found} icon={{ icon: examIcon(id), state: 'unknown' }} />
     );
   };
   return (

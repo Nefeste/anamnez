@@ -134,7 +134,8 @@ describe('карточка гипотезы в карте пациента', () 
 
   test('чем подтвердить: у пневмонии — снимок, сделан или нет; у ОРВИ — клинически', () => {
     const [pneumonia, arvi] = view('doctor').differential;
-    expect(pneumonia.confirm).toEqual([{ name: db.exams['exam.xray_chest'].name.ru, done: false }]);
+    // значок (0.6.8): снимок не сделан — неизвестно
+    expect(pneumonia.confirm).toEqual([{ name: db.exams['exam.xray_chest'].name.ru, done: false, exam: 'exam.xray_chest', state: 'unknown' }]);
     expect(view('doctor', ['exam.xray_chest']).differential[0].confirm[0].done).toBe(true);
     expect(arvi.confirm).toEqual([]);
     expect(arvi.clinical).toBe(true);
@@ -148,8 +149,10 @@ describe('карточка гипотезы в карте пациента', () 
     expect(t.unchecked('Инфильтрат', 10, 'рентген грудной клетки')).toBe('Инфильтрат — у 10 из 10 с этой болезнью; ищут: рентген грудной клетки');
     const pneumonia = view('doctor').differential[0];
     expect(pneumonia.unchecked.length).toBeGreaterThan(0);
-    expect(pneumonia.unchecked[0]).toContain(`; ищут: ${db.exams['exam.xray_chest'].name.ru.toLowerCase().slice(0, 1)}`);
+    expect(pneumonia.unchecked[0].text).toContain(`; ищут: ${db.exams['exam.xray_chest'].name.ru.toLowerCase().slice(0, 1)}`);
     // инфильтрат — у 95 из 100: «у 9 из 10», а не «у 10 из 10» — «всегда» обещает только 995 из 1000
-    expect(pneumonia.unchecked[0]).toStartWith(`${db.findings['img.cxr_infiltrate'].name.ru} — у 9 из 10`);
+    expect(pneumonia.unchecked[0].text).toStartWith(`${db.findings['img.cxr_infiltrate'].name.ru} — у 9 из 10`);
+    // значок довода (0.6.8): не проверено — неизвестно, признак — тот, о котором строка
+    expect(pneumonia.unchecked[0]).toMatchObject({ f: 'img.cxr_infiltrate', state: 'unknown' });
   });
 });

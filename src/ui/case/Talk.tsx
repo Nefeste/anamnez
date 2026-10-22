@@ -5,6 +5,8 @@ import { type LayoutChangeEvent, Pressable, ScrollView, useWindowDimensions, Vie
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { T } from '@/i18n';
 import { examInfo, examTerm, findingInfo, lifeHistory, type TermInfo, type VisitView } from '@/state/caseView';
+import { examIcon } from '@/ui/itemIcons';
+import { RowIcon } from '@/ui/RowIcon';
 import { makeStyles, space } from '@/ui/theme';
 import { Text } from '../text';
 import { joinSaid, NO_SAID, replyOf } from './reply';
@@ -98,10 +100,14 @@ export function Questions({ v, ids, rest, restOpen, onRest, onAsk, explain }: {
                     onAccessibilityAction={e => { if (e.nativeEvent.actionName === 'longpress') explain(examTerm(id)); }}
                     onPress={() => onAsk(id)} onLongPress={() => explain(examTerm(id))}
                     style={({ pressed }) => [styles.q, !!why && styles.qOff, pressed && styles.pressed]}>
-                    <Text style={styles.qText}>
-                      {question(id)}
-                      <Text style={styles.qCost}>{` ${p.cost(min, info.cost)}`}</Text>
-                    </Text>
+                    {/* значок вопроса (0.6.8) — о чём он; ответа ещё нет — серым пунктиром с «?» */}
+                    <View style={styles.qRow}>
+                      <RowIcon icon={examIcon(id)} state="unknown" size={18} testID="ic-unknown" />
+                      <Text style={[styles.qText, styles.qTextIcon]}>
+                        {question(id)}
+                        <Text style={styles.qCost}>{` ${p.cost(min, info.cost)}`}</Text>
+                      </Text>
+                    </View>
                   </Pressable>
                 );
               })}
@@ -151,6 +157,8 @@ const useStyles = makeStyles(t => ({
     borderRadius: 20, borderWidth: 1.5, borderColor: t.colors.accent, backgroundColor: t.colors.card,
   },
   qOff: { opacity: 0.45 },
+  qRow: { flexDirection: 'row', alignItems: 'center', gap: space.xs + 2 },
+  qTextIcon: { flexShrink: 1 },
   qText: { fontSize: 13.5, lineHeight: 18, fontWeight: '700', color: t.shape.stamp ? t.colors.accent : t.colors.ink },
   qCost: { fontFamily: t.fonts.mono, fontSize: 11.5, fontWeight: '400', color: t.colors.muted },
   rest: { minHeight: 40, justifyContent: 'center' },

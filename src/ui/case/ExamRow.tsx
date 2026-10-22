@@ -1,14 +1,17 @@
 // Строка обследования в карте пациента: ещё не сделано — кнопка с минутами и ценой и «?»; сделано — ответ на месте
 // (отзыв на 0.0.37): только что пришедшее — целиком, прежнее — строкой «что нашли», касание раскрывает; ещё не пришло —
 // штампом «Будет в 10:25». Снимок, лента, срез — всегда на виду. Одна для осмотров места на фигуре и бланка направления
-// (0.6.0).
+// (0.6.0). Значок строки (0.6.8): не сделано — серым пунктиром с «?»; сделано — что нашли красным, ничего — синим.
 import { type LayoutChangeEvent, Pressable } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { T } from '@/i18n';
 import { examInfo, examTerm, findingInfo, type TermInfo, type VisitView } from '@/state/caseView';
 import { Button, Chip, Chips } from '@/ui/components';
+import { examIcon } from '@/ui/itemIcons';
+import { RowIcon } from '@/ui/RowIcon';
 import { makeStyles, space } from '@/ui/theme';
 import { Text } from '../text';
+import { examMark, lineMark } from './marks';
 import { ResultPicture } from './ResultPicture';
 
 export function ExamRow({ v, id, open: opened, onToggle, onExam, explain, onLayout, indent }: {
@@ -31,15 +34,17 @@ export function ExamRow({ v, id, open: opened, onToggle, onExam, explain, onLayo
     const open = !!g && (g.fresh || opened);
     const seen = lines.filter(l => l.shown).map(l => l.text).join('; ') || t.nothingFound;
     const summary = g ? (ready ? `${seen} · ${t.readyAt(ready.at)}` : seen) : ready ? t.readyAt(ready.at) : t.done;
+    const mark = examMark(v, id);
     return (
       <Animated.View entering={FadeInDown.duration(250)} testID={`done-${id}`} onLayout={onLayout} style={[styles.done, indent && styles.indent, g?.fresh && styles.fresh]}>
         <Pressable accessibilityRole="button" aria-expanded={open} accessibilityLabel={`${info.name}: ${open ? t.collapse : t.expand}`} disabled={!g || g.fresh}
           hitSlop={HEAD_SLOP} onPress={onToggle} style={({ pressed }) => [styles.head, pressed && styles.pressed]}>
-          <Text style={styles.title}>{`✓ ${info.name}`}</Text>
+          <RowIcon icon={mark.icon} state={mark.state} size={20} testID={`ic-${mark.state}`} />
+          <Text style={styles.title}>{info.name}</Text>
           {g?.fresh ? <Text style={styles.badge}>{t.fresh}</Text> : g ? <Text style={styles.chevron}>{open ? '▴' : '▾'}</Text> : null}
         </Pressable>
         {g?.image ? <ResultPicture image={g.image} /> : null}
-        {open ? <Chips>{lines.map((r, i) => <Chip key={`${r.f}${i}`} text={r.text} strong={r.shown} onPress={() => explain(findingInfo(r.f))} />)}</Chips>
+        {open ? <Chips>{lines.map((r, i) => <Chip key={`${r.f}${i}`} text={r.text} strong={r.shown} icon={lineMark(r)} onPress={() => explain(findingInfo(r.f))} />)}</Chips>
           : !g && ready ? <Text testID={`stamp-${id}`} style={styles.stamp}>{t.readyAt(ready.at)}</Text>
           : <Text numberOfLines={2} style={styles.summary}>{summary}</Text>}
       </Animated.View>
@@ -50,7 +55,8 @@ export function ExamRow({ v, id, open: opened, onToggle, onExam, explain, onLayo
   return (
     <Button testID={`exam-${id}`} kind="plain" disabled={!!why} title={info.name}
       hint={why ?? (v.bedside?.[id] !== undefined ? t.costBedside(v.bedside[id], info.cost) : t.cost(v.minutes?.[id] ?? info.minutes, info.cost))} hintMono={!why}
-      onPress={() => onExam(id)} onInfo={() => explain(examTerm(id))} infoLabel={t.whatIsIt} />
+      onPress={() => onExam(id)} onInfo={() => explain(examTerm(id))} infoLabel={t.whatIsIt}
+      picture={<RowIcon icon={examIcon(id)} state="unknown" size={28} testID="ic-unknown" />} />
   );
 }
 
