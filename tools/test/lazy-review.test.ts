@@ -15,7 +15,8 @@ const eager = JSON.parse(readFileSync(join(import.meta.dir, 'fixtures/eager-revi
   venue: string; seed: number; atNoon: { count: number; hash: string }; hired: number; closed: string;
 }[];
 
-const hash = (x: unknown) => Bun.hash(JSON.stringify(x)).toString(16);
+// номер базы в состоянии смены — не сама смена: с новой версией базы отпечаток прежний (0.6.12, база 79)
+const hash = (x: unknown) => Bun.hash(JSON.stringify(x, (k, v) => (k === 'contentVersion' ? undefined : v))).toString(16);
 const hiredClosed = (s: ShiftState): ShiftPatient[] => Object.values(s.patients).filter(p => p.closed?.by !== undefined).sort((a, b) => (a.id < b.id ? -1 : 1));
 function liveUntil(s: ShiftState, hour: number) {
   const end = (s.day - 1) * DAY + hour * 3600;

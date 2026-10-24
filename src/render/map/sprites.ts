@@ -8,9 +8,12 @@ import type { ObjectKind } from '@/engine/hospital/grid';
 import { CLOTHES, HAIR, SKIN } from '@/render/look';
 import { BODIES, type Hair, HAIRS, HEADS, STYLES, UNIFORM } from './figures';
 
-export const OBJECT_KINDS: ObjectKind[] = ['bed', 'chair', 'desk', 'couch', 'cabinet', 'machine', 'plant', 'sink', 'bench', 'xray', 'table', 'ecg', 'analyzer', 'or_table', 'anesthesia', 'us', 'monitor', 'ct', 'mri'];
-/** Аппараты, у которых есть рисунок «работает» — горит экран, трубка, лампа над столом, кольцо томографа или тоннель МРТ (части 23, 28, 29, 38а, 40, 50б). */
-export const LIT_KINDS: ObjectKind[] = ['ecg', 'analyzer', 'xray', 'or_table', 'anesthesia', 'us', 'monitor', 'ct', 'mri'];
+export const OBJECT_KINDS: ObjectKind[] = ['bed', 'chair', 'desk', 'couch', 'cabinet', 'machine', 'plant', 'sink', 'bench', 'xray', 'table', 'ecg', 'analyzer', 'or_table', 'anesthesia', 'us', 'monitor', 'ct', 'mri', 'stall', 'coffee'];
+/**
+ * Аппараты, у которых есть рисунок «работает» — горит экран, трубка, лампа над столом, кольцо томографа или тоннель МРТ
+ * (части 23, 28, 29, 38а, 40, 50б); кабинка санузла — «занято»: дверь закрыта, знак красный (spec 2026-10-living-background).
+ */
+export const LIT_KINDS: ObjectKind[] = ['ecg', 'analyzer', 'xray', 'or_table', 'anesthesia', 'us', 'monitor', 'ct', 'mri', 'stall'];
 
 export interface SpriteAtlas {
   image: SkImage;
@@ -161,6 +164,9 @@ function drawAt(c: SkCanvas, i: number, px: number, draw: (pen: Pen) => void) {
 const STEEL = '#D5DCDF';
 const STEEL_EDGE = '#A2AEB2';
 const DARK = '#3A4649';
+/** перегородки кабинок санузла */
+const PARTITION = '#CDD6D9';
+const PARTITION_EDGE = '#97A4A8';
 
 /** Работающий аппарат: экран светлый, трубка рентгена горит (часть 23). */
 const SCREEN_ON = '#CFF5E2';
@@ -221,6 +227,32 @@ function drawObject(u: Pen, k: ObjectKind, lit = false) {
       u.rr(0.26, 0.22, 0.74, 0.58, 0.12, '#FFFFFF', '#B5C0C3', 0.02);
       u.circle(0.5, 0.43, 0.03, '#9AA6A9');
       u.rr(0.47, 0.1, 0.53, 0.28, 0.02, '#87949A');
+      break;
+    case 'stall':
+      // кабинка санузла (spec 2026-10-living-background): стенки с трёх сторон, внутри унитаз, дверь — к выходу; свободна —
+      // открыта, знак на стенке зелёный; занята — закрыта, знак на двери красный, и того, кто внутри, не видно
+      if (lit) u.rr(0.08, 0.08, 0.92, 0.92, 0.03, '#E3E8EA');
+      else {
+        u.rr(0.36, 0.18, 0.64, 0.28, 0.03, '#FFFFFF', '#9AA6A9', 0.02);
+        u.circle(0.5, 0.45, 0.15, '#FFFFFF', '#9AA6A9', 0.025);
+      }
+      u.rr(0.06, 0.06, 0.94, 0.16, 0.02, PARTITION, PARTITION_EDGE, 0.015);
+      u.rr(0.06, 0.06, 0.16, 0.94, 0.02, PARTITION, PARTITION_EDGE, 0.015);
+      u.rr(0.84, 0.06, 0.94, 0.94, 0.02, PARTITION, PARTITION_EDGE, 0.015);
+      if (lit) {
+        u.rr(0.16, 0.82, 0.84, 0.94, 0.02, '#C3CDD0', PARTITION_EDGE, 0.015);
+        u.circle(0.5, 0.88, 0.085, '#D9483B', '#FFFFFF', 0.02);
+      } else {
+        u.line([0.84, 0.92, 0.62, 0.72], PARTITION_EDGE, 0.035);
+        u.circle(0.89, 0.8, 0.075, '#3DAA6A', '#FFFFFF', 0.02);
+      }
+      break;
+    case 'coffee':
+      // кофеварка в ординаторской (spec 2026-10-living-background): корпус, панель, чашка спереди
+      u.rr(0.2, 0.12, 0.8, 0.88, 0.06, '#5B6064', DARK, 0.02);
+      u.rr(0.28, 0.2, 0.72, 0.42, 0.03, '#2F3337');
+      u.circle(0.5, 0.67, 0.12, '#FFFFFF', '#C9CED1', 0.015);
+      u.circle(0.5, 0.67, 0.065, '#7A4A2A');
       break;
     case 'bench':
       u.rr(0.03, 0.26, 0.97, 0.34, 0.03, '#8A6A45');

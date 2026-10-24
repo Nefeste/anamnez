@@ -590,7 +590,7 @@ export const professionSchema = z.strictObject({
 // Помещения, аппараты и должности — игровые предметы: цены и размеры — баланс игры. Что
 // каким аппаратом делают — медицинский факт, он записан в записях обследований с источниками.
 
-export const OBJECT_KINDS = ['bed', 'chair', 'desk', 'couch', 'cabinet', 'machine', 'plant', 'sink', 'bench', 'xray', 'table', 'ecg', 'analyzer', 'or_table', 'anesthesia', 'us', 'monitor', 'ct', 'mri'] as const;
+export const OBJECT_KINDS = ['bed', 'chair', 'desk', 'couch', 'cabinet', 'machine', 'plant', 'sink', 'bench', 'xray', 'table', 'ecg', 'analyzer', 'or_table', 'anesthesia', 'us', 'monitor', 'ct', 'mri', 'stall', 'coffee'] as const;
 const cellSrc = z.tuple([z.number().int().min(0), z.number().int().min(0)]);
 /** «нет лаборатории», «нет лаборанта» — родительный падеж для причин «не работает» */
 const gen = text;

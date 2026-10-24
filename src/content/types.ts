@@ -730,7 +730,7 @@ export type Season = 'winter' | 'spring' | 'summer' | 'autumn';
 // --- каталог больницы (spec 2026-09-own-hospital) ------------------------------------------
 
 export type Cell = [number, number];
-export type ObjectKind = 'bed' | 'chair' | 'desk' | 'couch' | 'cabinet' | 'machine' | 'plant' | 'sink' | 'bench' | 'xray' | 'table' | 'ecg' | 'analyzer' | 'or_table' | 'anesthesia' | 'us' | 'monitor' | 'ct' | 'mri';
+export type ObjectKind = 'bed' | 'chair' | 'desk' | 'couch' | 'cabinet' | 'machine' | 'plant' | 'sink' | 'bench' | 'xray' | 'table' | 'ecg' | 'analyzer' | 'or_table' | 'anesthesia' | 'us' | 'monitor' | 'ct' | 'mri' | 'stall' | 'coffee';
 export type RoomSizeId = 'S' | 'M' | 'L';
 
 /**
