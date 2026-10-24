@@ -4,7 +4,7 @@
 import type { ContentDb, Id } from '../../content/types';
 import type { Rng } from '../core/rng';
 import { complaintObservations } from './exams';
-import { type Belief, contextOf, posterior } from './infer';
+import { type Belief, contextOf, posterior, type Prior } from './infer';
 import { type DoctorResult, examCost, runDoctor } from './policy';
 import type { Observation, Patient } from './types';
 
@@ -25,9 +25,12 @@ export interface ReviewData {
 /** Сдвиг уверенности в правде меньше этого — обследование «ничего не добавило». */
 export const IDLE_SHIFT = 0.03;
 
-/** Уверенность разбора по наблюдениям — тот же вывод, что у закрытия приёма. */
-export function reviewBeliefs(db: ContentDb, patient: Patient, candidates: readonly Id[], obs: readonly Observation[]): Belief[] {
-  return posterior(db, candidates, obs, contextOf(db, patient, obs));
+/**
+ * Уверенность разбора по наблюдениям — тот же вывод, что у закрытия приёма; `prior` — что знает о потоке разумный врач
+ * разбора (эпидемия «Зимнего гриппа», часть 91): с тем же множителем, что «Похоже на».
+ */
+export function reviewBeliefs(db: ContentDb, patient: Patient, candidates: readonly Id[], obs: readonly Observation[], prior?: Prior): Belief[] {
+  return posterior(db, candidates, obs, contextOf(db, patient, obs, prior));
 }
 
 /**

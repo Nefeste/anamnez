@@ -20,7 +20,7 @@ import { P_ONE, RNG_VERSION, Rng } from '../core/rng';
 import { examHarmOutcome, observe, type Outcome, rscOutcome } from '../med/course';
 import { complaintObservations, type ExamSkill, examFits, NORMAL_SKILL, runExam } from '../med/exams';
 import { freezeClock, generatePatient, patientAt, typicalPatient } from '../med/generate';
-import { type Belief, contextOf, likelyParams, posterior } from '../med/infer';
+import { type Belief, contextOf, likelyParams, posterior, type Prior } from '../med/infer';
 import { scaleTriage } from '../med/news2';
 import { alsoSettings, choiceFor, evaluatePlan, primaryOf, recommendedSetting, selfLimits, settingFit, settingRoomsOf, STAYS, surgeriesOf, treatable, txAvailable, type Venue, verdictOf, whenHolds } from '../med/plan';
 import { type DoctorRun, examCost, indicated, ORDER_MINUTES, type Parts, startRational, type StepResult, stepParts, whole } from '../med/policy';
@@ -1557,7 +1557,8 @@ function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
   const obs = observationsOf(p);
   const candidates = candidatesOf(db, p.departments ?? s.meta.department);
   // у ваших приёмов — уверенность разбора, посчитанная заранее (0.5.11): тот же вывод по тем же наблюдениям
-  const beliefs = p.by ? posterior(db, candidates, obs, contextOf(db, patient, obs)) : reviewTimeline(db, s.meta, p)[p.results.length];
+  // в «Зимнем гриппе» (часть 91) — с эпидемией, как «Похоже на» и разумный врач разбора
+  const beliefs = p.by ? posterior(db, candidates, obs, contextOf(db, patient, obs, scenarioPrior(s.meta.scenario))) : reviewTimeline(db, s.meta, p)[p.results.length];
   const confidence = beliefs.find(b => b.id === dx)?.p ?? 0;
   // в операционную — операцией поставленного диагноза (часть 28): по тому, что видно на снимке (часть 32б)
   const op = p.draft.setting === 'surgery' ? operationFor(db, dx, likelyParams(db, dx, obs, patient)) : undefined;
@@ -1763,6 +1764,8 @@ interface ReviewEntry {
   beliefs: Belief[][];
   /** наблюдения, по которым посчитана последняя из них */
   obs: Observation[];
+  /** что знает о потоке разумный врач разбора (часть 91): «Зимний грипп» — эпидемия; уверенность разбора — с этим же */
+  prior?: Prior;
 }
 const reviewEntries = new WeakMap<ContentDb, WeakMap<ShiftPatient['patient'], Map<string, ReviewEntry>>>();
 
@@ -1781,9 +1784,10 @@ function reviewEntry(db: ContentDb, meta: ReviewMeta, p: ShiftPatient): ReviewEn
     const rng = Rng.seeded(meta.seed).fork(`review:${p.id}`);
     const candidates = candidatesOf(db, departments);
     const exams = reviewExams(db, limits, Object.keys(db.exams).sort());
+    const prior = scenarioPrior(meta.scenario);
     entry = {
-      rng, candidates, exams, run: startRational(db, p.patient, rng, { candidates: [...candidates], exams: [...exams], prior: scenarioPrior(meta.scenario) }), reviews: new Map(),
-      beliefs: [], obs: complaintObservations(p.patient),
+      rng, candidates, exams, run: startRational(db, p.patient, rng, { candidates: [...candidates], exams: [...exams], prior }), reviews: new Map(),
+      beliefs: [], obs: complaintObservations(p.patient), ...(prior ? { prior } : {}),
     };
     byPatient.set(key, entry);
   }
@@ -1846,7 +1850,7 @@ function ahead(s: ShiftState): ShiftPatient[] {
 function nextBelief(db: ContentDb, entry: ReviewEntry, p: ShiftPatient) {
   const i = entry.beliefs.length;
   if (i > 0) entry.obs.push(...p.results[i - 1].obs);
-  entry.beliefs.push(reviewBeliefs(db, p.patient, entry.candidates, entry.obs));
+  entry.beliefs.push(reviewBeliefs(db, p.patient, entry.candidates, entry.obs, entry.prior));
 }
 
 /** Уверенность разбора после жалоб и после каждого результата — что не посчитано заранее, досчитывается. */

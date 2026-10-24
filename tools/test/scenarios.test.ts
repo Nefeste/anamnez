@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
 import { contextOf, posterior } from '../../src/engine/med/infer';
 import { complaintObservations } from '../../src/engine/med/exams';
-import { apply, hospitalCtx, newScenario, newSingle } from '../../src/engine/shift/engine';
+import { apply, candidatesOf, hospitalCtx, newScenario, newSingle, observationsOf } from '../../src/engine/shift/engine';
 import {
   FLU_IDS, FLU_X, NEIGHBOR_FLOW, type Scenario, SCENARIO_DAYS, scenarioAmbulance, scenarioFits, scenarioFlow, scenarioPrior, xrayBroken,
 } from '../../src/engine/shift/scenarios';
@@ -100,6 +100,26 @@ describe('сценарии: неделя в движке', () => {
       expect(s.patients[id].done).not.toContain('exam.xray_chest');
       apply(db, s, { kind: 'closeDay' });
     }
+  }, 30_000);
+
+  test('«Зимний грипп»: уверенность разбора при закрытии — с эпидемией, как «Похоже на» и разумный врач', () => {
+    const s = newScenario(db, { seed: 47, season: 'winter', venue: 'preset.clinic', scenario: 'flu' });
+    for (let i = 0; i < 600 && s.queue.length === 0; i++) apply(db, s, { kind: 'advance', seconds: 60 });
+    const id = s.queue[0];
+    apply(db, s, { kind: 'call', id });
+    apply(db, s, { kind: 'exam', exam: 'exam.ask_complaints' });
+    apply(db, s, { kind: 'diagnose', id: 'cond.influenza' });
+    apply(db, s, { kind: 'finish' });
+    if (s.current) {
+      apply(db, s, { kind: 'setting', setting: 'ambulance' });
+      apply(db, s, { kind: 'finish' });
+    }
+    const p = s.patients[id];
+    const obs = observationsOf(p);
+    const cands = candidatesOf(db, p.departments ?? s.meta.department);
+    const flu = (prior?: ReturnType<typeof scenarioPrior>) => posterior(db, cands, obs, contextOf(db, p.patient, obs, prior)).find(b => b.id === 'cond.influenza')?.p ?? 0;
+    expect(p.closed!.confidence).toBeCloseTo(flu(scenarioPrior('flu')), 9);
+    expect(flu(scenarioPrior('flu'))).toBeGreaterThan(flu());
   }, 30_000);
 
   test('неделя — пять смен: после пятой следующей нет', () => {
