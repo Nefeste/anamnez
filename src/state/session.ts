@@ -25,7 +25,7 @@ import {
   apply, atDoctor, atDoorOf, bedsideEquipment, bedsideOf, boxBeds, brokenOf, current, freeBeds, freeBoxBeds, freeIcuBeds, freeRicuBeds, type HospitalCtx, hospitalCtx, icuBeds, inBox, inIcu, inpatientsOf, inRicu,
   leftForPlayer, moreUrgent, newCampaign, newSandbox, ricuBeds,
   newShift, newSingle, observationsOf, operationOf, type OrBlock, orBlock, orQueueOf, prepareReview, reviewFor, SANDBOX_VENUE, stayEquipment, targetPlace,
-  wardBeds, catchUp, prepareFinish, reviewedCase,
+  wardBeds, catchUp, prepareFinish, reviewedCase, waitUntil,
 } from '@/engine/shift/engine';
 import { minutesTo, targetStart, targetsFor } from '@/engine/shift/targets';
 import {
@@ -2351,6 +2351,8 @@ function buildCaseView(): VisitView | undefined {
   const mine = p.id === s.current;
   const now = mine && s.until !== undefined ? s.until : s.t;
   const seen = mine && s.until !== undefined ? seenAt(p, s.until) : p;
+  // полоса «Ждём» (0.6.0): ждём результатов или его самого с обследования (0.5.12)
+  const waits = mine && p.status === 'inRoom' && (seen.pending.length > 0 || (p.out !== undefined && p.out.back > now));
   // приём врача идёт (часть 19): врач записывает вопрос или осмотр сразу, со временем конца —
   // до него это «идёт», как анализ
   const watching = p.by !== undefined && !p.closed;
@@ -2400,6 +2402,10 @@ function buildCaseView(): VisitView | undefined {
     canSendAway: p.status === 'inRoom' && seen.pending.length > 0,
     // ждать нечего, а ждёт кто-то срочнее — «Попросить подождать» (часть 37)
     canStepOut: p.status === 'inRoom' && seen.pending.length === 0 && moreUrgent(db, s, p),
+    // ждём результатов, а ждёт кто-то срочнее, и сколько минут ждать (замечание владельца 24.10.2026: назначил рентген,
+    // нажал «Подождать» — привезённый скорой ждал те же полчаса); строка — когда его можно отпустить: идёт обратно
+    // с готовым результатом — нельзя, вернётся — «Попросить подождать»
+    ...(waits ? { urgentWaiting: seen.pending.length > 0 && moreUrgent(db, s, p), waitMinutes: Math.max(1, Math.ceil((waitUntil(s, p) - now) / 60)) } : {}),
     returnNote: p.returnReason && prev?.closed ? T.shift.returnNote(p.returnReason, closedDay(prev), female(p)) : undefined,
     difficulty: s.meta.difficulty ?? 'doctor',
     // и в практике: кабинета УЗИ в амбулатории нет (часть 29)

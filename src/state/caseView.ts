@@ -222,6 +222,13 @@ export interface VisitView {
   canSendAway?: boolean;
   /** смена: ждать нечего, а ждёт кто-то срочнее — можно попросить подождать (часть 37) */
   canStepOut?: boolean;
+  /**
+   * смена: ждём результатов или его с обследования, а ждёт кто-то срочнее — строкой в полосе «Ждём» (замечание владельца
+   * 24.10.2026): отпустить и принять срочного, а не ждать
+   */
+  urgentWaiting?: boolean;
+  /** смена: сколько минут «Подождать» — до первого результата, до его возвращения или до приезда скорой */
+  waitMinutes?: number;
   /** смена: что делается у постели и сколько минут (часть 37: ЭКГ в смотровой приёмного) */
   bedside?: Record<Id, number>;
   /** смена: обследования, которые с умениями дня идут дольше или короче базы (spec 2026-10-skills), — их минуты */
@@ -285,6 +292,8 @@ export interface CaseInput {
   decision?: Decision;
   canSendAway?: boolean;
   canStepOut?: boolean;
+  urgentWaiting?: boolean;
+  waitMinutes?: number;
   bedside?: Record<Id, number>;
   minutes?: Record<Id, number>;
   /** аппараты у постели (часть 39а): лежит в смотровой приёмного — монитор; нет — в кабинете врача ничего */
@@ -937,6 +946,8 @@ export function makeCaseView(c: CaseInput): VisitView {
     draftDiagnosisName: c.draft.diagnosis ? db.conditions[c.draft.diagnosis].name.ru : undefined,
     ...(c.canSendAway ? { canSendAway: true } : {}),
     ...(c.canStepOut ? { canStepOut: true } : {}),
+    ...(c.urgentWaiting ? { urgentWaiting: true } : {}),
+    ...(c.waitMinutes !== undefined ? { waitMinutes: c.waitMinutes } : {}),
     ...(c.bedside ? { bedside: c.bedside } : {}),
     ...(c.minutes ? { minutes: c.minutes } : {}),
     ...(c.targets && c.targets.length > 0 ? { targets: c.targets } : {}),

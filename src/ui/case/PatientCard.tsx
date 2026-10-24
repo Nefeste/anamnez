@@ -393,6 +393,8 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
           // две кнопки — под строками: иначе строки зажаты в узкий столбец
           <View style={[styles.strip, v.canSendAway && !!sendAway && styles.stripTall]}>
             <View style={styles.stripText}>
+              {/* ждёт кто-то срочнее (замечание владельца 24.10.2026) — отпустить и принять его, а не ждать */}
+              {v.urgentWaiting ? <Text testID="visit-urgent" style={[styles.stripLine, styles.stripUrgent]}>{t.urgentWaiting}</Text> : null}
               {v.away ? <Text testID="visit-away" style={styles.stripLine}>{v.away}</Text> : null}
               {v.pending.length > 0 ? (
                 <Text testID="visit-pending" numberOfLines={2} style={styles.stripLine}>{t.waiting(v.pending.map(p => t.pendingShort(p.name, p.at)).join('; '))}</Text>
@@ -406,7 +408,7 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
                 </Pressable>
               ) : null}
               <Pressable testID="visit-wait" accessibilityRole="button" onPress={wait} style={({ pressed }) => [styles.stripButton, pressed && styles.pressed]}>
-                <Text style={styles.stripButtonText}>{t.waitShort}</Text>
+                <Text style={styles.stripButtonText}>{v.waitMinutes !== undefined ? t.waitFor(v.waitMinutes) : t.waitShort}</Text>
               </Pressable>
             </View>
           </View>
@@ -545,6 +547,7 @@ const useStyles = makeStyles(t => ({
   stripTall: { flexDirection: 'column', alignItems: 'stretch' },
   stripText: { flexGrow: 1, flexShrink: 1, gap: 2 },
   stripLine: { fontSize: 13, lineHeight: 18, color: t.colors.ink },
+  stripUrgent: { fontWeight: '700' },
   stripButtons: { flexDirection: 'row', justifyContent: 'flex-end', gap: space.xs },
   stripButton: {
     minHeight: 40, justifyContent: 'center', paddingHorizontal: space.m, borderRadius: t.shape.radius, borderWidth: 1.5,

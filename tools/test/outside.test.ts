@@ -109,4 +109,33 @@ describe('обследование в другом кабинете', () => {
     expect(shiftCaseView()!.away).toBeUndefined();
     expect(shiftCaseView()!.unavailable['exam.ask_complaints']).toBeUndefined();
   });
+
+  test('«Подождать» — со своими минутами; ждёт кто-то срочнее — строкой в полосе «Ждём» (замечание владельца 24.10.2026)', () => {
+    setStore(memoryStore());
+    forgetShift();
+    startShift(7, 'winter');
+    for (let i = 0; i < 600 && shiftView().queue.length < 2; i++) {
+      if (shiftView().paused) setSpeed(1);
+      tick(1000);
+    }
+    const [first, second] = shiftView().queue.map(q => q.id);
+    callPatient(first);
+    examine('exam.ecg');
+    const s = shiftState()!;
+    const p = s.patients[first];
+    // ждём, пока он вернётся с ЭКГ: столько минут и стоит «Подождать»; срочнее никого — строки нет
+    expect(shiftCaseView()!.waitMinutes).toBe(Math.ceil((p.out!.back - s.t) / MIN));
+    expect(shiftCaseView()!.urgentWaiting).toBeFalsy();
+    // второй в очереди оказался срочнее — красным: ждать ли его результатов, решает врач, и полоса говорит, что тот ждёт
+    s.patients[second].triage = 'red';
+    examine('exam.cbc');
+    expect(shiftCaseView()!.urgentWaiting).toBe(true);
+    expect(shiftCaseView()!.canSendAway).toBe(true);
+    // ждать нечего — прежняя полоса «Попросить подождать», без минут
+    waitForResults();
+    for (let i = 0; i < 20 && shiftState()!.patients[first].pending.length > 0; i++) waitForResults();
+    expect(shiftCaseView()!.waitMinutes).toBeUndefined();
+    expect(shiftCaseView()!.urgentWaiting).toBeUndefined();
+    expect(shiftCaseView()!.canStepOut).toBe(true);
+  });
 });
