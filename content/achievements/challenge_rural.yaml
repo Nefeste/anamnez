@@ -1,0 +1,7 @@
+id: ach.challenge_rural
+order: 26
+category: challenge
+name: { ru: "Земский врач" }
+need: { ru: "Пройти испытание «Земский врач»: смена без анализов и снимков с итогом не ниже «B», своих пациентов — не меньше восьми." }
+kind: challenge
+challenge: rural

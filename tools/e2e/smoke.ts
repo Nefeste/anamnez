@@ -893,6 +893,17 @@ function traineeDangerSave(): { save: string; id: string } {
   throw new Error('traineeDangerSave: нет пациента с опасной причиной');
 }
 
+/**
+ * «Испытания» (часть 91, spec 2026-10-challenges): «Смена» в амбулатории практики с «Нелюдимым врачом» и «Скупым
+ * главврачом»; первый пришедший — в очереди. Записана «позже всех» — её берёт «Продолжить».
+ */
+function challengeSave(): { save: string; id: string } {
+  const { db } = buildDb();
+  const s = newSingle(db, { seed: 47, season: 'winter', difficulty: 'student', venue: 'preset.clinic', challenges: ['mute', 'thrifty'] });
+  for (let i = 0; i < 600 && s.queue.length === 0; i++) apply(db, s, { kind: 'advance', seconds: 60 });
+  return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: '9999-12-31T00:00:00.000Z', data: s }), id: s.queue[0] };
+}
+
 /** Песочница до открытия: готовая амбулатория, бюджет «обычный» — экран «Перед открытием». */
 /**
  * Карьера 2, у которой глава 1 выполнена к концу дня 3 (spec 2026-09-chapter-2, часть 34): переход
@@ -4029,6 +4040,44 @@ try {
   await page.waitForTimeout(500);
   await page.screenshot({ path: join(OUT, '18-single.png'), fullPage: true });
   check(await page.getByTestId('single-again').isVisible() && (await page.getByTestId('shift-next-day').count()) === 0, 'смена: в итогах — «Новая смена», следующего дня нет');
+
+  // «Испытания» (часть 91, spec 2026-10-challenges, вопрос 50): «Быстрая игра» → «Испытания» — без выбранного «Начать
+  // смену» нельзя; с «Нелюдимым врачом» и «Скупым главврачом» — смена, в «Продолжить» — их имена
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-challenges').click();
+  await page.getByTestId('challenge-start').waitFor({ timeout: 10_000 });
+  const noneOff = await page.getByTestId('challenge-start').isDisabled();
+  await page.getByTestId('challenge-mute').click();
+  await page.getByTestId('challenge-thrifty').click();
+  check(noneOff && (await page.getByTestId('challenge-mute').getAttribute('aria-checked')) === 'true' && (await page.getByTestId('challenge-thrifty').getAttribute('aria-checked')) === 'true'
+    && (await page.getByTestId('challenge-rural').getAttribute('aria-checked')) === 'false' && !(await page.getByTestId('challenge-start').isDisabled()),
+    'испытания: без выбранного «Начать смену» нельзя; отмечены «Нелюдимый врач» и «Скупой главврач»');
+  await page.screenshot({ path: join(OUT, '18-challenges.png'), fullPage: true });
+  await page.getByTestId('challenge-start').click();
+  await page.getByTestId('shift-clock').waitFor({ timeout: 15_000 });
+  await page.waitForTimeout(500); // запись смены — следующим тиком
+  await page.goto(base);
+  await page.getByTestId('menu-continue').waitFor({ timeout: 10_000 });
+  check((await text(page, 'menu-continue')).includes('Нелюдимый врач, Скупой главврач'), `испытания: «Продолжить» — ${(await text(page, 'menu-continue')).replace(/\n/g, ' · ')}`);
+  // приём при них: карта — на «Осмотреть»; на «Спросить» — пояснение, вопросы серые; аллергии и прочее — «Из карты»;
+  // в шапке — сколько потрачено из 1 500 ₽
+  const ch = challengeSave();
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/single.json', ch.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-continue').click();
+  await page.getByTestId(`queue-${ch.id}`).waitFor({ timeout: 15_000 });
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId(`queue-${ch.id}`).click();
+  await visible(page, 'visit-decide').waitFor({ timeout: 15_000 });
+  const firstTab = await visible(page, 'tab-examine').first().getAttribute('aria-selected');
+  const spent = await visibleText(page, 'visit-clock');
+  const fromCard = [...new Set((await cardText(page)).match(/Из карты: [^\n]+/g) ?? [])];
+  await tab(page, 'ask');
+  const askOff = await visible(page, 'exam-exam.ask_complaints').first().isDisabled();
+  check(firstTab === 'true' && /из 1\s500\s₽/.test(spent) && fromCard.length === 3 && askOff && (await visible(page, 'challenge-ask-note').count()) === 1,
+    `испытания: карта на «Осмотреть» — ${firstTab}, ${spent}, ${fromCard.join(' · ')}, вопросы серые — ${askOff}`);
+  await page.screenshot({ path: join(OUT, '18-challenge-ask.png') });
 
   // конец дня из сохранения: закрыть день, итоги, разбор случая из итогов, следующий день
   const day = await browser.newContext({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2 });

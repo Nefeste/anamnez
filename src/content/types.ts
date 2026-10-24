@@ -1097,7 +1097,7 @@ export interface Tip {
 }
 
 /** Группа достижения в профиле. */
-export type AchievementCategory = 'practice' | 'diagnosis' | 'care' | 'knowledge' | 'hospital' | 'campaign' | 'daily';
+export type AchievementCategory = 'practice' | 'diagnosis' | 'care' | 'knowledge' | 'hospital' | 'campaign' | 'daily' | 'challenge';
 
 /** Вид «сколько раз»: приёмов, рабочих дней, верных подряд, на A, бережливых, с вопросом об аллергии, дней без ушедших, разных болезней, случаев дня. */
 export type CountedKind = 'cases' | 'days' | 'correctRun' | 'gradeA' | 'thriftCase' | 'allergyAsked' | 'noLeftDay' | 'seenConditions' | 'dailyCases';
@@ -1108,6 +1108,8 @@ export type Achievement = { id: Id; order: number; category: AchievementCategory
   | { kind: 'department'; department: Id }
   | { kind: 'roomWorks'; room: Id }
   | { kind: 'chapter'; chapter: Id }
+  /** испытание «Смены» пройдено (часть 91, spec 2026-10-challenges): `mute`, `rural`, `thrifty` */
+  | { kind: 'challenge'; challenge: string }
 );
 
 /**

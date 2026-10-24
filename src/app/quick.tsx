@@ -1,5 +1,6 @@
 // Быстрая игра (09-game-design.md §10; spec 2026-09-campaign): практика в амбулатории, «Смена»
-// в выбранной больнице и песочница — своя больница; песочница — после главы 2 кампании (spec 2026-10-rules). «Случай
+// в выбранной больнице, испытания — «Смена» с условием (spec 2026-10-challenges) — и песочница — своя больница; песочница —
+// после главы 2 кампании (spec 2026-10-rules). «Случай
 // дня» с 0.6.5 — в главном меню (вопрос 47). У практики и песочницы по сохранению: есть оно — лист «продолжить или
 // начать заново».
 import { router, Stack, useFocusEffect } from 'expo-router';
@@ -69,6 +70,8 @@ export default function QuickGame() {
         onPress={() => pick('shift', practice)}
       />
       <Button testID="menu-single" kind="plain" title={T.single.title} hint={T.single.menuHint} onPress={() => router.push('/single')} />
+      {/* испытания (часть 91, spec 2026-10-challenges): «Смена» с условием */}
+      <Button testID="menu-challenges" kind="plain" title={T.challenges.title} hint={T.challenges.menuHint} onPress={() => router.push('/challenges')} />
       <Button
         testID="menu-sandbox"
         kind="plain"

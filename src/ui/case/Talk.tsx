@@ -24,9 +24,10 @@ export function Talk({ v, asks, explain, isOpen, toggle, onRow }: {
 }) {
   const styles = useStyles();
   const t = T.spikes.talk;
-  // «Известно» — новые сверху; беседа — по порядку
-  const asked = [...v.groups].reverse().filter(g => asks.has(g.exam));
-  if (asked.length === 0) return <Text style={styles.empty}>{t.empty}</Text>;
+  // «Известно» — новые сверху; беседа — по порядку; из карты («Нелюдимый врач», часть 91) — не беседа
+  const asked = [...v.groups].reverse().filter(g => asks.has(g.exam) && !g.card);
+  // без расспроса звать к вопросам незачем: что известно и откуда — в пояснении над лентой
+  if (asked.length === 0) return v.challenges?.includes('mute') ? null : <Text style={styles.empty}>{t.empty}</Text>;
   return (
     <View style={styles.chat}>
       {asked.map(g => {

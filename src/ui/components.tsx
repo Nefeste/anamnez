@@ -155,12 +155,14 @@ export function P({ children, muted, testID }: { children: ReactNode; muted?: bo
  * лампа вызова перед подписью, как над дверями на плане: у «Пригласить». `picture` — картинка слева от подписи и
  * пояснения: портрет сотрудника (0.5.7).
  */
-export function Button({ title, onPress, hint, kind = 'primary', disabled, testID, onInfo, infoLabel, lamp, hintMono, picture }: {
+export function Button({ title, onPress, hint, kind = 'primary', disabled, testID, onInfo, infoLabel, lamp, hintMono, picture, checked }: {
   title: string; onPress: () => void; hint?: string; kind?: 'primary' | 'plain'; disabled?: boolean; testID?: string;
   onInfo?: () => void; infoLabel?: string; lamp?: boolean;
   /** пояснение — минуты и рубли: моноширинным, в «Мониторе» — цветом времени */
   hintMono?: boolean;
   picture?: ReactNode;
+  /** выбор из нескольких (испытания, часть 91): кнопка — флажок, отмечено ли */
+  checked?: boolean;
 }) {
   const styles = useStyles();
   const t = useTheme();
@@ -180,7 +182,8 @@ export function Button({ title, onPress, hint, kind = 'primary', disabled, testI
     <View style={styles.btnRow}>
       <Pressable
         testID={testID}
-        accessibilityRole="button"
+        accessibilityRole={checked !== undefined ? 'checkbox' : 'button'}
+        {...(checked !== undefined ? { 'aria-checked': checked } : {})}
         disabled={disabled}
         onPress={onPress}
         style={({ pressed }) => [styles.btn, styles.fill, !primary && styles.btnPlain, disabled && styles.btnDisabled, pressed && styles.btnPressed]}>

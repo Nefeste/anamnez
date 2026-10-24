@@ -977,7 +977,7 @@ const achievementBase = {
   id: z.string().regex(/^ach\.[a-z0-9_]+$/),
   /** порядок в списке профиля */
   order: count,
-  category: z.enum(['practice', 'diagnosis', 'care', 'knowledge', 'hospital', 'campaign', 'daily']),
+  category: z.enum(['practice', 'diagnosis', 'care', 'knowledge', 'hospital', 'campaign', 'daily', 'challenge']),
   name: text,
   /** что нужно сделать — у неполученного, без счётчиков «осталось» */
   need: text,
@@ -993,6 +993,8 @@ export const achievementSchema = z.discriminatedUnion('kind', [
   z.strictObject({ ...achievementBase, kind: z.literal('department'), department: z.string().regex(/^dept\.[a-z0-9_]+$/) }),
   z.strictObject({ ...achievementBase, kind: z.literal('roomWorks'), room: roomId }),
   z.strictObject({ ...achievementBase, kind: z.literal('chapter'), chapter: z.string().regex(/^chapter\.[a-z0-9_]+$/) }),
+  // испытание «Смены» (часть 91, spec 2026-10-challenges)
+  z.strictObject({ ...achievementBase, kind: z.literal('challenge'), challenge: z.enum(['mute', 'rural', 'thrifty']) }),
 ]);
 
 /**

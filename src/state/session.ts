@@ -24,9 +24,10 @@ import { askMinutes, skillsFor } from '@/engine/career/skills';
 import {
   apply, atDoctor, atDoorOf, bedsideEquipment, bedsideOf, boxBeds, brokenOf, current, freeBeds, freeBoxBeds, freeIcuBeds, freeRicuBeds, type HospitalCtx, hospitalCtx, icuBeds, inBox, inIcu, inpatientsOf, inRicu,
   leftForPlayer, moreUrgent, newCampaign, newSandbox, ricuBeds,
-  newShift, newSingle, observationsOf, operationOf, type OrBlock, orBlock, orQueueOf, prepareReview, reviewFor, SANDBOX_VENUE, stayEquipment, targetPlace,
+  newShift, newSingle, observationsOf, operationOf, type OrBlock, orBlock, orQueueOf, prepareReview, reviewFor, type ReviewMeta, SANDBOX_VENUE, stayEquipment, targetPlace,
   wardBeds, catchUp, prepareFinish, reviewedCase, waitUntil,
 } from '@/engine/shift/engine';
+import { BUDGET, type Challenge, challengeBlock } from '@/engine/shift/challenges';
 import { minutesTo, targetStart, targetsFor } from '@/engine/shift/targets';
 import {
   type ClosedCase, type Command, DAY, type Difficulty, easyLevel, type Mode, type Notice, SHIFT_END, SHIFT_SCHEMA_VERSION, type ShiftPatient, type ShiftState, type Triage,
@@ -41,9 +42,9 @@ import { daysIn, stayNorm, vitalOn, WARD_VITALS, type WardState, wardState } fro
 import { staffAge, type StaffPortrait } from '@/render/look';
 import { CLINIC, type Doing, type Placement, placements, uniformOfRole } from './clinicMap';
 import { type RoomSign, roomSigns } from './roomSigns';
-import { achievementsBy, archivedCase, caseKey, type DayRecord, profile, recordCases, recordDay, recordSingle } from './profile';
+import { achievementsBy, archivedCase, caseKey, type DayRecord, profile, recordCases, recordDay, recordSingle, type SingleBest } from './profile';
 import { dateText } from './profileView';
-import { SINGLE_CATEGORIES, type SingleCategory, singleResult } from './single';
+import { challengePassed, SINGLE_CATEGORIES, type SingleCategory, singleResult } from './single';
 import { blockText, type CashView, cashView, examBlockText, levelText, paymentText, personName, problemText, statusText } from './sandboxView';
 import { loadSlot, type RawStore, saveSlot } from './saves';
 import { settings } from './settings';
@@ -161,9 +162,33 @@ export interface SingleView {
  * Где «Смена» — названием больницы; принимали только вы (часть 79) — так и сказано. Лучший результат такой смены —
  * свой: всех новых вы принимали один, сравнивать с днём, когда работали нанятые врачи, нечестно.
  */
-const singleName = (s: ShiftState) => `${venueName(s.meta.venue ?? 'preset.clinic')}${s.meta.solo ? T.single.soloSuffix : ''}`;
-const bestKey = (s: ShiftState) => `${s.meta.venue ?? 'preset.clinic'}${s.meta.solo ? SOLO_BEST : ''}`;
+const singleName = (s: ShiftState) =>
+  `${venueName(s.meta.venue ?? 'preset.clinic')}${s.meta.solo ? T.single.soloSuffix : ''}${s.meta.challenges ? T.challenges.suffix(challengeNames(s.meta.challenges)) : ''}`;
+/** Лучший результат — свой у больницы, «только вы» и набора испытаний (часть 91): с условием сравнивать с обычной сменой нечестно. */
+export const bestKey = (s: Pick<ShiftState, 'meta'>) =>
+  `${s.meta.venue ?? 'preset.clinic'}${s.meta.solo ? SOLO_BEST : ''}${s.meta.challenges ? `${CHALLENGE_BEST}${s.meta.challenges.join('+')}` : ''}`;
 const SOLO_BEST = ':solo';
+const CHALLENGE_BEST = ':ch=';
+/** Испытания смены названиями: «Нелюдимый врач, Скупой главврач». */
+const challengeNames = (list: readonly Challenge[]) => list.map(c => T.challenges.names[c]).join(', ');
+
+/** Лучше ли смена `a`, чем `b`: по общей оценке, затем по баллу и по тому, кого приняли больше, — как `recordSingle`. */
+const betterSingle = (a: SingleBest, b: SingleBest) =>
+  a.overall !== b.overall ? a.overall < b.overall : a.points !== b.points ? a.points > b.points : a.seen > b.seen;
+
+/**
+ * Испытания (часть 91, spec 2026-10-challenges): лучший итог смены с испытанием `c` — в любой больнице и вместе с любыми
+ * другими испытаниями — и где он; таких смен ещё не было — undefined.
+ */
+export function challengeBest(c: Challenge): { best: SingleBest; venue: string } | undefined {
+  let out: { best: SingleBest; venue: string } | undefined;
+  for (const [key, b] of Object.entries(profile().best)) {
+    const at = key.indexOf(CHALLENGE_BEST);
+    if (at < 0 || !key.slice(at + CHALLENGE_BEST.length).split('+').includes(c)) continue;
+    if (!out || betterSingle(b, out.best)) out = { best: b, venue: venueName(key.slice(0, at).replace(SOLO_BEST, '')) };
+  }
+  return out;
+}
 
 function singleView(s: ShiftState): SingleView {
   const t = T.single;
@@ -175,7 +200,11 @@ function singleView(s: ShiftState): SingleView {
     venue: singleName(s),
     grades: SINGLE_CATEGORIES.map(key => ({ key, label: t.category[key], grade: r.grades[key] })),
     overall: r.overall,
-    lines: [t.seen(r.seen, r.arrived), t.correct(r.correct), t.minutes(r.minutes)],
+    lines: [
+      t.seen(r.seen, r.arrived), t.correct(r.correct), t.minutes(r.minutes),
+      // испытание (часть 91): пройдено — итог не ниже «B» и не меньше 8 своих пациентов
+      ...(s.meta.challenges ? [challengePassed(r) ? T.challenges.passed(r.seen) : T.challenges.failed] : []),
+    ],
     ...(b ? { best: mine ? t.isBest : t.best(b.overall, points(b.points), dateText(b.at)) } : {}),
   };
 }
@@ -511,7 +540,7 @@ export async function singleVenues(): Promise<VenueView[]> {
  * Новая «Смена»: один день в выбранной больнице; своя — копия песочницы. Прежняя смена
  * перезаписывается. Нельзя (больницы нет или смену в ней не открыть) — false.
  */
-export async function startSingle(opts: { venue: Id; difficulty: Difficulty; seed?: number; season?: Season; solo?: boolean }): Promise<boolean> {
+export async function startSingle(opts: { venue: Id; difficulty: Difficulty; seed?: number; season?: Season; solo?: boolean; challenges?: Challenge[] }): Promise<boolean> {
   let own: { hospital: HospitalState; staff: StaffMember[] } | undefined;
   if (opts.venue === SANDBOX_VENUE) {
     own = await sandboxHospital();
@@ -520,6 +549,7 @@ export async function startSingle(opts: { venue: Id; difficulty: Difficulty; see
   begin(newSingle(db, {
     seed: (opts.seed ?? Date.now() % 0x7fffffff) >>> 0, season: opts.season ?? seasonOf(new Date()), difficulty: opts.difficulty, venue: opts.venue,
     ...(own ? { hospital: own.hospital, staff: own.staff } : {}), variety: settings().variety, ...(opts.solo ? { solo: true } : {}),
+    ...(opts.challenges && opts.challenges.length > 0 ? { challenges: opts.challenges } : {}),
   }));
   return true;
 }
@@ -1066,6 +1096,8 @@ function dayRecord(s: ShiftState): DayRecord {
     noLeft: h.seen > 0 && h.left === 0 && h.unseen === 0,
     rooms: ctx ? [...new Set(ctx.plan.rooms.filter(r => ctx.working.has(r.id)).map(r => r.type))] : [],
     chapters: s.campaign?.complete !== undefined ? [s.campaign.chapter] : [],
+    // испытания «Смены» (часть 91): пройдены — все испытания дня
+    ...(s.meta.mode === 'single' && s.meta.challenges && challengePassed(singleResult(s)) ? { challenges: [...s.meta.challenges] } : {}),
   };
 }
 
@@ -2214,7 +2246,7 @@ function outcomeKnown(s: ShiftState, p: ShiftPatient): boolean {
   return c.plan.setting !== 'home' || lastClosed >= closedDay(p) + c.outcome.day;
 }
 
-function decisionFor(meta: Pick<ShiftState['meta'], 'seed' | 'department'>, p: ShiftPatient, arrived: Arrival[], known: boolean, c: ClosedCase = p.closed!): Decision {
+function decisionFor(meta: ReviewMeta, p: ShiftPatient, arrived: Arrival[], known: boolean, c: ClosedCase = p.closed!): Decision {
   // исход лежащего меняется при выписке — ключ с ним
   const key = `${meta.seed}:${p.id}:${known}:${c.outcome.kind}`;
   const cached = decisions.get(key);
@@ -2248,13 +2280,15 @@ function seenAt(p: ShiftPatient, t: number): ShiftPatient {
 
 /** Пришедшие результаты; `until` — только готовые к этому времени (приём врача идёт: что он выясняет сейчас, ещё не известно). */
 const arrivedOf = (p: ShiftPatient, until = Infinity): Arrival[] =>
-  p.results.filter(r => r.at <= until).map(r => ({ exam: r.exam, step: r.step, at: minuteOfDay(r.at), obs: r.obs, ...(r.repeat ? { repeat: r.repeat } : {}) }));
+  p.results.filter(r => r.at <= until).map(r => ({
+    exam: r.exam, step: r.step, at: minuteOfDay(r.at), obs: r.obs, ...(r.repeat ? { repeat: r.repeat } : {}), ...(r.card ? { card: r.card } : {}),
+  }));
 
 /** Ваши закрытые приёмы смены — для профиля (profile.ts, recordCases); приёмы нанятых врачей не в счёт. */
 function closedCases(s: ShiftState) {
   return Object.values(s.patients)
     .filter(p => p.closed && !p.closed.by)
-    .map(p => ({ seed: s.meta.seed, department: s.meta.department, day: closedDay(p), patient: p }));
+    .map(p => ({ seed: s.meta.seed, department: s.meta.department, day: closedDay(p), patient: p, ...(s.meta.challenges ? { challenges: s.meta.challenges } : {}) }));
 }
 
 /**
@@ -2268,6 +2302,8 @@ export function archiveCaseView(key: string): VisitView | undefined {
   const s = session?.s;
   const known = s && s.meta.seed === r.seed ? outcomeKnown(s, p) : true;
   const arrived = arrivedOf(p);
+  // разбор — с испытаниями той смены (часть 91): разумный врач с теми же запретами
+  const meta: ReviewMeta = { seed: r.seed, department: r.department, ...(r.challenges ? { challenges: r.challenges } : {}) };
   return makeCaseView({
     version: 0,
     patient: p.patient,
@@ -2280,7 +2316,7 @@ export function archiveCaseView(key: string): VisitView | undefined {
     meanwhile: [],
     done: p.done,
     draft: p.draft,
-    decision: decisionFor(r, p, arrived, known),
+    decision: decisionFor(meta, p, arrived, known),
     difficulty: 'doctor',
     ...(p.departments ? { departments: p.departments } : {}),
   });
@@ -2394,6 +2430,15 @@ function buildCaseView(): VisitView | undefined {
     const why = T.spikes.patient.awayExam(hhmm(minuteOfDay(p.out!.back)));
     for (const eid of Object.keys(db.exams)) if (!unavailable[eid] && !p.done.includes(eid) && atDoctor(db, s, p, eid)) unavailable[eid] = why;
   }
+  // испытание «Смены» (часть 91, spec 2026-10-challenges): что оно запрещает вашему пациенту — серым и почему
+  const challenges = p.by ? undefined : s.meta.challenges;
+  if (challenges && !p.closed) {
+    for (const eid of Object.keys(db.exams)) {
+      if (unavailable[eid] || p.done.includes(eid)) continue;
+      const b = challengeBlock(db, challenges, p.spent.money, eid, bedside[eid] !== undefined);
+      if (b) unavailable[eid] = b.challenge === 'thrifty' ? T.challenges.budgetLeft(T.common.rub(b.left)) : T.challenges.blocked[b.challenge];
+    }
+  }
   return makeCaseView({
     version,
     patient: p.patient,
@@ -2426,6 +2471,8 @@ function buildCaseView(): VisitView | undefined {
     difficulty: s.meta.difficulty ?? 'doctor',
     // и в практике: кабинета УЗИ в амбулатории нет (часть 29)
     unavailable,
+    // испытания (часть 91): какие — карте; у «Скупого главврача» — сколько осталось на пациента
+    ...(challenges ? { challenges, ...(challenges.includes('thrifty') ? { budget: { left: Math.max(0, BUDGET - p.spent.money), of: BUDGET } } : {}) } : {}),
     ...(Object.keys(bedside).length > 0 ? { bedside } : {}),
     ...(Object.keys(minutes).length > 0 ? { minutes } : {}),
     // лечение у постели (часть 39а): тромболизис — лежащему под монитором

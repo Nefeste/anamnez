@@ -64,3 +64,14 @@ export function singleResult(s: ShiftState): SingleResult | undefined {
   const day = s.history[s.history.length - 1] ?? s.summary;
   return { seen: cases.length, arrived: day.arrived, minutes, correct, grades, overall, points: Math.round(points * 100) / 100 };
 }
+
+/**
+ * Испытание пройдено (часть 91, spec 2026-10-challenges): итог «Смены» не ниже «B» и не меньше 8 своих пациентов — одного-двух
+ * мало, чтобы судить о смене. Несколько испытаний сразу — пройдены все.
+ */
+export const PASS_GRADE: Grade = 'B';
+export const PASS_SEEN = 8;
+
+export function challengePassed(r: SingleResult | undefined): boolean {
+  return !!r && r.seen >= PASS_SEEN && POINTS[r.overall] >= POINTS[PASS_GRADE];
+}

@@ -11,6 +11,7 @@ import type { Id } from '@/content/types';
 import { type CareerFacts, caseFacts, newAchievements } from '@/engine/career/achievements';
 import { pointsFor } from '@/engine/career/skills';
 import type { Grade } from '@/engine/med/score';
+import { type Challenge, CHALLENGES } from '@/engine/shift/challenges';
 import type { ShiftPatient } from '@/engine/shift/types';
 import { loadSlot, type RawStore, saveSlot } from './saves';
 
@@ -64,6 +65,8 @@ export interface CaseRecord {
   /** день практики, когда приём закрыт */
   day: number;
   patient: ShiftPatient;
+  /** испытания «Смены» (часть 91): разбор из архива — с теми же запретами, что в смене */
+  challenges?: Challenge[];
 }
 
 /** Достижения: полученные и счётчики, из которых они складываются (engine/career/achievements.ts). */
@@ -108,6 +111,8 @@ export interface DayRecord {
   noLeft: boolean;
   rooms: Id[];
   chapters: Id[];
+  /** испытания «Смены», пройденные в этот день (часть 91, spec 2026-10-challenges) */
+  challenges?: string[];
 }
 
 export interface Profile {
@@ -230,10 +235,13 @@ export function sanitizeProfile(data: unknown): Profile {
       // отделения, с какими приняли пациента (часть 30), — только списком строк; иначе — как у
       // прежних записей, одно отделение смены
       .map(r => {
-        const d = r.patient.departments as unknown;
-        if (d === undefined || (Array.isArray(d) && d.every(x => typeof x === 'string'))) return r;
-        const { departments: _, ...patient } = r.patient;
-        return { ...r, patient };
+        // испытания (часть 91) — только известные, иначе запись без них
+        const ch = r.challenges as unknown;
+        const rec = ch === undefined || (Array.isArray(ch) && ch.length > 0 && ch.every(x => CHALLENGES.includes(x as Challenge))) ? r : (({ challenges: _, ...x }) => x)(r);
+        const d = rec.patient.departments as unknown;
+        if (d === undefined || (Array.isArray(d) && d.every(x => typeof x === 'string'))) return rec;
+        const { departments: _, ...patient } = rec.patient;
+        return { ...rec, patient };
       })
       .slice(0, ARCHIVE_SIZE);
   }
@@ -395,7 +403,7 @@ export function recordCases(cases: readonly Omit<CaseRecord, 'key'>[]): number {
 function factsOf(stats: ProfileStats, seen: Record<Id, number>, a: CareerProgress, day?: DayRecord): CareerFacts {
   return {
     cases: stats.cases, days: a.days, run: a.run, gradeA: a.gradeA, thrift: a.thrift, allergy: a.allergy, noLeftDays: a.noLeftDays, daily: a.daily, seen,
-    rooms: day?.rooms ?? [], chapters: day?.chapters ?? [],
+    rooms: day?.rooms ?? [], chapters: day?.chapters ?? [], challenges: day?.challenges ?? [],
   };
 }
 

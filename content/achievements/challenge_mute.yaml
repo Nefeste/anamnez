@@ -1,0 +1,7 @@
+id: ach.challenge_mute
+order: 25
+category: challenge
+name: { ru: "Нелюдимый врач" }
+need: { ru: "Пройти испытание «Нелюдимый врач»: смена без расспроса с итогом не ниже «B», своих пациентов — не меньше восьми." }
+kind: challenge
+challenge: mute

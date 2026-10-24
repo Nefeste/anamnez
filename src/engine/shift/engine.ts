@@ -32,6 +32,7 @@ import {
   type ClosedCase, type ColleagueDay, type Command, DAY, type DaySummary, type Desk, type Difficulty, easyLevel, HANDOFF, hospitalDay, type Notice, type PendingResult, type PlannedReturn, REGISTRATION, SHIFT_END, SHIFT_SCHEMA_VERSION,
   SHIFT_START, type ShiftEvent, type ShiftPatient, type ShiftState, TRIAGE, type Triage, type VisitKind, type WardDay, type AmbulanceDay, type SurgeryDay,
 } from './types';
+import { CARD_EXAMS, type Challenge, CHALLENGES, challengeBlock, reviewExams } from './challenges';
 import { COMPLICATION_DAYS, complicationAt, complicationsOf, deathsOf, onsetHours, operationFor } from './surgery';
 import { dueIn, type TargetPlace, targetResults } from './targets';
 import { type Bed, daysIn, type StayEnd, stayNorm, wardCourse, wardState } from './ward';
@@ -201,11 +202,17 @@ export const SANDBOX_VENUE = 'sandbox';
  */
 export function newSingle(
   db: ContentDb,
-  opts: { seed: number; season: Season; difficulty?: Difficulty; venue: Id; hospital?: HospitalState; staff?: StaffMember[]; solo?: boolean } & Variety,
+  opts: {
+    seed: number; season: Season; difficulty?: Difficulty; venue: Id; hospital?: HospitalState; staff?: StaffMember[]; solo?: boolean;
+    challenges?: readonly Challenge[];
+  } & Variety,
 ): ShiftState {
   const s = singleBase(db, opts);
   // принимаете только вы (часть 79): записи к нанятым врачам нет, новых они не берут — до того, как разыграли день
   if (opts.solo) s.meta.solo = true;
+  // испытания (часть 91, spec 2026-10-challenges) — на весь день, в порядке списка испытаний
+  const challenges = CHALLENGES.filter(c => opts.challenges?.includes(c));
+  if (challenges.length > 0) s.meta.challenges = challenges;
   // день — в этой больнице (spec 2026-10-variety, «Заодно»): прежде он разыгрывался до неё, и в
   // районной больнице приходили только с терапией, без скорой
   planDay(db, s);
@@ -997,10 +1004,24 @@ function call(db: ContentDb, s: ShiftState, id: string): Notice[] {
   p.calledT ??= s.t;
   p.wait++; // прежняя проверка терпения недействительна
   s.current = id;
+  // «Нелюдимый врач» (часть 91): аллергии, хронические болезни и лекарства — из карты, без расспроса
+  if (s.meta.challenges?.includes('mute')) fromCard(db, s, p);
   // к привезённому скорой врач идёт в смотровую приёмного, к пришедшему сам — в свой кабинет (FR-HOS-4)
   const meet = meetIn(db, s, p);
   goTo(s, p);
   return later(db, s, p, meet);
+}
+
+/**
+ * Что есть в карте (часть 91, spec 2026-10-challenges, «Нелюдимый врач»): ответы на вопросы карты — своей ветвью зерна, в
+ * результатах с пометкой «из карты». Расспросом они не считаются: в `done` их нет. Уже известное не повторяется.
+ */
+function fromCard(db: ContentDb, s: ShiftState, p: ShiftPatient) {
+  for (const id of CARD_EXAMS) {
+    const e = db.exams[id];
+    if (!e || !examFits(e, p.patient) || p.done.includes(id) || p.results.some(r => r.exam === id)) continue;
+    p.results.push({ exam: id, obs: runExam(db, p.patient, id, branch(s, `card:${p.id}:${id}`), NORMAL_SKILL, exact(s)), at: s.t, step: 0, card: true });
+  }
 }
 
 /**
@@ -1070,10 +1091,13 @@ export function bedsideOf(db: ContentDb, s: ShiftState, p: ShiftPatient, examId:
 export function targetPlace(db: ContentDb, s: ShiftState, p: ShiftPatient): TargetPlace {
   const ctx = hospitalCtx(db, s);
   const bedside = (exam: Id) => bedsideOf(db, s, p, exam) !== undefined;
+  // испытание (часть 91): что оно запрещает у ваших пациентов, того в срок не сделать — срок, как и без кабинета, не
+  // ставится; деньги «Скупого главврача» — не в счёт: расходом игрок управляет сам
+  const limits = p.by ? undefined : s.meta.challenges?.filter(c => c !== 'thrifty');
   return {
     roomType: room => ctx.plan.rooms.find(r => r.id === room)?.type,
     bedside,
-    can: exam => bedside(exam) || !('block' in examWhere(db, ctx.plan, ctx.working, ctx.staffed, exam, brokenOf(s))),
+    can: exam => bedside(exam) || (!challengeBlock(db, limits, 0, exam) && !('block' in examWhere(db, ctx.plan, ctx.working, ctx.staffed, exam, brokenOf(s)))),
   };
 }
 
@@ -1219,6 +1243,8 @@ function examSetup(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id) {
   // у постели (spec 2026-10-chapter-3, часть 37): лежащему в смотровой приёмного с монитором ЭКГ
   // снимают на месте — врач, без очереди в кабинет и без описания
   const bed = bedsideOf(db, s, p, examId);
+  // испытание смены (часть 91): у ваших пациентов запрещённое не назначают — ни одним касанием, ни бланком
+  if (!p.by && challengeBlock(db, s.meta.challenges, p.spent.money, examId, !!bed)) return null;
   const where = bed ? { rooms: [] } : examWhere(db, ctx.plan, ctx.working, ctx.staffed, examId, brokenOf(s));
   if ('block' in where) return null;
   const queued = !bed && (e.kind === 'imaging' || e.kind === 'functional');
@@ -1544,8 +1570,11 @@ function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
   };
 }
 
+/** Что разбору нужно о смене: зерно, отделения и испытания (часть 91) — разумный врач разбора с теми же запретами. */
+export type ReviewMeta = Pick<ShiftState['meta'], 'seed' | 'department' | 'challenges'>;
+
 /** Цена и деньги разумного врача разбора на этом пациенте. */
-function rationalOf(db: ContentDb, meta: Pick<ShiftState['meta'], 'seed' | 'department'>, p: ShiftPatient): { cost: number; money: number } {
+function rationalOf(db: ContentDb, meta: ReviewMeta, p: ShiftPatient): { cost: number; money: number } {
   const r = reviewEntry(db, meta, p).run.result();
   return { cost: r.exams.reduce((a, id) => a + examCost(db, id), 0), money: r.money };
 }
@@ -1566,7 +1595,7 @@ function baseOf(c: ClosedCase): ScoreBase {
 }
 
 /** Досчитать разбор в `c` (тот же объект или его копию): бережливость, общая оценка, замечания, цена разумного пути. */
-function finishReview(db: ContentDb, meta: Pick<ShiftState['meta'], 'seed' | 'department'>, p: ShiftPatient, c: ClosedCase): ClosedCase {
+function finishReview(db: ContentDb, meta: ReviewMeta, p: ShiftPatient, c: ClosedCase): ClosedCase {
   const rational = rationalOf(db, meta, p);
   const score = scoreThrift(baseOf(c), p.done.reduce((a, id) => a + examCost(db, id), 0), rational.cost);
   c.grades.thrift = score.thrift;
@@ -1664,10 +1693,10 @@ export function reviewOf(db: ContentDb, s: ShiftState, p: ShiftPatient, diagnosi
 }
 
 /**
- * Разбор по одной записи пациента: из смены нужны только зерно и отделение — так его строит и
+ * Разбор по одной записи пациента: из смены нужны только зерно, отделение и испытания — так его строит и
  * архив профиля; отделения, с какими больница его приняла (часть 30), — в самой записи.
  */
-export function reviewFor(db: ContentDb, meta: Pick<ShiftState['meta'], 'seed' | 'department'>, p: ShiftPatient, diagnosis: Id): ReviewData {
+export function reviewFor(db: ContentDb, meta: ReviewMeta, p: ShiftPatient, diagnosis: Id): ReviewData {
   // разбор один на приём (0.5.11): экран разбора и архив профиля его не пересчитывают
   const entry = reviewEntry(db, meta, p);
   const key = `${diagnosis}|${p.results.length}`;
@@ -1699,18 +1728,20 @@ interface ReviewEntry {
 }
 const reviewEntries = new WeakMap<ContentDb, WeakMap<ShiftPatient['patient'], Map<string, ReviewEntry>>>();
 
-function reviewEntry(db: ContentDb, meta: Pick<ShiftState['meta'], 'seed' | 'department'>, p: ShiftPatient): ReviewEntry {
+function reviewEntry(db: ContentDb, meta: ReviewMeta, p: ShiftPatient): ReviewEntry {
   let byDb = reviewEntries.get(db);
   if (!byDb) reviewEntries.set(db, (byDb = new WeakMap()));
   let byPatient = byDb.get(p.patient);
   if (!byPatient) byDb.set(p.patient, (byPatient = new Map()));
   const departments = p.departments ?? meta.department;
-  const key = `${meta.seed}|${p.id}|${typeof departments === 'string' ? departments : departments.join(',')}`;
+  // испытания смены (часть 91) — у ваших пациентов: разумный врач разбора с теми же запретами; у нанятых врачей — как всегда
+  const limits = p.by ? undefined : meta.challenges;
+  const key = `${meta.seed}|${p.id}|${typeof departments === 'string' ? departments : departments.join(',')}${limits ? `|${limits.join('+')}` : ''}`;
   let entry = byPatient.get(key);
   if (!entry) {
     const rng = Rng.seeded(meta.seed).fork(`review:${p.id}`);
     const candidates = candidatesOf(db, departments);
-    const exams = Object.keys(db.exams).sort();
+    const exams = reviewExams(db, limits, Object.keys(db.exams).sort());
     entry = {
       rng, candidates, exams, run: startRational(db, p.patient, rng, { candidates: [...candidates], exams: [...exams] }), reviews: new Map(),
       beliefs: [], obs: complaintObservations(p.patient),
@@ -1780,7 +1811,7 @@ function nextBelief(db: ContentDb, entry: ReviewEntry, p: ShiftPatient) {
 }
 
 /** Уверенность разбора после жалоб и после каждого результата — что не посчитано заранее, досчитывается. */
-function reviewTimeline(db: ContentDb, meta: Pick<ShiftState['meta'], 'seed' | 'department'>, p: ShiftPatient): Belief[][] {
+function reviewTimeline(db: ContentDb, meta: ReviewMeta, p: ShiftPatient): Belief[][] {
   const entry = reviewEntry(db, meta, p);
   while (entry.beliefs.length <= p.results.length) nextBelief(db, entry, p);
   return entry.beliefs.slice(0, p.results.length + 1);
