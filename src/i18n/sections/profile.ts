@@ -61,7 +61,7 @@ export const profile = {
   achievementsHint: 'Отметки за хорошую медицину и хорошую больницу — в любом режиме и без сроков.',
   achievementGroup: {
     practice: 'Приём', diagnosis: 'Диагноз', care: 'Бережливость и безопасность', knowledge: 'Болезни', hospital: 'Больница', campaign: 'Кампания',
-    daily: 'Случай дня',
+    daily: 'Случай дня', challenge: 'Испытания',
   } as Record<string, string>,
   gotOn: (date: string) => `Получено ${date}`,
   achievementLine: (name: string) => `Достижение: «${name}»`,

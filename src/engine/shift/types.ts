@@ -8,6 +8,7 @@ import type { Scheduled } from '../core/events';
 import type { Outcome } from '../med/course';
 import type { BuildCommand, Built, HospitalState } from '../hospital/build';
 import type { CampaignProgress } from '../campaign/campaign';
+import type { Challenge } from './challenges';
 import type { CaseIncome, Ledger, Payer, RepChange } from '../economy/economy';
 import type { StaffMember } from '../hospital/staff';
 import type { DoctorPhase } from '../med/policy';
@@ -91,6 +92,8 @@ export interface ResultBatch {
   at: number;
   step: number;
   repeat?: true;
+  /** из карты (часть 91, «Нелюдимый врач»): аллергии, хронические болезни, лекарства — без расспроса */
+  card?: true;
 }
 
 export interface PendingResult {
@@ -486,6 +489,11 @@ export interface ShiftState {
      * записанных к ним; медсёстры, лаборанты и врачи, что описывают снимки и оперируют, работают. Нет — как прежде
      */
     solo?: true;
+    /**
+     * испытания «Смены» (часть 91, spec 2026-10-challenges): без расспроса, без анализов и снимков, 1 500 ₽ на пациента — у
+     * ваших пациентов весь день; нет — как прежде
+     */
+    challenges?: Challenge[];
   };
   t: number;
   day: number;

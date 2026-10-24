@@ -42,7 +42,9 @@ const FIRST_FRESH = 'fresh';
  * С чего начать приём: игрок уже что-то сделал (вернулся с результатами), приём закончен или его ведёт нанятый врач —
  * с «Карты»; новый пациент — со «Спросить», а давление, что померила медсестра, ждёт на «Карте» числом нового.
  */
-const firstTab = (v: VisitView, readOnly: boolean): CardTab => (v.acted || v.decision || readOnly ? 'card' : 'ask');
+const firstTab = (v: VisitView, readOnly: boolean): CardTab =>
+  // «Нелюдимый врач» (часть 91): расспроса нет — с «Осмотреть»
+  (v.acted || v.decision || readOnly ? 'card' : v.challenges?.includes('mute') ? 'examine' : 'ask');
 
 /**
  * Последнее у пациента — вкладка, место на фигуре, отмеченное в бланке — и после того, как экран карты собрали заново:
@@ -197,8 +199,11 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
   };
   // бланк: галочка — отметить или снять; «Отправить» — отмеченное разом, по порядку отметки; к первому — ответ
   const mark = (id: string) => setMarked(marked.includes(id) ? marked.filter(x => x !== id) : [...marked, id]);
+  // «Скупой главврач» (часть 91): сколько стоит отмеченное и не больше ли оставшегося на пациента
+  const markedCost = marked.reduce((a, id) => a + examInfo(id).cost, 0);
+  const over = v.budget !== undefined && markedCost > v.budget.left;
   const send = () => {
-    if (marked.length === 0) return;
+    if (marked.length === 0 || over) return;
     buzz('tap');
     follow(`done:${marked[0]}`);
     setMarked([]);
@@ -357,6 +362,8 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
           ) : tab === 'ask' ? (
             // беседа: заданные вопросы и реплики пациента по порядку; вопросы — внизу, под листом
             <View onLayout={e => placeCard('list', e)}>
+              {/* «Нелюдимый врач» (часть 91): расспроса нет — что известно и откуда */}
+              {v.challenges?.includes('mute') ? <P muted testID="challenge-ask-note">{T.challenges.askNote}</P> : null}
               <Talk v={v} asks={new Set(groups.ask)} explain={explain} isOpen={isOpen} toggle={toggle}
                 onRow={(id, e) => {
                   placeRow(`done:${id}`, 'list', e);
@@ -368,6 +375,8 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
           ) : (
             // бланк направления: строки — прямо в столбце, где легла каждая — от его начала
             <View onLayout={e => placeCard('list', e)} style={styles.form}>
+              {/* «Земский врач» (часть 91): анализов и снимков нет */}
+              {v.challenges?.includes('rural') ? <P muted testID="challenge-order-note">{T.challenges.orderNote}</P> : null}
               <Referral v={v} ids={groups.order} focus={focus} marked={marked} onMark={mark} isOpen={isOpen} toggle={toggle} explain={explain}
                 onRow={(id, e) => {
                   placeRow(`done:${id}`, 'list', e);
@@ -389,13 +398,17 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
             explain={explain} onClose={() => pickPlace(place)} />
         ) : null}
         {tab === 'order' && marked.length > 0 ? (
-          // бланк: сколько отмечено, во что обойдётся, сколько ждать самого долгого — и «Отправить»
+          // бланк: сколько отмечено, во что обойдётся, сколько ждать самого долгого — и «Отправить»; «Скупой главврач»
+          // (часть 91): отмечено дороже, чем осталось на пациента, — отправить нельзя, сказано, сколько осталось
           <View testID="order-bar" style={[styles.strip, styles.orderBar]}>
-            <Text testID="order-sum" style={[styles.stripText, styles.stripLine]}>
-              {T.spikes.referral.marked(marked.length, T.common.rub(marked.reduce((a, id) => a + examInfo(id).cost, 0)), longestOf(v, marked))}
-            </Text>
-            <Pressable testID="order-send" accessibilityRole="button" accessibilityHint={T.spikes.referral.sendHint} onPress={send}
-              style={({ pressed }) => [styles.stripButton, styles.sendButton, pressed && styles.pressed]}>
+            <View style={styles.stripText}>
+              <Text testID="order-sum" style={styles.stripLine}>
+                {T.spikes.referral.marked(marked.length, T.common.rub(markedCost), longestOf(v, marked))}
+              </Text>
+              {over ? <Text testID="order-over" style={[styles.stripLine, styles.stripUrgent]}>{T.challenges.overBudget(T.common.rub(v.budget!.left))}</Text> : null}
+            </View>
+            <Pressable testID="order-send" accessibilityRole="button" accessibilityHint={T.spikes.referral.sendHint} onPress={send} disabled={over}
+              style={({ pressed }) => [styles.stripButton, styles.sendButton, over && styles.sendOff, pressed && styles.pressed]}>
               <Text style={[styles.stripButtonText, styles.sendText]}>{T.spikes.referral.send}</Text>
             </Pressable>
           </View>
@@ -460,7 +473,10 @@ function Head({ v, readOnly, open, onToggle, explain }: {
             {/* кем работает — с регистратуры (0.5.10) */}
             {v.job ? <Text testID="visit-job">{v.job}</Text> : null}
             {v.job ? ' · ' : null}
-            <Text testID="visit-clock" style={styles.mono}>{`${v.clock} · ${t.spentShort(v.minutesSpent, T.common.rub(v.money))}`}</Text>
+            {/* «Скупой главврач» (часть 91): потрачено — из скольких */}
+            <Text testID="visit-clock" style={styles.mono}>
+              {`${v.clock} · ${t.spentShort(v.minutesSpent, v.budget ? T.challenges.budget(T.common.rub(v.money), T.common.rub(v.budget.of)) : T.common.rub(v.money))}`}
+            </Text>
           </Text>
         </View>
       </View>
@@ -570,6 +586,7 @@ const useStyles = makeStyles(t => ({
   orderBar: { backgroundColor: t.colors.accentSoft, borderTopColor: t.colors.accent },
   sendButton: { minWidth: 120, alignItems: 'center', backgroundColor: t.colors.accent, borderColor: t.colors.accent },
   sendText: { fontSize: 15, color: t.colors.onAccent },
+  sendOff: { opacity: 0.45 },
   hint: { flexDirection: 'row', gap: space.s, alignItems: 'center' },
   label: { fontSize: 13, fontWeight: '700', letterSpacing: 1.2, color: t.colors.muted, textTransform: 'uppercase', marginTop: space.s },
   knownHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: space.s },

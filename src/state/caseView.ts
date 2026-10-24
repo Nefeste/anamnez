@@ -17,6 +17,7 @@ import { ageBand, checkRule, knownOf, rulesFor } from '@/engine/med/rules';
 import { complaintText, observationText } from '@/engine/med/text';
 import type { Observation, Patient } from '@/engine/med/types';
 import type { TargetResult } from '@/engine/shift/targets';
+import type { Challenge } from '@/engine/shift/challenges';
 import type { Difficulty } from '@/engine/shift/types';
 import type { EcgFindings, Wall } from '@/render/ecg/model';
 import type { StaffPortrait } from '@/render/look';
@@ -98,6 +99,8 @@ export interface ResultGroup {
   fresh: boolean;
   lines: Line[];
   image?: ResultImage;
+  /** из карты (часть 91, «Нелюдимый врач»): ответы без расспроса — в беседе их нет */
+  card?: true;
 }
 
 /** Справка о термине для «Что это?»: только знания из базы, не правда о пациенте. `id` — статья энциклопедии. */
@@ -220,6 +223,10 @@ export interface VisitView {
    * важное; нет — уровень другой или пациент пришёл без жалоб
    */
   danger?: DangerHint;
+  /** испытания «Смены» у вашего пациента (часть 91, spec 2026-10-challenges); нет — без условий */
+  challenges?: readonly Challenge[];
+  /** «Скупой главврач»: сколько осталось на обследования пациента из скольких, ₽ */
+  budget?: { left: number; of: number };
   draft: Draft;
   /** название выбранного, но ещё не поставленного диагноза */
   draftDiagnosisName?: string;
@@ -269,6 +276,8 @@ export interface Arrival {
   obs: Observation[];
   /** повторный забор того же назначения (spec 2026-10-chapter-3, часть 39в): тропонин через час */
   repeat?: true;
+  /** из карты (часть 91, «Нелюдимый врач») */
+  card?: true;
 }
 
 /** Как назвать результат: повторный забор (часть 39в) — своим именем, «Тропонин через час». */
@@ -311,6 +320,9 @@ export interface CaseInput {
   returnNote?: string;
   /** сложность: «Похоже на» — только у «Студента» (09-game-design.md §14); нет — «Студент» (прототип П4) */
   difficulty?: Difficulty;
+  /** испытания «Смены» (часть 91) и деньги «Скупого главврача» — как у вида */
+  challenges?: readonly Challenge[];
+  budget?: { left: number; of: number };
   /** своя больница: обследования, которых здесь не сделать, — и почему (spec 2026-09-own-hospital) */
   unavailable?: Record<Id, string>;
   /** отделения больницы: из их болезней диагноз и «Похоже на» (часть 30); нет — терапия */
@@ -995,7 +1007,10 @@ export function makeCaseView(c: CaseInput): VisitView {
     groups: c.arrived
       .map((a, i) => {
         const image = imageOf(a.exam, a.obs, obs, fnv1a(`${p.seed}:${a.exam}`), p.seed);
-        return { key: `${i}:${a.exam}`, exam: a.exam, name: resultName(a.exam, a.repeat), at: hhmm(a.at), fresh: c.step > 0 && a.step === c.step, lines: a.obs.filter(visible).map(line), ...(image ? { image } : {}) };
+        return {
+          key: `${i}:${a.exam}`, exam: a.exam, name: a.card ? T.challenges.fromCard(resultName(a.exam)) : resultName(a.exam, a.repeat), at: hhmm(a.at),
+          fresh: c.step > 0 && a.step === c.step, lines: a.obs.filter(visible).map(line), ...(image ? { image } : {}), ...(a.card ? { card: true as const } : {}),
+        };
       })
       .reverse(),
     freshCount: c.arrived.filter(a => c.step > 0 && a.step === c.step).reduce((n, a) => n + a.obs.filter(visible).length, 0),
@@ -1021,6 +1036,8 @@ export function makeCaseView(c: CaseInput): VisitView {
     suggested: treatments.filter(x => suggested.has(x.id)),
     ...(c.difficulty === 'trainee' && p.complaints.length > 0 ? { focus: complaintExams(p, c.departments) } : {}),
     ...(c.difficulty === 'trainee' && p.complaints.length > 0 && beliefs ? { danger: dangerHint(p, obs, c, beliefs) } : {}),
+    ...(c.challenges && c.challenges.length > 0 ? { challenges: c.challenges } : {}),
+    ...(c.budget ? { budget: c.budget } : {}),
     draft: c.draft,
     draftDiagnosisName: c.draft.diagnosis ? db.conditions[c.draft.diagnosis].name.ru : undefined,
     ...(c.canSendAway ? { canSendAway: true } : {}),

@@ -7,12 +7,14 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
+import { CHALLENGES } from '@/engine/shift/challenges';
 import { T } from '@/i18n';
 import { Portrait } from '@/render/Portrait';
 import { loadProfile, useProfile } from '@/state/profile';
 import {
   achievementCount, archiveRows, DOCTOR_AGE, doctorName, pctOf, portraitSeed, practiceView, rankLadder, rankName, skillRows, specialtyRows,
 } from '@/state/profileView';
+import { challengeBest } from '@/state/session';
 import { useSettings } from '@/state/settings';
 import { CaseRow } from '@/ui/case/CaseRow';
 import { BarList, Meter, StackBar, StatTile } from '@/ui/charts';
@@ -109,6 +111,16 @@ export default function ProfileScreen() {
         <Text style={styles.label}>{t.achievements}</Text>
         <Button kind="plain" testID="profile-achievements" title={t.achievementsOpen} hint={t.achievementsCount(got.got, got.total)}
           onPress={() => router.push('/profile/achievements')} />
+      </Card>
+
+      {/* испытания (часть 91, spec 2026-10-challenges): у каждого — лучший итог смены с ним и где */}
+      <Card testID="profile-challenges">
+        <Text style={styles.label}>{T.challenges.profileTitle}</Text>
+        {CHALLENGES.map(c => {
+          const b = challengeBest(c);
+          const name = T.challenges.names[c];
+          return <P key={c} testID={`profile-challenge-${c}`}>{b ? T.challenges.profileBest(name, b.best.overall, b.venue) : T.challenges.profileNone(name)}</P>;
+        })}
       </Card>
 
       <Card>

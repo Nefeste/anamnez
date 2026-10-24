@@ -16,7 +16,7 @@ import {
 } from '../../src/state/session';
 
 const facts = (x: Partial<CareerFacts> = {}): CareerFacts => ({
-  cases: 0, days: 0, run: 0, gradeA: 0, thrift: 0, allergy: 0, noLeftDays: 0, daily: 0, seen: {}, rooms: [], chapters: [], ...x,
+  cases: 0, days: 0, run: 0, gradeA: 0, thrift: 0, allergy: 0, noLeftDays: 0, daily: 0, seen: {}, rooms: [], chapters: [], challenges: [], ...x,
 });
 const ach = (id: string) => db.achievements[id];
 
@@ -160,7 +160,7 @@ describe('достижения в профиле', () => {
     await loadProfile();
     recordDay({ key: 'shift:1:1', seen: 3, noLeft: false, rooms: [], chapters: [] });
     const groups = achievementGroups(profile());
-    expect(groups.map(g => g.key)).toEqual(['practice', 'diagnosis', 'care', 'knowledge', 'hospital', 'campaign', 'daily']);
+    expect(groups.map(g => g.key)).toEqual(['practice', 'diagnosis', 'care', 'knowledge', 'hospital', 'campaign', 'daily', 'challenge']);
     expect(groups.flatMap(g => g.items).length).toBe(Object.keys(db.achievements).length);
     const [first, shift] = groups[0].items;
     expect([first.id, first.got, first.need]).toEqual(['ach.first_patient', undefined, ach('ach.first_patient').need.ru]);

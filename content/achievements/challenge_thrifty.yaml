@@ -1,0 +1,7 @@
+id: ach.challenge_thrifty
+order: 27
+category: challenge
+name: { ru: "Скупой главврач" }
+need: { ru: "Пройти испытание «Скупой главврач»: смена, где обследования пациента не дороже 1 500 ₽, с итогом не ниже «B», своих пациентов — не меньше восьми." }
+kind: challenge
+challenge: thrifty
