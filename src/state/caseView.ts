@@ -7,8 +7,8 @@ import { type BodySystem, type Condition, type Id, membersOf, type Rule, type Se
 import { fnv1a } from '@/engine/core/hash';
 import type { Outcome } from '@/engine/med/course';
 import { complaintObservations, examFits, expectedFindings, falseRate } from '@/engine/med/exams';
-import { evidenceFor } from '@/engine/med/differential';
-import { type Belief, contextOf, type InferContext, knownFacts, posterior } from '@/engine/med/infer';
+import { evidenceFor, examsFor } from '@/engine/med/differential';
+import { type Belief, contextOf, findingProbability, type InferContext, knownFacts, posterior } from '@/engine/med/infer';
 import { jobName } from '@/engine/med/jobs';
 import { bedsideLack, type PlanEval, STAYS } from '@/engine/med/plan';
 import type { ReviewData } from '@/engine/med/review';
@@ -215,6 +215,11 @@ export interface VisitView {
    * остальное сворачивает; нет — уровень другой или пациент пришёл без жалоб (профосмотр)
    */
   focus?: Id[];
+  /**
+   * «Практикант» (часть 94, spec 2026-10-trainee-hint): опасные причины жалобы — исключена ли каждая и чем проверить её
+   * важное; нет — уровень другой или пациент пришёл без жалоб
+   */
+  danger?: DangerHint;
   draft: Draft;
   /** название выбранного, но ещё не поставленного диагноза */
   draftDiagnosisName?: string;
@@ -844,6 +849,79 @@ export interface HypothesisView {
   clinical?: true;
 }
 
+/**
+ * Опасная причина жалобы у «Практиканта» (часть 94, spec 2026-10-trainee-hint, вопрос 57): болезнь больницы, которая
+ * угрожает жизни и при этих жалобах бывает хотя бы у 1 из 100.
+ */
+export interface DangerView {
+  id: Id;
+  name: string;
+  /** по найденному стала реже 1 из 1000 */
+  excluded: boolean;
+  /** чем проверить её непроверенное важное: на каждый признак — самое дешёвое обследование, без повторов */
+  check: { exam: Id; name: string }[];
+}
+
+/** Подсказка «Практиканту» (часть 94): опасные причины и сколько важного при них проверено. */
+export interface DangerHint {
+  /** не исключённые — первыми; внутри — по тому, как часты при этих жалобах */
+  causes: DangerView[];
+  /** важное при опасных причинах (`dangerHint`), кроме жалоб: проверено из всего — без повторов */
+  checked: number;
+  important: number;
+}
+
+/** Опасная причина — угрожает жизни и при этих жалобах бывает хотя бы у 1 из 100 (часть 94). */
+export const DANGER_FLOOR = 0.01;
+/** Исключена — по найденному стала реже 1 из 1000 (часть 94). */
+export const DANGER_GONE = 0.001;
+/** «Обычно» — полоса базы (`tools/content/schema.ts`): признак есть у трёх из четырёх с болезнью и чаще. */
+const USUAL = 0.75;
+
+/**
+ * Подсказка «Практиканту» (часть 94, spec 2026-10-trainee-hint, вопрос 57, вариант 2): опасные причины жалобы — болезни
+ * больницы, которые угрожают жизни и бывают хотя бы у 1 из 100 с такими жалобами, полом, возрастом и в такой сезон, или
+ * стали так часты по найденному; исключена — по найденному стала реже 1 из 1000. Важное при ней — её красные флаги, то, чем
+ * её подтверждают, и признаки, которые при ней бывают обычно, — кроме жалоб и того, что здесь нечем проверить. Всё — тем же
+ * выводом, что «Похоже на»: по базе и тому, что врач узнал, без правды; есть ли болезнь у пациента, подсказка не говорит.
+ */
+function dangerHint(p: Patient, obs: readonly Observation[], c: CaseInput, beliefs: readonly Belief[]): DangerHint {
+  const first = complaintObservations(p);
+  const atStart = new Map(posterior(db, candidates(c.departments), first, contextOf(db, p, first)).map(b => [b.id, b.p]));
+  const now = new Map(beliefs.map(b => [b.id, b.p]));
+  const told = new Set(p.complaints);
+  // проверено — что спросили, осмотрели или назначили: и пока результат не пришёл
+  const checked = new Set([...obs.map(o => o.f), ...c.done.flatMap(e => db.exams[e]?.checks.map(x => x.f) ?? [])]);
+  const important = new Set<Id>();
+  const causes = [...atStart.keys()]
+    .filter(id => db.conditions[id].severity === 'critical' && Math.max(atStart.get(id) ?? 0, now.get(id) ?? 0) >= DANGER_FLOOR)
+    .map(id => {
+      const cond = db.conditions[id];
+      const own = new Set(cond.findings.map(l => l.f));
+      const confirms = cond.confirm === 'clinical' ? [] : cond.confirm.flatMap(e => db.exams[e]?.checks.filter(x => own.has(x.f) && !x.given).map(x => x.f) ?? []);
+      // обычное — у самой болезни (и того, без чего она не бывает), не у этого пациента
+      const usual = [...own].filter(f => findingProbability(db, f, [id, ...(cond.requires ?? [])], [], 1, p) >= USUAL);
+      const check = new Set<Id>();
+      for (const f of new Set([...(cond.redFlags ?? []), ...confirms, ...usual])) {
+        if (told.has(f) || db.findings[f]?.evidence === false) continue;
+        const exam = examsFor(db, f, p).find(e => !c.unavailable?.[e]);
+        if (!exam) continue;
+        important.add(f);
+        if (!checked.has(f)) check.add(exam);
+      }
+      return {
+        id,
+        name: cond.name.ru,
+        excluded: (now.get(id) ?? 0) < DANGER_GONE,
+        check: [...check].sort((a, b) => db.exams[a].cost - db.exams[b].cost || (a < b ? -1 : 1)).map(exam => ({ exam, name: db.exams[exam].name.ru })),
+        at: atStart.get(id) ?? 0,
+      };
+    })
+    .sort((a, b) => Number(a.excluded) - Number(b.excluded) || b.at - a.at || (a.id < b.id ? -1 : 1))
+    .map(({ at: _, ...x }) => x);
+  return { causes, checked: [...important].filter(f => checked.has(f)).length, important: important.size };
+}
+
 /** Что показало обследование (0.6.8): пришло и что-то нашло — есть, ничего — нет; не сделано или не пришло — неизвестно. */
 function arrivedState(arrived: readonly Arrival[], exam: Id): Known {
   const got = arrived.filter(a => a.exam === exam);
@@ -942,6 +1020,7 @@ export function makeCaseView(c: CaseInput): VisitView {
     treatmentGroups: groupTreatments(treatments),
     suggested: treatments.filter(x => suggested.has(x.id)),
     ...(c.difficulty === 'trainee' && p.complaints.length > 0 ? { focus: complaintExams(p, c.departments) } : {}),
+    ...(c.difficulty === 'trainee' && p.complaints.length > 0 && beliefs ? { danger: dangerHint(p, obs, c, beliefs) } : {}),
     draft: c.draft,
     draftDiagnosisName: c.draft.diagnosis ? db.conditions[c.draft.diagnosis].name.ru : undefined,
     ...(c.canSendAway ? { canSendAway: true } : {}),

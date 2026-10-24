@@ -10,6 +10,7 @@ import { presetStaff } from '../../src/engine/hospital/staff';
 import { generatePatient } from '../../src/engine/med/generate';
 import { apply, newCampaign, newSandbox, newShift, newSingle } from '../../src/engine/shift/engine';
 import { DAY, SHIFT_END, SHIFT_SCHEMA_VERSION } from '../../src/engine/shift/types';
+import { makeCaseView } from '../../src/state/caseView';
 import { placeOf } from '../../src/ui/case/places';
 import { sectionOf } from '../../src/ui/case/sections';
 import { buildDb } from '../content/load';
@@ -866,6 +867,30 @@ function traineeSave(): { save: string; id: string } {
   const id = s.queue.find(q => s.patients[q].patient.complaints.length > 0);
   if (!id) throw new Error('traineeSave: в очереди нет пациента с жалобой');
   return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s }), id };
+}
+
+/**
+ * Практика на «Практиканте» (часть 94, spec 2026-10-trainee-hint): первым в очереди — с аппендицитом и жалобами, при
+ * которых опасное не исключено и есть чем проверить.
+ */
+function traineeDangerSave(): { save: string; id: string } {
+  const { db } = buildDb();
+  const s = newShift(db, { seed: 47, season: 'winter', difficulty: 'trainee' });
+  for (let i = 0; i < 600 && s.queue.length === 0; i++) apply(db, s, { kind: 'advance', seconds: 60 });
+  const id = s.queue[0];
+  for (let seed = 9600; seed < 9800; seed++) {
+    const x = generatePatient(db, seed, { department: 'dept.therapy', season: 'winter', primary: 'cond.appendicitis' });
+    if (x.complaints.length === 0) continue;
+    const danger = makeCaseView({
+      version: 0, patient: x, clock: 600, minutesSpent: 0, money: 0, step: 0, arrived: [], pending: [], meanwhile: [], done: [],
+      draft: { treatments: [], setting: 'home' }, difficulty: 'trainee',
+    }).danger;
+    if (danger?.causes.some(c => !c.excluded && c.check.length > 0)) {
+      s.patients[id].patient = x;
+      return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s }), id };
+    }
+  }
+  throw new Error('traineeDangerSave: нет пациента с опасной причиной');
 }
 
 /** Песочница до открытия: готовая амбулатория, бюджет «обычный» — экран «Перед открытием». */
@@ -2318,6 +2343,8 @@ try {
   await pt.getByTestId('tab-pause').click();
   await pt.getByTestId(`queue-${trainee.id}`).click();
   await visible(pt, 'visit-decide').waitFor({ timeout: 15_000 });
+  // подсказка «Практиканту» (часть 94): при боли в пояснице опасного — реже 1 из 100
+  check((await text(pt, 'danger-strip')).startsWith('Опасных причин при этих жалобах почти не бывает'), `«Практикант»: опасных причин нет — ${await text(pt, 'danger-strip')}`);
   await pt.getByTestId('tab-order').click();
   // строки бланка с галочкой, без их «?» (`exam-…-info`); раздел «По жалобе» — раскрыт, остальные — свёрнуты
   const exams = () => pt.locator('[data-testid^="exam-"]:not([data-testid$="-info"])').count();
@@ -2337,6 +2364,30 @@ try {
     `«Практикант»: «Осмотреть» — мест ярко ${dim.filter(x => !x).length}, бледнее ${dim.filter(Boolean).length}`);
   await pt.screenshot({ path: join(OUT, '19-trainee-examine.png') });
   await tc.close();
+  // подсказка «Практиканту» (часть 94, spec 2026-10-trainee-hint): при боли в животе — «проверено N из M важного; не
+  // исключены K опасных причин»; касание — доска гипотез: какие и чем проверить, опасную — в ряд гипотез
+  const danger = traineeDangerSave();
+  const dc = await browser.newContext({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2 });
+  await dc.addInitScript(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/shift.json', danger.save]);
+  const pd = await dc.newPage();
+  pd.on('pageerror', e => errors.push(String(e)));
+  await pd.goto(`${base}/shift`);
+  await pd.getByTestId(`queue-${danger.id}`).waitFor({ timeout: 15_000 });
+  await pd.getByTestId('tab-pause').click();
+  await pd.getByTestId(`queue-${danger.id}`).click();
+  await visible(pd, 'visit-decide').waitFor({ timeout: 15_000 });
+  const dangerStrip = await text(pd, 'danger-strip');
+  check(/^Проверено \d+ из \d+ важного; не исключен[аы] \d+\sопасн/.test(dangerStrip), `«Практикант»: подсказка — ${dangerStrip}`);
+  await pd.getByTestId('danger-strip').click();
+  await pd.getByTestId('danger-card').waitFor({ timeout: 10_000 });
+  const openCause = ((await pd.locator('[data-testid^="danger-add-"]').first().getAttribute('data-testid')) ?? '').slice('danger-add-'.length);
+  const checks = await pd.locator('[data-testid^="danger-check-"]').count();
+  check(openCause.startsWith('cond.') && checks > 0 && (await text(pd, 'danger-line')) === dangerStrip,
+    `«Практикант»: доска — не исключена ${openCause}, проверить — ${checks}`);
+  await pd.screenshot({ path: join(OUT, '19-trainee-danger.png') });
+  await pd.getByTestId(`danger-add-${openCause}`).click();
+  check((await pd.getByTestId(`hyp-${openCause}`).count()) === 1 && (await text(pd, `danger-add-${openCause}`)) === '✓ в ряду', `«Практикант»: опасная причина — в ряд гипотез, ${openCause}`);
+  await dc.close();
   // операционная (spec 2026-09-chapter-2, часть 28): у вас пациент с аппендицитом — в решении
   // «В операционную» с операцией и койками; итог приёма — операция и палата; на обходе —
   // «идёт операция» и выписать нельзя; вечером — в итогах дня операционная
