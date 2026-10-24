@@ -122,32 +122,54 @@ describe('процедурная — по одному, пробирки нес�
     expect(s.events.some(e => e.event.kind === 'result' && e.event.id === a.id && e.t === x.readyAt)).toBe(true);
   });
 
-  test('вы ждёте у себя его результата — пробы несут сразу, как cito: третьего берут, когда медсестра вернётся (часть 89)', () => {
+  test('вы ждёте у себя его результата — его пробы несут сразу, как cito: третьего берут, когда медсестра вернётся (часть 89)', () => {
+    const s = newShift(db, { seed: 21, season: 'winter' });
+    for (let i = 0; i < 600 && s.queue.length < 3; i++) apply(db, s, { kind: 'advance', seconds: 60 });
+    const [a, b, c] = s.queue.slice(0, 3).map(id => s.patients[id]);
+    for (const p of [a, b]) {
+      apply(db, s, { kind: 'call', id: p.id });
+      apply(db, s, { kind: 'exam', exam: CBC });
+      apply(db, s, { kind: 'sendAway' });
+    }
+    const [x, y] = [cbcOf(a), cbcOf(b)];
+    const { proc, carry } = rooms(s);
+    expect(x.sent).toBe(y.end);
+    // первого уже взяли, у второго берут; первый — у вас в кабинете и ждёт результата. Так бывает, когда второго послал
+    // нанятый врач, — состояние задаём сами, как в тесте выше
+    until(s, x.end! + MIN);
+    expect(s.t).toBeLessThan(y.end!);
+    s.current = a.id;
+    a.status = 'inRoom';
+    // третий дошёл бы до процедурной раньше, чем она понесла: пока вы не ждёте — его берут следом и несут всех разом
+    const batched = readyIn(db, s, c, CBC)!;
+    // «Ждать результатов» первого идёт (по частям: смена ещё не дожила) и кончится его ОАК — третьего возьмут, когда
+    // медсестра отнесёт пробы и вернётся
+    apply(db, s, { kind: 'waitResults' }, () => false);
+    expect(s.until).toBe(x.readyAt);
+    expect(readyIn(db, s, c, CBC)! - batched).toBeCloseTo((carry + HANDOFF + carry) / MIN);
+    expect(s.rooms[proc]).toBe(y.end! + carry + HANDOFF + carry);
+    // дожили — результат пришёл к обещанной минуте
+    const ready = x.readyAt;
+    catchUp(db, s);
+    expect(x.readyAt).toBe(ready);
+    expect(a.results.some(r => r.exam === CBC)).toBe(true);
+  });
+
+  test('вы ждёте, пока он вернётся с забора, — это ожидание результата не ждёт: пробы — партией (часть 89)', () => {
     const s = newShift(db, { seed: 21, season: 'winter' });
     for (let i = 0; i < 600 && s.queue.length < 3; i++) apply(db, s, { kind: 'advance', seconds: 60 });
     const [a, b, c] = s.queue.slice(0, 3).map(id => s.patients[id]);
     apply(db, s, { kind: 'call', id: a.id });
     apply(db, s, { kind: 'exam', exam: CBC });
     apply(db, s, { kind: 'sendAway' });
-    // второй — у вас: его кровь берут следом за первым, пробы обоих понесут после его забора
     apply(db, s, { kind: 'call', id: b.id });
     apply(db, s, { kind: 'exam', exam: CBC });
     const [x, y] = [cbcOf(a), cbcOf(b)];
-    const { proc, carry } = rooms(s);
-    expect(y.start).toBe(x.end);
     expect(x.sent).toBe(y.end);
-    // третий дошёл бы до процедурной раньше, чем она понесла: пока вы не ждёте — его берут следом и несут всех разом
     const batched = readyIn(db, s, c, CBC)!;
-    // «Ждать результатов» второго идёт (по частям: смена ещё не дожила) — третьего возьмут, когда она отнесёт и вернётся
     apply(db, s, { kind: 'waitResults' }, () => false);
-    expect(s.until).toBeDefined();
-    const cito = readyIn(db, s, c, CBC)!;
-    expect(cito - batched).toBeCloseTo((carry + HANDOFF + carry) / MIN);
-    expect(s.rooms[proc]).toBe(y.end! + carry + HANDOFF + carry);
-    // дожили — обещанное время результата второго то же
-    const ready = y.readyAt;
-    catchUp(db, s);
-    expect(y.readyAt).toBe(ready);
+    expect(s.until).toBe(b.out!.back);
+    expect(readyIn(db, s, c, CBC)).toBe(batched);
   });
 
   test('на карте: первый — в процедурной, второй — на скамье, потом у неё; медсестра с пробирками — у двери лаборатории, когда понесла', () => {

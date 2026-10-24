@@ -1177,8 +1177,11 @@ function waitUntil(s: ShiftState, p: ShiftPatient): number {
   return car ? car.t : target;
 }
 
-/** Идёт «Ждать результатов» этого пациента (spec 2026-10-code-blue): смена доживает до `waitUntil`. */
-const waitedFor = (s: ShiftState, p: ShiftPatient) => s.current === p.id && s.until !== undefined && s.until === waitUntil(s, p);
+/**
+ * Идёт «Ждать результатов» этого пациента, и кончится оно этим результатом (spec 2026-10-code-blue): смена доживает до
+ * `waitUntil`, а это — его время. Сдвинуть результат — ожидание кончится без него.
+ */
+const awaited = (s: ShiftState, p: ShiftPatient, x: PendingResult) => s.current === p.id && s.until === x.readyAt && s.until === waitUntil(s, p);
 
 /**
  * Делают ли обследование при враче (0.5.12): вопрос, осмотр, у постели, анализ, взятый на месте, — да; снимок, ЭКГ в
@@ -1290,12 +1293,12 @@ type OpenDraws = { sent: number; items: { p: ShiftPatient; x: PendingResult }[] 
 /**
  * Когда медсестра процедурной возьмёт кровь у дошедшего в `arrive` (spec 2026-10-code-blue): ещё не понесла пробы
  * последних — следом за ними, а понесёт все разом (`open`); понесла — когда вернётся, как в 0.6.9. Вы ждёте у себя
- * результата одного из тех, чьи пробы у неё («Ждать результатов»), — она несёт их сразу, как пробу cito: обещанное
+ * результата одной из проб, что у неё («Ждать результатов» кончится им), — она несёт их сразу, как пробу cito: обещанное
  * время результата не сдвигается.
  */
 function drawStart(s: ShiftState, room: string, arrive: number): { start: number; open?: OpenDraws } {
   const open = openDraws(s, room);
-  if (open && arrive <= open.sent && !open.items.some(({ p }) => waitedFor(s, p))) return { start: open.sent, open };
+  if (open && arrive <= open.sent && !open.items.some(({ p, x }) => awaited(s, p, x))) return { start: open.sent, open };
   return { start: Math.max(arrive, s.rooms[room] ?? 0) };
 }
 
