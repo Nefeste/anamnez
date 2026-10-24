@@ -18,7 +18,7 @@ export const SPEED = 4;
 /** В кабинет по вызову — быстрее: карта пациента откроется, когда он войдёт. */
 export const BRISK = 8;
 /** Сколько секунд человек хотя бы стоит там, где с ним что-то делают. */
-export const DWELL: Partial<Record<Doing['kind'], number>> = { registration: 1, triage: 1.5, exam: 1.5, carry: 1.5, code: 2 };
+export const DWELL: Partial<Record<Doing['kind'], number>> = { registration: 1, triage: 1.5, exam: 1.5, carry: 1.5, code: 3 };
 /** Чисел на человека в `meta`: смещение пути, число точек, время выхода, скорость, исчезнуть у цели. */
 export const STRIDE = 5;
 /** С ним что-то делают за дверью с лампой: приём у врача, у медсестры, процедура, обследование. */

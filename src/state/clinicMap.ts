@@ -75,8 +75,11 @@ export const CLINIC = clinicLayout(db);
 export { REGISTRATION, TRIAGE } from '@/engine/shift/types';
 /** Сколько принятый ещё виден по дороге к выходу. */
 export const LEAVING = 10 * 60;
-/** Сколько игровых секунд бригада «код синий» у койки (spec 2026-10-code-blue). */
-export const CODE = 3 * 60;
+/**
+ * Сколько игровых секунд бригада «код синий» у койки (spec 2026-10-code-blue): разряд, ритм и наблюдение после него —
+ * и чтобы анестезиолог-реаниматолог из дальней палаты успел добежать, пока медсестра ещё там.
+ */
+export const CODE = 10 * 60;
 
 const STAFF_FIGURE: Record<StaffRole, Figure> = {
   registrar: 'staff',
