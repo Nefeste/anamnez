@@ -323,6 +323,9 @@ describe('фибрилляция после полуночи — ночь сут
       const p = vfAfterMidnight(s);
       if (!p) continue;
       apply(db, s, { kind: 'advance', seconds: p.arriveT - s.t });
+      // пришёл сам — сначала регистратура и медсестра (spec 2026-10-clinic-flow)
+      const intake = s.patients[p.id].intake;
+      if (intake) apply(db, s, { kind: 'advance', seconds: (intake.nurse ?? intake.reg).end - s.t });
       if (s.patients[p.id].status !== 'waiting' || s.patients[p.id].by) continue;
       apply(db, s, { kind: 'call', id: p.id });
       close(s, p, 'icu');

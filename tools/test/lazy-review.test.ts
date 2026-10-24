@@ -1,8 +1,8 @@
 // Разбор приёма нанятого врача по требованию: при закрытии его приёма разумный врач разбора больше не считается —
 // бережливость и общая оценка досчитываются `settleReviews` при закрытии дня (в паузах игры его готовит
 // `prepareReview`), а экраны читают приём через `reviewedCase`, не меняя состояния. Всё — то же до байта, что прежде:
-// отпечатки прежнего, сразу считаемого разбора — tools/test/fixtures/eager-review.json (движок @ 96503ac, те же смены;
-// tools/test/make-review-fixture.ts). Ускорение — из «Больницы» (Nefeste/bolnitsa, spec 2026-10-engine-speed, ч. 1).
+// отпечатки сразу считаемого разбора — tools/test/fixtures/eager-review.json (до 0.6.9 — движок @ 96503ac, с 0.6.9 —
+// нынешний, разбор после каждой минуты; те же смены; tools/test/make-review-fixture.ts). Ускорение — из «Больницы» (Nefeste/bolnitsa, spec 2026-10-engine-speed, ч. 1).
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';

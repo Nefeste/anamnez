@@ -54,7 +54,7 @@ function play(seed: number, player: Player): { s: ShiftState; waits: number[]; b
     if (cmd.kind !== 'advance') busy += s.t - t;
   };
   for (let guard = 0; guard < 5000; guard++) {
-    const end = s.t % DAY >= SHIFT_END && s.queue.length === 0 && !s.current && !Object.values(s.patients).some(p => p.status === 'away' || p.status === 'coming');
+    const end = s.t % DAY >= SHIFT_END && s.queue.length === 0 && !s.current && !Object.values(s.patients).some(p => p.status === 'away' || p.status === 'coming' || p.status === 'intake');
     if (end) break;
     if (!s.current && s.queue.length > 0) {
       const id = s.queue[0];

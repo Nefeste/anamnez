@@ -217,7 +217,12 @@ export const sandbox = {
   roomSeats: (busy: number, seats: number) => `Ждут приёма: ${busy} · мест: ${seats}`,
   roomNow: (name: string) => `Сейчас: ${name}`,
   roomNext: (n: number) => `Ждут обследования: ${n}`,
-  roomLab: (n: number) => `Анализов в работе: ${n}`,
+  // чьё в работе (spec 2026-10-clinic-flow): несут из процедурной, на анализаторе — до какого часа
+  roomCarry: (exam: string, name: string) => `${exam} — ${name}: несут из процедурной`,
+  roomInWork: (exam: string, name: string, hh: string) => `${exam} — ${name}: будет к ${hh}`,
+  roomMore: (n: number) => `и ещё ${n}`,
+  roomDraw: (name: string) => `Берут кровь: ${name}`,
+  roomDrawNext: (n: number) => `Ждут забора: ${n}`,
   roomFree: 'Сейчас свободно',
 
   // оплата закрытого приёма — на экране итога

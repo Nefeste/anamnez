@@ -67,6 +67,9 @@ export function acsCase(db: ContentDb): ShiftState {
     const acs = Object.values(s.patients).find(p => p.patient.truth.conditions[0].id === 'cond.acs' && p.kind !== 'return');
     if (!acs) continue;
     apply(db, s, { kind: 'advance', seconds: acs.arriveT - s.t });
+    // пришёл сам — сначала регистратура и медсестра (spec 2026-10-clinic-flow)
+    const intake = s.patients[acs.id].intake;
+    if (intake) apply(db, s, { kind: 'advance', seconds: (intake.nurse ?? intake.reg).end - s.t });
     if (s.patients[acs.id].status !== 'waiting') continue;
     run(db, s, [
       { kind: 'call', id: acs.id },
@@ -134,7 +137,7 @@ export function districtState(db: ContentDb): ShiftState {
       rounds(db, s);
       for (let guard = 0; guard < 2000; guard++) {
         sortAll(db, s);
-        const waiting = Object.values(s.patients).some(p => p.status === 'away' || p.status === 'coming' || (p.kind === 'ambulance' && p.status === 'waiting' && !p.sorted));
+        const waiting = Object.values(s.patients).some(p => p.status === 'away' || p.status === 'coming' || p.status === 'intake' || (p.kind === 'ambulance' && p.status === 'waiting' && !p.sorted));
         if (s.t % DAY >= SHIFT_END && s.queue.length === 0 && !current(s) && !waiting) break;
         if (!current(s) && s.queue.length > 0) seeHere(db, s);
         else apply(db, s, { kind: 'advance', seconds: MIN });
@@ -215,7 +218,8 @@ export function egdCase(db: ContentDb): ShiftState {
     apply(db, s, { kind: 'nextDay' });
     const tear = Object.values(s.patients).find(p => p.taught && truthOf(s, p.id) === 'cond.mallory_weiss');
     if (!tear) continue;
-    for (let m = 0; m < 8 * 60 && tear.status === 'coming'; m++) {
+    // пришёл сам — до конца оформления (spec 2026-10-clinic-flow)
+    for (let m = 0; m < 8 * 60 && (tear.status === 'coming' || tear.status === 'intake'); m++) {
       apply(db, s, { kind: 'advance', seconds: MIN });
       sortAll(db, s);
     }
@@ -249,7 +253,7 @@ export function cityState(db: ContentDb): ShiftState {
       rounds(db, s);
       for (let guard = 0; guard < 2000; guard++) {
         sortAll(db, s);
-        const waiting = Object.values(s.patients).some(p => p.status === 'away' || p.status === 'coming' || (p.kind === 'ambulance' && p.status === 'waiting' && !p.sorted));
+        const waiting = Object.values(s.patients).some(p => p.status === 'away' || p.status === 'coming' || p.status === 'intake' || (p.kind === 'ambulance' && p.status === 'waiting' && !p.sorted));
         if (s.t % DAY >= SHIFT_END && s.queue.length === 0 && !current(s) && !waiting) break;
         if (!current(s) && s.queue.length > 0) seeHere(db, s);
         else apply(db, s, { kind: 'advance', seconds: MIN });

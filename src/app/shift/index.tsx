@@ -339,9 +339,11 @@ function Queue({ v }: { v: ShiftView }) {
 
       <Card>
         <Text style={styles.label}>{t.queue}</Text>
-        {v.queue.length === 0 ? <P muted>{t.queueEmpty}</P> : v.queue.map((r, i) => (
+        {v.queue.length === 0 && v.intake.length === 0 ? <P muted>{t.queueEmpty}</P> : v.queue.map((r, i) => (
           <QueueItem key={r.id} r={r} n={i + 1} disabled={v.inRoom !== undefined} onPress={() => call(r.id)} />
         ))}
+        {/* оформляются (spec 2026-10-clinic-flow): позвать их ещё нельзя — строкой, без номера и срочности */}
+        {v.intake.map(r => <P key={r.id} muted testID={`intake-${r.id}`}>{`${r.name} — ${r.stage}`}</P>)}
       </Card>
 
       {v.away.length > 0 && (

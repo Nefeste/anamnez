@@ -399,7 +399,8 @@ function playDay(s: ShiftState, player: Player) {
       if (p.kind !== 'ambulance' || p.status !== 'waiting' || p.sorted || !p.scale) continue;
       step({ kind: 'sort', id: p.id, triage: player === 'rational' ? p.scale.triage : 'green' });
     }
-    const waiting = Object.values(s.patients).some(p => p.status === 'away' || p.status === 'coming' || (p.kind === 'ambulance' && p.status === 'waiting' && !p.sorted));
+    // оформляется (spec 2026-10-clinic-flow) — ещё придёт в очередь
+    const waiting = Object.values(s.patients).some(p => p.status === 'away' || p.status === 'coming' || p.status === 'intake' || (p.kind === 'ambulance' && p.status === 'waiting' && !p.sorted));
     if (s.t % DAY >= SHIFT_END && s.queue.length === 0 && !s.current && !waiting) break;
     if (!s.current && s.queue.length > 0) {
       step({ kind: 'call', id: player === 'rational' ? firstDue(s) : s.queue[0] });

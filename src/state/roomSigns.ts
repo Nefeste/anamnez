@@ -38,15 +38,18 @@ export function roomSigns(layout: ClinicLayout, s: ShiftState, down: ReadonlySet
   const typeOf = new Map(layout.rooms.map(r => [r.id, r.type]));
   const all = Object.values(s.patients);
   for (const p of all) {
-    // лаборатория: анализаторы работают, пока анализ не готов, после забора крови
+    // лаборатория: анализаторы работают, пока анализ не готов, — с минуты, как проба дошла (spec 2026-10-clinic-flow)
     for (const x of p.pending) {
       if (!x.room || typeOf.get(x.room) !== 'lab') continue;
-      if ((x.end ?? x.start ?? x.readyAt) <= s.t && s.t < x.readyAt) signs.get(x.room)!.lit = true;
+      if ((x.lab ?? x.end ?? x.start ?? x.readyAt) <= s.t && s.t < x.readyAt) signs.get(x.room)!.lit = true;
     }
     // на скамье в очереди к аппарату: ближайшее обследование, которое ещё не началось
     if (p.status === 'away') {
-      const next = p.pending.filter(x => x.room && (x.start ?? 0) > s.t && EXAM_ROOMS.has(typeOf.get(x.room) ?? '')).sort((a, b) => (a.start ?? 0) - (b.start ?? 0))[0];
-      if (next?.room) signs.get(next.room)!.queue++;
+      // и в процедурную — к той, где возьмут кровь (spec 2026-10-clinic-flow); повторный забор — в свой срок, его не ждут
+      const next = p.pending.filter(x => (x.start ?? 0) > s.t && ((x.room && EXAM_ROOMS.has(typeOf.get(x.room) ?? '')) || (x.draw && typeOf.get(x.draw) === 'procedure' && !x.repeat)))
+        .sort((a, b) => (a.start ?? 0) - (b.start ?? 0))[0];
+      const at = next?.draw && typeOf.get(next.draw) === 'procedure' ? next.draw : next?.room;
+      if (at) signs.get(at)!.queue++;
     }
   }
 

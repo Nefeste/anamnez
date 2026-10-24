@@ -12,6 +12,7 @@ import { checkRule, knownOf } from '../../src/engine/med/rules';
 import { scoreCase } from '../../src/engine/med/score';
 import type { Observation, Patient } from '../../src/engine/med/types';
 import { examWhere } from '../../src/engine/hospital/requirements';
+import { walkSeconds } from '../../src/engine/hospital/walk';
 import { apply, candidatesOf, current, hospitalCtx, newCampaign, newShift } from '../../src/engine/shift/engine';
 import { wardCourse } from '../../src/engine/shift/ward';
 import type { ShiftPatient, ShiftState } from '../../src/engine/shift/types';
@@ -107,17 +108,22 @@ function inBay(params: Record<string, string>, seed = 7): { s: ShiftState; p: Sh
 }
 
 describe('анализ 0/1 час', () => {
-  test('одно назначение — два забора: первый результат через 65 минут, прирост — через час после второго забора', () => {
+  test('одно назначение — два забора: первый результат через 65 минут и дорогу пробирок, прирост — через час после второго забора', () => {
     const { s, p } = inBay({ type: 'nste', mi: 'yes' });
     const t0 = s.t;
     apply(db, s, { kind: 'exam', exam: TROP });
     expect(p.done).toContain(TROP);
-    expect(p.pending.map(x => [(x.readyAt - t0) / 60, x.repeat ?? false, x.obs.map(o => o.f)])).toEqual([[65, false, [HIGH]], [125, true, [RISE]]]);
+    // берут на месте, в смотровой; пробирки медсестра несёт в лабораторию (spec 2026-10-clinic-flow) — секунды дороги
+    const lab = p.pending[0].room!;
+    const carry = walkSeconds(hospitalCtx(db, s).plan, p.bay!.room, lab);
+    expect(carry).toBeGreaterThan(0);
+    expect(p.pending.map(x => x.draw)).toEqual([p.bay!.room, p.bay!.room]);
+    expect(p.pending.map(x => [x.readyAt - t0, x.repeat ?? false, x.obs.map(o => o.f)])).toEqual([[65 * 60 + carry, false, [HIGH]], [125 * 60 + carry, true, [RISE]]]);
     apply(db, s, { kind: 'waitResults' });
     expect(p.results.filter(r => r.exam === TROP).map(r => r.repeat ?? false)).toEqual([false]);
     apply(db, s, { kind: 'waitResults' });
     const both = p.results.filter(r => r.exam === TROP);
-    expect(both.map(r => [(r.at - t0) / 60, r.repeat ?? false])).toEqual([[65, false], [125, true]]);
+    expect(both.map(r => [r.at - t0, r.repeat ?? false])).toEqual([[65 * 60 + carry, false], [125 * 60 + carry, true]]);
     // в карте — свои имена забору и повтору, новые сверху
     const view = makeCaseView({
       version: 0, patient: p.patient, clock: 600, minutesSpent: 0, money: 0, step: p.step,

@@ -176,7 +176,7 @@ function playDay(s: ShiftState, strategy: Strategy, prefetch = false) {
   const step = (cmd: Command) => apply(db, s, cmd);
   for (let guard = 0; guard < 5000; guard++) {
     const end = s.t % DAY >= SHIFT_END && s.queue.length === 0 && !s.current
-      && !Object.values(s.patients).some(p => p.status === 'away' || p.status === 'coming' || (p.by !== undefined && (p.status === 'inRoom' || p.status === 'waiting')));
+      && !Object.values(s.patients).some(p => p.status === 'away' || p.status === 'coming' || p.status === 'intake' || (p.by !== undefined && (p.status === 'inRoom' || p.status === 'waiting')));
     if (end) break;
     // записанных к специалисту (часть 59) оставляет ему, пока ждут другие
     if (!s.current && s.queue.length > 0) step({ kind: 'call', id: s.queue.find(id => s.patients[id].to === undefined) ?? s.queue[0] });

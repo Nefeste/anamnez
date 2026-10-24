@@ -176,16 +176,21 @@ describe('план: знаки помещений (часть 23)', () => {
     expect(litAt(g.lights, xray, came + DWELL.exam! + 0.05)).toBe(false);
   });
 
-  test('лаборатория светится, пока анализ крови не готов', () => {
+  test('лаборатория светится, пока анализ крови не готов, — с минуты, как проба дошла', () => {
     const s = newShift(db, { seed: 5, season: 'winter' });
     const id = first(s);
     apply(db, s, { kind: 'call', id });
     apply(db, s, { kind: 'exam', exam: 'exam.cbc' });
     apply(db, s, { kind: 'sendAway' });
     const x = s.patients[id].pending.find(r => r.exam === 'exam.cbc')!;
-    // кровь взяли (с 0.5.12 — после направления, пациент идёт в процедурный сам), анализ ещё идёт
+    // кровь взяли (с 0.5.12 — после направления, пациент идёт в процедурный сам); пробирки несут — анализаторы ждут
+    // (spec 2026-10-clinic-flow)
     apply(db, s, { kind: 'advance', seconds: Math.max(0, x.end! - s.t) });
     expect(x.end!).toBeLessThanOrEqual(s.t);
+    expect(s.t).toBeLessThan(x.lab!);
+    expect(signOf(s, 'lab').lit).toBe(false);
+    // проба дошла — анализ идёт
+    apply(db, s, { kind: 'advance', seconds: x.lab! - s.t });
     expect(s.t).toBeLessThan(x.readyAt);
     expect(signOf(s, 'lab').lit).toBe(true);
     apply(db, s, { kind: 'advance', seconds: x.readyAt - s.t });

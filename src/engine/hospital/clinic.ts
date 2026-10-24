@@ -24,6 +24,8 @@ export interface ClinicLayout extends HospitalLayout {
   spots: { registration: Cell; triage: Cell; office: Cell; procedure: Cell; ecg: Cell; xray: Cell; ultrasound: Cell; ct: Cell; mri: Cell; endoscopy: Cell };
   /** куда садится пациент в каждом кабинете врача — у нанятых врачей свои (spec 2026-09-hired-doctors) */
   offices: Record<string, Cell>;
+  /** куда встаёт пациент в каждом помещении, где он есть, — по номеру помещения: регистратур и сестёр бывает несколько */
+  desks?: Record<string, Cell>;
   /** ваш кабинет — первый кабинет врача, до которого можно дойти */
   mine?: string;
   /** койки палат по помещениям: номер койки лежащего (spec 2026-09-chapter-2, часть 26) */
@@ -111,6 +113,7 @@ export function layoutOf(plan: Plan, staff: { room: string; role: Id; stands?: I
     staff: staffOut,
     spots,
     offices: Object.fromEntries(plan.rooms.filter(r => r.type === 'room.office' && r.patient).map(r => [r.id, r.patient!])),
+    desks: Object.fromEntries(plan.rooms.filter(r => r.patient).map(r => [r.id, r.patient!])),
     ...(mine ? { mine } : {}),
     seats: plan.rooms.flatMap(r => r.seats),
     beds: Object.fromEntries(plan.rooms.filter(r => r.beds.length > 0).map(r => [r.id, r.beds])),

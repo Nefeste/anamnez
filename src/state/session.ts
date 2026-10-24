@@ -201,6 +201,8 @@ export interface ShiftView {
   pauseReason?: string;
   inRoom?: { id: string; name: string };
   queue: QueueRow[];
+  /** оформляются: регистратура и медсестра (spec 2026-10-clinic-flow) — в очереди врача их ещё нет; по приходу */
+  intake: { id: string; name: string; stage: string }[];
   away: { id: string; name: string; ready: string }[];
   /** что случилось — новое сверху */
   log: { key: number; kind: LogKind; text: string; at: string }[];
@@ -668,7 +670,7 @@ function dayStart(s: ShiftState) {
 
 function allDone(s: ShiftState) {
   return s.t >= dayStart(s) + SHIFT_END && s.queue.length === 0 && !s.current
-    && !Object.values(s.patients).some(p => p.status === 'away' || p.status === 'coming' || (p.by !== undefined && (p.status === 'inRoom' || p.status === 'waiting'))
+    && !Object.values(s.patients).some(p => p.status === 'away' || p.status === 'coming' || p.status === 'intake' || (p.by !== undefined && (p.status === 'inRoom' || p.status === 'waiting'))
       // привезённый скорой ждёт сортировки — в очереди его ещё нет (часть 27)
       || (p.kind === 'ambulance' && p.status === 'waiting' && !p.sorted));
 }
@@ -842,15 +844,19 @@ export function examine(exam: Id) {
 }
 
 /**
- * Бланк направления (0.6.0, вопрос 45): отмеченное — разом, по порядку, как касаниями по одному, и время — целиком:
- * назначения короткие. «За это время» и тревога — за всё отправленное, а не только за последнее.
+ * Бланк направления (0.6.0, вопрос 45): отмеченное — разом, как касаниями по одному, и время — целиком: назначения
+ * короткие. С 0.6.9 (spec 2026-10-clinic-flow) — сначала то, что делают при враче (мазок, глюкометр), потом — по
+ * направлениям, в порядке бланка: иначе врач ждал бы, пока пациент сдаст кровь, чтобы взять мазок. «За это время» и
+ * тревога — за всё отправленное, а не только за последнее.
  */
 export function examineAll(exams: readonly Id[]) {
   const sess = live();
   const p = sess && current(sess.s);
   if (!sess || !p || sess.finishing || exams.length === 0) return;
-  const notices = exams.flatMap(exam => run(sess, { kind: 'exam', exam }));
-  sess.meanwhile = meanwhileOf(sess.s, p, notices, exams[exams.length - 1]);
+  const out = new Set(exams.filter(e => atDoctor(db, sess.s, p, e) === false));
+  const order = [...exams.filter(e => !out.has(e)), ...exams.filter(e => out.has(e))];
+  const notices = order.flatMap(exam => run(sess, { kind: 'exam', exam }));
+  sess.meanwhile = meanwhileOf(sess.s, p, notices, order[order.length - 1]);
   sess.urgent = urgentIn(notices);
   sess.alarm = notices.some(n => n.kind === 'arrest');
   changed();
@@ -1670,6 +1676,15 @@ function row(s: ShiftState, p: ShiftPatient): QueueRow {
   };
 }
 
+/** Где оформляется (spec 2026-10-clinic-flow): ждёт регистратуру, в регистратуре, ждёт медсестру, у медсестры. */
+function stageOf(s: ShiftState, p: ShiftPatient): string {
+  const t = T.shift.intake;
+  const i = p.intake;
+  if (!i || s.t < i.reg.start) return t.regQueue;
+  if (s.t < i.reg.end || !i.nurse) return t.reg;
+  return s.t < i.nurse.start ? t.nurseQueue : t.nurse;
+}
+
 function summaryOf(s: ShiftState): SummaryView | undefined {
   const h = s.history[s.history.length - 1];
   if (!h) return undefined;
@@ -1761,7 +1776,7 @@ function wardLines(w: NonNullable<ShiftState['summary']['ward']>): string[] {
 
 const EMPTY: Omit<ShiftView, 'version' | 'status' | 'mode'> = {
   difficulty: 'student', day: 0, clock: '', dayOpen: false, afterHours: false, allDone: false, speed: 1, paused: false,
-  queue: [], away: [], log: [], counts: { seen: 0, left: 0, waiting: 0, unseen: 0 }, restored: false, people: [], who: {}, colleagues: [], signs: [], inpatients: 0, ambulance: [],
+  queue: [], intake: [], away: [], log: [], counts: { seen: 0, left: 0, waiting: 0, unseen: 0 }, restored: false, people: [], who: {}, colleagues: [], signs: [], inpatients: 0, ambulance: [],
 };
 
 function buildShiftView(): ShiftView {
@@ -1771,6 +1786,7 @@ function buildShiftView(): ShiftView {
   const inRoom = current(s);
   // ваши — на обследованиях; пациенты нанятых врачей — их забота (spec 2026-09-hired-doctors)
   const away = Object.values(s.patients).filter(p => p.status === 'away' && !p.by).sort((a, b) => (a.id < b.id ? -1 : 1));
+  const intake = Object.values(s.patients).filter(p => p.status === 'intake').sort((a, b) => a.arriveT - b.arriveT || (a.id < b.id ? -1 : 1));
   const theirs = Object.values(s.patients).filter(p => p.by !== undefined && (p.status === 'inRoom' || p.status === 'waiting' || p.status === 'away')).length;
   const layout = s.hospital ? sandboxLayout(s) : undefined;
   const people = placements(db, layout ?? CLINIC, s);
@@ -1790,9 +1806,10 @@ function buildShiftView(): ShiftView {
     pauseReason: sess.pauseReason,
     inRoom: inRoom ? { id: inRoom.id, name: nameOf(inRoom) } : undefined,
     queue: s.queue.map(id => row(s, s.patients[id])),
+    intake: intake.map(p => ({ id: p.id, name: `${nameOf(p)}, ${T.spikes.patient.years(p.patient.age)}`, stage: stageOf(s, p) })),
     away: away.map(p => ({ id: p.id, name: nameOf(p), ready: hhmm(minuteOfDay(Math.max(...p.pending.map(x => x.readyAt)))) })),
     log: sess.log.map(l => ({ key: l.key, kind: l.kind, text: l.text, at: hhmm(minuteOfDay(l.t)) })),
-    counts: { seen: s.summary.seen, left: s.summary.left, waiting: s.queue.length, unseen: s.queue.length + away.length + (inRoom ? 1 : 0) + theirs },
+    counts: { seen: s.summary.seen, left: s.summary.left, waiting: s.queue.length, unseen: s.queue.length + intake.length + away.length + (inRoom ? 1 : 0) + theirs },
     summary: s.dayOpen ? undefined : summaryOf(s),
     restored: sess.restored,
     people,
@@ -1827,6 +1844,8 @@ function understaffed(s: ShiftState): Set<string> {
 
 // помещения своей больницы: что это, работает ли и кто в нём — на день; что происходит — сейчас
 const roomBase = new WeakMap<HospitalCtx, Record<string, RoomView>>();
+/** Строк анализов в лаборатории на касание — не больше: длинный список не читается под картой. */
+const LAB_LINES = 4;
 
 function roomsOf(s: ShiftState): Record<string, RoomView> {
   const ctx = hospitalCtx(db, s);
@@ -1859,8 +1878,23 @@ function roomsOf(s: ShiftState): Record<string, RoomView> {
     } else if (r.type === 'room.waiting') {
       now.push(t.roomSeats(s.queue.length, r.seats.length));
     } else if (r.type === 'room.lab') {
-      const n = all.reduce((m, p) => m + p.pending.filter(x => x.room === r.id).length, 0);
-      now.push(n > 0 ? t.roomLab(n) : t.roomFree);
+      // чьё в работе (spec 2026-10-clinic-flow): несут из процедурной — и до какого часа анализ
+      const here = all.flatMap(p => p.pending.filter(x => x.room === r.id && (x.end ?? x.start ?? 0) <= s.t).map(x => ({ p, x })))
+        .sort((a, b) => a.x.readyAt - b.x.readyAt || (a.p.id < b.p.id ? -1 : 1));
+      for (const { p, x } of here.slice(0, LAB_LINES)) {
+        const exam = db.exams[x.exam]?.name.ru ?? x.exam;
+        now.push(x.lab !== undefined && s.t < x.lab ? t.roomCarry(exam, nameOf(p)) : t.roomInWork(exam, nameOf(p), hhmm(minuteOfDay(x.readyAt))));
+      }
+      if (here.length > LAB_LINES) now.push(t.roomMore(here.length - LAB_LINES));
+      if (here.length === 0) now.push(t.roomFree);
+    } else if (r.type === 'room.procedure') {
+      // кровь — по одному: у кого берут и сколько ждут (spec 2026-10-clinic-flow); повторный забор — в свой срок, его не ждут
+      const here = all.flatMap(p => p.pending.filter(x => x.draw === r.id).map(x => ({ p, x })));
+      const at = here.find(({ x }) => (x.start ?? 0) <= s.t && s.t < (x.end ?? 0));
+      if (at) now.push(t.roomDraw(nameOf(at.p)));
+      const next = here.filter(({ x }) => (x.start ?? 0) > s.t && !x.repeat).length;
+      if (next > 0) now.push(t.roomDrawNext(next));
+      if (!at && next === 0) now.push(t.roomFree);
     } else if (db.rooms[r.type].staff.length > 0 && all.some(p => p.pending.some(x => x.room === r.id))) {
       // рентген, ЭКГ: кто сейчас на обследовании и сколько ждут
       const here = all.flatMap(p => p.pending.filter(x => x.room === r.id).map(x => ({ p, x })));
@@ -1909,6 +1943,10 @@ function whoOf(s: ShiftState, people: readonly Placement[]): Record<string, WhoV
       out[x.id] = { title: t.staff[d.role], doing: t.duty[d.role], callable: false };
       continue;
     }
+    if (d.kind === 'carry') {
+      out[x.id] = { title: t.staff[d.role], doing: t.doing.carry, callable: false };
+      continue;
+    }
     const p = s.patients[x.id];
     if (!p) continue;
     out[x.id] = {
@@ -1928,6 +1966,10 @@ function doingText(s: ShiftState, p: ShiftPatient, d: Doing): string {
   switch (d.kind) {
     case 'registration':
       return t.registration;
+    case 'registrationQueue':
+      return t.registrationQueue;
+    case 'triageQueue':
+      return t.triageQueue;
     case 'triage':
       return t.triage;
     case 'waiting':
@@ -1954,6 +1996,7 @@ function doingText(s: ShiftState, p: ShiftPatient, d: Doing): string {
     case 'ambulance':
       return t.ambulance[d.state];
     case 'staff':
+    case 'carry':
       return '';
   }
 }

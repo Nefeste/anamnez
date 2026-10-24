@@ -247,11 +247,16 @@ describe('смена на экране: приём', () => {
 describe('смена на экране: карта', () => {
   test('коснулись человека — кто это и что делает; пригласить можно, пока кабинет свободен', () => {
     startShift(3, 'winter');
+    // только пришёл — в регистратуре; позвать его ещё нельзя: оформляется (spec 2026-10-clinic-flow)
+    for (let i = 0; i < 180 && shiftView().intake.length === 0; i++) tick(1000);
+    const fresh = shiftView().intake[0];
+    expect(shiftView().who[fresh.id]).toMatchObject({ doing: 'В регистратуре: заводят карту', callable: false });
+    expect(fresh.stage).toBe('в регистратуре');
     untilQueue();
     const q = shiftView().queue[0];
     const who = shiftView().who[q.id];
     expect(who).toMatchObject({ title: `${q.name}, ${q.age}`, complaint: q.complaint, triage: q.triage, callable: true });
-    expect(who.doing).toBe('В регистратуре: заводят карту');
+    expect(who.doing).toMatch(/^Ждёт приёма \d+\u00a0мин$/);
     // персонал — должность и зачем он: медсестра меряет и решает, кто срочный
     const nurse = shiftView().who['staff.nurse'];
     expect(nurse.title).toBe('Медсестра доврачебного кабинета');
@@ -375,6 +380,13 @@ describe('бланк направления (0.6.0, вопрос 45)', () => {
     expect(all.state).toBe(one.state);
     expect(exams.every(id => all.view.done.includes(id))).toBe(true);
     expect(all.view.pending.map(p => p.exam).sort()).toEqual(one.view.pending.map(p => p.exam).sort());
+  });
+
+  test('сначала — что делают при враче, потом — по направлениям (spec 2026-10-clinic-flow): ОАК и мазок — как мазок, затем ОАК', () => {
+    const all = ordered(() => examineAll(['exam.cbc', 'exam.strep_rapid']));
+    const one = ordered(() => ['exam.strep_rapid', 'exam.cbc'].forEach(examine));
+    expect(all.state).toBe(one.state);
+    expect(all.view.pending.map(p => p.exam).sort()).toEqual(['exam.cbc', 'exam.strep_rapid']);
   });
 
   test('отмечать нечего — ничего не меняется', () => {
