@@ -13,6 +13,7 @@ import { inBox, inIcu, inRicu } from '@/engine/shift/engine';
 import { HANDOFF, REGISTRATION, type ShiftPatient, type ShiftState, TRIAGE } from '@/engine/shift/types';
 import { lookOf } from '@/render/look';
 import { type Figure as Look, patientFigure, staffFigure, type Uniform } from '@/render/map/figures';
+import { type Life, restPlaces, toiletPlaces } from './life';
 
 /** Вид фигурки: персонал — по роли, пациент — по срочности (цвет — не единственный признак: 09-game-design.md §13). */
 export type Figure = 'doctor' | 'nurse' | 'staff' | 'patient' | 'patientYellow' | 'patientRed';
@@ -51,7 +52,18 @@ export type Doing =
   /** привезла скорая (часть 27): ждёт сортировки, ждёт врача, на каталке у входа — мест нет, у вас на осмотре */
   | { kind: 'ambulance'; state: 'unsorted' | 'waiting' | 'door' | 'withYou' }
   /** «код синий» (spec 2026-10-code-blue): медсестра смотровой и анестезиолог-реаниматолог — у койки остановки сердца */
-  | { kind: 'code'; role: StaffRole };
+  | { kind: 'code'; role: StaffRole }
+  /**
+   * живой фон (spec 2026-10-living-background): ждущий приёма — в кабинке санузла (`stall` — номер кабинки на карте), моет
+   * руки, ждёт у двери, когда кабинки заняты
+   */
+  | { kind: 'toilet'; stall: number }
+  | { kind: 'wash' }
+  | { kind: 'toiletQueue' }
+  /** перерыв в ординаторской — у кофеварки и за столом; нанятый врач между приёмами читает */
+  | { kind: 'coffee'; role: StaffRole }
+  | { kind: 'rest'; role: StaffRole }
+  | { kind: 'reading'; role: StaffRole };
 
 export interface Placement {
   id: string;
@@ -315,7 +327,11 @@ function lineOf(layout: ClinicLayout, room: string): Cell[] {
   return [...cells, ...(b.length > a.length ? b : a)];
 }
 
-export function placements(db: ContentDb, layout: ClinicLayout, s: ShiftState): Placement[] {
+/**
+ * Кто где на карте. `life` — живой фон (spec 2026-10-living-background): санузел, перерывы, чтение; без него — как до
+ * 0.6.11: проверки карты и смены его не ждут.
+ */
+export function placements(db: ContentDb, layout: ClinicLayout, s: ShiftState, life?: Life): Placement[] {
   const carrying = carriers(layout, s);
   const out: Placement[] = layout.staff.map(x => {
     const id = `staff.${x.id ?? x.role}`;
@@ -326,10 +342,15 @@ export function placements(db: ContentDb, layout: ClinicLayout, s: ShiftState): 
     return to ? { id, figure, look, where: { cell: to }, doing: { kind: 'carry', role: x.role } } : { id, figure, look, where: { cell: x.cell }, doing: { kind: 'staff', role: x.role } };
   });
   codeTeam(layout, s, out);
+  if (life) lifeOfStaff(layout, s, life, out);
   // своя больница без доврачебного кабинета: от регистратуры — сразу в зал
   const triage = layout.rooms.some(r => r.type === 'triage');
   const exit = { cell: layout.entrance };
   const inLine = regLine(s);
+  // живой фон: кто из ждущих в зале сейчас в санузле или у его двери
+  const toilet = life
+    ? toiletPlaces(layout, s, life, Object.values(s.patients).filter(p => p.status === 'waiting' && p.kind !== 'ambulance' && waitingPlace(layout, s, p, triage).doing.kind === 'waiting'))
+    : undefined;
   for (const p of Object.values(s.patients)) {
     const figure = figureOf(p);
     const look = lookOfPatient(p);
@@ -356,7 +377,7 @@ export function placements(db: ContentDb, layout: ClinicLayout, s: ShiftState): 
       // пригласить можно любого из очереди, как из списка, — пока кабинет свободен; пациент нанятого врача ждёт его, а не
       // вас (spec 2026-09-hired-doctors)
       const callable = s.current === undefined && p.by === undefined;
-      out.push({ id: p.id, figure, look, ...waitingPlace(layout, s, p, triage), callable });
+      out.push({ id: p.id, figure, look, ...(toilet?.get(p.id) ?? waitingPlace(layout, s, p, triage)), callable });
     } else if (p.status === 'away') {
       out.push({ id: p.id, figure, look, ...awayPlace(db, layout, p, s.t) });
     } else if (p.status === 'done' && p.closed && s.t - p.closed.at < LEAVING) {
@@ -389,6 +410,31 @@ export function placements(db: ContentDb, layout: ClinicLayout, s: ShiftState): 
     if (door) out[from].door = door;
   }
   return out;
+}
+
+/**
+ * Живой фон персонала (spec 2026-10-living-background): регистратор и медсестра на перерыве — в ординаторской; нанятый
+ * врач, у которого в кабинете никого нет, читает за столом.
+ */
+function lifeOfStaff(layout: ClinicLayout, s: ShiftState, life: Life, staff: Placement[]) {
+  const atDesk = staff.flatMap(x => (x.doing.kind === 'staff' && 'cell' in x.where ? [{ id: x.id, role: x.doing.role, cell: x.where.cell }] : []));
+  const rest = restPlaces(layout, s, life, atDesk);
+  // кабинеты нанятых врачей, где сейчас пациент
+  const busy = new Set<string>();
+  for (const p of Object.values(s.patients)) {
+    if (p.status !== 'inRoom' || p.by === undefined) continue;
+    const room = s.staff?.find(m => m.id === p.by)?.room;
+    if (room) busy.add(room);
+  }
+  for (const x of staff) {
+    const r = rest.get(x.id);
+    if (r) {
+      x.where = r.where;
+      x.doing = r.doing;
+    } else if (x.doing.kind === 'staff' && x.doing.role === 'therapist' && !busy.has(x.id.slice('staff.therapist.'.length))) {
+      x.doing = { kind: 'reading', role: 'therapist' };
+    }
+  }
 }
 
 /**

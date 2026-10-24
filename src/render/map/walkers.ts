@@ -17,8 +17,11 @@ import { headingOf, objectTurns, restHeading, type Turn } from './orient';
 export const SPEED = 4;
 /** В кабинет по вызову — быстрее: карта пациента откроется, когда он войдёт. */
 export const BRISK = 8;
-/** Сколько секунд человек хотя бы стоит там, где с ним что-то делают. */
-export const DWELL: Partial<Record<Doing['kind'], number>> = { registration: 1, triage: 1.5, exam: 1.5, carry: 1.5, code: 3 };
+/**
+ * Сколько секунд человек хотя бы стоит там, где с ним что-то делают; в кабинке санузла, у раковины и у кофеварки — тоже
+ * (spec 2026-10-living-background): на ×4 смена уходит вперёд, а человек всё равно доходит и стоит.
+ */
+export const DWELL: Partial<Record<Doing['kind'], number>> = { registration: 1, triage: 1.5, exam: 1.5, carry: 1.5, code: 3, toilet: 3, wash: 1.5, coffee: 2 };
 /** Чисел на человека в `meta`: смещение пути, число точек, время выхода, скорость, исчезнуть у цели. */
 export const STRIDE = 5;
 /** С ним что-то делают за дверью с лампой: приём у врача, у медсестры, процедура, обследование. */
@@ -85,7 +88,7 @@ export interface Frame {
   until: number;
   /**
    * Кто где под лампой: тройки — номер помещения в плане, с какого и до какого времени по часам
-   * карты человек стоит там, где с ним что-то делают.
+   * карты человек стоит там, где с ним что-то делают; за помещениями — кабинки санузла по порядку (`stallsOf`).
    */
   lights: number[];
   /** изменилось ли что-то для UI-потока с прошлой сверки */
@@ -124,8 +127,8 @@ export function turnAt(turns: readonly number[], start: number, speed: number, n
 const sameLook = (a: { body: number; head: number }, b: Placement['look']) => a.body === b.body && a.head === b.head;
 
 function legKind(d: Doing): LegKind {
-  if (d.kind === 'waiting' || d.kind === 'results' || d.kind === 'examQueue' || d.kind === 'registrationQueue' || d.kind === 'triageQueue') return 'wait';
-  if (d.kind === 'registration' || d.kind === 'triage' || d.kind === 'exam' || d.kind === 'carry' || d.kind === 'code') return 'act';
+  if (d.kind === 'waiting' || d.kind === 'results' || d.kind === 'examQueue' || d.kind === 'registrationQueue' || d.kind === 'triageQueue' || d.kind === 'toiletQueue' || d.kind === 'rest') return 'wait';
+  if (d.kind === 'registration' || d.kind === 'triage' || d.kind === 'exam' || d.kind === 'carry' || d.kind === 'code' || d.kind === 'toilet' || d.kind === 'wash' || d.kind === 'coffee') return 'act';
   return 'go';
 }
 
@@ -376,7 +379,9 @@ export class Walkers {
 
   private leg(p: Placement): Leg {
     const cell = this.targetOf(p);
-    const room = LIGHTS.has(p.doing.kind) ? this.layout.rooms.findIndex(r => LAMP_ROOMS.has(r.type) && inside(r, cell)) : -1;
+    // в кабинке санузла — «занято» над ней (spec 2026-10-living-background): номер за помещениями плана
+    const room = p.doing.kind === 'toilet' ? this.layout.rooms.length + p.doing.stall
+      : LIGHTS.has(p.doing.kind) ? this.layout.rooms.findIndex(r => LAMP_ROOMS.has(r.type) && inside(r, cell)) : -1;
     return { key: cellKey(cell), cell, kind: legKind(p.doing), dwell: DWELL[p.doing.kind] ?? 0, arrive: 0, leave: 0, room, ...(p.doing.kind === 'triage' ? { triage: true as const } : {}) };
   }
 

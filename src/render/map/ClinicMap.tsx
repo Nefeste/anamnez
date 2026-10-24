@@ -15,6 +15,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 import type { ClinicLayout } from '@/engine/hospital/clinic';
 import { T } from '@/i18n';
 import type { Placement } from '@/state/clinicMap';
+import { stallsOf } from '@/state/life';
 import { LAMP_ROOMS, type RoomSign } from '@/state/roomSigns';
 import { useTheme } from '@/ui/theme';
 import { CELL_PX, recordFloor } from './floor';
@@ -43,6 +44,9 @@ const GLOW_MRI = 'rgba(170, 150, 235, 0.55)';
 const LAMP_ON = '#FFC94D';
 const LAMP_HALO = 'rgba(255, 201, 77, 0.6)';
 const LAMP_OFF = '#A7B1B3';
+/** Книга читающего врача: обложка и страницы. */
+const BOOK_COVER = '#3F6F8F';
+const BOOK_PAGE = '#FBF8F0';
 const CLEAR = 'rgba(0, 0, 0, 0)';
 /** Где аппараты светятся: на ЭКГ, рентгене и КТ — пока пациент у аппарата, в лаборатории — пока идут анализы. */
 const GLOWING: ReadonlySet<string> = new Set(['ecg', 'xray', 'lab', 'or', 'ultrasound', 'emergency', 'icu', 'ct', 'ricu', 'mri', 'endoscopy']);
@@ -117,6 +121,13 @@ export function ClinicMap({ layout, people, signs = [], width, active, label, se
   }, [layout, atlas, turned, px]);
   const litSprites = useMemo(() => machines.map(m => m.sprite), [machines]);
   const litPlaces = useMemo(() => machines.map(m => [...m.xform, m.room]), [machines]);
+  // кабинки санузла (spec 2026-10-living-background): занята — дверь закрыта поверх того, кто внутри; номер — за помещениями
+  const stalls = useMemo(() => stallsOf(layout).map(([x, y], k) => {
+    const i = layout.objects.findIndex(o => o.kind === 'stall' && o.x === x && o.y === y);
+    return { light: layout.rooms.length + k, sprite: atlas.objectRect('stall', true), xform: cellXform(angleOf(turned[i]), x, y, px) };
+  }), [layout, atlas, turned, px]);
+  const stallSprites = useMemo(() => stalls.map(x => x.sprite), [stalls]);
+  const stallPlaces = useMemo(() => stalls.map(x => [...x.xform, x.light]), [stalls]);
   // лампы над дверями кабинетов: где стоят — от плана
   const lamps = useMemo(() => layout.rooms.flatMap((r, room) => {
     const at = LAMP_ROOMS.has(r.type) ? lampAt(layout.grid, r.door) : undefined;
@@ -178,9 +189,11 @@ export function ClinicMap({ layout, people, signs = [], width, active, label, se
   // что горит сейчас, по номеру помещения в плане: лампа — пока человек там, где с ним что-то
   // делают; лаборатория — пока идут её анализы
   const count = layout.rooms.length;
+  const stallCount = stalls.length;
   const on = useDerivedValue(() => {
     const out: number[] = [];
     for (let r = 0; r < count; r++) out.push(analyses.value[r] === 1 || litAt(lights.value, r, clock.value) ? 1 : 0);
+    for (let k = 0; k < stallCount; k++) out.push(litAt(lights.value, count + k, clock.value) ? 1 : 0);
     return out;
   });
   const litXforms = useRSXformBuffer(machines.length, (val, j) => {
@@ -189,6 +202,19 @@ export function ClinicMap({ layout, people, signs = [], width, active, label, se
     if (on.value[m[4]] === 1) val.set(m[0], m[1], m[2], m[3]);
     else val.set(CELL_PX / px, 0, HIDDEN, HIDDEN);
   });
+  const stallXforms = useRSXformBuffer(stalls.length, (val, j) => {
+    'worklet';
+    const m = stallPlaces[j];
+    if (on.value[m[4]] === 1) val.set(m[0], m[1], m[2], m[3]);
+    else val.set(CELL_PX / px, 0, HIDDEN, HIDDEN);
+  });
+  // нанятый врач читает между приёмами (spec 2026-10-living-background) — раскрытая книга на его столе
+  const books = useMemo(() => people.flatMap(p => {
+    if (p.doing.kind !== 'reading' || !('cell' in p.where)) return [];
+    const [x, y] = p.where.cell;
+    const desk = layout.objects.find(o => o.kind === 'desk' && Math.abs(o.x - x) + Math.abs(o.y - y) === 1);
+    return desk ? [{ id: p.id, x: (desk.x + 0.5) * CELL_PX, y: (desk.y + 0.5) * CELL_PX }] : [];
+  }), [people, layout]);
 
   // приглашённый дошёл до кабинета — пора открывать его карту; его нет на карте — сразу
   useEffect(() => {
@@ -263,6 +289,8 @@ export function ClinicMap({ layout, people, signs = [], width, active, label, se
             <Circle cx={ringX} cy={ringY} r={CELL_PX * 0.72} style="stroke" strokeWidth={CELL_PX * 0.12} color={t.colors.mark} />
             <Atlas image={atlas.image} sprites={bodySprites} transforms={personXforms} />
             <Atlas image={atlas.image} sprites={headSprites} transforms={personXforms} />
+            {stalls.length > 0 && <Atlas image={atlas.image} sprites={stallSprites} transforms={stallXforms} />}
+            {books.map(b => <Book key={b.id} x={b.x} y={b.y} />)}
           </Group>
         </Canvas>
       </GestureDetector>
@@ -309,6 +337,19 @@ function Glow({ x, y, color, room, on }: { x: number; y: number; color: string; 
     <Circle cx={x} cy={y} r={CELL_PX * 0.95} opacity={opacity}>
       <RadialGradient c={vec(x, y)} r={CELL_PX * 0.95} colors={[color, CLEAR]} />
     </Circle>
+  );
+}
+
+/** Раскрытая книга на столе: две страницы и корешок. */
+function Book({ x, y }: { x: number; y: number }) {
+  const w = CELL_PX * 0.26;
+  const h = CELL_PX * 0.34;
+  return (
+    <Group>
+      <Rect x={x - w} y={y - h / 2} width={w * 2} height={h} color={BOOK_COVER} />
+      <Rect x={x - w + CELL_PX * 0.03} y={y - h / 2 + CELL_PX * 0.03} width={w - CELL_PX * 0.04} height={h - CELL_PX * 0.06} color={BOOK_PAGE} />
+      <Rect x={x + CELL_PX * 0.01} y={y - h / 2 + CELL_PX * 0.03} width={w - CELL_PX * 0.04} height={h - CELL_PX * 0.06} color={BOOK_PAGE} />
+    </Group>
   );
 }
 

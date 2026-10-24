@@ -9,6 +9,8 @@ sizes:
     upkeep: 125
     door: { x: 3 }
     objects:
+      - [stall, 1, 2]
+      - [stall, 4, 2]
       - [sink, 2, 4]
       - [sink, 4, 4]
 texts:

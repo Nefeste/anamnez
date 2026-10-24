@@ -1789,7 +1789,8 @@ function buildShiftView(): ShiftView {
   const intake = Object.values(s.patients).filter(p => p.status === 'intake').sort((a, b) => a.arriveT - b.arriveT || (a.id < b.id ? -1 : 1));
   const theirs = Object.values(s.patients).filter(p => p.by !== undefined && (p.status === 'inRoom' || p.status === 'waiting' || p.status === 'away')).length;
   const layout = s.hospital ? sandboxLayout(s) : undefined;
-  const people = placements(db, layout ?? CLINIC, s);
+  // живой фон (spec 2026-10-living-background): прогулки — в секундах экрана, на любой скорости
+  const people = placements(db, layout ?? CLINIC, s, { pace: sess.speed * 60 });
   return {
     version,
     status,
@@ -1931,14 +1932,14 @@ function whoOf(s: ShiftState, people: readonly Placement[]): Record<string, WhoV
   const out: Record<string, WhoView> = {};
   for (const x of people) {
     const d = x.doing;
-    if (d.kind === 'staff' && d.role === 'therapist') {
-      // нанятый врач: кто он и кого принимает (spec 2026-09-hired-doctors)
+    if ((d.kind === 'staff' || d.kind === 'reading') && d.role === 'therapist') {
+      // нанятый врач: кто он и кого принимает (spec 2026-09-hired-doctors); никого — читает (spec 2026-10-living-background)
       const room = x.id.slice('staff.therapist.'.length);
       const m = s.staff?.find(y => y.room === room && db.roles[y.role]?.stands);
       const p = m ? Object.values(s.patients).find(q => q.status === 'inRoom' && q.by === m.id) : undefined;
       out[x.id] = {
         title: m ? t.therapist(personName(m.sex, m.seed), lowerFirst(db.roles[m.role]?.name.ru ?? ''), m.skill) : t.staff.therapist,
-        doing: p ? t.therapistWith(nameOf(p)) : m && db.roles[m.role]?.profile ? t.duty.specialist : t.duty.therapist, callable: false,
+        doing: p ? t.therapistWith(nameOf(p)) : d.kind === 'reading' ? t.doing.reading : m && db.roles[m.role]?.profile ? t.duty.specialist : t.duty.therapist, callable: false,
       };
       continue;
     }
@@ -1948,6 +1949,11 @@ function whoOf(s: ShiftState, people: readonly Placement[]): Record<string, WhoV
     }
     if (d.kind === 'carry' || d.kind === 'code') {
       out[x.id] = { title: t.staff[d.role], doing: d.kind === 'code' ? t.doing.code : t.doing.carry, callable: false };
+      continue;
+    }
+    // перерыв (spec 2026-10-living-background)
+    if (d.kind === 'coffee' || d.kind === 'rest' || d.kind === 'reading') {
+      out[x.id] = { title: t.staff[d.role], doing: d.kind === 'reading' ? t.doing.reading : t.doing.rest, callable: false };
       continue;
     }
     const p = s.patients[x.id];
@@ -1998,9 +2004,19 @@ function doingText(s: ShiftState, p: ShiftPatient, d: Doing): string {
       return t.onTable(db.treatments[d.tx]?.name.ru ?? d.tx, hhmm(minuteOfDay(d.end)));
     case 'ambulance':
       return t.ambulance[d.state];
+    // живой фон (spec 2026-10-living-background)
+    case 'toilet':
+      return t.toilet;
+    case 'wash':
+      return t.wash;
+    case 'toiletQueue':
+      return t.toiletQueue;
     case 'staff':
     case 'carry':
     case 'code':
+    case 'coffee':
+    case 'rest':
+    case 'reading':
       return '';
   }
 }
