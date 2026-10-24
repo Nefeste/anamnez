@@ -1171,7 +1171,7 @@ export const isOut = (s: ShiftState, p: ShiftPatient) => p.out !== undefined && 
  * нём, тогда. Привезла скорая, пока ждали, — до её приезда: врачу пора в смотровую (spec 2026-10-chapter-3, часть 37: ЭКГ
  * при боли в груди — в первые 10 минут).
  */
-function waitUntil(s: ShiftState, p: ShiftPatient): number {
+export function waitUntil(s: ShiftState, p: ShiftPatient): number {
   const target = Math.min(...p.pending.map(x => x.readyAt), ...(isOut(s, p) ? [p.out!.back] : []));
   const car = s.events.find(x => x.t <= target && x.event.kind === 'arrive' && s.patients[x.event.id]?.kind === 'ambulance');
   return car ? car.t : target;

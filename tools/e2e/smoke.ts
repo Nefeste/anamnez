@@ -1613,6 +1613,9 @@ try {
   check(await usHere.isDisabled() && (await usHere.innerText()).includes('нет кабинета УЗИ'), `смена: УЗИ в амбулатории — «${(await usHere.innerText()).replace(/\n/g, ' · ')}»`);
   await order(page, 'exam.cbc');
   await page.screenshot({ path: join(OUT, '08-shift-card.png') });
+  // «Подождать» — сколько минут (замечание владельца 24.10.2026: ожидание шло, а цена его не была видна)
+  const waitLabel = await text(page, 'visit-wait');
+  check(/^Подождать \d+\sмин$/.test(waitLabel), `смена: «Подождать» — с минутами: «${waitLabel}»`);
   await page.getByTestId('visit-send-away').click();
   await page.getByTestId('shift-clock').waitFor({ timeout: 10_000 });
   check((await page.locator('[data-testid^="away-"]').count()) === 1, 'смена: отпущенный ждать результатов — «на обследованиях»');
