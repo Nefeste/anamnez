@@ -19,6 +19,7 @@ import { makeStyles, space, touch } from '@/ui/theme';
 import { Text } from '../text';
 import type { CaseActions, FooterAction } from './actions';
 import { type CardTab, CardTabs } from './CardTabs';
+import { Dangers, dangerLine } from './Dangers';
 import { Differential } from './Differential';
 import { BodyMap, PlacePanel } from './Examine';
 import { lineMark } from './marks';
@@ -248,6 +249,15 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
             <Text numberOfLines={2} style={styles.likelyText}>{v.hints.map(h => `${h.name} — ${h.word ?? t.outOf10(h.outOf10)}`).join(' · ')}</Text>
           </View>
         ) : null}
+        {/* подсказка «Практиканту» (часть 94): опасные причины жалобы — строкой; касание — к ним, на доску гипотез */}
+        {v.danger && !v.decision && !readOnly ? (
+          <Pressable testID="danger-strip" accessibilityRole="button" accessibilityHint={t.dangerShow} onPress={() => {
+            setTab('card');
+            setPart('board');
+          }} style={({ pressed }) => [styles.likely, pressed && styles.pressed]}>
+            <Text numberOfLines={2} style={styles.likelyText}>{dangerLine(v.danger)}</Text>
+          </Pressable>
+        ) : null}
         {/* за это время (смена): пришёл срочный, у больного в смотровой остановилось сердце — сразу, с любой вкладки */}
         {v.meanwhile.length > 0 ? (
           <View style={styles.meanwhile}>
@@ -315,7 +325,7 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
               </Card>
             </>
           ) : tab === 'card' ? (
-            // доска гипотез: «Похоже на» — в ряд, «Ваш ряд», правила решения
+            // доска гипотез: «Похоже на» — в ряд, опасные причины «Практиканту» (часть 94), «Ваш ряд», правила решения
             <>
               {tabbed && v.hints.length > 0 && (
                 <Card>
@@ -334,6 +344,7 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
                   })}
                 </Card>
               )}
+              {tabbed && <Dangers v={v} actions={actions} explain={explain} />}
               {tabbed && <Differential v={v} actions={actions} />}
               {/* правила решения (часть 32): оттавские — нужен ли снимок по уже проверенному */}
               {tabbed && v.rules.length > 0 && (

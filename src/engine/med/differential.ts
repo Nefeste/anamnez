@@ -27,8 +27,11 @@ export interface Evidence {
   unchecked: { f: Id; p: number; exam?: Id }[];
 }
 
-/** Кто ищет признак: обследования, подходящие пациенту, — самое дешёвое первым; уточнения (`given`) не в счёт. */
-function examsFor(db: ContentDb, f: Id, patient: Pick<Patient, 'sex' | 'age' | 'complaints'>): Id[] {
+/**
+ * Кто ищет признак: обследования, подходящие пациенту, — самое дешёвое первым; уточнения (`given`) не в счёт. С частью 94 —
+ * и для подсказки «Практиканту»: чем проверить важное при опасной причине.
+ */
+export function examsFor(db: ContentDb, f: Id, patient: Pick<Patient, 'sex' | 'age' | 'complaints'>): Id[] {
   return Object.values(db.exams)
     .filter(e => e.checks.some(c => c.f === f && !c.given) && examFits(e, patient))
     .sort((a, b) => a.cost - b.cost || (a.id < b.id ? -1 : 1))
