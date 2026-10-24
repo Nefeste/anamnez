@@ -13,6 +13,8 @@ export interface RoomSign {
   lit: boolean;
   /** сколько ждут этот кабинет или аппарат */
   queue: number;
+  /** у кабинета врача: из ждущих — сколько вернулись с готовыми результатами (spec 2026-10-code-blue, вопрос 51) */
+  results: number;
   /** не работает: нет нужной должности (своя больница) */
   noStaff: boolean;
   /** аппарат помещения с утра сломан (FR-EQ-3, spec 2026-10-walk-breakdowns): починят к завтра */
@@ -28,13 +30,14 @@ const EXAM_ROOMS: ReadonlySet<string> = new Set(['ecg', 'xray', 'ultrasound', 'c
  * Знаки помещений на сейчас:
  * - свет лаборатории — анализы из неё ещё не готовы, а кровь уже взяли;
  * - очередь — к вашему кабинету: ждущие вас (новые и ваши с результатами); к кабинету нанятого
- *   врача — его пациенты с результатами; к аппарату — кто ждёт его на скамье;
+ *   врача — его пациенты с результатами; к аппарату — кто ждёт его на скамье; у кабинета — и сколько из ждущих вернулись
+ *   с результатами;
  * - нет персонала — помещения из `down` (своя больница: не работает без должности);
  * - в ремонте — аппарат помещения сломался с утра (`broken` смены: «помещение:место»).
  */
 export function roomSigns(layout: ClinicLayout, s: ShiftState, down: ReadonlySet<string> = new Set()): RoomSign[] {
   const broken = new Set((s.broken ?? []).map(k => k.split(':')[0]));
-  const signs = new Map(layout.rooms.map(r => [r.id, { id: r.id, lit: false, queue: 0, noStaff: down.has(r.id), broken: broken.has(r.id) }]));
+  const signs = new Map(layout.rooms.map(r => [r.id, { id: r.id, lit: false, queue: 0, results: 0, noStaff: down.has(r.id), broken: broken.has(r.id) }]));
   const typeOf = new Map(layout.rooms.map(r => [r.id, r.type]));
   const all = Object.values(s.patients);
   for (const p of all) {
@@ -60,7 +63,10 @@ export function roomSigns(layout: ClinicLayout, s: ShiftState, down: ReadonlySet
     if (p.status !== 'waiting') continue;
     const room = p.by === undefined ? mine : office.get(p.by);
     const sign = room === undefined ? undefined : signs.get(room);
-    if (sign) sign.queue++;
+    if (!sign) continue;
+    sign.queue++;
+    // уже был у врача — вернулся с результатами: значок «пришёл результат» (spec 2026-10-code-blue, вопрос 51)
+    if (p.step > 0) sign.results++;
   }
   // операционная (spec 2026-09-chapter-2, часть 28): идёт операция — горят лампа и монитор;
   // ждущие операции — очередь у первой операционной

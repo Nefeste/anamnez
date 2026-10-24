@@ -148,11 +148,15 @@ describe('песочница', () => {
     expect(of('room.lab').slice(-1)).toEqual([T.sandbox.roomFree]);
     while (s.t < x.start!) minute();
     expect(of('room.procedure').slice(-2)).toEqual([T.sandbox.roomDraw(name), T.sandbox.roomDrawNext(1)]);
+    // у второго берут следом — проба первого ждёт в процедурной, понесут обе (spec 2026-10-code-blue)
+    const first = () => of('room.lab').filter(l => l.includes(name));
     while (s.t < x.end!) minute();
-    if (s.t < x.lab!) expect(of('room.lab').slice(-1)).toEqual([T.sandbox.roomCarry(cbc, name)]);
+    if (s.t < x.sent!) expect(first()).toEqual([T.sandbox.roomRack(cbc, name)]);
+    while (s.t < x.sent!) minute();
+    if (s.t < x.lab!) expect(first()).toEqual([T.sandbox.roomCarry(cbc, name)]);
     while (s.t < x.lab!) minute();
-    expect(of('room.lab').slice(-1)).toEqual([T.sandbox.roomInWork(cbc, name, hhmm(Math.floor((x.readyAt % DAY) / 60)))]);
-    expect(b.pending.some(q => q.exam === 'exam.cbc')).toBe(true);
+    expect(first()).toEqual([T.sandbox.roomInWork(cbc, name, hhmm(Math.floor((x.readyAt % DAY) / 60)))]);
+    expect(x.sent).toBe(b.pending.find(q => q.exam === 'exam.cbc')!.end);
   });
 
   test('касса: плательщик в очереди и в карте, оплата приёма на итоге, касса и репутация в итогах дня', () => {

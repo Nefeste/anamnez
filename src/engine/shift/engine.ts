@@ -29,7 +29,7 @@ import { type Grade, scoreBase, type ScoreBase, scoreThrift, worstGrade } from '
 import { askMinutes, examSkillWith, mentorOf } from '../career/skills';
 import type { Observation, Patient } from '../med/types';
 import {
-  type ClosedCase, type ColleagueDay, type Command, DAY, type DaySummary, type Desk, type Difficulty, easyLevel, HANDOFF, hospitalDay, type Notice, type PlannedReturn, REGISTRATION, SHIFT_END, SHIFT_SCHEMA_VERSION,
+  type ClosedCase, type ColleagueDay, type Command, DAY, type DaySummary, type Desk, type Difficulty, easyLevel, HANDOFF, hospitalDay, type Notice, type PendingResult, type PlannedReturn, REGISTRATION, SHIFT_END, SHIFT_SCHEMA_VERSION,
   SHIFT_START, type ShiftEvent, type ShiftPatient, type ShiftState, TRIAGE, type Triage, type VisitKind, type WardDay, type AmbulanceDay, type SurgeryDay,
 } from './types';
 import { COMPLICATION_DAYS, complicationAt, complicationsOf, deathsOf, onsetHours, operationFor } from './surgery';
@@ -1138,12 +1138,22 @@ function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pc
   const carry = room && to !== undefined ? walkSeconds(ctx.plan, to, room.id) : 0;
   if (after > 0 && room && to !== undefined && to !== fromRoom(ctx, p)) {
     const order = ORDER_MINUTES * MIN;
-    const go = outFrom(ctx, s, p, to, s.t + order);
-    const start = Math.max(go.at + go.walk, s.rooms[to] ?? 0);
-    const end = start + cost;
-    s.rooms[to] = end + carry + HANDOFF + carry;
-    addPending(s, p, examId, end + carry + wait, first, { room: room.id, start, end, draw: to, lab: end + carry });
-    goOut(ctx, p, examId, to, end);
+    // одна вена — все пробирки (spec 2026-10-code-blue): его забор здесь ещё не кончился — пробирка к тому же забору
+    const same = sameDraw(s, p, to);
+    if (same) {
+      addPending(s, p, examId, same.lab + wait, first, { room: room.id, start: same.start, end: same.end, draw: to, lab: same.lab, sent: same.sent });
+    } else {
+      const go = outFrom(ctx, s, p, to, s.t + order);
+      // пробы партиями (spec 2026-10-code-blue): медсестра их ещё не понесла, когда он дошёл, — берёт кровь и у него, а
+      // понесёт все разом; понесла — ждёт её, как в 0.6.9
+      const open = openDraws(s, to);
+      const start = open && go.at + go.walk <= open.sent ? open.sent : Math.max(go.at + go.walk, s.rooms[to] ?? 0);
+      const end = start + cost;
+      if (open && start === open.sent) carryLater(s, open, end);
+      s.rooms[to] = end + carry + HANDOFF + carry;
+      addPending(s, p, examId, end + carry + wait, first, { room: room.id, start, end, draw: to, lab: end + carry, sent: end });
+      goOut(ctx, p, examId, to, end);
+    }
     if (e.repeat && second.length > 0) {
       const draw = s.t + e.repeat.minutes * MIN + walk;
       addPending(s, p, examId, draw + cost + carry + wait, second, { room: room.id, start: draw, end: draw + cost, draw: to, lab: draw + cost + carry }, true);
@@ -1254,14 +1264,60 @@ export function readyIn(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: I
   // кровь (spec 2026-10-clinic-flow): процедурная по одному, проба — до лаборатории
   const carry = room && to !== undefined ? walkSeconds(ctx.plan, to, room.id) / MIN : 0;
   if (room && to !== undefined && to !== fromRoom(ctx, p)) {
+    // к его забору — пробирка; медсестра ещё не понесла пробы — за последним; понесла — когда вернётся (spec 2026-10-code-blue)
+    const same = sameDraw(s, p, to);
+    if (same) return (same.lab - s.t) / MIN + (after * roomPct) / 100 + (e.repeat?.minutes ?? 0);
     const go = outFrom(ctx, s, p, to, s.t + ORDER_MINUTES * MIN);
-    return (Math.max(go.at + go.walk, s.rooms[to] ?? 0) - s.t) / MIN + e.time.procedure + carry + (after * roomPct) / 100 + (e.repeat?.minutes ?? 0);
+    const open = openDraws(s, to);
+    const start = open && go.at + go.walk <= open.sent ? open.sent : Math.max(go.at + go.walk, s.rooms[to] ?? 0);
+    return (start - s.t) / MIN + e.time.procedure + carry + (after * roomPct) / 100 + (e.repeat?.minutes ?? 0);
   }
   return away + walk / MIN + e.time.procedure + carry + (room ? (after * roomPct) / 100 : after) + (e.repeat?.minutes ?? 0);
 }
 
+/** Его забор в этой процедурной, который ещё не кончился (spec 2026-10-code-blue): к нему — ещё пробирка. */
+function sameDraw(s: ShiftState, p: ShiftPatient, room: string): { start: number; end: number; lab: number; sent: number } | undefined {
+  const x = p.pending.find(q => q.draw === room && !q.repeat && q.start !== undefined && q.end !== undefined && q.lab !== undefined && q.end > s.t);
+  return x ? { start: x.start!, end: x.end!, lab: x.lab!, sent: x.sent ?? x.end! } : undefined;
+}
+
+/** Пробы процедурной, которые медсестра понесёт последними (spec 2026-10-code-blue): когда и чьи. */
+function openDraws(s: ShiftState, room: string): { sent: number; items: { p: ShiftPatient; x: PendingResult }[] } | undefined {
+  let sent = -Infinity;
+  let items: { p: ShiftPatient; x: PendingResult }[] = [];
+  for (const p of Object.values(s.patients)) {
+    for (const x of p.pending) {
+      if (x.draw !== room || x.repeat || x.end === undefined) continue;
+      const at = x.sent ?? x.end;
+      if (at > sent) {
+        sent = at;
+        items = [];
+      }
+      if (at === sent) items.push({ p, x });
+    }
+  }
+  return items.length > 0 ? { sent, items } : undefined;
+}
+
+/**
+ * Медсестра понесёт пробы позже — в `sent` (spec 2026-10-code-blue): их анализ — позже на столько же; нанятый врач,
+ * который ждёт результатов у себя, — дождётся их.
+ */
+function carryLater(s: ShiftState, open: { sent: number; items: { p: ShiftPatient; x: PendingResult }[] }, sent: number) {
+  for (const { p, x } of open.items) {
+    const shift = sent - (x.sent ?? x.end!);
+    x.sent = sent;
+    x.lab = (x.lab ?? x.end!) + shift;
+    x.readyAt += shift;
+    schedule(s, x.readyAt, { kind: 'result', id: p.id });
+    const step = p.status === 'inRoom' && p.by !== undefined ? s.events.find(ev => ev.event.kind === 'colleague' && ev.event.id === p.id) : undefined;
+    if (step && step.t < x.readyAt) step.t = x.readyAt;
+  }
+  s.events.sort((a, b) => a.t - b.t || a.seq - b.seq);
+}
+
 function addPending(
-  s: ShiftState, p: ShiftPatient, examId: Id, readyAt: number, obs: Observation[], at?: { room: string; start: number; end: number; draw?: string; lab?: number }, repeat?: true,
+  s: ShiftState, p: ShiftPatient, examId: Id, readyAt: number, obs: Observation[], at?: { room: string; start: number; end: number; draw?: string; lab?: number; sent?: number }, repeat?: true,
 ) {
   p.pending.push({ exam: examId, readyAt, obs, ...(at ?? {}), ...(repeat ? { repeat } : {}) });
   schedule(s, readyAt, { kind: 'result', id: p.id });
