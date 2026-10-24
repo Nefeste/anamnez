@@ -329,7 +329,7 @@ function lineOf(layout: ClinicLayout, room: string): Cell[] {
 
 /**
  * Кто где на карте. `life` — живой фон (spec 2026-10-living-background): санузел, перерывы, чтение; без него — как до
- * 0.6.11: проверки карты и смены его не ждут.
+ * 0.6.12: проверки карты и смены его не ждут.
  */
 export function placements(db: ContentDb, layout: ClinicLayout, s: ShiftState, life?: Life): Placement[] {
   const carrying = carriers(layout, s);
