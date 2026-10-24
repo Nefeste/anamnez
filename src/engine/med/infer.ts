@@ -24,8 +24,11 @@ export interface InferContext {
   knownConditions: Id[];
   /** чего о нём не знают — хронические болезни и факторы риска с их долей (`unknownsOf`) */
   unknowns: Unknowns;
-  /** что известно о записи (spec 2026-10-chapter-4, часть 60а): к специалисту записываются с болезнями его профиля */
-  prior?: Prior;
+  /**
+   * что известно о записи (spec 2026-10-chapter-4, часть 60а): к специалисту записываются с болезнями его профиля; и о
+   * потоке (сценарий «Зимний грипп», часть 91): в эпидемию ОРВИ, грипп и пневмония вдвое чаще — множители по порядку
+   */
+  prior?: readonly Prior[];
   /**
    * пришёл без жалоб — на профосмотр (часть 61а): у него то, что находят на профосмотре; болезнь, с которой всегда
    * приходят с жалобой, исключена
@@ -35,10 +38,16 @@ export interface InferContext {
   complaints?: readonly Id[];
 }
 
-/** Болезни, которые у этого пациента вероятнее во столько раз, — профиль специалиста, к которому он записан. */
+/** Болезни, которые у этого пациента вероятнее во столько раз, — профиль специалиста, к которому он записан, или эпидемия. */
 export interface Prior {
   ids: readonly Id[];
   x: number;
+}
+
+/** Один множитель или несколько — списком; пустые не в счёт. */
+export function priorsOf(prior: Prior | readonly (Prior | undefined)[] | undefined): Prior[] {
+  if (!prior) return [];
+  return 'ids' in prior ? [prior] : prior.filter((x): x is Prior => !!x);
 }
 
 /**
@@ -185,16 +194,18 @@ export function unknownMiss(ctx: InferContext, f: Id, shares: ReadonlyMap<Id, nu
 
 /**
  * Всё, что вывод знает о пациенте: пол, возраст, сезон, что он сказал о себе, и доли того, чего не сказал; у специалиста
- * — ещё и к кому записан (`prior`, часть 60а).
+ * — ещё и к кому записан (`prior`, часть 60а), в сценарии — что за поток (часть 91).
  */
-export function contextOf(db: ContentDb, patient: { sex: Sex; age: number; season: Season; job?: Id; complaints?: readonly Id[] }, observations: readonly Observation[], prior?: Prior): InferContext {
+export function contextOf(
+  db: ContentDb, patient: { sex: Sex; age: number; season: Season; job?: Id; complaints?: readonly Id[] }, observations: readonly Observation[], prior?: Prior | readonly (Prior | undefined)[],
+): InferContext {
   const known = knownFacts(db, observations);
   const base = { sex: patient.sex, age: patient.age, season: patient.season, ...(patient.job ? { job: patient.job } : {}), knownRisks: known.risks, knownConditions: known.conditions };
   const told = complaintsOf(observations);
   return {
     ...base,
     unknowns: unknownsOf(db, observations, base),
-    ...(prior ? { prior } : {}),
+    ...(priorsOf(prior).length > 0 ? { prior: priorsOf(prior) } : {}),
     ...(patient.complaints?.length === 0 ? { checkup: true } : {}),
     ...(told.length > 0 ? { complaints: told } : {}),
   };
@@ -322,8 +333,8 @@ export function priorWeight(db: ContentDb, id: Id, ctx: InferContext): number {
     if (ctx.knownRisks.includes(r.id) || assumed.includes(r.id)) continue;
     w *= 1 - share(r.id) + share(r.id) * r.x;
   }
-  // записан к специалисту (часть 60а) — болезни его профиля вероятнее
-  if (ctx.prior?.ids.includes(id)) w *= ctx.prior.x;
+  // записан к специалисту (часть 60а) — болезни его профиля вероятнее; эпидемия (часть 91) — её болезни
+  for (const pr of ctx.prior ?? []) if (pr.ids.includes(id)) w *= pr.x;
   // пришёл на профосмотр (часть 61а): с этой болезнью без жалобы не приходят (`ensureManifest`)
   if (ctx.checkup && !c.checkup && complains(db, c)) return 0;
   return w;

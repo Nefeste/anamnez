@@ -32,6 +32,8 @@ export interface CareerFacts {
   chapters: readonly Id[];
   /** испытания, пройденные в закрытый день «Смены» (часть 91) */
   challenges: readonly string[];
+  /** сценарий, пройденный закрытым днём — пятой сменой недели (часть 91) */
+  scenarios: readonly string[];
 }
 
 const COUNTED: Record<Extract<Achievement, { count: number }>['kind'], (f: CareerFacts) => number> = {
@@ -57,6 +59,8 @@ export function achieved(db: ContentDb, a: Achievement, f: CareerFacts): boolean
       return f.chapters.includes(a.chapter);
     case 'challenge':
       return f.challenges.includes(a.challenge);
+    case 'scenario':
+      return f.scenarios.includes(a.scenario);
     default:
       return COUNTED[a.kind](f) >= a.count;
   }

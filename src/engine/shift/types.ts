@@ -9,6 +9,7 @@ import type { Outcome } from '../med/course';
 import type { BuildCommand, Built, HospitalState } from '../hospital/build';
 import type { CampaignProgress } from '../campaign/campaign';
 import type { Challenge } from './challenges';
+import type { Scenario } from './scenarios';
 import type { CaseIncome, Ledger, Payer, RepChange } from '../economy/economy';
 import type { StaffMember } from '../hospital/staff';
 import type { DoctorPhase } from '../med/policy';
@@ -76,7 +77,7 @@ export interface Desk {
 /** Практика в готовой амбулатории или песочница — своя больница (spec 2026-09-own-hospital). */
 /** Практика, песочница, кампания (spec 2026-09-campaign) — у каждой свои сохранения. */
 /** Практика, песочница, кампания и «Смена» — один день в выбранной больнице (spec 2026-09-campaign, часть 14). */
-export type Mode = 'shift' | 'sandbox' | 'campaign' | 'single';
+export type Mode = 'shift' | 'sandbox' | 'campaign' | 'single' | 'scenario';
 
 /** ambulance — привезла скорая (spec 2026-09-chapter-2, часть 27) */
 export type VisitKind = 'appointment' | 'walkIn' | 'return' | 'ambulance';
@@ -494,6 +495,11 @@ export interface ShiftState {
      * ваших пациентов весь день; нет — как прежде
      */
     challenges?: Challenge[];
+    /**
+     * сценарий (часть 91, spec 2026-10-scenarios): неделя «Смены» — пять смен с особым условием; у смены режим `scenario` и
+     * свой слот сохранения
+     */
+    scenario?: Scenario;
   };
   t: number;
   day: number;

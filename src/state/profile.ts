@@ -12,6 +12,7 @@ import { type CareerFacts, caseFacts, newAchievements } from '@/engine/career/ac
 import { pointsFor } from '@/engine/career/skills';
 import type { Grade } from '@/engine/med/score';
 import { type Challenge, CHALLENGES } from '@/engine/shift/challenges';
+import { type Scenario, SCENARIOS } from '@/engine/shift/scenarios';
 import type { ShiftPatient } from '@/engine/shift/types';
 import { loadSlot, type RawStore, saveSlot } from './saves';
 
@@ -67,6 +68,8 @@ export interface CaseRecord {
   patient: ShiftPatient;
   /** испытания «Смены» (часть 91): разбор из архива — с теми же запретами, что в смене */
   challenges?: Challenge[];
+  /** сценарий (часть 91): разбор из архива — с тем, что знал о потоке разумный врач недели */
+  scenario?: Scenario;
 }
 
 /** Достижения: полученные и счётчики, из которых они складываются (engine/career/achievements.ts). */
@@ -113,6 +116,8 @@ export interface DayRecord {
   chapters: Id[];
   /** испытания «Смены», пройденные в этот день (часть 91, spec 2026-10-challenges) */
   challenges?: string[];
+  /** сценарий, пройденный этим днём — пятой сменой недели с выполненными целями (часть 91, spec 2026-10-scenarios) */
+  scenario?: string;
 }
 
 export interface Profile {
@@ -237,7 +242,9 @@ export function sanitizeProfile(data: unknown): Profile {
       .map(r => {
         // испытания (часть 91) — только известные, иначе запись без них
         const ch = r.challenges as unknown;
-        const rec = ch === undefined || (Array.isArray(ch) && ch.length > 0 && ch.every(x => CHALLENGES.includes(x as Challenge))) ? r : (({ challenges: _, ...x }) => x)(r);
+        const withCh = ch === undefined || (Array.isArray(ch) && ch.length > 0 && ch.every(x => CHALLENGES.includes(x as Challenge))) ? r : (({ challenges: _, ...x }) => x)(r);
+        // сценарий (часть 91) — только известный, иначе запись без него
+        const rec = withCh.scenario === undefined || SCENARIOS.includes(withCh.scenario) ? withCh : (({ scenario: _, ...x }) => x)(withCh);
         const d = rec.patient.departments as unknown;
         if (d === undefined || (Array.isArray(d) && d.every(x => typeof x === 'string'))) return rec;
         const { departments: _, ...patient } = rec.patient;
@@ -403,7 +410,7 @@ export function recordCases(cases: readonly Omit<CaseRecord, 'key'>[]): number {
 function factsOf(stats: ProfileStats, seen: Record<Id, number>, a: CareerProgress, day?: DayRecord): CareerFacts {
   return {
     cases: stats.cases, days: a.days, run: a.run, gradeA: a.gradeA, thrift: a.thrift, allergy: a.allergy, noLeftDays: a.noLeftDays, daily: a.daily, seen,
-    rooms: day?.rooms ?? [], chapters: day?.chapters ?? [], challenges: day?.challenges ?? [],
+    rooms: day?.rooms ?? [], chapters: day?.chapters ?? [], challenges: day?.challenges ?? [], scenarios: day?.scenario ? [day.scenario] : [],
   };
 }
 

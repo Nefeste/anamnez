@@ -70,8 +70,8 @@ export default function QuickGame() {
         onPress={() => pick('shift', practice)}
       />
       <Button testID="menu-single" kind="plain" title={T.single.title} hint={T.single.menuHint} onPress={() => router.push('/single')} />
-      {/* испытания (часть 91, spec 2026-10-challenges): «Смена» с условием */}
-      <Button testID="menu-challenges" kind="plain" title={T.challenges.title} hint={T.challenges.menuHint} onPress={() => router.push('/challenges')} />
+      {/* испытания и сценарии (часть 91, spec 2026-10-challenges и 2026-10-scenarios): «Смена» с условием, неделя с особым потоком */}
+      <Button testID="menu-challenges" kind="plain" title={T.challenges.menuTitle} hint={T.challenges.menuHint} onPress={() => router.push('/challenges')} />
       <Button
         testID="menu-sandbox"
         kind="plain"

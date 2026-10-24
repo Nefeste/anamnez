@@ -62,7 +62,9 @@ export function singleResult(s: ShiftState): SingleResult | undefined {
   const worst = Math.min(...SINGLE_CATEGORIES.map(k => POINTS[grades[k]]));
   const overall = GRADE_OF_POINTS[Math.min(POINTS[gradeOf(points)], POINTS[grades.accuracy], worst + 1)];
   const day = s.history[s.history.length - 1] ?? s.summary;
-  return { seen: cases.length, arrived: day.arrived, minutes, correct, grades, overall, points: Math.round(points * 100) / 100 };
+  // неделя сценария (часть 91) — пришедшие за все её смены
+  const arrived = s.meta.mode === 'scenario' ? s.history.reduce((a, h) => a + h.arrived, 0) + (s.dayOpen ? s.summary.arrived : 0) : day.arrived;
+  return { seen: cases.length, arrived, minutes, correct, grades, overall, points: Math.round(points * 100) / 100 };
 }
 
 /**

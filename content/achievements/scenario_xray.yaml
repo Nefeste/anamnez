@@ -1,0 +1,7 @@
+id: ach.scenario_xray
+order: 30
+category: challenge
+name: { ru: "Рентген сломался" }
+need: { ru: "Пройти сценарий «Рентген сломался»: неделя без рентгена с итогом не ниже «B»." }
+kind: scenario
+scenario: xray

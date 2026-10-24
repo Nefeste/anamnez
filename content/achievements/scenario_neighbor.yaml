@@ -1,0 +1,7 @@
+id: ach.scenario_neighbor
+order: 29
+category: challenge
+name: { ru: "Закрыли соседнюю больницу" }
+need: { ru: "Пройти сценарий «Закрыли соседнюю больницу»: неделя в полтора раза большего потока — чтобы почти все дождались приёма и почти никто не умер." }
+kind: scenario
+scenario: neighbor

@@ -1110,6 +1110,8 @@ export type Achievement = { id: Id; order: number; category: AchievementCategory
   | { kind: 'chapter'; chapter: Id }
   /** испытание «Смены» пройдено (часть 91, spec 2026-10-challenges): `mute`, `rural`, `thrifty` */
   | { kind: 'challenge'; challenge: string }
+  /** сценарий пройден — неделя с выполненными целями (часть 91, spec 2026-10-scenarios): `flu`, `neighbor`, `xray` */
+  | { kind: 'scenario'; scenario: string }
 );
 
 /**
