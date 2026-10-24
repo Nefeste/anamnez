@@ -135,6 +135,10 @@ export function ClinicMap({ layout, people, signs = [], width, active, label, se
   const meta = useSharedValue<number[]>(new Array(CAPACITY * STRIDE).fill(0));
   const bodies = useSharedValue<number[]>(new Array(CAPACITY).fill(0));
   const heads = useSharedValue<number[]>(new Array(CAPACITY).fill(0));
+  // вид на месте и когда его принять (spec 2026-10-clinic-flow): цвет срочности — когда дошёл
+  const bodiesNext = useSharedValue<number[]>(new Array(CAPACITY).fill(0));
+  const headsNext = useSharedValue<number[]>(new Array(CAPACITY).fill(0));
+  const switchAt = useSharedValue<number[]>(new Array(CAPACITY).fill(0));
   const lights = useSharedValue<number[]>([]);
   const analyses = useSharedValue<number[]>([]);
   const chosen = useSharedValue(-1);
@@ -157,11 +161,14 @@ export function ClinicMap({ layout, people, signs = [], width, active, label, se
       meta.set(f.meta);
       bodies.set(f.bodies);
       heads.set(f.heads);
+      bodiesNext.set(f.bodiesNext);
+      headsNext.set(f.headsNext);
+      switchAt.set(f.switchAt);
       lights.set(f.lights);
       until.set(f.until);
     }
     chosen.set(walkers.slotOf(selected));
-  }, [people, selected, walkers, clock, until, route, turns, meta, bodies, heads, lights, chosen]);
+  }, [people, selected, walkers, clock, until, route, turns, meta, bodies, heads, bodiesNext, headsNext, switchAt, lights, chosen]);
 
   useEffect(() => {
     const lit = new Set(litKey.split(','));
@@ -194,12 +201,12 @@ export function ClinicMap({ layout, people, signs = [], width, active, label, se
 
   const bodySprites = useRectBuffer(CAPACITY, (rect, i) => {
     'worklet';
-    const n = BODY_AT + bodies.value[i];
+    const n = BODY_AT + (clock.value >= switchAt.value[i] ? bodiesNext.value[i] : bodies.value[i]);
     rect.setXYWH((n % COLS) * px, Math.floor(n / COLS) * px, px, px);
   });
   const headSprites = useRectBuffer(CAPACITY, (rect, i) => {
     'worklet';
-    const n = HEAD_AT + heads.value[i];
+    const n = HEAD_AT + (clock.value >= switchAt.value[i] ? headsNext.value[i] : heads.value[i]);
     rect.setXYWH((n % COLS) * px, Math.floor(n / COLS) * px, px, px);
   });
   const personXforms = useRSXformBuffer(CAPACITY, (val, i) => {

@@ -9,10 +9,11 @@ import type { ShiftState } from '../../src/engine/shift/types';
 import { memoryStore, saveSlot } from '../../src/state/saves';
 import {
   assign, buildAction, buildView, callPatient, chooseDiagnosis, closeDay, compatible, endBuild, examine, finishCase, forgetShift, hire, loadShift, nextDay, SANDBOX_SLOT,
-  saved, savedGames, setStore, shiftCaseView, shiftState, shiftView, skipIdle, staffView, startSandbox, startShift, tick, undoBuild,
+  saved, savedGames, sendAway, setSpeed, setStore, shiftCaseView, shiftState, shiftView, skipIdle, staffView, startSandbox, startShift, tick, undoBuild,
 } from '../../src/state/session';
+import { hhmm, patientName } from '../../src/state/caseView';
 import { T } from '../../src/i18n';
-import { SHIFT_SCHEMA_VERSION } from '../../src/engine/shift/types';
+import { DAY, SHIFT_SCHEMA_VERSION } from '../../src/engine/shift/types';
 
 let store = memoryStore();
 beforeEach(() => {
@@ -120,6 +121,38 @@ describe('песочница', () => {
     // практике касание помещений не нужно
     startShift(18, 'winter', 'doctor');
     expect(shiftView().rooms).toBeUndefined();
+  });
+
+  test('касание процедурной и лаборатории (spec 2026-10-clinic-flow): у кого берут кровь и сколько ждут; чьи пробы несут и к которому часу анализ', () => {
+    startSandbox({ start: 'clinic', budget: 'normal', difficulty: 'doctor', seed: 17, season: 'winter' });
+    nextDay();
+    const minute = () => {
+      setSpeed(1);
+      tick(1000);
+    };
+    for (let i = 0; i < 300 && shiftView().queue.length < 2; i++) minute();
+    const ids = shiftView().queue.slice(0, 2).map(r => r.id);
+    for (const id of ids) {
+      callPatient(id);
+      examine('exam.cbc');
+      sendAway();
+    }
+    const rooms = buildView()!.plan.rooms;
+    const of = (type: string) => shiftView().rooms![rooms.find(r => r.type === type)!.id].lines;
+    const s = shiftState()!;
+    const [a, b] = ids.map(id => s.patients[id]);
+    const x = a.pending.find(q => q.exam === 'exam.cbc')!;
+    const name = patientName(a.patient);
+    const cbc = db.exams['exam.cbc'].name.ru;
+    // пока проба первого не дошла — в лаборатории ничего
+    expect(of('room.lab').slice(-1)).toEqual([T.sandbox.roomFree]);
+    while (s.t < x.start!) minute();
+    expect(of('room.procedure').slice(-2)).toEqual([T.sandbox.roomDraw(name), T.sandbox.roomDrawNext(1)]);
+    while (s.t < x.end!) minute();
+    if (s.t < x.lab!) expect(of('room.lab').slice(-1)).toEqual([T.sandbox.roomCarry(cbc, name)]);
+    while (s.t < x.lab!) minute();
+    expect(of('room.lab').slice(-1)).toEqual([T.sandbox.roomInWork(cbc, name, hhmm(Math.floor((x.readyAt % DAY) / 60)))]);
+    expect(b.pending.some(q => q.exam === 'exam.cbc')).toBe(true);
   });
 
   test('касса: плательщик в очереди и в карте, оплата приёма на итоге, касса и репутация в итогах дня', () => {

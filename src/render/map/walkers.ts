@@ -9,7 +9,7 @@
 // медсестры, в кабинете, у аппарата, — а не по часам смены, которые на ×4 его обгоняют.
 import type { Cell, ClinicLayout } from '@/engine/hospital/clinic';
 import { findPath } from '@/engine/sim/path';
-import { assignSeats, type Doing, nearest, type Placement } from '@/state/clinicMap';
+import { assignBenches, assignSeats, type Doing, nearest, type Placement } from '@/state/clinicMap';
 import { LAMP_ROOMS } from '@/state/roomSigns';
 import { headingOf, objectTurns, restHeading, type Turn } from './orient';
 
@@ -18,7 +18,7 @@ export const SPEED = 4;
 /** В кабинет по вызову — быстрее: карта пациента откроется, когда он войдёт. */
 export const BRISK = 8;
 /** Сколько секунд человек хотя бы стоит там, где с ним что-то делают. */
-export const DWELL: Partial<Record<Doing['kind'], number>> = { registration: 1, triage: 1.5, exam: 1.5 };
+export const DWELL: Partial<Record<Doing['kind'], number>> = { registration: 1, triage: 1.5, exam: 1.5, carry: 1.5 };
 /** Чисел на человека в `meta`: смещение пути, число точек, время выхода, скорость, исчезнуть у цели. */
 export const STRIDE = 5;
 /** С ним что-то делают за дверью с лампой: приём у врача, у медсестры, процедура, обследование. */
@@ -40,6 +40,8 @@ interface Leg {
   leave: number;
   /** помещение с лампой, где с человеком что-то делают на этой остановке, — номер в плане; нет — -1 */
   room: number;
+  /** у медсестры доврачебного кабинета: здесь становится виден цвет срочности (spec 2026-10-clinic-flow) */
+  triage?: true;
 }
 
 interface Walker {
@@ -47,6 +49,11 @@ interface Walker {
   /** тело и голова из атласа (figures.ts) */
   body: number;
   head: number;
+  /**
+   * вид, который он примет у медсестры, а без неё на пути — когда дойдёт (spec 2026-10-clinic-flow): цвет срочности
+   * определяют внутри, а не в дверях
+   */
+  next?: Placement['look'];
   /** путь x0, y0, x1, y1, … в клетках: от первой точки к последней, по отрезку за 1/speed с */
   pts: number[];
   /** куда повёрнут на каждой точке пути, радианы: идёт — по ходу, стоит — к столу или как стул */
@@ -70,6 +77,10 @@ export interface Frame {
   meta: number[];
   bodies: number[];
   heads: number[];
+  /** вид, который человек примет на месте, — с `switchAt` по часам карты (spec 2026-10-clinic-flow); нет — тот же */
+  bodiesNext: number[];
+  headsNext: number[];
+  switchAt: number[];
   /** когда дойдёт последний идущий — дальше часы карты стоят и кадры не рисуются */
   until: number;
   /**
@@ -110,9 +121,11 @@ export function turnAt(turns: readonly number[], start: number, speed: number, n
   return turns[Math.min(last, Math.floor(s))];
 }
 
+const sameLook = (a: { body: number; head: number }, b: Placement['look']) => a.body === b.body && a.head === b.head;
+
 function legKind(d: Doing): LegKind {
-  if (d.kind === 'waiting' || d.kind === 'results' || d.kind === 'examQueue') return 'wait';
-  if (d.kind === 'registration' || d.kind === 'triage' || d.kind === 'exam') return 'act';
+  if (d.kind === 'waiting' || d.kind === 'results' || d.kind === 'examQueue' || d.kind === 'registrationQueue' || d.kind === 'triageQueue') return 'wait';
+  if (d.kind === 'registration' || d.kind === 'triage' || d.kind === 'exam' || d.kind === 'carry') return 'act';
   return 'go';
 }
 
@@ -133,7 +146,7 @@ export class Walkers {
   sync(people: readonly Placement[], now: number): Frame {
     const { layout } = this;
     this.seats = assignSeats(this.seats, people.filter(p => 'seat' in p.where).map(p => p.id), layout.seats.length);
-    this.benches = assignSeats(this.benches, people.filter(p => 'bench' in p.where).map(p => p.id), layout.benches.length);
+    this.benches = assignBenches(this.benches, people.flatMap(p => ('bench' in p.where ? [{ id: p.id, near: p.where.near }] : [])), layout.benches);
 
     // ушедшие со смены — сразу; дошедшие до выхода — тоже, и больше не появляются
     let changed = this.first;
@@ -160,22 +173,42 @@ export class Walkers {
         while (used.has(slot)) slot++;
         if (slot >= this.capacity) continue;
         used.add(slot);
-        const fresh: Walker = { slot, body: p.look.body, head: p.look.head, pts: [], turns: [], start: now, speed: SPEED, legs: [], target: leg.key, leaving: !!p.leaving };
-        // при открытии карты все уже на местах; потом новые входят с улицы
-        if (this.first || p.id.startsWith('staff.')) this.plan(fresh, [leg.cell], [{ ...leg, dwell: 0 }], now, SPEED);
-        else this.plan(fresh, [layout.entrance], [leg], now, SPEED);
+        // при открытии карты все уже на местах; потом новые входят с улицы — без цвета срочности: его определят внутри
+        const entering = !(this.first || p.id.startsWith('staff.'));
+        const look = entering && p.door ? p.door : p.look;
+        const fresh: Walker = {
+          slot, body: look.body, head: look.head, ...(look !== p.look ? { next: p.look } : {}), pts: [], turns: [], start: now, speed: SPEED, legs: [], target: leg.key, leaving: !!p.leaving,
+        };
+        if (entering) this.plan(fresh, [layout.entrance], [leg], now, SPEED);
+        else this.plan(fresh, [leg.cell], [{ ...leg, dwell: 0 }], now, SPEED);
         this.walkers.set(p.id, fresh);
         changed = true;
         continue;
       }
       w.leaving = !!p.leaving;
-      if (w.body !== p.look.body || w.head !== p.look.head) {
-        w.body = p.look.body;
-        w.head = p.look.head;
+      // новый вид (spec 2026-10-clinic-flow): цвет срочности определяет медсестра — он виден, когда человек у неё, а не в
+      // дверях и не по дороге к ней; её нет на пути — когда дошёл
+      if (sameLook(w, p.look)) {
+        if (w.next) {
+          delete w.next;
+          changed = true;
+        }
+      } else if (!w.next || !sameLook(w.next, p.look)) {
+        w.next = p.look;
+        changed = true;
+      }
+      // у медсестры он уже стоит — цвет здесь, а не там, куда его пошлют дальше
+      const nurse = this.atTriage(w);
+      if (w.next && nurse !== undefined && now >= nurse) {
+        this.adopt(w);
         changed = true;
       }
       if (w.target !== leg.key) {
         this.retarget(w, leg, p.doing.kind === 'office', now);
+        changed = true;
+      }
+      if (w.next && now >= this.switchAt(w)) {
+        this.adopt(w);
         changed = true;
       }
     }
@@ -186,6 +219,9 @@ export class Walkers {
     const meta = new Array<number>(this.capacity * STRIDE).fill(0);
     const bodies = new Array<number>(this.capacity).fill(0);
     const heads = new Array<number>(this.capacity).fill(0);
+    const bodiesNext = new Array<number>(this.capacity).fill(0);
+    const headsNext = new Array<number>(this.capacity).fill(0);
+    const switchAt = new Array<number>(this.capacity).fill(0);
     const lights: number[] = [];
     let until = 0;
     for (const w of this.walkers.values()) {
@@ -199,12 +235,15 @@ export class Walkers {
       for (const v of w.turns) turns.push(v);
       bodies[w.slot] = w.body;
       heads[w.slot] = w.head;
+      bodiesNext[w.slot] = w.next?.body ?? w.body;
+      headsNext[w.slot] = w.next?.head ?? w.head;
+      switchAt[w.slot] = w.next ? this.switchAt(w) : 0;
       until = Math.max(until, this.arrival(w));
       w.legs.forEach((l, i) => {
         if (l.room >= 0) lights.push(l.room, w.start + l.arrive / w.speed, i === w.legs.length - 1 ? FOREVER : w.start + l.leave / w.speed);
       });
     }
-    return { route, turns, meta, bodies, heads, until, lights, changed };
+    return { route, turns, meta, bodies, heads, bodiesNext, headsNext, switchAt, until, lights, changed };
   }
 
   /** Кого коснулись: точка — в клетках, не дальше клетки от фигурки; персонал тоже. */
@@ -244,6 +283,25 @@ export class Walkers {
 
   private arrival(w: Walker) {
     return w.start + (w.pts.length / 2 - 1) / w.speed;
+  }
+
+  /** Когда по этому пути он у медсестры — по часам карты; её на пути нет — undefined. */
+  private atTriage(w: Walker): number | undefined {
+    const leg = w.legs.find(l => l.triage);
+    return leg ? w.start + leg.arrive / w.speed : undefined;
+  }
+
+  /** Когда примет новый вид: у медсестры, а без неё на пути — когда дойдёт. */
+  private switchAt(w: Walker): number {
+    return this.atTriage(w) ?? this.arrival(w);
+  }
+
+  /** Принял вид, который ждал. */
+  private adopt(w: Walker) {
+    if (!w.next) return;
+    w.body = w.next.body;
+    w.head = w.next.head;
+    delete w.next;
   }
 
   /**
@@ -318,7 +376,7 @@ export class Walkers {
   private leg(p: Placement): Leg {
     const cell = this.targetOf(p);
     const room = LIGHTS.has(p.doing.kind) ? this.layout.rooms.findIndex(r => LAMP_ROOMS.has(r.type) && inside(r, cell)) : -1;
-    return { key: cellKey(cell), cell, kind: legKind(p.doing), dwell: DWELL[p.doing.kind] ?? 0, arrive: 0, leave: 0, room };
+    return { key: cellKey(cell), cell, kind: legKind(p.doing), dwell: DWELL[p.doing.kind] ?? 0, arrive: 0, leave: 0, room, ...(p.doing.kind === 'triage' ? { triage: true as const } : {}) };
   }
 
   private targetOf(p: Placement): Cell {

@@ -162,6 +162,8 @@ describe('кабинет УЗИ: карта и картинка', () => {
     const room = ctx.plan.rooms.find(r => r.id === us)!;
     expect(layout.staff).toContainEqual({ role: 'sonographer', cell: room.staff['role.sonographer'] });
     expect(layout.spots.ultrasound).toEqual(room.patient!);
+    // двое в очереди врача — второго не ждать, пока первый на УЗИ: с 0.6.9 в очереди — прошедшие медсестру
+    for (let i = 0; i < 600 && s.queue.length < 2; i++) apply(db, s, { kind: 'advance', seconds: 60 });
     const first = scanned(s);
     apply(db, s, { kind: 'sendAway' });
     const second = scanned(s);

@@ -1548,6 +1548,14 @@ try {
   await page.waitForTimeout(1500);
   const ticking = await text(page, 'shift-clock');
   check(ticking > opened, `смена: часы идут, пока в кабинете никого (${opened} → ${ticking})`);
+  // пришедший сначала оформляется — строкой внизу очереди, без «Пригласить»; в очереди врача — когда прошёл медсестру
+  // (spec 2026-10-clinic-flow, замечания владельца 24.10.2026)
+  const intakeRows = page.locator('[data-testid^="intake-"]');
+  check(await runClockUntil(page, async () => (await intakeRows.count()) > 0), 'смена: пришедший оформляется — строкой внизу очереди');
+  const intakeId = ((await intakeRows.first().getAttribute('data-testid')) ?? '').slice('intake-'.length);
+  const intakeText = (await intakeRows.first().innerText()).trim();
+  check(/ — (ждёт регистратуру|в регистратуре|ждёт медсестру|у медсестры)$/.test(intakeText) && (await page.getByTestId(`queue-${intakeId}`).count()) === 0, `смена: оформляется — «${intakeText}», в очереди врача его нет`);
+  check(await runClockUntil(page, async () => (await page.getByTestId(`queue-${intakeId}`).count()) > 0), 'смена: прошёл регистратуру и медсестру — в очереди врача');
   // карта амбулатории над очередью: подпись для чтения с экрана — кто где
   const mapLabel = (await page.getByTestId('clinic-map').getAttribute('aria-label')) ?? '';
   check(await page.getByTestId('clinic-map').isVisible() && /В зале ожидания: [1-9]/.test(mapLabel), `смена: карта амбулатории — «${mapLabel}»`);
