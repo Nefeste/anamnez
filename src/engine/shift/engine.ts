@@ -24,6 +24,7 @@ import { type Belief, contextOf, likelyParams, posterior, type Prior } from '../
 import { scaleTriage } from '../med/news2';
 import { alsoSettings, choiceFor, evaluatePlan, primaryOf, recommendedSetting, selfLimits, settingFit, settingRoomsOf, STAYS, surgeriesOf, treatable, txAvailable, type Venue, verdictOf, whenHolds } from '../med/plan';
 import { type DoctorRun, examCost, indicated, ORDER_MINUTES, type Parts, startRational, type StepResult, stepParts, whole } from '../med/policy';
+import { type CaseHardness, hardnessOf } from '../med/difficulty';
 import { buildReview, type ReviewData, reviewBeliefs } from '../med/review';
 import { type Grade, scoreBase, type ScoreBase, scoreThrift, worstGrade } from '../med/score';
 import { askMinutes, examSkillWith, mentorOf } from '../career/skills';
@@ -1606,6 +1607,8 @@ function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
     ...(targets.length > 0 ? { targets } : {}), ...(bedside.length > 0 ? { bedside } : {}), ...(rooms.length > 0 ? { rooms: [...rooms] } : {}),
     ...(p.arrest !== undefined ? { arrest: true as const } : {}),
     ...(later ? { review: base.lenient ? 'lenient' as const : 'due' as const } : {}),
+    // трудность вашего случая (часть 92) — для профиля: доля верных среди трудных
+    ...(later ? {} : { hardness: hardnessFor(db, s.meta, p) }),
   };
 }
 
@@ -1742,7 +1745,9 @@ export function reviewFor(db: ContentDb, meta: ReviewMeta, p: ShiftPatient, diag
   let out = entry.reviews.get(key);
   if (!out) {
     const beliefs = reviewTimeline(db, meta, p);
-    out = buildReview(db, p.patient, p.results.map(r => ({ exam: r.exam, obs: r.obs })), diagnosis, entry.candidates, entry.exams, entry.rng, entry.run.result(), beliefs);
+    out = buildReview(db, p.patient, p.results.map(r => ({ exam: r.exam, obs: r.obs })), diagnosis, entry.candidates, entry.exams, entry.rng, {
+      rational: entry.run.result(), beliefs, ...(entry.prior ? { prior: entry.prior } : {}), hardness: hardnessFor(db, meta, p),
+    });
     entry.reviews.set(key, out);
   }
   return out;
@@ -1766,6 +1771,8 @@ interface ReviewEntry {
   obs: Observation[];
   /** что знает о потоке разумный врач разбора (часть 91): «Зимний грипп» — эпидемия; уверенность разбора — с этим же */
   prior?: Prior;
+  /** трудность случая (часть 92): по разумному врачу разбора и уверенности после жалоб */
+  hardness?: CaseHardness;
 }
 const reviewEntries = new WeakMap<ContentDb, WeakMap<ShiftPatient['patient'], Map<string, ReviewEntry>>>();
 
@@ -1810,6 +1817,11 @@ export function prepareReview(db: ContentDb, s: ShiftState): boolean {
       nextBelief(db, entry, p);
       return true;
     }
+    // и трудность случая (часть 92): ещё одна уверенность — после расспроса и осмотра разумного врача
+    if (!entry.hardness) {
+      hardnessFor(db, s.meta, p);
+      return true;
+    }
   }
   // затем — у приёмов нанятых врачей и у тех, кто ждёт в очереди: разумный врач разбора нужен при закрытии каждого
   for (const q of ahead(s)) if (reviewEntry(db, s.meta, q).run.part() !== true) return true;
@@ -1835,6 +1847,10 @@ export function prepareFinish(db: ContentDb, s: ShiftState, more: () => boolean 
     if (!more()) return false;
     nextBelief(db, entry, p);
   }
+  if (!entry.hardness) {
+    if (!more()) return false;
+    hardnessFor(db, s.meta, p);
+  }
   return true;
 }
 
@@ -1858,6 +1874,13 @@ function reviewTimeline(db: ContentDb, meta: ReviewMeta, p: ShiftPatient): Belie
   const entry = reviewEntry(db, meta, p);
   while (entry.beliefs.length <= p.results.length) nextBelief(db, entry, p);
   return entry.beliefs.slice(0, p.results.length + 1);
+}
+
+/** Трудность случая (часть 92) — по разумному врачу разбора и уверенности после жалоб; одна на приём. */
+function hardnessFor(db: ContentDb, meta: ReviewMeta, p: ShiftPatient): CaseHardness {
+  const entry = reviewEntry(db, meta, p);
+  if (entry.beliefs.length === 0) nextBelief(db, entry, p);
+  return (entry.hardness ??= hardnessOf(db, p.patient, entry.candidates, entry.beliefs[0], entry.run.result(), entry.prior));
 }
 
 // --- стационар (spec 2026-09-chapter-2, часть 26) ---------------------------------------------

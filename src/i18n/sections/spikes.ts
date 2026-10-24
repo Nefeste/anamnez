@@ -270,6 +270,14 @@ export const spikes = {
     rationalLabel: 'Как прошёл бы этот случай разумный врач',
     rationalLine: (exams: string, min: number, rub: string, dx: string) => `${exams} — ${min}\u00a0мин, ${rub}; диагноз: ${dx}`,
     rationalNone: 'без обследований',
+    // трудность случая (часть 92, spec 2026-10-case-difficulty): по ряду у двери и разумному врачу разбора
+    hardnessLabel: 'Трудность случая',
+    hardness: { easy: 'лёгкий', medium: 'средний', hard: 'трудный' } as Record<string, string>,
+    hardnessLine: (level: string, row: number, how: string) =>
+      `Случай ${level}: по жалобам похоже на ${row}\u00a0${pluralRu(row, 'болезнь', 'болезни', 'болезней')}; ${how}.`,
+    hardnessTalk: 'разумному врачу хватает расспроса и осмотра',
+    hardnessMore: 'расспроса и осмотра мало — разумный врач решает его с обследованиями',
+    hardnessUnsolved: 'расспроса и осмотра мало, и с обследованиями разумный врач до уверенности в верном диагнозе не дошёл',
     idleLabel: 'Ничего не добавило',
     timelineLabel: 'Как менялась уверенность (правда · ваш диагноз, из 10)',
     timelineComplaints: 'Жалобы',

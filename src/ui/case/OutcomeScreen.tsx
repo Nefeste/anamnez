@@ -105,6 +105,9 @@ export function OutcomeScreen({ view, next, back, more }: { view: VisitView | un
 
       <Card>
         <H>{d.reviewLabel}</H>
+        {/* трудность случая (часть 92): ряд у двери и хватило ли разумному врачу расспроса и осмотра */}
+        <Text style={styles.label}>{t.hardnessLabel}</Text>
+        <P testID="visit-hardness">{x.hardness}</P>
         <Text style={styles.label}>{t.rationalLabel}</Text>
         <P>{x.rational}</P>
         {x.idle.length > 0 && (

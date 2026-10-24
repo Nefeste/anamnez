@@ -69,6 +69,8 @@ export default function ProfileScreen() {
               key: k, value: v.verdicts[k], color: k === 'correct' ? c.good : k === 'partly' ? c.warn : c.bad, icon: t.verdictIcon[k], label: t.verdict[k],
               text: t.share(v.verdicts[k], pctOf(v.verdicts[k], v.cases)),
             }))} />
+            {/* трудные случаи (часть 92): верный диагноз — из скольких встретившихся */}
+            {v.hard ? <Meter testID="profile-hard" label={t.hard} value={v.hard.ok} max={v.hard.of} text={t.outOf(v.hard.ok, v.hard.of)} /> : null}
             <P testID="profile-seen">{t.seen(v.seen.n, v.seen.of)}</P>
           </Card>
           <Card>

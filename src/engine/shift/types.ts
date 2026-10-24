@@ -6,6 +6,7 @@
 import type { BodySystem, Id, Season, Setting } from '../../content/types';
 import type { Scheduled } from '../core/events';
 import type { Outcome } from '../med/course';
+import type { CaseHardness } from '../med/difficulty';
 import type { BuildCommand, Built, HospitalState } from '../hospital/build';
 import type { CampaignProgress } from '../campaign/campaign';
 import type { Challenge } from './challenges';
@@ -243,6 +244,8 @@ export interface ClosedCase {
    * `reviewedCase`
    */
   review?: 'due' | 'lenient';
+  /** трудность случая (часть 92, spec 2026-10-case-difficulty) — у ваших приёмов: ряд у двери, хватило ли расспроса и осмотра */
+  hardness?: CaseHardness;
 }
 
 export type ShiftEvent =

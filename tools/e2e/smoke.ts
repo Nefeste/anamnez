@@ -102,19 +102,37 @@ async function overflowing(page: Page): Promise<string[]> {
  */
 async function tab(page: Page, key: 'card' | 'ask' | 'examine' | 'order'): Promise<void> {
   const it = visible(page, `tab-${key}`);
-  if ((await it.count()) > 0 && (await it.first().getAttribute('aria-selected')) !== 'true') await it.first().click();
+  if ((await it.count()) > 0 && (await it.first().getAttribute('aria-selected')) !== 'true') {
+    await it.first().click();
+    await appeared(page);
+  }
 }
 /** «Карта» из двух частей (0.6.5, вопрос 46): «Результаты» — журнал, «Гипотезы» — «Похоже на», ряд и правила. */
 async function part(page: Page, key: 'results' | 'board'): Promise<void> {
   await tab(page, 'card');
   const it = visible(page, `part-${key}`);
-  if ((await it.count()) > 0 && (await it.first().getAttribute('aria-selected')) !== 'true') await it.first().click();
+  if ((await it.count()) > 0 && (await it.first().getAttribute('aria-selected')) !== 'true') {
+    await it.first().click();
+    await appeared(page);
+  }
+}
+/**
+ * Reanimated на вебе прячет появляющееся (`entering`: группы «Известно» в карте) до начала анимации — кадр-два после
+ * касания: текст, прочитанный раньше, без них (падение сборки v0.6.15). Ждём, пока среди видимого не останется
+ * спрятанного с текстом; не дождались за 5 с — читаем как есть, проверка скажет.
+ */
+async function appeared(page: Page): Promise<void> {
+  await page.waitForFunction(() => ![...document.querySelectorAll<HTMLElement>('[style*="visibility"]')]
+    .some(e => e.style.visibility === 'hidden' && e.offsetParent !== null && (e.textContent ?? '').trim() !== ''), undefined, { timeout: 5_000 })
+    .catch(() => undefined);
 }
 /** Всё, что видно в карте пациента: журнал и доска гипотез с правилами; после — снова журнал. */
 async function cardText(page: Page): Promise<string> {
   await part(page, 'results');
+  await appeared(page);
   const results = await page.locator('body').innerText();
   await part(page, 'board');
+  await appeared(page);
   const board = await page.locator('body').innerText();
   await part(page, 'results');
   return `${results}\n${board}`;
@@ -3987,6 +4005,8 @@ try {
   await page.getByTestId('visit-finish').click();
   await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
   check((await text(page, 'visit-truth')).startsWith('На самом деле:'), `случай дня: разбор — ${await text(page, 'visit-truth')}`);
+  // случай дня — загадка по мере трудности (часть 92, spec 2026-10-case-difficulty): разбор называет его трудным
+  check((await text(page, 'visit-hardness')).startsWith('Случай трудный: по жалобам похоже на '), `случай дня: трудность — ${await text(page, 'visit-hardness')}`);
   await page.getByTestId('daily-to-list').click();
   await page.getByTestId('daily-base').waitFor({ timeout: 10_000 });
   check((await today.innerText()).includes('Сыгран: '), `случай дня: в списке — ${(await today.innerText()).replace(/\n/g, ' · ')}`);

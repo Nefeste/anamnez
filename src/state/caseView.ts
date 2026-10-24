@@ -7,6 +7,7 @@ import { type BodySystem, type Condition, type Id, membersOf, type Rule, type Se
 import { fnv1a } from '@/engine/core/hash';
 import type { Outcome } from '@/engine/med/course';
 import { complaintObservations, examFits, expectedFindings, falseRate } from '@/engine/med/exams';
+import type { CaseHardness } from '@/engine/med/difficulty';
 import { evidenceFor, examsFor } from '@/engine/med/differential';
 import { type Belief, contextOf, findingProbability, type InferContext, knownFacts, posterior, type Prior } from '@/engine/med/infer';
 import { jobName } from '@/engine/med/jobs';
@@ -131,6 +132,8 @@ export interface Decision {
   plan: { name: string; role: string }[];
   settingName: string;
   rational: string;
+  /** трудность случая (часть 92): ряд у двери и хватило ли разумному врачу расспроса и осмотра */
+  hardness: string;
   idle: string[];
   timeline: { label: string; truth: number; chosen: number }[];
 }
@@ -1096,12 +1099,19 @@ export function decisionOf(x: {
     // не лекарство — «лечение выбора» (часть 32)
     plan: x.ev.roles.map(r => ({ name: db.treatments[r.tx].name.ru, role: (db.treatments[r.tx].kind !== 'drug' ? t.roleTx[r.role] : undefined) ?? t.role[r.role] })),
     settingName: t.setting[x.plan.setting],
+    hardness: hardnessText(x.review.hardness),
     rational: t.rationalLine(
       x.review.rational.exams.length > 0 ? x.review.rational.exams.map(e => db.exams[e].name.ru).join(', ') : t.rationalNone,
       x.review.rational.minutes, T.common.rub(x.review.rational.money), db.conditions[x.review.rational.diagnosis].name.ru),
     idle: x.review.idle.map(e => db.exams[e].name.ru),
     timeline: x.review.timeline.map(v => ({ label: v.exam === 'complaint' ? t.timelineComplaints : db.exams[v.exam].name.ru, truth: outOf10(v.truth), chosen: outOf10(v.chosen) })),
   };
+}
+
+/** Трудность случая в разборе (часть 92): «Случай трудный: по жалобам похоже на 6 болезней; расспроса и осмотра мало …». */
+export function hardnessText(h: CaseHardness): string {
+  const t = T.spikes.patient;
+  return t.hardnessLine(t.hardness[h.level], h.row, h.talk ? t.hardnessTalk : h.solved ? t.hardnessMore : t.hardnessUnsolved);
 }
 
 /**
