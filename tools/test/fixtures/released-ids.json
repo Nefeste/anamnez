@@ -1,11 +1,14 @@
 {
-  "version": "0.6.13",
-  "base": 79,
+  "version": "0.6.14",
+  "base": 80,
   "ids": {
     "achievements": [
       "ach.allergy_10",
       "ach.cases_200",
       "ach.cases_50",
+      "ach.challenge_mute",
+      "ach.challenge_rural",
+      "ach.challenge_thrifty",
       "ach.city",
       "ach.daily_7",
       "ach.district",
