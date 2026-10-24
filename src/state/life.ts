@@ -42,11 +42,11 @@ const COFFEE = 2;
 
 const MIN = 60;
 
-/** Где у санузла что: кабинки (номер — по порядку на карте), где стоят у раковин, где ждут у двери. */
+/** Где у санузла что: кабинки (номер — по порядку на карте), где стоят у раковин, где ждут у двери — один за другим. */
 interface Toilet {
   stalls: { cell: Cell; index: number }[];
   sinks: Cell[];
-  door: Cell;
+  door: Cell[];
   /** секунд экрана от ближнего и от дальнего стула зала до кабинки */
   near: number;
   far: number;
@@ -110,18 +110,35 @@ function toiletOf(layout: ClinicLayout): Toilet | null {
     const door = r.door;
     const inner = Math.max(...stalls.map(s => walkSeconds(layout, door, s.cell) ?? Infinity));
     if (!Number.isFinite(Math.max(...far)) || !Number.isFinite(inner)) continue;
-    const t: Toilet = { stalls, sinks, door: outsideOf(layout, r), near: Math.min(...near), far: Math.max(...far), inside: inner };
+    const t: Toilet = { stalls, sinks, door: lineOutside(layout, r), near: Math.min(...near), far: Math.max(...far), inside: inner };
     if (!best || t.near < best.near) best = t;
   }
   toilets.set(layout, best);
   return best;
 }
 
-/** Клетка за дверью помещения — в коридоре; там ждут. Снаружи не пройти — сама дверь. */
-function outsideOf(layout: ClinicLayout, r: { x: number; y: number; w: number; h: number; door: Cell }): Cell {
+/**
+ * Где ждут у двери: клетка за ней в коридоре, следующие — вдоль стены, в ту сторону, где свободнее, до четырёх.
+ * Снаружи не пройти — сама дверь.
+ */
+function lineOutside(layout: ClinicLayout, r: { x: number; y: number; w: number; h: number; door: Cell }): Cell[] {
   const [dx, dy] = r.door;
-  const out: Cell = dy === r.y ? [dx, dy - 1] : dy === r.y + r.h - 1 ? [dx, dy + 1] : dx === r.x ? [dx - 1, dy] : [dx + 1, dy];
-  return walkable(layout.grid, out[0], out[1]) ? out : r.door;
+  const step: Cell = dy === r.y ? [0, -1] : dy === r.y + r.h - 1 ? [0, 1] : dx === r.x ? [-1, 0] : [1, 0];
+  const first: Cell = [dx + step[0], dy + step[1]];
+  if (!walkable(layout.grid, first[0], first[1])) return [r.door];
+  const along = ([ax, ay]: Cell): Cell[] => {
+    const run: Cell[] = [];
+    for (let k = 1; k < 4; k++) {
+      const c: Cell = [first[0] + ax * k, first[1] + ay * k];
+      if (!walkable(layout.grid, c[0], c[1])) break;
+      run.push(c);
+    }
+    return run;
+  };
+  const sides: [Cell, Cell] = step[0] === 0 ? [[1, 0], [-1, 0]] : [[0, 1], [0, -1]];
+  const a = along(sides[0]);
+  const b = along(sides[1]);
+  return [first, ...(b.length > a.length ? b : a)];
 }
 
 /** Ординаторская: её стулья и где встать у кофеварки; нет её (амбулатория практики) — перерывов нет. */
@@ -167,6 +184,9 @@ export function toiletPlaces(layout: ClinicLayout, s: ShiftState, life: Life, wa
   visits.sort((a, b) => a.start - b.start || (a.id < b.id ? -1 : 1));
   const { pace } = life;
   const free = t.stalls.map(() => -Infinity);
+  // у двери — по порядку, кто раньше встал, тот ближе к двери
+  let queued = 0;
+  const atDoor = () => ({ where: { cell: t.door[Math.min(queued++, t.door.length - 1)] }, doing: { kind: 'toiletQueue' } as Doing });
   for (const v of visits) {
     let k = 0;
     for (let i = 1; i < free.length; i++) if (free[i] < free[k]) k = i;
@@ -179,14 +199,14 @@ export function toiletPlaces(layout: ClinicLayout, s: ShiftState, life: Life, wa
     } else if (free[k] - there <= DOOR_WAIT * pace) {
       // ждёт у двери, пока её не освободят
       if (s.t < free[k]) {
-        out.set(v.id, { where: { cell: t.door }, doing: { kind: 'toiletQueue' } });
+        out.set(v.id, atDoor());
         continue;
       }
       from = free[k];
       end = from + (t.inside + v.stay) * pace;
     } else {
       // не дождался — постоял у двери и назад
-      if (s.t < v.start + (t.far + DOOR_WAIT) * pace) out.set(v.id, { where: { cell: t.door }, doing: { kind: 'toiletQueue' } });
+      if (s.t < v.start + (t.far + DOOR_WAIT) * pace) out.set(v.id, atDoor());
       continue;
     }
     free[k] = end;

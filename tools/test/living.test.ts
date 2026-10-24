@@ -152,9 +152,11 @@ describe('санузел', () => {
     const first = now(TOILET_AFTER[0] * 60);
     const kinds = [...first.values()].map(x => x.doing.kind).sort();
     expect(kinds).toEqual(['toilet', 'toilet', 'toiletQueue', 'toiletQueue']);
-    // ждущие у двери — у двери санузла, оба на одной клетке за дверью
-    const door = [...first.values()].filter(x => x.doing.kind === 'toiletQueue').map(x => JSON.stringify(x.where));
-    expect(new Set(door).size).toBe(1);
+    // ждущие у двери — за дверью санузла, один за другим, а не на одной клетке
+    const door = [...first.values()].filter(x => x.doing.kind === 'toiletQueue').map(x => (x.where as { cell: [number, number] }).cell);
+    expect(new Set(door.map(c => c.join(','))).size).toBe(2);
+    const toilet = CLINIC.rooms.find(r => r.type === 'toilet')!;
+    expect(Math.abs(door[0][0] - toilet.door[0]) + Math.abs(door[0][1] - toilet.door[1])).toBe(1);
     // долго ждать не станут: к концу ожидания у двери никого
     const late = now(TOILET_AFTER[0] * 60 + (60 + DOOR_WAIT) * 60);
     expect([...late.values()].some(x => x.doing.kind === 'toiletQueue')).toBe(false);
