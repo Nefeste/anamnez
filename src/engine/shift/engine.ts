@@ -33,6 +33,7 @@ import {
   SHIFT_START, type ShiftEvent, type ShiftPatient, type ShiftState, TRIAGE, type Triage, type VisitKind, type WardDay, type AmbulanceDay, type SurgeryDay,
 } from './types';
 import { CARD_EXAMS, type Challenge, CHALLENGES, challengeBlock, reviewExams } from './challenges';
+import { FLU_IDS, type Scenario, SCENARIO_DAYS, scenarioAmbulance, scenarioFlow, scenarioPrior, xrayBroken } from './scenarios';
 import { COMPLICATION_DAYS, complicationAt, complicationsOf, deathsOf, onsetHours, operationFor } from './surgery';
 import { dueIn, type TargetPlace, targetResults } from './targets';
 import { type Bed, daysIn, type StayEnd, stayNorm, wardCourse, wardState } from './ward';
@@ -220,6 +221,24 @@ export function newSingle(
 }
 
 /**
+ * Сценарий (часть 91, spec 2026-10-scenarios, вопрос 55): неделя «Смены» — пять смен подряд в выбранной больнице с условием
+ * сценария; «Зимний грипп» — всегда зимой. Режим — свой (`scenario`), со своим слотом: неделя не мешает «Смене».
+ */
+export function newScenario(
+  db: ContentDb,
+  opts: { seed: number; season: Season; difficulty?: Difficulty; venue: Id; scenario: Scenario; hospital?: HospitalState; staff?: StaffMember[] } & Variety,
+): ShiftState {
+  const s = singleBase(db, { ...opts, season: opts.scenario === 'flu' ? 'winter' : opts.season });
+  s.meta.mode = 'scenario';
+  s.meta.scenario = opts.scenario;
+  // «Рентген сломался» — с первого утра
+  const broken = xrayBroken(db, opts.scenario, hospitalCtx(db, s).plan.rooms);
+  if (broken.length > 0) s.broken = broken;
+  planDay(db, s);
+  return s;
+}
+
+/**
  * Готовая больница «Смены» без разыгранного дня (spec 2026-10-study-case, часть 74): по ней «Разобрать случай» знает,
  * какие отделения, места и обследования есть там, куда он кладёт больного из статьи.
  */
@@ -269,8 +288,9 @@ function builtIn(db: ContentDb, ch: Chapter): (role: Id) => boolean {
  * городскую везут больше), иначе — как везде.
  */
 function ambulanceOf(db: ContentDb, s: ShiftState): [number, number] {
-  const preset = s.campaign ? db.presets[chapterOf(db, s.campaign)?.preset ?? ''] : s.meta.mode === 'single' ? db.presets[s.meta.venue ?? ''] : undefined;
-  return preset?.ambulance ?? db.economy.ambulance.perDay;
+  const preset = s.campaign ? db.presets[chapterOf(db, s.campaign)?.preset ?? ''] : s.meta.mode === 'single' || s.meta.mode === 'scenario' ? db.presets[s.meta.venue ?? ''] : undefined;
+  // «Закрыли соседнюю больницу» (часть 91) — машин в полтора раза больше
+  return scenarioAmbulance(s.meta.scenario, preset?.ambulance ?? db.economy.ambulance.perDay);
 }
 
 /**
@@ -638,9 +658,10 @@ function planDay(db: ContentDb, s: ShiftState) {
   const d = s.day;
   const base = (d - 1) * DAY;
   const r = branch(s, `day:${d}`);
-  // песочница: с репутацией записываются и приходят чаще или реже (spec 2026-09-own-hospital)
-  const flow = s.economy ? flowOf(db, s.economy.reputation ?? db.economy.reputation.start) : 100;
-  const plan: { t: number; kind: VisitKind; key: string; ret?: PlannedReturn; to?: string; only?: readonly Id[] }[] = [];
+  // песочница: с репутацией записываются и приходят чаще или реже (spec 2026-09-own-hospital); «Закрыли соседнюю
+  // больницу» (часть 91) — в полтора раза чаще
+  const flow = s.economy ? flowOf(db, s.economy.reputation ?? db.economy.reputation.start) : scenarioFlow(s.meta.scenario);
+  const plan: { t: number; kind: VisitKind; key: string; ret?: PlannedReturn; to?: string; only?: readonly Id[]; patient?: Patient }[] = [];
   // какие отделения больница принимает сегодня (часть 30): с работающей смотровой приёмного — и хирургию
   const admits = departmentsOf(db, s);
   // запись: у вашего кабинета и у каждого нанятого врача — своя (spec 2026-09-hired-doctors);
@@ -691,6 +712,25 @@ function planDay(db: ContentDb, s: ShiftState) {
       plan.push({ t: base + SHIFT_START + (early && i === 0 ? Math.min(minute, TUTORIAL_AMBULANCE_MIN) : minute) * MIN, kind: 'ambulance', key: `amb:${i}` });
     }
   }
+  const departments = admits;
+  // «Больные: разнообразие» (spec 2026-10-variety) — кроме кампании: на частоты жизни настроены главы
+  const varied = s.meta.variety === true && s.meta.mode !== 'campaign';
+  const gen = { department: s.meta.department, departments, season: s.meta.season, ...(varied ? { variety: true } : {}) };
+  // пришёл сам (часть 41а): инсульта у него нет — его привозит скорая; к специалисту — с болезнью профиля (часть 59)
+  const selfPatient = (a: { key: string; only?: readonly Id[] }) =>
+    generatePatient(db, fnv1a(`${s.meta.seed}:${d}:${a.key}`), { ...gen, walkIn: true, ...(a.only ? { only: a.only } : {}) });
+  // «Зимний грипп» (часть 91, spec 2026-10-scenarios): на каждого пришедшего сам с ОРВИ, гриппом или пневмонией — ещё один
+  // с одной из них, по их частотам, без записи; остальные пришедшие — те же
+  if (s.meta.scenario === 'flu') {
+    const fr = r.fork('flu');
+    for (const a of plan.filter(x => !x.ret && (x.kind === 'appointment' || x.kind === 'walkIn'))) {
+      a.patient = selfPatient(a);
+      if (!FLU_IDS.includes(a.patient.truth.conditions[0]?.id ?? '')) continue;
+      const w = fr.fork(a.key);
+      const minute = Math.min(w.range(0, 330), w.range(0, 330));
+      plan.push({ t: base + SHIFT_START + minute * MIN, kind: 'walkIn', key: `flu:${a.key}`, only: FLU_IDS });
+    }
+  }
   // у главы с промежутком обучения (часть 46в) заданные приходят по порядку и не разом
   const gap = s.campaign ? chapterOf(db, s.campaign)?.tutorialGap : undefined;
   const spaced = tutorial.length > 0 && gap !== undefined ? spaceTutorial(tutorial, plan, gap * MIN, base + SHIFT_END - 30 * MIN) : undefined;
@@ -698,12 +738,8 @@ function planDay(db: ContentDb, s: ShiftState) {
   // заданного пациента получает первый пришедший того же вида: скорая — скорая (часть 34б); записанный к
   // специалисту — не он: заданный — для вас
   const taught = new Set<number>();
-  const departments = admits;
-  // «Больные: разнообразие» (spec 2026-10-variety) — кроме кампании: на частоты жизни настроены главы
-  const varied = s.meta.variety === true && s.meta.mode !== 'campaign';
   plan.forEach((a, i) => {
     const id = `${d}-${String(i + 1).padStart(2, '0')}`;
-    const gen = { department: s.meta.department, departments, season: s.meta.season, ...(varied ? { variety: true } : {}) };
     const k = spaced ? (spaced.get(a) ?? -1) : a.ret || a.to ? -1 : tutorial.findIndex((x, j) => !taught.has(j) && !!x.ambulance === (a.kind === 'ambulance'));
     const teach = k >= 0 ? tutorial[k] : undefined;
     if (teach) taught.add(k);
@@ -717,8 +753,7 @@ function planDay(db: ContentDb, s: ShiftState) {
         )
         : a.kind === 'ambulance'
           ? ambulancePatient(db, s, d, a.key, departments, varied)
-          // пришёл сам (часть 41а): инсульта у него нет — его привозит скорая; к специалисту — с болезнью профиля (часть 59)
-          : generatePatient(db, fnv1a(`${s.meta.seed}:${d}:${a.key}`), { ...gen, walkIn: true, ...(a.only ? { only: a.only } : {}) });
+          : (a.patient ?? selfPatient(a));
     // вернувшийся — и с теми отделениями, с какими его приняли в первый раз
     const own = a.ret ? [...new Set([...(s.patients[a.ret.of]?.departments ?? []), ...departments])] : departments;
     s.patients[id] = {
@@ -909,6 +944,8 @@ function settle(db: ContentDb, s: ShiftState) {
 /** Следующий день: часы — на 08:00, кабинеты свободны, план прихода с повторными обращениями. */
 function nextDay(db: ContentDb, s: ShiftState) {
   if (s.dayOpen) return;
+  // сценарий (часть 91) — неделя: после пятой смены следующей нет
+  if (s.meta.mode === 'scenario' && s.day >= SCENARIO_DAYS) return;
   // своя больница: без регистратуры, зоны ожидания и кабинета смену не открыть
   if (s.hospital) {
     const c = hospitalCtx(db, s);
@@ -930,8 +967,9 @@ function nextDay(db: ContentDb, s: ShiftState) {
     setSkills(s, s.meta.skillsNext);
     delete s.meta.skillsNext;
   }
-  // аппараты, сломавшиеся с утра (FR-EQ-3): до конца дня их нет, к завтра починят
-  const broken = breakdowns(db, s);
+  // аппараты, сломавшиеся с утра (FR-EQ-3): до конца дня их нет, к завтра починят; «Рентген сломался» (часть 91) — рентген
+  // не работает всю неделю
+  const broken = [...new Set([...breakdowns(db, s), ...xrayBroken(db, s.meta.scenario, hospitalCtx(db, s).plan.rooms)])];
   if (broken.length > 0) s.broken = broken;
   else delete s.broken;
   planDay(db, s);
@@ -1571,7 +1609,7 @@ function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
 }
 
 /** Что разбору нужно о смене: зерно, отделения и испытания (часть 91) — разумный врач разбора с теми же запретами. */
-export type ReviewMeta = Pick<ShiftState['meta'], 'seed' | 'department' | 'challenges'>;
+export type ReviewMeta = Pick<ShiftState['meta'], 'seed' | 'department' | 'challenges' | 'scenario'>;
 
 /** Цена и деньги разумного врача разбора на этом пациенте. */
 function rationalOf(db: ContentDb, meta: ReviewMeta, p: ShiftPatient): { cost: number; money: number } {
@@ -1736,14 +1774,15 @@ function reviewEntry(db: ContentDb, meta: ReviewMeta, p: ShiftPatient): ReviewEn
   const departments = p.departments ?? meta.department;
   // испытания смены (часть 91) — у ваших пациентов: разумный врач разбора с теми же запретами; у нанятых врачей — как всегда
   const limits = p.by ? undefined : meta.challenges;
-  const key = `${meta.seed}|${p.id}|${typeof departments === 'string' ? departments : departments.join(',')}${limits ? `|${limits.join('+')}` : ''}`;
+  // сценарий (часть 91): «Зимний грипп» — разумный врач знает об эпидемии
+  const key = `${meta.seed}|${p.id}|${typeof departments === 'string' ? departments : departments.join(',')}${limits ? `|${limits.join('+')}` : ''}${meta.scenario ? `|sc=${meta.scenario}` : ''}`;
   let entry = byPatient.get(key);
   if (!entry) {
     const rng = Rng.seeded(meta.seed).fork(`review:${p.id}`);
     const candidates = candidatesOf(db, departments);
     const exams = reviewExams(db, limits, Object.keys(db.exams).sort());
     entry = {
-      rng, candidates, exams, run: startRational(db, p.patient, rng, { candidates: [...candidates], exams: [...exams] }), reviews: new Map(),
+      rng, candidates, exams, run: startRational(db, p.patient, rng, { candidates: [...candidates], exams: [...exams], prior: scenarioPrior(meta.scenario) }), reviews: new Map(),
       beliefs: [], obs: complaintObservations(p.patient),
     };
     byPatient.set(key, entry);
@@ -3026,7 +3065,7 @@ function colleagueParts(db: ContentDb, s: ShiftState, p: ShiftPatient, m: StaffM
   const profile = p.to === m.id ? db.roles[m.role]?.profile : undefined;
   return stepParts(db, p.patient, observationsOf(p), p.done, p.phase ?? {}, {
     candidates: candidatesOf(db, p.departments ?? s.meta.department), exams: examsHere(db, s), threshold: how.threshold, minGain: how.minGain,
-    ...(profile ? { prior: { ids: profile, x: PROFILE_PRIOR } } : {}),
+    prior: [profile ? { ids: profile, x: PROFILE_PRIOR } : undefined, scenarioPrior(s.meta.scenario)],
     // навык 1–2 иногда забывает спросить перед лечением — жребий своей ветви
     skipAsk: q => forget > 0 && branch(s, `forget:${p.id}:${q}`).chance(forget * 100),
     // и что у постели (часть 39а): под монитором — тромболизис; и сколько прошло с прихода (часть 41а)

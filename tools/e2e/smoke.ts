@@ -8,7 +8,7 @@ import { clinicLayout } from '../../src/engine/hospital/clinic';
 import { slotKey } from '../../src/engine/hospital/requirements';
 import { presetStaff } from '../../src/engine/hospital/staff';
 import { generatePatient } from '../../src/engine/med/generate';
-import { apply, newCampaign, newSandbox, newShift, newSingle } from '../../src/engine/shift/engine';
+import { apply, newCampaign, newSandbox, newScenario, newShift, newSingle } from '../../src/engine/shift/engine';
 import { DAY, SHIFT_END, SHIFT_SCHEMA_VERSION } from '../../src/engine/shift/types';
 import { makeCaseView } from '../../src/state/caseView';
 import { placeOf } from '../../src/ui/case/places';
@@ -902,6 +902,26 @@ function challengeSave(): { save: string; id: string } {
   const s = newSingle(db, { seed: 47, season: 'winter', difficulty: 'student', venue: 'preset.clinic', challenges: ['mute', 'thrifty'] });
   for (let i = 0; i < 600 && s.queue.length === 0; i++) apply(db, s, { kind: 'advance', seconds: 60 });
   return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: '9999-12-31T00:00:00.000Z', data: s }), id: s.queue[0] };
+}
+
+/**
+ * Сценарий «Зимний грипп» (часть 91, spec 2026-10-scenarios) в амбулатории практики в конце первой смены: все приняты —
+ * «Закрыть день». Записан позже всех — его берёт «Продолжить».
+ */
+function scenarioEndOfDaySave(): string {
+  const { db } = buildDb();
+  const s = newScenario(db, { seed: 44, season: 'winter', difficulty: 'student', venue: 'preset.clinic', scenario: 'flu' });
+  const see = () => {
+    apply(db, s, { kind: 'call', id: s.queue[0] });
+    apply(db, s, { kind: 'exam', exam: 'exam.ask_complaints' });
+    apply(db, s, { kind: 'diagnose', id: 'cond.arvi' });
+    apply(db, s, { kind: 'finish' });
+  };
+  apply(db, s, { kind: 'advance', seconds: 3600 });
+  for (let i = 0; i < 2 && s.queue.length > 0; i++) see();
+  apply(db, s, { kind: 'advance', seconds: 6 * 3600 });
+  while (s.queue.length > 0) see();
+  return JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: '9999-12-31T23:59:59.000Z', data: s });
 }
 
 /** Песочница до открытия: готовая амбулатория, бюджет «обычный» — экран «Перед открытием». */
@@ -4078,6 +4098,51 @@ try {
   check(firstTab === 'true' && /из 1\s500\s₽/.test(spent) && fromCard.length === 3 && askOff && (await visible(page, 'challenge-ask-note').count()) === 1,
     `испытания: карта на «Осмотреть» — ${firstTab}, ${spent}, ${fromCard.join(' · ')}, вопросы серые — ${askOff}`);
   await page.screenshot({ path: join(OUT, '18-challenge-ask.png') });
+
+  // сценарии (часть 91, spec 2026-10-scenarios, вопрос 55): в «Испытаниях и сценариях» — три сценария; «Закрыли соседнюю
+  // больницу» в амбулатории не провести — нет смотровой приёмного; «Зимний грипп» — цель и «Начать неделю», в «Продолжить»
+  // — день недели
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-challenges').click();
+  await page.getByTestId('scenario-neighbor').waitFor({ timeout: 10_000 });
+  const scenarioCount = await page.locator('[data-testid^="scenario-"]').count();
+  await page.getByTestId('scenario-neighbor').click();
+  await page.getByTestId('scenario-start').waitFor({ timeout: 10_000 });
+  // под экраном сценария — экран испытаний со своими кнопками больниц: берём видимые
+  await visible(page, 'venue-preset.clinic').first().waitFor({ timeout: 10_000 });
+  const noEr = await visible(page, 'venue-preset.clinic').first().isDisabled();
+  const noErHint = await visibleText(page, 'venue-preset.clinic');
+  await page.goBack();
+  await page.getByTestId('scenario-flu').click();
+  await page.getByTestId('scenario-goal').waitFor({ timeout: 10_000 });
+  await visible(page, 'venue-preset.clinic').first().waitFor({ timeout: 10_000 });
+  const fluGoal = await visibleText(page, 'scenario-goal');
+  check(scenarioCount === 3 && noEr && noErHint.includes('нет смотровой приёмного') && fluGoal.startsWith('Цель: распознать пневмонию')
+    && !(await page.getByTestId('scenario-start').isDisabled()), `сценарии: три; без скорой — ${noErHint.replace(/\n/g, ' · ')}; «Зимний грипп» — ${fluGoal}`);
+  await page.screenshot({ path: join(OUT, '18-scenario.png'), fullPage: true });
+  await page.getByTestId('scenario-start').click();
+  await page.getByTestId('shift-clock').waitFor({ timeout: 15_000 });
+  await page.waitForTimeout(500); // запись — следующим тиком
+  await page.goto(base);
+  await page.getByTestId('menu-continue').waitFor({ timeout: 10_000 });
+  check((await text(page, 'menu-continue')).includes('сценарий «Зимний грипп», день 1 из 5'), `сценарии: «Продолжить» — ${(await text(page, 'menu-continue')).replace(/\n/g, ' · ')}`);
+  // конец первой смены недели: итог дня — день недели и цели, «Следующая смена» — вторая с 08:00
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/scenario.json', scenarioEndOfDaySave()]);
+  await page.goto(base);
+  await page.getByTestId('menu-continue').click();
+  await page.getByTestId('shift-close-day').waitFor({ timeout: 15_000 });
+  await page.getByTestId('shift-close-day').click();
+  await page.getByTestId('scenario-result').waitFor({ timeout: 10_000 });
+  const weekDay = await text(page, 'scenario-day');
+  const goals = await page.locator('[data-testid^="scenario-goal-"]').count();
+  const nextShift = await text(page, 'shift-next-day');
+  check(weekDay === 'Неделя: день 1 из 5' && goals === 3 && nextShift === 'Следующая смена' && (await page.getByTestId('single-result').count()) === 1
+    && (await page.getByTestId('scenario-verdict').count()) === 0, `сценарии: итог дня — ${weekDay}, целей ${goals}, «${nextShift}»`);
+  await page.screenshot({ path: join(OUT, '18-scenario-day.png'), fullPage: true });
+  await page.getByTestId('shift-next-day').click();
+  await page.getByTestId('shift-clock').waitFor({ timeout: 10_000 });
+  check((await text(page, 'shift-clock')) === '08:00', `сценарии: вторая смена недели — с ${await text(page, 'shift-clock')}`);
 
   // конец дня из сохранения: закрыть день, итоги, разбор случая из итогов, следующий день
   const day = await browser.newContext({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2 });

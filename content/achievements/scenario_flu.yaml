@@ -1,0 +1,7 @@
+id: ach.scenario_flu
+order: 28
+category: challenge
+name: { ru: "Зимний грипп" }
+need: { ru: "Пройти сценарий «Зимний грипп»: неделя эпидемии — пневмонию распознать, антибиотик без нужды не давать." }
+kind: scenario
+scenario: flu

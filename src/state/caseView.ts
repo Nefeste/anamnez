@@ -8,7 +8,7 @@ import { fnv1a } from '@/engine/core/hash';
 import type { Outcome } from '@/engine/med/course';
 import { complaintObservations, examFits, expectedFindings, falseRate } from '@/engine/med/exams';
 import { evidenceFor, examsFor } from '@/engine/med/differential';
-import { type Belief, contextOf, findingProbability, type InferContext, knownFacts, posterior } from '@/engine/med/infer';
+import { type Belief, contextOf, findingProbability, type InferContext, knownFacts, posterior, type Prior } from '@/engine/med/infer';
 import { jobName } from '@/engine/med/jobs';
 import { bedsideLack, type PlanEval, STAYS } from '@/engine/med/plan';
 import type { ReviewData } from '@/engine/med/review';
@@ -323,6 +323,8 @@ export interface CaseInput {
   /** испытания «Смены» (часть 91) и деньги «Скупого главврача» — как у вида */
   challenges?: readonly Challenge[];
   budget?: { left: number; of: number };
+  /** сценарий «Зимний грипп» (часть 91): в эпидемию ОРВИ, грипп и пневмония вероятнее — «Похоже на» и подсказки знают */
+  prior?: Prior;
   /** своя больница: обследования, которых здесь не сделать, — и почему (spec 2026-09-own-hospital) */
   unavailable?: Record<Id, string>;
   /** отделения больницы: из их болезней диагноз и «Похоже на» (часть 30); нет — терапия */
@@ -899,7 +901,7 @@ const USUAL = 0.75;
  */
 function dangerHint(p: Patient, obs: readonly Observation[], c: CaseInput, beliefs: readonly Belief[]): DangerHint {
   const first = complaintObservations(p);
-  const atStart = new Map(posterior(db, candidates(c.departments), first, contextOf(db, p, first)).map(b => [b.id, b.p]));
+  const atStart = new Map(posterior(db, candidates(c.departments), first, contextOf(db, p, first, c.prior)).map(b => [b.id, b.p]));
   const now = new Map(beliefs.map(b => [b.id, b.p]));
   const told = new Set(p.complaints);
   // проверено — что спросили, осмотрели или назначили: и пока результат не пришёл
@@ -992,7 +994,7 @@ export function makeCaseView(c: CaseInput): VisitView {
   // вывод для «Похоже на» и уверенности в гипотезах — у «Практиканта» и «Студента»; у «Врача» их нет (§14). Контекст
   // вывода — один на вид и только когда нужен: у «Врача» без гипотез его не считают
   let ctx: InferContext | undefined;
-  const context = () => (ctx ??= contextOf(db, p, obs));
+  const context = () => (ctx ??= contextOf(db, p, obs, c.prior));
   const beliefs = c.difficulty === 'doctor' ? undefined : posterior(db, candidates(c.departments), obs, context());
   return {
     version: c.version,

@@ -16,7 +16,7 @@ import {
 } from '../../src/state/session';
 
 const facts = (x: Partial<CareerFacts> = {}): CareerFacts => ({
-  cases: 0, days: 0, run: 0, gradeA: 0, thrift: 0, allergy: 0, noLeftDays: 0, daily: 0, seen: {}, rooms: [], chapters: [], challenges: [], ...x,
+  cases: 0, days: 0, run: 0, gradeA: 0, thrift: 0, allergy: 0, noLeftDays: 0, daily: 0, seen: {}, rooms: [], chapters: [], challenges: [], scenarios: [], ...x,
 });
 const ach = (id: string) => db.achievements[id];
 

@@ -1,12 +1,14 @@
-// «Испытания» (часть 91, spec 2026-10-challenges, вопрос 50): обычная «Смена» на один день — с условием, одним или
-// несколькими: без расспроса, без анализов и снимков, обследования пациента до 1 500 ₽. Больница и сложность — как у
-// «Смены»; у каждого испытания — его лучший итог.
+// «Испытания и сценарии» (часть 91, spec 2026-10-challenges и 2026-10-scenarios, вопросы 50 и 55). Сценарии — неделя с
+// особым потоком: касание — экран сценария. Испытания — обычная «Смена» на один день с условием, одним или несколькими:
+// без расспроса, без анализов и снимков, обследования пациента до 1 500 ₽. Больница и сложность — как у «Смены»; у каждого
+// испытания и сценария — его лучший итог.
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import { BUDGET, type Challenge, CHALLENGES } from '@/engine/shift/challenges';
+import { SCENARIOS } from '@/engine/shift/scenarios';
 import type { Difficulty } from '@/engine/shift/types';
 import { T } from '@/i18n';
-import { challengeBest, singleVenues, startSingle, type VenueView } from '@/state/session';
+import { challengeBest, scenarioBest, singleVenues, startSingle, type VenueView } from '@/state/session';
 import { Button, Card, P, Screen } from '@/ui/components';
 import { DifficultyChoice } from '@/ui/difficulty';
 import { Text } from '@/ui/text';
@@ -40,6 +42,19 @@ export default function ChallengesScreen() {
   };
   return (
     <Screen footer={<Button testID="challenge-start" title={t.start} hint={picked.length === 0 ? t.pick : undefined} disabled={picked.length === 0} onPress={start} />}>
+      {/* сценарии (часть 91): неделя с особым потоком — на своём экране */}
+      <Card testID="scenarios">
+        <Text style={styles.label}>{T.scenarios.title}</Text>
+        <P>{T.scenarios.intro}</P>
+        {SCENARIOS.map(sc => {
+          const best = scenarioBest(sc);
+          return (
+            <Button key={sc} testID={`scenario-${sc}`} kind="plain" title={T.scenarios.names[sc]}
+              hint={best ? `${T.scenarios.rules[sc]} ${T.scenarios.best(best.best.overall)}` : T.scenarios.rules[sc]}
+              onPress={() => router.push({ pathname: '/scenario', params: { id: sc } })} />
+          );
+        })}
+      </Card>
       <Card>
         <P>{t.intro}</P>
       </Card>

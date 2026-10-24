@@ -49,7 +49,7 @@ export default function ShiftScreen() {
   if (v.status === 'none') {
     if (v.mode === 'sandbox') return <NewSandbox onStart={opts => startSandbox(opts)} />;
     if (v.mode === 'campaign') return <NoCareer />;
-    return v.mode === 'single' ? <NoSingle /> : <NewPractice />;
+    return v.mode === 'single' ? <NoSingle /> : v.mode === 'scenario' ? <NoScenario /> : <NewPractice />;
   }
   // своя больница между сменами — песочница и глава кампании: стройка, персонал, «Открыть
   // смену» (spec 2026-09-own-hospital, 2026-09-campaign); глава только началась — и после
@@ -60,12 +60,25 @@ export default function ShiftScreen() {
     <>
       {own && <OwnTitle mode={v.mode} />}
       {v.mode === 'single' && <Stack.Screen options={{ title: T.single.title }} />}
+      {/* неделя сценария (часть 91): название сценария */}
+      {v.mode === 'scenario' && <Stack.Screen options={{ title: v.scenario?.name ?? T.scenarios.title }} />}
       {v.dayOpen ? <Queue v={v} /> : <Summary v={v} />}
     </>
   );
 }
 
 /** «Смены» нет — к выбору больницы. */
+/** Недели сценария нет (часть 91): к «Испытаниям и сценариям». */
+function NoScenario() {
+  return (
+    <Screen footer={<Button testID="to-scenarios" title={T.challenges.menuTitle} onPress={() => router.replace('/challenges')} />}>
+      <Card>
+        <P>{T.single.noSave}</P>
+      </Card>
+    </Screen>
+  );
+}
+
 function NoSingle() {
   return (
     <Screen footer={<Button testID="to-single" title={T.single.title} onPress={() => router.replace('/single')} />}>
@@ -499,11 +512,15 @@ function Summary({ v }: { v: ShiftView }) {
     openCase(id);
     router.push('/shift/outcome');
   };
+  // неделя сценария (часть 91): пять смен — потом новый сценарий
   const footer = v.mode === 'single'
     ? <Button testID="single-again" title={T.single.again} onPress={() => router.replace('/single')} />
-    : <Button testID="shift-next-day" title={t.nextDay} onPress={nextDay} />;
+    : v.mode === 'scenario' && s.scenario?.final
+      ? <Button testID="scenario-again" title={T.scenarios.again} onPress={() => router.replace('/challenges')} />
+      : <Button testID="shift-next-day" title={v.mode === 'scenario' ? T.scenarios.nextDay : t.nextDay} onPress={nextDay} />;
   return (
     <Screen footer={footer}>
+      {s.scenario && <ScenarioCard r={s.scenario} />}
       {s.single && <SingleCard r={s.single} />}
       <Card>
         <H>{t.title(s.day)}</H>
@@ -608,6 +625,19 @@ function Summary({ v }: { v: ShiftView }) {
   );
 }
 
+/** Неделя сценария (часть 91): какой день, цели — выполнена ли каждая, после пятой смены — итог. */
+function ScenarioCard({ r }: { r: NonNullable<SummaryView['scenario']> }) {
+  const t = T.scenarios;
+  return (
+    <Card testID="scenario-result">
+      <H>{r.name}</H>
+      <P testID="scenario-day">{r.day}</P>
+      {r.goals.map((g, i) => <P key={g.text} testID={`scenario-goal-${i}`}>{`${g.ok ? t.ok : t.miss} ${g.text}`}</P>)}
+      {r.verdict && <P testID="scenario-verdict">{r.verdict}</P>}
+    </Card>
+  );
+}
+
 /** «Смена»: оценки по категориям, общая, кого приняли и сколько минут на приём, лучший здесь. */
 function SingleCard({ r }: { r: NonNullable<SummaryView['single']> }) {
   const styles = useStyles();
@@ -615,7 +645,7 @@ function SingleCard({ r }: { r: NonNullable<SummaryView['single']> }) {
   const t = T.single;
   return (
     <Card testID="single-result">
-      <H>{t.resultTitle(r.venue)}</H>
+      <H>{r.title}</H>
       {r.grades.length > 0 && (
         <View style={styles.grades}>
           {r.grades.map(g => (

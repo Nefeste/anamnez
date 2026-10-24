@@ -24,10 +24,12 @@ import { askMinutes, skillsFor } from '@/engine/career/skills';
 import {
   apply, atDoctor, atDoorOf, bedsideEquipment, bedsideOf, boxBeds, brokenOf, current, freeBeds, freeBoxBeds, freeIcuBeds, freeRicuBeds, type HospitalCtx, hospitalCtx, icuBeds, inBox, inIcu, inpatientsOf, inRicu,
   leftForPlayer, moreUrgent, newCampaign, newSandbox, ricuBeds,
-  newShift, newSingle, observationsOf, operationOf, type OrBlock, orBlock, orQueueOf, prepareReview, reviewFor, type ReviewMeta, SANDBOX_VENUE, stayEquipment, targetPlace,
+  newScenario, newShift, newSingle, observationsOf, operationOf, type OrBlock, orBlock, orQueueOf, prepareReview, reviewFor, type ReviewMeta, SANDBOX_VENUE, stayEquipment, targetPlace,
+  venueState,
   wardBeds, catchUp, prepareFinish, reviewedCase, waitUntil,
 } from '@/engine/shift/engine';
 import { BUDGET, type Challenge, challengeBlock } from '@/engine/shift/challenges';
+import { isXray, type Scenario, SCENARIO_DAYS, SCENARIOS, scenarioFits, scenarioPrior } from '@/engine/shift/scenarios';
 import { minutesTo, targetStart, targetsFor } from '@/engine/shift/targets';
 import {
   type ClosedCase, type Command, DAY, type Difficulty, easyLevel, type Mode, type Notice, SHIFT_END, SHIFT_SCHEMA_VERSION, type ShiftPatient, type ShiftState, type Triage,
@@ -45,6 +47,7 @@ import { type RoomSign, roomSigns } from './roomSigns';
 import { achievementsBy, archivedCase, caseKey, type DayRecord, profile, recordCases, recordDay, recordSingle, type SingleBest } from './profile';
 import { dateText } from './profileView';
 import { challengePassed, SINGLE_CATEGORIES, type SingleCategory, singleResult } from './single';
+import { DEATHS, NEEDLESS_ANTIBIOTIC, PNEUMONIA_CAUGHT, QUEUE_LOST, type ScenarioGoal, scenarioResult, WEEK_GRADE, WEEK_SEEN } from './scenario';
 import { blockText, type CashView, cashView, examBlockText, levelText, paymentText, personName, problemText, statusText } from './sandboxView';
 import { loadSlot, type RawStore, saveSlot } from './saves';
 import { settings } from './settings';
@@ -54,8 +57,11 @@ import { momentKey, momentOf, type TipMoment, type TipScreen, tipFor } from './t
 export const SLOT = 'shift';
 export const SANDBOX_SLOT = 'sandbox';
 export const SINGLE_SLOT = 'single';
+/** сценарий (часть 91): неделя — в своём слоте, «Смена» её не перезаписывает */
+export const SCENARIO_SLOT = 'scenario';
 export const CAREERS = [1, 2, 3] as const;
-export const slotOf = (m: Mode, career = 1) => (m === 'sandbox' ? SANDBOX_SLOT : m === 'campaign' ? `campaign-${career}` : m === 'single' ? SINGLE_SLOT : SLOT);
+export const slotOf = (m: Mode, career = 1) =>
+  (m === 'sandbox' ? SANDBOX_SLOT : m === 'campaign' ? `campaign-${career}` : m === 'single' ? SINGLE_SLOT : m === 'scenario' ? SCENARIO_SLOT : SLOT);
 /** Скорость часов на карте — игровых минут в секунду. */
 export const SPEEDS = [1, 2, 4] as const;
 export type Speed = (typeof SPEEDS)[number];
@@ -139,6 +145,8 @@ export interface SummaryView {
   achievements: string[];
   /** «Смена»: итог по категориям и лучший результат в этой больнице */
   single?: SingleView;
+  /** неделя сценария (часть 91): цели и, после пятой смены, итог */
+  scenario?: ScenarioView;
   /** стационар за день (spec 2026-09-chapter-2, часть 26): поступили, выписаны, лежат; сроки у выписанных */
   wardLines?: string[];
   /** скорая за день (часть 27): привезли, отсортировали, сверка со шкалой */
@@ -152,6 +160,8 @@ export interface SummaryView {
 /** Итог «Смены»: оценки по категориям, общая, строки, лучший в этой больнице. */
 export interface SingleView {
   venue: string;
+  /** «Итог смены · …»; в неделе сценария (часть 91) — за сыгранные смены, после пятой — итог недели */
+  title: string;
   grades: { key: SingleCategory; label: string; grade: Grade }[];
   overall?: Grade;
   lines: string[];
@@ -163,12 +173,16 @@ export interface SingleView {
  * свой: всех новых вы принимали один, сравнивать с днём, когда работали нанятые врачи, нечестно.
  */
 const singleName = (s: ShiftState) =>
-  `${venueName(s.meta.venue ?? 'preset.clinic')}${s.meta.solo ? T.single.soloSuffix : ''}${s.meta.challenges ? T.challenges.suffix(challengeNames(s.meta.challenges)) : ''}`;
+  `${venueName(s.meta.venue ?? 'preset.clinic')}${s.meta.solo ? T.single.soloSuffix : ''}${s.meta.challenges ? T.challenges.suffix(challengeNames(s.meta.challenges)) : ''}`
+  + (s.meta.scenario ? T.scenarios.suffix(T.scenarios.names[s.meta.scenario]) : '');
 /** Лучший результат — свой у больницы, «только вы» и набора испытаний (часть 91): с условием сравнивать с обычной сменой нечестно. */
 export const bestKey = (s: Pick<ShiftState, 'meta'>) =>
-  `${s.meta.venue ?? 'preset.clinic'}${s.meta.solo ? SOLO_BEST : ''}${s.meta.challenges ? `${CHALLENGE_BEST}${s.meta.challenges.join('+')}` : ''}`;
+  `${s.meta.venue ?? 'preset.clinic'}${s.meta.solo ? SOLO_BEST : ''}${s.meta.challenges ? `${CHALLENGE_BEST}${s.meta.challenges.join('+')}` : ''}`
+  // сценарий (часть 91): лучший итог недели — свой у сценария в каждой больнице
+  + (s.meta.scenario ? `${SCENARIO_BEST}${s.meta.scenario}` : '');
 const SOLO_BEST = ':solo';
 const CHALLENGE_BEST = ':ch=';
+const SCENARIO_BEST = ':sc=';
 /** Испытания смены названиями: «Нелюдимый врач, Скупой главврач». */
 const challengeNames = (list: readonly Challenge[]) => list.map(c => T.challenges.names[c]).join(', ');
 
@@ -190,14 +204,67 @@ export function challengeBest(c: Challenge): { best: SingleBest; venue: string }
   return out;
 }
 
+/** Сценарий (часть 91): лучший итог недели в любой больнице и где; недель ещё не было — undefined. */
+export function scenarioBest(sc: Scenario): { best: SingleBest; venue: string } | undefined {
+  let out: { best: SingleBest; venue: string } | undefined;
+  for (const [key, b] of Object.entries(profile().best)) {
+    const at = key.indexOf(SCENARIO_BEST);
+    if (at < 0 || key.slice(at + SCENARIO_BEST.length) !== sc) continue;
+    if (!out || betterSingle(b, out.best)) out = { best: b, venue: venueName(key.slice(0, at)) };
+  }
+  return out;
+}
+
+/** Неделя сценария (часть 91): сыграно смен, цели строками — выполнена ли каждая; после пятой смены — итог. */
+export interface ScenarioView {
+  id: Scenario;
+  name: string;
+  /** «Неделя: день 2 из 5» */
+  day: string;
+  /** неделя закончена: пять смен закрыты */
+  final: boolean;
+  goals: { text: string; ok: boolean }[];
+  /** итог недели: пройден ли сценарий — после пятой смены */
+  verdict?: string;
+  passed: boolean;
+}
+
+function goalText(g: ScenarioGoal): string {
+  const t = T.scenarios.goal;
+  const n = typeof g.value === 'number' ? g.value : 0;
+  if (g.key === 'seen') return t.seen(n, WEEK_SEEN);
+  if (g.key === 'pneumonia') return t.pneumonia(n, g.of ?? 0, PNEUMONIA_CAUGHT);
+  if (g.key === 'antibiotic') return t.antibiotic(n, g.of ?? 0, NEEDLESS_ANTIBIOTIC);
+  if (g.key === 'queue') return t.queue(n, g.of ?? 0, QUEUE_LOST);
+  if (g.key === 'deaths') return t.deaths(n, g.of ?? 0, DEATHS);
+  return t.overall(String(g.value), WEEK_GRADE);
+}
+
+function scenarioView(s: ShiftState): ScenarioView | undefined {
+  const r = scenarioResult(db, s);
+  const id = s.meta.scenario;
+  if (!r || !id) return undefined;
+  const final = !s.dayOpen && s.day >= SCENARIO_DAYS;
+  return {
+    id, name: T.scenarios.names[id], day: T.scenarios.day(Math.min(s.day, SCENARIO_DAYS), SCENARIO_DAYS), final,
+    goals: r.goals.map(g => ({ text: goalText(g), ok: g.ok })),
+    ...(final ? { verdict: r.passed ? T.scenarios.passed : T.scenarios.failed } : {}),
+    passed: r.passed,
+  };
+}
+
 function singleView(s: ShiftState): SingleView {
   const t = T.single;
   const r = singleResult(s);
-  if (!r) return { venue: singleName(s), grades: [], lines: [t.nobody] };
-  const b = profile().best[bestKey(s)];
+  const venue = singleName(s);
+  // сценарий (часть 91): итог — за сыгранные смены недели, после пятой — итог недели; лучший итог — недели
+  const weekOpen = s.meta.mode === 'scenario' && (s.dayOpen || s.day < SCENARIO_DAYS);
+  const title = s.meta.mode !== 'scenario' ? t.resultTitle(venue) : `${weekOpen ? T.scenarios.soFar : T.scenarios.weekTitle} · ${venue}`;
+  if (!r) return { venue, title, grades: [], lines: [t.nobody] };
+  const b = weekOpen ? undefined : profile().best[bestKey(s)];
   const mine = b && b.seed === s.meta.seed && b.points === r.points && b.seen === r.seen;
   return {
-    venue: singleName(s),
+    venue, title,
     grades: SINGLE_CATEGORIES.map(key => ({ key, label: t.category[key], grade: r.grades[key] })),
     overall: r.overall,
     lines: [
@@ -220,6 +287,8 @@ export interface ShiftView {
   difficulty: Difficulty;
   day: number;
   clock: string;
+  /** неделя сценария (часть 91): название и «Неделя: день 2 из 5» */
+  scenario?: { name: string; day: string };
   dayOpen: boolean;
   /** после 14:00 новые не приходят */
   afterHours: boolean;
@@ -319,14 +388,17 @@ export function setStore(s: RawStore) {
 
 /** Сохранение от этой базы: всё, на что оно ссылается, в ней есть (после обновления — может не быть). */
 export function compatible(s: ShiftState | undefined): boolean {
-  if (!s || !['shift', 'sandbox', 'campaign', 'single'].includes(s.meta?.mode) || typeof s.patients !== 'object') return false;
+  if (!s || !['shift', 'sandbox', 'campaign', 'single', 'scenario'].includes(s.meta?.mode) || typeof s.patients !== 'object') return false;
   const has = (table: Record<string, unknown>) => (id: Id) => table[id] !== undefined;
+  // «Смена» и неделя сценария (часть 91) — в готовой больнице или своей
+  const single = s.meta.mode === 'single' || s.meta.mode === 'scenario';
   if (s.meta.mode === 'campaign' && (!s.campaign || !db.chapters[s.campaign.chapter])) return false;
-  if (s.meta.mode === 'single' && s.meta.venue !== SANDBOX_VENUE && !db.presets[s.meta.venue ?? '']) return false;
+  if (single && s.meta.venue !== SANDBOX_VENUE && !db.presets[s.meta.venue ?? '']) return false;
+  if (s.meta.mode === 'scenario' && !SCENARIOS.includes(s.meta.scenario as Scenario)) return false;
   // своя больница — у песочницы и кампании всегда, у «Смены» — кроме амбулатории практики
-  if (s.meta.mode === 'sandbox' || s.meta.mode === 'campaign' || (s.meta.mode === 'single' && s.hospital)) {
+  if (s.meta.mode === 'sandbox' || s.meta.mode === 'campaign' || (single && s.hospital)) {
     const h = s.hospital;
-    if (!h || (s.meta.mode !== 'single' && !s.economy) || !Array.isArray(h.rooms)) return false;
+    if (!h || (!single && !s.economy) || !Array.isArray(h.rooms)) return false;
     const ok = h.rooms.every(r => db.rooms[r.type]?.sizes.some(z => z.id === r.size) && r.equipment.every(e => e === null || has(db.equipment)(e)));
     if (!ok) return false;
   }
@@ -550,6 +622,43 @@ export async function startSingle(opts: { venue: Id; difficulty: Difficulty; see
     seed: (opts.seed ?? Date.now() % 0x7fffffff) >>> 0, season: opts.season ?? seasonOf(new Date()), difficulty: opts.difficulty, venue: opts.venue,
     ...(own ? { hospital: own.hospital, staff: own.staff } : {}), variety: settings().variety, ...(opts.solo ? { solo: true } : {}),
     ...(opts.challenges && opts.challenges.length > 0 ? { challenges: opts.challenges } : {}),
+  }));
+  return true;
+}
+
+/** Типы помещений больницы «Смены»: готовой — по её плану, своей — по песочнице. */
+async function venueRooms(venue: Id): Promise<Set<Id>> {
+  if (venue === SANDBOX_VENUE) {
+    const own = await sandboxHospital();
+    return new Set(own ? planOf(db, own.hospital).rooms.map(r => r.type) : []);
+  }
+  return new Set(hospitalCtx(db, venueState(db, venue)).plan.rooms.map(r => r.type));
+}
+
+/**
+ * Где можно провести неделю сценария (часть 91, spec 2026-10-scenarios): там же, где «Смену», и где сценарий имеет смысл —
+ * «Закрыли соседнюю больницу» — со смотровой приёмного, «Рентген сломался» — с рентген-кабинетом; не подходит — с причиной.
+ */
+export async function scenarioVenues(sc: Scenario): Promise<VenueView[]> {
+  const out: VenueView[] = [];
+  for (const v of await singleVenues()) {
+    const fits = scenarioFits(sc, await venueRooms(v.venue));
+    out.push({ ...v, ok: v.ok && fits, hint: fits ? (v.ok ? '' : v.hint) : T.scenarios.unfit[sc] });
+  }
+  return out;
+}
+
+/** Новая неделя сценария (часть 91): пять смен в выбранной больнице; прежняя неделя перезаписывается. Нельзя — false. */
+export async function startScenario(opts: { scenario: Scenario; venue: Id; difficulty: Difficulty; seed?: number; season?: Season }): Promise<boolean> {
+  let own: { hospital: HospitalState; staff: StaffMember[] } | undefined;
+  if (opts.venue === SANDBOX_VENUE) {
+    own = await sandboxHospital();
+    if (!own || blocksOf(own).length > 0) return false;
+  } else if (!db.presets[opts.venue]) return false;
+  if (!scenarioFits(opts.scenario, await venueRooms(opts.venue))) return false;
+  begin(newScenario(db, {
+    seed: (opts.seed ?? Date.now() % 0x7fffffff) >>> 0, season: opts.season ?? seasonOf(new Date()), difficulty: opts.difficulty, venue: opts.venue,
+    scenario: opts.scenario, ...(own ? { hospital: own.hospital, staff: own.staff } : {}), variety: settings().variety,
   }));
   return true;
 }
@@ -1042,8 +1151,9 @@ export function closeDay() {
   // ночью умерший после операции (часть 28б) — в архиве профиля его приём с исходом
   recordCases(closedCases(sess.s));
   recordDay(dayRecord(sess.s));
-  // «Смена»: лучший результат в этой больнице — в профиль
-  const r = sess.s.meta.mode === 'single' ? singleResult(sess.s) : undefined;
+  // «Смена»: лучший результат в этой больнице — в профиль; сценарий (часть 91) — итог недели, после пятой смены
+  const week = sess.s.meta.mode === 'scenario' && sess.s.day >= SCENARIO_DAYS;
+  const r = sess.s.meta.mode === 'single' || week ? singleResult(sess.s) : undefined;
   if (r) recordSingle(bestKey(sess.s), { points: r.points, overall: r.overall, seen: r.seen, arrived: r.arrived, seed: sess.s.meta.seed });
   sess.focus = undefined;
   sess.meanwhile = [];
@@ -1079,6 +1189,8 @@ function brokenLines(s: ShiftState): string[] {
   return s.broken.map(k => {
     const [room, slot] = k.split(':');
     const id = ctx.plan.rooms.find(r => r.id === room)?.equipment[Number(slot)];
+    // «Рентген сломался» (часть 91): рентген — до конца недели
+    if (id && s.meta.scenario === 'xray' && isXray(id)) return T.scenarios.brokenWeek(lowerFirst(db.equipment[id].name.ru), lowerFirst(names[room] ?? ''));
     return T.shift.notice.broken(id ? db.equipment[id].name.ru : '', names[room] ?? '');
   });
 }
@@ -1098,6 +1210,8 @@ function dayRecord(s: ShiftState): DayRecord {
     chapters: s.campaign?.complete !== undefined ? [s.campaign.chapter] : [],
     // испытания «Смены» (часть 91): пройдены — все испытания дня
     ...(s.meta.mode === 'single' && s.meta.challenges && challengePassed(singleResult(s)) ? { challenges: [...s.meta.challenges] } : {}),
+    // сценарий (часть 91): неделя закончена и цели выполнены
+    ...(s.meta.mode === 'scenario' && s.meta.scenario && scenarioResult(db, s)?.passed ? { scenario: s.meta.scenario } : {}),
   };
 }
 
@@ -1282,7 +1396,10 @@ function unavailableOf(s: ShiftState): Record<Id, string> {
     const broken = brokenOf(s);
     for (const id of Object.keys(db.exams)) {
       const w = examWhere(db, ctx.plan, ctx.working, ctx.staffed, id, broken);
-      if ('block' in w) out[id] = examBlockText(db, w.block);
+      if (!('block' in w)) continue;
+      // «Рентген сломался» (часть 91): снимков нет до конца недели
+      const b = w.block;
+      out[id] = s.meta.scenario === 'xray' && b.kind === 'broken' && b.equipment.some(isXray) ? T.scenarios.brokenExam(lowerFirst(db.equipment[b.equipment[0]]?.name.ru ?? '')) : examBlockText(db, b);
     }
     byDay.set(key, out);
   }
@@ -1358,7 +1475,7 @@ export async function savedGames(): Promise<GameSummary[]> {
   if (!st) return [];
   await saved();
   const out: GameSummary[] = [];
-  const slots: [Mode, number][] = [['shift', 1], ['sandbox', 1], ['single', 1], ...CAREERS.map(c => ['campaign', c] as [Mode, number])];
+  const slots: [Mode, number][] = [['shift', 1], ['sandbox', 1], ['single', 1], ['scenario', 1], ...CAREERS.map(c => ['campaign', c] as [Mode, number])];
   for (const [m, c] of slots) {
     const r = await loadSlot<ShiftState>(st, slotOf(m, c), e => fits(e, m, c)).catch(() => null);
     if (!r) continue;
@@ -1370,7 +1487,7 @@ export async function savedGames(): Promise<GameSummary[]> {
       mode: m, savedAt: r.envelope.savedAt, day: s.day - (s.campaign?.since ?? 0), clock: hhmm(minuteOfDay(s.t)), difficulty: s.meta.difficulty ?? 'doctor',
       ...(s.economy ? { cash: s.economy.cash } : {}),
       ...(ch && s.campaign ? { career: c, chapter: ch.id, mains: { done: mains.filter(x => s.campaign!.done[x.id] !== undefined).length, of: mains.length } } : {}),
-      ...(m === 'single' ? { venue: singleName(s) } : {}),
+      ...(m === 'single' || m === 'scenario' ? { venue: singleName(s) } : {}),
     });
   }
   return out.sort((a, b) => (a.savedAt < b.savedAt ? 1 : a.savedAt > b.savedAt ? -1 : 0));
@@ -1760,7 +1877,8 @@ function summaryOf(s: ShiftState): SummaryView | undefined {
       },
     } : {}),
     achievements: achievementNames(dayKey(s, h.day)),
-    ...(s.meta.mode === 'single' ? { single: singleView(s) } : {}),
+    ...(s.meta.mode === 'single' || s.meta.mode === 'scenario' ? { single: singleView(s) } : {}),
+    ...(s.meta.mode === 'scenario' && scenarioView(s) ? { scenario: scenarioView(s) } : {}),
     ...(h.ward ? { wardLines: wardLines(h.ward) } : {}),
     ...(h.ambulance && h.ambulance.arrived > 0 ? { ambulanceLines: ambulanceLines(h.ambulance) } : {}),
     ...(h.targets && Object.keys(h.targets).length > 0 ? { targetLines: targetDayLines(h.targets) } : {}),
@@ -1831,6 +1949,7 @@ function buildShiftView(): ShiftView {
     difficulty: s.meta.difficulty ?? 'doctor',
     day: s.day,
     clock: hhmm(minuteOfDay(s.t)),
+    ...(s.meta.scenario ? { scenario: { name: T.scenarios.names[s.meta.scenario], day: T.scenarios.day(Math.min(s.day, SCENARIO_DAYS), SCENARIO_DAYS) } } : {}),
     dayOpen: s.dayOpen,
     afterHours: s.t >= dayStart(s) + SHIFT_END,
     allDone: s.dayOpen && allDone(s),
@@ -2288,7 +2407,10 @@ const arrivedOf = (p: ShiftPatient, until = Infinity): Arrival[] =>
 function closedCases(s: ShiftState) {
   return Object.values(s.patients)
     .filter(p => p.closed && !p.closed.by)
-    .map(p => ({ seed: s.meta.seed, department: s.meta.department, day: closedDay(p), patient: p, ...(s.meta.challenges ? { challenges: s.meta.challenges } : {}) }));
+    .map(p => ({
+      seed: s.meta.seed, department: s.meta.department, day: closedDay(p), patient: p, ...(s.meta.challenges ? { challenges: s.meta.challenges } : {}),
+      ...(s.meta.scenario ? { scenario: s.meta.scenario } : {}),
+    }));
 }
 
 /**
@@ -2303,7 +2425,7 @@ export function archiveCaseView(key: string): VisitView | undefined {
   const known = s && s.meta.seed === r.seed ? outcomeKnown(s, p) : true;
   const arrived = arrivedOf(p);
   // разбор — с испытаниями той смены (часть 91): разумный врач с теми же запретами
-  const meta: ReviewMeta = { seed: r.seed, department: r.department, ...(r.challenges ? { challenges: r.challenges } : {}) };
+  const meta: ReviewMeta = { seed: r.seed, department: r.department, ...(r.challenges ? { challenges: r.challenges } : {}), ...(r.scenario ? { scenario: r.scenario } : {}) };
   return makeCaseView({
     version: 0,
     patient: p.patient,
@@ -2473,6 +2595,8 @@ function buildCaseView(): VisitView | undefined {
     unavailable,
     // испытания (часть 91): какие — карте; у «Скупого главврача» — сколько осталось на пациента
     ...(challenges ? { challenges, ...(challenges.includes('thrifty') ? { budget: { left: Math.max(0, BUDGET - p.spent.money), of: BUDGET } } : {}) } : {}),
+    // сценарий «Зимний грипп» (часть 91): «Похоже на» знает об эпидемии
+    ...(scenarioPrior(s.meta.scenario) ? { prior: scenarioPrior(s.meta.scenario) } : {}),
     ...(Object.keys(bedside).length > 0 ? { bedside } : {}),
     ...(Object.keys(minutes).length > 0 ? { minutes } : {}),
     // лечение у постели (часть 39а): тромболизис — лежащему под монитором

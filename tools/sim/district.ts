@@ -31,6 +31,9 @@
 // (spec 2026-10-performance), не выполнен — выход с кодом 1; без ленивого и карьеры, в одном процессе. С 0.5.13 —
 // --stall --parts: время команды — по частям, как в игре (spec 2026-10-parts): команда — с запасом 40 мс, остальное —
 // кадрами и тиками по 40 мс; замер — каждого куска, порог — тот же.
+// С 0.6.15 — --scenario flu|neighbor|xray (spec 2026-10-scenarios): неделя разумного врача со сценарием и без него на
+// одних зёрнах (--weeks 12, --venue — больница; по умолчанию амбулатория практики, у «соседней» — районная), цели
+// недели — по `scenarioResult`; без ленивого и карьеры.
 import { availableParallelism } from 'node:os';
 import type { Id, Setting } from '../../src/content/types';
 import { nextChapterOf } from '../../src/engine/campaign/campaign';
@@ -43,11 +46,13 @@ import { alsoSettings, recommendedSetting, settingFit, type Venue } from '../../
 import { choosePlan, decisionLimit, type DoctorPhase, MIN_GAIN, nextStep, runDoctor, type Strategy } from '../../src/engine/med/policy';
 import {
   apply, atDoctor, bedDayOf, bedsideEquipment, brokenOf, candidatesOf, careUnit, catchUp, current, isOut, freeBeds, freeBoxBeds, freeIcuBeds, freeRicuBeds, hospitalCtx, inBox, inIcu, inpatientsOf, inRicu, meetIn, moreUrgent, newCampaign,
-  observationsOf, operationOf, prepareFinish, prepareReview, readyIn, targetPlace,
+  newScenario, newSingle, observationsOf, operationOf, prepareFinish, prepareReview, readyIn, targetPlace,
 } from '../../src/engine/shift/engine';
+import { type Scenario, SCENARIO_DAYS, scenarioPrior } from '../../src/engine/shift/scenarios';
 import { minutesTo, targetsFor, targetStart } from '../../src/engine/shift/targets';
 import { type Command, DAY, SHIFT_END, type ShiftPatient, type ShiftState } from '../../src/engine/shift/types';
 import { daysIn, wardState } from '../../src/engine/shift/ward';
+import { scenarioResult } from '../../src/state/scenario';
 import { buildDb } from '../content/load';
 import { profileOf } from './profiles';
 
@@ -452,6 +457,8 @@ function playDay(s: ShiftState, player: Player) {
     const skip = skipped.get(p.id);
     const r = nextStep(db, p.patient, observationsOf(p), p.done, phases.get(p.id) ?? {}, {
       candidates, exams: skip ? exams.filter(e => !skip.has(e)) : exams, threshold: 0.9, minGain: MIN_GAIN, venue,
+      // сценарий «Зимний грипп» (часть 91): врач знает об эпидемии
+      prior: scenarioPrior(s.meta.scenario),
     });
     if (r.step.kind === 'exam') {
       // ушёл на обследование (0.5.12): что делают при нём — когда вернётся
@@ -812,6 +819,47 @@ const rub = (n: number) => `${Math.round(n).toLocaleString('ru-RU')} ₽`;
 const pct = (a: number, b: number) => (100 * a) / Math.max(1, b);
 const sum = (rs: Run[], f: (r: Run) => number) => rs.reduce((a, r) => a + f(r), 0);
 const mean = (rs: Run[], f: (r: Run) => number) => sum(rs, f) / Math.max(1, rs.length);
+
+// сценарии (часть 91, spec 2026-10-scenarios): `--scenario flu|neighbor|xray` — неделя разумного врача в больнице сценария
+// (`--venue`, иначе амбулатория практики, у «Закрыли соседнюю больницу» — районная) и та же неделя без сценария, на одних
+// зёрнах (`--weeks 12`); цели недели — по `scenarioResult`, без сценария — как если бы он был
+if (process.argv.includes('--scenario')) {
+  const scenario = arg('scenario', 'flu') as Scenario;
+  const venue = arg('venue', scenario === 'neighbor' ? 'preset.district' : 'preset.clinic');
+  const weeks = Number(arg('weeks', '12'));
+  const week = (name: string, make: (seed: number) => ShiftState) => {
+    const t = { arrived: 0, seen: 0, passed: 0, grades: {} as Record<string, number>, goals: {} as Record<string, { sum: number; of: number; ok: number; all: number[] }>, ms: 0 };
+    for (let i = 0; i < weeks; i++) {
+      const t1 = performance.now();
+      const s = make(5100 + i);
+      for (let d = 1; d <= SCENARIO_DAYS; d++) {
+        if (d > 1) timed(s, { kind: 'nextDay' });
+        playDay(s, 'rational');
+      }
+      t.ms += performance.now() - t1;
+      const r = scenarioResult(db, s.meta.scenario ? s : { ...s, meta: { ...s.meta, scenario } })!;
+      t.arrived += s.history.reduce((a, h) => a + h.arrived, 0);
+      t.seen += s.history.reduce((a, h) => a + h.seen, 0);
+      if (r.passed) t.passed++;
+      t.grades[r.week?.overall ?? '—'] = (t.grades[r.week?.overall ?? '—'] ?? 0) + 1;
+      for (const g of r.goals) {
+        const x = (t.goals[g.key] ??= { sum: 0, of: 0, ok: 0, all: [] });
+        x.sum += typeof g.value === 'number' ? g.value : 0;
+        if (typeof g.value === 'number') x.all.push(g.value);
+        x.of += g.of ?? 0;
+        if (g.ok) x.ok++;
+      }
+    }
+    const goals = Object.entries(t.goals).map(([k, g]) =>
+      `${k}: в среднем ${(g.sum / weeks).toFixed(1)}${g.of ? ` из ${(g.of / weeks).toFixed(1)}` : ''}, выполнено ${g.ok}/${weeks}; по неделям ${[...g.all].sort((a, b) => a - b).join(' ')}`);
+    console.log(`${name}: пришли за неделю ${(t.arrived / weeks).toFixed(1)}, приняли сами ${(t.seen / weeks).toFixed(1)}; итог недели ${JSON.stringify(t.grades)}; пройдено ${t.passed}/${weeks}; ${(t.ms / weeks / 1000).toFixed(1)} с на неделю`);
+    for (const g of goals) console.log(`  ${g}`);
+  };
+  console.log(`Сценарий ${scenario}, ${venue}, недель ${weeks}, сезон ${scenario === 'flu' ? 'winter' : season}`);
+  week('без сценария', seed => newSingle(db, { seed, season: scenario === 'flu' ? 'winter' : season, difficulty: 'doctor', venue }));
+  week('сценарий', seed => newScenario(db, { seed, season, difficulty: 'doctor', venue, scenario }));
+  process.exit(0);
+}
 
 const t0 = performance.now();
 /**

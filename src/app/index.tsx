@@ -11,6 +11,7 @@ import { VERSION } from '@/info';
 import { dailyMenuHint, useDailyStarted } from '@/state/daily';
 import { loadProfile, setDoctor, useProfile } from '@/state/profile';
 import { DOCTOR_AGE, doctorName, portraitSeed, practiceView, rankName } from '@/state/profileView';
+import { SCENARIO_DAYS } from '@/engine/shift/scenarios';
 import { type GameSummary, loadShift, savedGames } from '@/state/session';
 import { loadSettings, updateSettings, useSettings } from '@/state/settings';
 import { Button, Card, H, P, Screen } from '@/ui/components';
@@ -92,6 +93,8 @@ export default function Menu() {
 export function continueHint(g: GameSummary): string {
   if (g.mode === 'sandbox') return T.sandbox.continueHint(g.day, T.common.rub(g.cash ?? 0));
   if (g.mode === 'single') return T.single.continueHint(g.venue ?? '', g.clock);
+  // неделя сценария (часть 91): какой день из пяти
+  if (g.mode === 'scenario') return T.scenarios.continueHint(g.venue ?? '', g.day, SCENARIO_DAYS, g.clock);
   if (g.mode === 'campaign') {
     const ch = g.chapter ? db.chapters[g.chapter] : undefined;
     return `${T.campaign.career(g.career ?? 1)}: ${ch ? T.campaign.chapter(ch.order, ch.name.ru) : ''} · ${T.campaign.day(g.day)}`;

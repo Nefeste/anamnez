@@ -2,6 +2,7 @@
 import { about } from './sections/about';
 import { campaign } from './sections/campaign';
 import { challenges } from './sections/challenges';
+import { scenarios } from './sections/scenarios';
 import { daily } from './sections/daily';
 import { single } from './sections/single';
 import { common } from './sections/common';
@@ -17,4 +18,4 @@ import { spikes } from './sections/spikes';
 import { study } from './sections/study';
 import { transfer } from './sections/transfer';
 
-export const ru = { common, menu, settings, about, encyclopedia, spikes, shift, names, profile, report, sandbox, campaign, daily, single, challenges, transfer, study };
+export const ru = { common, menu, settings, about, encyclopedia, spikes, shift, names, profile, report, sandbox, campaign, daily, single, challenges, scenarios, transfer, study };
