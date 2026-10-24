@@ -419,12 +419,7 @@ function command(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
       const p = current(s);
       if (!p || (p.pending.length === 0 && !isOut(s, p))) return [];
       p.step++;
-      // и пока он не вернётся с обследования (0.5.12): что делают при нём — тогда
-      const target = Math.min(...p.pending.map(x => x.readyAt), ...(isOut(s, p) ? [p.out!.back] : []));
-      // привезла скорая, пока ждали, — ожидание кончается с её приездом: врачу пора в смотровую
-      // (spec 2026-10-chapter-3, часть 37: ЭКГ при боли в груди — в первые 10 минут)
-      const car = s.events.find(x => x.t <= target && x.event.kind === 'arrive' && s.patients[x.event.id]?.kind === 'ambulance');
-      return later(db, s, p, Math.max(0, (car ? car.t : target) - s.t));
+      return later(db, s, p, Math.max(0, waitUntil(s, p) - s.t));
     }
     case 'sendAway': {
       const p = current(s);
@@ -1144,12 +1139,9 @@ function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pc
       addPending(s, p, examId, same.lab + wait, first, { room: room.id, start: same.start, end: same.end, draw: to, lab: same.lab, sent: same.sent });
     } else {
       const go = outFrom(ctx, s, p, to, s.t + order);
-      // пробы партиями (spec 2026-10-code-blue): медсестра их ещё не понесла, когда он дошёл, — берёт кровь и у него, а
-      // понесёт все разом; понесла — ждёт её, как в 0.6.9
-      const open = openDraws(s, to);
-      const start = open && go.at + go.walk <= open.sent ? open.sent : Math.max(go.at + go.walk, s.rooms[to] ?? 0);
+      const { start, open } = drawStart(s, to, go.at + go.walk);
       const end = start + cost;
-      if (open && start === open.sent) carryLater(s, open, end);
+      if (open) carryLater(s, open, end);
       s.rooms[to] = end + carry + HANDOFF + carry;
       addPending(s, p, examId, end + carry + wait, first, { room: room.id, start, end, draw: to, lab: end + carry, sent: end });
       goOut(ctx, p, examId, to, end);
@@ -1173,6 +1165,20 @@ function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pc
 
 /** Ушёл на обследование в другой кабинет и ещё не вернулся (0.5.12). */
 export const isOut = (s: ShiftState, p: ShiftPatient) => p.out !== undefined && p.out.back > s.t;
+
+/**
+ * До какой минуты «Ждать результатов» (0.5.12): первый результат или его возвращение с обследования — что делают при
+ * нём, тогда. Привезла скорая, пока ждали, — до её приезда: врачу пора в смотровую (spec 2026-10-chapter-3, часть 37: ЭКГ
+ * при боли в груди — в первые 10 минут).
+ */
+function waitUntil(s: ShiftState, p: ShiftPatient): number {
+  const target = Math.min(...p.pending.map(x => x.readyAt), ...(isOut(s, p) ? [p.out!.back] : []));
+  const car = s.events.find(x => x.t <= target && x.event.kind === 'arrive' && s.patients[x.event.id]?.kind === 'ambulance');
+  return car ? car.t : target;
+}
+
+/** Идёт «Ждать результатов» этого пациента (spec 2026-10-code-blue): смена доживает до `waitUntil`. */
+const waitedFor = (s: ShiftState, p: ShiftPatient) => s.current === p.id && s.until !== undefined && s.until === waitUntil(s, p);
 
 /**
  * Делают ли обследование при враче (0.5.12): вопрос, осмотр, у постели, анализ, взятый на месте, — да; снимок, ЭКГ в
@@ -1268,9 +1274,7 @@ export function readyIn(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: I
     const same = sameDraw(s, p, to);
     if (same) return (same.lab - s.t) / MIN + (after * roomPct) / 100 + (e.repeat?.minutes ?? 0);
     const go = outFrom(ctx, s, p, to, s.t + ORDER_MINUTES * MIN);
-    const open = openDraws(s, to);
-    const start = open && go.at + go.walk <= open.sent ? open.sent : Math.max(go.at + go.walk, s.rooms[to] ?? 0);
-    return (start - s.t) / MIN + e.time.procedure + carry + (after * roomPct) / 100 + (e.repeat?.minutes ?? 0);
+    return (drawStart(s, to, go.at + go.walk).start - s.t) / MIN + e.time.procedure + carry + (after * roomPct) / 100 + (e.repeat?.minutes ?? 0);
   }
   return away + walk / MIN + e.time.procedure + carry + (room ? (after * roomPct) / 100 : after) + (e.repeat?.minutes ?? 0);
 }
@@ -1281,8 +1285,22 @@ function sameDraw(s: ShiftState, p: ShiftPatient, room: string): { start: number
   return x ? { start: x.start!, end: x.end!, lab: x.lab!, sent: x.sent ?? x.end! } : undefined;
 }
 
+type OpenDraws = { sent: number; items: { p: ShiftPatient; x: PendingResult }[] };
+
+/**
+ * Когда медсестра процедурной возьмёт кровь у дошедшего в `arrive` (spec 2026-10-code-blue): ещё не понесла пробы
+ * последних — следом за ними, а понесёт все разом (`open`); понесла — когда вернётся, как в 0.6.9. Вы ждёте у себя
+ * результата одного из тех, чьи пробы у неё («Ждать результатов»), — она несёт их сразу, как пробу cito: обещанное
+ * время результата не сдвигается.
+ */
+function drawStart(s: ShiftState, room: string, arrive: number): { start: number; open?: OpenDraws } {
+  const open = openDraws(s, room);
+  if (open && arrive <= open.sent && !open.items.some(({ p }) => waitedFor(s, p))) return { start: open.sent, open };
+  return { start: Math.max(arrive, s.rooms[room] ?? 0) };
+}
+
 /** Пробы процедурной, которые медсестра понесёт последними (spec 2026-10-code-blue): когда и чьи. */
-function openDraws(s: ShiftState, room: string): { sent: number; items: { p: ShiftPatient; x: PendingResult }[] } | undefined {
+function openDraws(s: ShiftState, room: string): OpenDraws | undefined {
   let sent = -Infinity;
   let items: { p: ShiftPatient; x: PendingResult }[] = [];
   for (const p of Object.values(s.patients)) {
@@ -1303,7 +1321,7 @@ function openDraws(s: ShiftState, room: string): { sent: number; items: { p: Shi
  * Медсестра понесёт пробы позже — в `sent` (spec 2026-10-code-blue): их анализ — позже на столько же; нанятый врач,
  * который ждёт результатов у себя, — дождётся их.
  */
-function carryLater(s: ShiftState, open: { sent: number; items: { p: ShiftPatient; x: PendingResult }[] }, sent: number) {
+function carryLater(s: ShiftState, open: OpenDraws, sent: number) {
   for (const { p, x } of open.items) {
     const shift = sent - (x.sent ?? x.end!);
     x.sent = sent;
