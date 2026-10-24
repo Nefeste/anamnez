@@ -1618,6 +1618,10 @@ try {
   check((await page.locator('[data-testid^="away-"]').count()) === 1, 'смена: отпущенный ждать результатов — «на обследованиях»');
   const back = page.locator('[data-testid^="queue-"]').filter({ hasText: 'с результатами' });
   check(await runClockUntil(page, async () => (await back.count()) > 0), 'смена: результаты готовы — пациент снова в очереди');
+  // у вашего кабинета на карте — лист с числом вернувшихся с результатами (spec 2026-10-code-blue, вопрос 51)
+  const backSign = page.locator('[data-testid^="sign-"][aria-label*="с результатами"]');
+  const backLabel = (await backSign.count()) === 1 ? ((await backSign.first().getAttribute('aria-label')) ?? '') : '';
+  check(/^Ждут: \d+, с результатами: 1$/.test(backLabel), `смена: у кабинета «пришёл результат» — «${backLabel}»`);
   await back.first().click();
   await page.getByTestId('visit-fresh').first().waitFor({ timeout: 10_000 });
   check(await page.getByTestId('visit-fresh').first().isVisible(), 'смена: пришедшее без врача — «новое» при вызове');

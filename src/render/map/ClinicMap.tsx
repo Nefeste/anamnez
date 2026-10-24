@@ -282,12 +282,18 @@ export function ClinicMap({ layout, people, signs = [], width, active, label, se
           const at = badgeAt(r, cell, doorOnTop(r, [r.door]), r.door);
           // нет персонала важнее ремонта: без людей помещение не работает совсем
           const repair = x.broken && !x.noStaff;
-          const label = x.noStaff ? T.shift.map.signs.noStaff : repair ? T.shift.map.signs.broken : T.shift.map.signs.queue(x.queue);
+          // пришёл результат (spec 2026-10-code-blue, вопрос 51): лист с числом вернувшихся — у очереди к врачу
+          const back = !x.noStaff && !repair && x.results > 0;
+          const label = x.noStaff ? T.shift.map.signs.noStaff : repair ? T.shift.map.signs.broken
+            : back ? `${T.shift.map.signs.queue(x.queue)}, ${T.shift.map.signs.results(x.results)}` : T.shift.map.signs.queue(x.queue);
+          const number = { fontSize: at.size * 0.62, lineHeight: at.size * 0.8 };
           return (
             <View key={x.id} testID={`sign-${x.id}`} accessible accessibilityLabel={label}
               style={[styles.badge, at.side === 'left' ? { left: at.x } : { right: width - at.x }, { top: at.top, height: at.size, borderRadius: at.size / 2, paddingHorizontal: at.size * 0.22 }]}>
               {repair ? <Device size={at.size * 0.66} /> : <Person size={at.size * 0.66} crossed={x.noStaff} />}
-              {!x.noStaff && !repair && <Text allowFontScaling={false} style={[styles.badgeText, { fontSize: at.size * 0.62, lineHeight: at.size * 0.8 }]}>{x.queue}</Text>}
+              {!x.noStaff && !repair && <Text allowFontScaling={false} style={[styles.badgeText, number]}>{x.queue}</Text>}
+              {back && <Sheet size={at.size * 0.66} />}
+              {back && <Text allowFontScaling={false} style={[styles.badgeText, number]}>{x.results}</Text>}
             </View>
           );
         })}
@@ -329,6 +335,20 @@ function Person({ size, crossed }: { size: number; crossed: boolean }) {
       <View style={{ width: size * 0.44, height: size * 0.44, borderRadius: size, backgroundColor: PLAN_INK }} />
       <View style={{ width: size * 0.84, height: size * 0.42, marginTop: size * 0.06, borderTopLeftRadius: size * 0.42, borderTopRightRadius: size * 0.42, backgroundColor: PLAN_INK }} />
       {crossed && <View style={{ position: 'absolute', top: size * 0.44, width: size * 1.15, height: size * 0.13, borderRadius: size, backgroundColor: PLAN_RED, transform: [{ rotate: '-45deg' }] }} />}
+    </View>
+  );
+}
+
+/** «Пришёл результат» (spec 2026-10-code-blue, вопрос 51): лист бланка со строками. */
+function Sheet({ size }: { size: number }) {
+  const line = { width: size * 0.4, height: Math.max(1, size * 0.07), backgroundColor: PLAN_INK, marginTop: size * 0.09 };
+  return (
+    <View style={{ width: size * 0.7, height: size, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ width: size * 0.62, height: size * 0.82, borderRadius: size * 0.06, borderWidth: Math.max(1, size * 0.08), borderColor: PLAN_INK, backgroundColor: PLAN_CARD, alignItems: 'center', paddingTop: size * 0.06 }}>
+        <View style={line} />
+        <View style={line} />
+        <View style={line} />
+      </View>
     </View>
   );
 }

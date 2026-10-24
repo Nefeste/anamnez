@@ -2,7 +2,8 @@
 // движок до разбора по требованию (@ 96503ac). С 0.6.9 (spec 2026-10-clinic-flow) путь пациента по больнице другой
 // нарочно — регистратура и медсестра по одному, процедурная по одному, — и прежним движком его не сыграть: отпечатки
 // пишет нынешний движок, досчитывая разбор после каждой минуты, как сразу считал прежний. Перезаписывать — только если
-// смена изменилась нарочно (тогда же — и в «Больнице», Nefeste/bolnitsa). bun tools/test/make-review-fixture.ts
+// смена изменилась нарочно (тогда же — и в «Больнице», Nefeste/bolnitsa); в последний раз — часть 89 (spec
+// 2026-10-code-blue): анализы одному — один забор, пробы — партиями. bun tools/test/make-review-fixture.ts
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { apply, newSingle, settleReviews } from '../../src/engine/shift/engine';

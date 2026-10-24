@@ -18,7 +18,7 @@ export const SPEED = 4;
 /** В кабинет по вызову — быстрее: карта пациента откроется, когда он войдёт. */
 export const BRISK = 8;
 /** Сколько секунд человек хотя бы стоит там, где с ним что-то делают. */
-export const DWELL: Partial<Record<Doing['kind'], number>> = { registration: 1, triage: 1.5, exam: 1.5, carry: 1.5 };
+export const DWELL: Partial<Record<Doing['kind'], number>> = { registration: 1, triage: 1.5, exam: 1.5, carry: 1.5, code: 3 };
 /** Чисел на человека в `meta`: смещение пути, число точек, время выхода, скорость, исчезнуть у цели. */
 export const STRIDE = 5;
 /** С ним что-то делают за дверью с лампой: приём у врача, у медсестры, процедура, обследование. */
@@ -125,7 +125,7 @@ const sameLook = (a: { body: number; head: number }, b: Placement['look']) => a.
 
 function legKind(d: Doing): LegKind {
   if (d.kind === 'waiting' || d.kind === 'results' || d.kind === 'examQueue' || d.kind === 'registrationQueue' || d.kind === 'triageQueue') return 'wait';
-  if (d.kind === 'registration' || d.kind === 'triage' || d.kind === 'exam' || d.kind === 'carry') return 'act';
+  if (d.kind === 'registration' || d.kind === 'triage' || d.kind === 'exam' || d.kind === 'carry' || d.kind === 'code') return 'act';
   return 'go';
 }
 
@@ -204,7 +204,8 @@ export class Walkers {
         changed = true;
       }
       if (w.target !== leg.key) {
-        this.retarget(w, leg, p.doing.kind === 'office', now);
+        // в кабинет по вызову и бригада «код синий» — сразу и бегом (spec 2026-10-code-blue)
+        this.retarget(w, leg, p.doing.kind === 'office' || p.doing.kind === 'code', now);
         changed = true;
       }
       if (w.next && now >= this.switchAt(w)) {

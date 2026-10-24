@@ -29,7 +29,7 @@ import { type Grade, scoreBase, type ScoreBase, scoreThrift, worstGrade } from '
 import { askMinutes, examSkillWith, mentorOf } from '../career/skills';
 import type { Observation, Patient } from '../med/types';
 import {
-  type ClosedCase, type ColleagueDay, type Command, DAY, type DaySummary, type Desk, type Difficulty, easyLevel, HANDOFF, hospitalDay, type Notice, type PlannedReturn, REGISTRATION, SHIFT_END, SHIFT_SCHEMA_VERSION,
+  type ClosedCase, type ColleagueDay, type Command, DAY, type DaySummary, type Desk, type Difficulty, easyLevel, HANDOFF, hospitalDay, type Notice, type PendingResult, type PlannedReturn, REGISTRATION, SHIFT_END, SHIFT_SCHEMA_VERSION,
   SHIFT_START, type ShiftEvent, type ShiftPatient, type ShiftState, TRIAGE, type Triage, type VisitKind, type WardDay, type AmbulanceDay, type SurgeryDay,
 } from './types';
 import { COMPLICATION_DAYS, complicationAt, complicationsOf, deathsOf, onsetHours, operationFor } from './surgery';
@@ -419,12 +419,7 @@ function command(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
       const p = current(s);
       if (!p || (p.pending.length === 0 && !isOut(s, p))) return [];
       p.step++;
-      // и пока он не вернётся с обследования (0.5.12): что делают при нём — тогда
-      const target = Math.min(...p.pending.map(x => x.readyAt), ...(isOut(s, p) ? [p.out!.back] : []));
-      // привезла скорая, пока ждали, — ожидание кончается с её приездом: врачу пора в смотровую
-      // (spec 2026-10-chapter-3, часть 37: ЭКГ при боли в груди — в первые 10 минут)
-      const car = s.events.find(x => x.t <= target && x.event.kind === 'arrive' && s.patients[x.event.id]?.kind === 'ambulance');
-      return later(db, s, p, Math.max(0, (car ? car.t : target) - s.t));
+      return later(db, s, p, Math.max(0, waitUntil(s, p) - s.t));
     }
     case 'sendAway': {
       const p = current(s);
@@ -1138,12 +1133,19 @@ function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pc
   const carry = room && to !== undefined ? walkSeconds(ctx.plan, to, room.id) : 0;
   if (after > 0 && room && to !== undefined && to !== fromRoom(ctx, p)) {
     const order = ORDER_MINUTES * MIN;
-    const go = outFrom(ctx, s, p, to, s.t + order);
-    const start = Math.max(go.at + go.walk, s.rooms[to] ?? 0);
-    const end = start + cost;
-    s.rooms[to] = end + carry + HANDOFF + carry;
-    addPending(s, p, examId, end + carry + wait, first, { room: room.id, start, end, draw: to, lab: end + carry });
-    goOut(ctx, p, examId, to, end);
+    // одна вена — все пробирки (spec 2026-10-code-blue): его забор здесь ещё не кончился — пробирка к тому же забору
+    const same = sameDraw(s, p, to);
+    if (same) {
+      addPending(s, p, examId, same.lab + wait, first, { room: room.id, start: same.start, end: same.end, draw: to, lab: same.lab, sent: same.sent });
+    } else {
+      const go = outFrom(ctx, s, p, to, s.t + order);
+      const { start, open } = drawStart(s, to, go.at + go.walk);
+      const end = start + cost;
+      if (open) carryLater(s, open, end);
+      s.rooms[to] = end + carry + HANDOFF + carry;
+      addPending(s, p, examId, end + carry + wait, first, { room: room.id, start, end, draw: to, lab: end + carry, sent: end });
+      goOut(ctx, p, examId, to, end);
+    }
     if (e.repeat && second.length > 0) {
       const draw = s.t + e.repeat.minutes * MIN + walk;
       addPending(s, p, examId, draw + cost + carry + wait, second, { room: room.id, start: draw, end: draw + cost, draw: to, lab: draw + cost + carry }, true);
@@ -1163,6 +1165,23 @@ function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pc
 
 /** Ушёл на обследование в другой кабинет и ещё не вернулся (0.5.12). */
 export const isOut = (s: ShiftState, p: ShiftPatient) => p.out !== undefined && p.out.back > s.t;
+
+/**
+ * До какой минуты «Ждать результатов» (0.5.12): первый результат или его возвращение с обследования — что делают при
+ * нём, тогда. Привезла скорая, пока ждали, — до её приезда: врачу пора в смотровую (spec 2026-10-chapter-3, часть 37: ЭКГ
+ * при боли в груди — в первые 10 минут).
+ */
+function waitUntil(s: ShiftState, p: ShiftPatient): number {
+  const target = Math.min(...p.pending.map(x => x.readyAt), ...(isOut(s, p) ? [p.out!.back] : []));
+  const car = s.events.find(x => x.t <= target && x.event.kind === 'arrive' && s.patients[x.event.id]?.kind === 'ambulance');
+  return car ? car.t : target;
+}
+
+/**
+ * Идёт «Ждать результатов» этого пациента, и кончится оно этим результатом (spec 2026-10-code-blue): смена доживает до
+ * `waitUntil`, а это — его время. Сдвинуть результат — ожидание кончится без него.
+ */
+const awaited = (s: ShiftState, p: ShiftPatient, x: PendingResult) => s.current === p.id && s.until === x.readyAt && s.until === waitUntil(s, p);
 
 /**
  * Делают ли обследование при враче (0.5.12): вопрос, осмотр, у постели, анализ, взятый на месте, — да; снимок, ЭКГ в
@@ -1254,14 +1273,72 @@ export function readyIn(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: I
   // кровь (spec 2026-10-clinic-flow): процедурная по одному, проба — до лаборатории
   const carry = room && to !== undefined ? walkSeconds(ctx.plan, to, room.id) / MIN : 0;
   if (room && to !== undefined && to !== fromRoom(ctx, p)) {
+    // к его забору — пробирка; медсестра ещё не понесла пробы — за последним; понесла — когда вернётся (spec 2026-10-code-blue)
+    const same = sameDraw(s, p, to);
+    if (same) return (same.lab - s.t) / MIN + (after * roomPct) / 100 + (e.repeat?.minutes ?? 0);
     const go = outFrom(ctx, s, p, to, s.t + ORDER_MINUTES * MIN);
-    return (Math.max(go.at + go.walk, s.rooms[to] ?? 0) - s.t) / MIN + e.time.procedure + carry + (after * roomPct) / 100 + (e.repeat?.minutes ?? 0);
+    return (drawStart(s, to, go.at + go.walk).start - s.t) / MIN + e.time.procedure + carry + (after * roomPct) / 100 + (e.repeat?.minutes ?? 0);
   }
   return away + walk / MIN + e.time.procedure + carry + (room ? (after * roomPct) / 100 : after) + (e.repeat?.minutes ?? 0);
 }
 
+/** Его забор в этой процедурной, который ещё не кончился (spec 2026-10-code-blue): к нему — ещё пробирка. */
+function sameDraw(s: ShiftState, p: ShiftPatient, room: string): { start: number; end: number; lab: number; sent: number } | undefined {
+  const x = p.pending.find(q => q.draw === room && !q.repeat && q.start !== undefined && q.end !== undefined && q.lab !== undefined && q.end > s.t);
+  return x ? { start: x.start!, end: x.end!, lab: x.lab!, sent: x.sent ?? x.end! } : undefined;
+}
+
+type OpenDraws = { sent: number; items: { p: ShiftPatient; x: PendingResult }[] };
+
+/**
+ * Когда медсестра процедурной возьмёт кровь у дошедшего в `arrive` (spec 2026-10-code-blue): ещё не понесла пробы
+ * последних — следом за ними, а понесёт все разом (`open`); понесла — когда вернётся, как в 0.6.9. Вы ждёте у себя
+ * результата одной из проб, что у неё («Ждать результатов» кончится им), — она несёт их сразу, как пробу cito: обещанное
+ * время результата не сдвигается.
+ */
+function drawStart(s: ShiftState, room: string, arrive: number): { start: number; open?: OpenDraws } {
+  const open = openDraws(s, room);
+  if (open && arrive <= open.sent && !open.items.some(({ p, x }) => awaited(s, p, x))) return { start: open.sent, open };
+  return { start: Math.max(arrive, s.rooms[room] ?? 0) };
+}
+
+/** Пробы процедурной, которые медсестра понесёт последними (spec 2026-10-code-blue): когда и чьи. */
+function openDraws(s: ShiftState, room: string): OpenDraws | undefined {
+  let sent = -Infinity;
+  let items: { p: ShiftPatient; x: PendingResult }[] = [];
+  for (const p of Object.values(s.patients)) {
+    for (const x of p.pending) {
+      if (x.draw !== room || x.repeat || x.end === undefined) continue;
+      const at = x.sent ?? x.end;
+      if (at > sent) {
+        sent = at;
+        items = [];
+      }
+      if (at === sent) items.push({ p, x });
+    }
+  }
+  return items.length > 0 ? { sent, items } : undefined;
+}
+
+/**
+ * Медсестра понесёт пробы позже — в `sent` (spec 2026-10-code-blue): их анализ — позже на столько же; нанятый врач,
+ * который ждёт результатов у себя, — дождётся их.
+ */
+function carryLater(s: ShiftState, open: OpenDraws, sent: number) {
+  for (const { p, x } of open.items) {
+    const shift = sent - (x.sent ?? x.end!);
+    x.sent = sent;
+    x.lab = (x.lab ?? x.end!) + shift;
+    x.readyAt += shift;
+    schedule(s, x.readyAt, { kind: 'result', id: p.id });
+    const step = p.status === 'inRoom' && p.by !== undefined ? s.events.find(ev => ev.event.kind === 'colleague' && ev.event.id === p.id) : undefined;
+    if (step && step.t < x.readyAt) step.t = x.readyAt;
+  }
+  s.events.sort((a, b) => a.t - b.t || a.seq - b.seq);
+}
+
 function addPending(
-  s: ShiftState, p: ShiftPatient, examId: Id, readyAt: number, obs: Observation[], at?: { room: string; start: number; end: number; draw?: string; lab?: number }, repeat?: true,
+  s: ShiftState, p: ShiftPatient, examId: Id, readyAt: number, obs: Observation[], at?: { room: string; start: number; end: number; draw?: string; lab?: number; sent?: number }, repeat?: true,
 ) {
   p.pending.push({ exam: examId, readyAt, obs, ...(at ?? {}), ...(repeat ? { repeat } : {}) });
   schedule(s, readyAt, { kind: 'result', id: p.id });

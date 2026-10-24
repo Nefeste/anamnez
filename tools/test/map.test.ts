@@ -133,6 +133,24 @@ describe('план: знаки помещений (часть 23)', () => {
     expect(signOf(s, 'waiting')).toMatchObject({ lit: false, queue: 0 });
   });
 
+  test('пришёл результат: вернулся с результатами — у вашего кабинета на значке лист с числом (вопрос 51)', () => {
+    const s = newShift(db, { seed: 5, season: 'winter' });
+    const id = first(s);
+    expect(signOf(s, 'office').results).toBe(0);
+    apply(db, s, { kind: 'call', id });
+    apply(db, s, { kind: 'exam', exam: 'exam.cbc' });
+    apply(db, s, { kind: 'sendAway' });
+    const p = s.patients[id];
+    const ready = Math.max(...p.pending.map(x => x.readyAt));
+    apply(db, s, { kind: 'advance', seconds: ready - s.t });
+    expect(p.status).toBe('waiting');
+    expect(signOf(s, 'office')).toMatchObject({ results: 1 });
+    expect(signOf(s, 'office').queue).toBeGreaterThanOrEqual(1);
+    // позвали — значок гаснет
+    apply(db, s, { kind: 'call', id });
+    expect(signOf(s, 'office').results).toBe(0);
+  });
+
   test('к рентгену очередь — кто ждёт его на скамье', () => {
     const s = newShift(db, { seed: 5, season: 'winter' });
     for (let i = 0; i < 600 && s.queue.length < 2; i++) apply(db, s, { kind: 'advance', seconds: 60 });

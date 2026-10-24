@@ -1883,7 +1883,9 @@ function roomsOf(s: ShiftState): Record<string, RoomView> {
         .sort((a, b) => a.x.readyAt - b.x.readyAt || (a.p.id < b.p.id ? -1 : 1));
       for (const { p, x } of here.slice(0, LAB_LINES)) {
         const exam = db.exams[x.exam]?.name.ru ?? x.exam;
-        now.push(x.lab !== undefined && s.t < x.lab ? t.roomCarry(exam, nameOf(p)) : t.roomInWork(exam, nameOf(p), hhmm(minuteOfDay(x.readyAt))));
+        // ещё в процедурной — медсестра понесёт с пробами следующих (spec 2026-10-code-blue)
+        if (x.sent !== undefined && s.t < x.sent) now.push(t.roomRack(exam, nameOf(p)));
+        else now.push(x.lab !== undefined && s.t < x.lab ? t.roomCarry(exam, nameOf(p)) : t.roomInWork(exam, nameOf(p), hhmm(minuteOfDay(x.readyAt))));
       }
       if (here.length > LAB_LINES) now.push(t.roomMore(here.length - LAB_LINES));
       if (here.length === 0) now.push(t.roomFree);
@@ -1892,7 +1894,8 @@ function roomsOf(s: ShiftState): Record<string, RoomView> {
       const here = all.flatMap(p => p.pending.filter(x => x.draw === r.id).map(x => ({ p, x })));
       const at = here.find(({ x }) => (x.start ?? 0) <= s.t && s.t < (x.end ?? 0));
       if (at) now.push(t.roomDraw(nameOf(at.p)));
-      const next = here.filter(({ x }) => (x.start ?? 0) > s.t && !x.repeat).length;
+      // ждут — люди, а не пробирки: у одного забора их бывает несколько (spec 2026-10-code-blue)
+      const next = new Set(here.filter(({ x }) => (x.start ?? 0) > s.t && !x.repeat).map(({ p }) => p.id)).size;
       if (next > 0) now.push(t.roomDrawNext(next));
       if (!at && next === 0) now.push(t.roomFree);
     } else if (db.rooms[r.type].staff.length > 0 && all.some(p => p.pending.some(x => x.room === r.id))) {
@@ -1943,8 +1946,8 @@ function whoOf(s: ShiftState, people: readonly Placement[]): Record<string, WhoV
       out[x.id] = { title: t.staff[d.role], doing: t.duty[d.role], callable: false };
       continue;
     }
-    if (d.kind === 'carry') {
-      out[x.id] = { title: t.staff[d.role], doing: t.doing.carry, callable: false };
+    if (d.kind === 'carry' || d.kind === 'code') {
+      out[x.id] = { title: t.staff[d.role], doing: d.kind === 'code' ? t.doing.code : t.doing.carry, callable: false };
       continue;
     }
     const p = s.patients[x.id];
@@ -1997,6 +2000,7 @@ function doingText(s: ShiftState, p: ShiftPatient, d: Doing): string {
       return t.ambulance[d.state];
     case 'staff':
     case 'carry':
+    case 'code':
       return '';
   }
 }

@@ -6,8 +6,8 @@
       "count": 22,
       "hash": "bb17e17e15e82930"
     },
-    "hired": 47,
-    "closed": "e7ba13e9c59ba4d8"
+    "hired": 46,
+    "closed": "24f43eab143fa51a"
   },
   {
     "venue": "preset.city",
@@ -17,16 +17,16 @@
       "hash": "4a390db0e03de9b1"
     },
     "hired": 45,
-    "closed": "c60587e15dc49b84"
+    "closed": "bf4005738523bdee"
   },
   {
     "venue": "preset.city",
     "seed": 3,
     "atNoon": {
       "count": 25,
-      "hash": "8350bf3b9d14dbd2"
+      "hash": "7f10a0bc1a8e2c64"
     },
     "hired": 42,
-    "closed": "a299463b8239696"
+    "closed": "2789584ee02b584e"
   }
 ]

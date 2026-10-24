@@ -49,7 +49,9 @@ export type Doing =
   /** на операционном столе: идёт операция `tx` до `end` — время смены (часть 28) */
   | { kind: 'surgery'; tx: Id; end: number }
   /** привезла скорая (часть 27): ждёт сортировки, ждёт врача, на каталке у входа — мест нет, у вас на осмотре */
-  | { kind: 'ambulance'; state: 'unsorted' | 'waiting' | 'door' | 'withYou' };
+  | { kind: 'ambulance'; state: 'unsorted' | 'waiting' | 'door' | 'withYou' }
+  /** «код синий» (spec 2026-10-code-blue): медсестра смотровой и анестезиолог-реаниматолог — у койки остановки сердца */
+  | { kind: 'code'; role: StaffRole };
 
 export interface Placement {
   id: string;
@@ -73,6 +75,11 @@ export const CLINIC = clinicLayout(db);
 export { REGISTRATION, TRIAGE } from '@/engine/shift/types';
 /** Сколько принятый ещё виден по дороге к выходу. */
 export const LEAVING = 10 * 60;
+/**
+ * Сколько игровых секунд бригада «код синий» у койки (spec 2026-10-code-blue): разряд, ритм и наблюдение после него —
+ * и чтобы анестезиолог-реаниматолог из дальней палаты успел добежать, пока медсестра ещё там.
+ */
+export const CODE = 10 * 60;
 
 const STAFF_FIGURE: Record<StaffRole, Figure> = {
   registrar: 'staff',
@@ -98,6 +105,7 @@ const STAFF_FIGURE: Record<StaffRole, Figure> = {
   endoscopyNurse: 'nurse',
   ricuDoctor: 'doctor',
   ricuNurse: 'nurse',
+  erNurse: 'nurse',
 };
 
 /** Срочность на фигурке — та, что определили: до медсестры (spec 2026-10-clinic-flow) и без неё — как у всех. */
@@ -214,15 +222,16 @@ function intakePlace(layout: ClinicLayout, s: ShiftState, p: ShiftPatient, inLin
 }
 
 /**
- * Кто несёт пробирки (spec 2026-10-clinic-flow): процедурная, где кровь только что взяли, → дверь лаборатории, куда её
- * несут; медсестра там, пока проба не дошла и она её не отдала.
+ * Кто несёт пробирки (spec 2026-10-clinic-flow): процедурная, откуда их понесли, → дверь лаборатории, куда их несут;
+ * медсестра там, пока проба не дошла и она её не отдала.
  */
 function carriers(layout: ClinicLayout, s: ShiftState): Map<string, Cell> {
   const out = new Map<string, Cell>();
   for (const p of Object.values(s.patients)) {
     for (const x of p.pending) {
       if (x.draw === undefined || x.lab === undefined || x.end === undefined || !x.room || x.draw === p.bay?.room) continue;
-      if (x.end <= s.t && s.t < x.lab + HANDOFF) out.set(x.draw, doorOf(layout, x.room) ?? layout.spots.procedure);
+      // понесла, когда к ней нет очереди (spec 2026-10-code-blue), — не сразу после забора
+      if ((x.sent ?? x.end) <= s.t && s.t < x.lab + HANDOFF) out.set(x.draw, doorOf(layout, x.room) ?? layout.spots.procedure);
     }
   }
   return out;
@@ -316,6 +325,7 @@ export function placements(db: ContentDb, layout: ClinicLayout, s: ShiftState): 
     const to = x.role === 'procedureNurse' ? carrying.get(roomAt(layout, x.cell) ?? '') : undefined;
     return to ? { id, figure, look, where: { cell: to }, doing: { kind: 'carry', role: x.role } } : { id, figure, look, where: { cell: x.cell }, doing: { kind: 'staff', role: x.role } };
   });
+  codeTeam(layout, s, out);
   // своя больница без доврачебного кабинета: от регистратуры — сразу в зал
   const triage = layout.rooms.some(r => r.type === 'triage');
   const exit = { cell: layout.entrance };
@@ -379,6 +389,34 @@ export function placements(db: ContentDb, layout: ClinicLayout, s: ShiftState): 
     if (door) out[from].door = door;
   }
   return out;
+}
+
+/**
+ * «Код синий» (spec 2026-10-code-blue): остановка сердца у лежащего в смотровой приёмного — медсестра этой смотровой и
+ * анестезиолог-реаниматолог палаты интенсивной терапии или реанимации `CODE` секунд у его койки; потом — на свои места.
+ */
+function codeTeam(layout: ClinicLayout, s: ShiftState, staff: Placement[]) {
+  for (const p of Object.values(s.patients)) {
+    if (p.arrest === undefined || !p.bay || s.t < p.arrest || s.t - p.arrest >= CODE) continue;
+    const bed = layout.beds[p.bay.room]?.[p.bay.bed];
+    if (!bed) continue;
+    const room = p.bay.room;
+    const nurse = staff.find(x => x.doing.kind === 'staff' && x.doing.role === 'erNurse' && 'cell' in x.where && roomAt(layout, x.where.cell) === room);
+    const doctor = staff.find(x => x.doing.kind === 'staff' && (x.doing.role === 'icuDoctor' || x.doing.role === 'ricuDoctor'));
+    const spots = beside(layout, bed);
+    [nurse, doctor].forEach((x, i) => {
+      if (!x || x.doing.kind !== 'staff' || !spots[i]) return;
+      x.where = { cell: spots[i] };
+      x.doing = { kind: 'code', role: x.doing.role };
+    });
+  }
+}
+
+/** Клетки у койки, куда встать: свободные от мебели и проходимые — сбоку, в ногах, у изголовья. */
+function beside(layout: ClinicLayout, [x, y]: Cell): Cell[] {
+  const taken = new Set(layout.objects.map(o => `${o.x},${o.y}`));
+  const around: Cell[] = [[x, y + 1], [x - 1, y], [x + 1, y], [x - 1, y + 1], [x + 1, y + 1], [x, y - 1]];
+  return around.filter(([cx, cy]) => walkable(layout.grid, cx, cy) && !taken.has(`${cx},${cy}`));
 }
 
 /**

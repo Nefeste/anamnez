@@ -219,6 +219,8 @@ export const sandbox = {
   roomNext: (n: number) => `Ждут обследования: ${n}`,
   // чьё в работе (spec 2026-10-clinic-flow): несут из процедурной, на анализаторе — до какого часа
   roomCarry: (exam: string, name: string) => `${exam} — ${name}: несут из процедурной`,
+  // взяли, а медсестра понесёт с пробами следующих (spec 2026-10-code-blue)
+  roomRack: (exam: string, name: string) => `${exam} — ${name}: пробирка в процедурной`,
   roomInWork: (exam: string, name: string, hh: string) => `${exam} — ${name}: будет к ${hh}`,
   roomMore: (n: number) => `и ещё ${n}`,
   roomDraw: (name: string) => `Берут кровь: ${name}`,
