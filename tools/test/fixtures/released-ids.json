@@ -1,6 +1,6 @@
 {
-  "version": "0.6.14",
-  "base": 80,
+  "version": "0.6.15",
+  "base": 81,
   "ids": {
     "achievements": [
       "ach.allergy_10",
@@ -23,6 +23,9 @@
       "ach.run_10",
       "ach.run_25",
       "ach.run_5",
+      "ach.scenario_flu",
+      "ach.scenario_neighbor",
+      "ach.scenario_xray",
       "ach.seen_10",
       "ach.seen_20",
       "ach.therapy",
