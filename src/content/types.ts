@@ -985,7 +985,13 @@ export interface Character {
  */
 export type DayKind = 'noNeedlessAntibiotic' | 'noLeft' | 'cashPositive' | 'noWaitComplication' | 'noMissedMI' | 'noInfectiousInWard';
 
-export type Mission = { id: string; main: boolean; text: Text } & (
+export type Mission = {
+  id: string;
+  main: boolean;
+  text: Text;
+  /** «Главы короче» (часть 93, spec 2026-10-short-chapters): порог и текст с этой настройкой — у «принять N» и сроков */
+  short?: { count: number; text: Text };
+} & (
   | { kind: 'seen'; count: number; accuracy: number }
   | { kind: 'roomWorks'; room: Id }
   | { kind: 'streak'; days: number; day: DayKind }

@@ -878,8 +878,11 @@ export const characterSchema = z.strictObject({
 const dayKind = z.enum(['noNeedlessAntibiotic', 'noLeft', 'cashPositive', 'noWaitComplication', 'noMissedMI', 'noInfectiousInWard']);
 
 /** Задание главы: вид — в движке, числа и текст — здесь. */
+/** «Главы короче» (часть 93, spec 2026-10-short-chapters): порог и текст задания с этой настройкой. */
+const shortSchema = z.strictObject({ count, text }).optional();
+
 const missionSchema = z.discriminatedUnion('kind', [
-  z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('seen'), count, accuracy: pct, text }),
+  z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('seen'), count, accuracy: pct, text, short: shortSchema }),
   z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('roomWorks'), room: roomId, text }),
   z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('streak'), days: count, day: dayKind, text }),
   z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('days'), days: count, day: dayKind, text }),
@@ -890,7 +893,7 @@ const missionSchema = z.discriminatedUnion('kind', [
   z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('stay'), count, text }),
   // глава 3 (spec 2026-10-chapter-3, часть 45а): срок выполнен у стольких ваших больных подряд;
   // столько тромболизисов в окне и без противопоказаний
-  z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('deadline'), target: z.string().regex(/^target\.[a-z0-9_]+$/), count, text }),
+  z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('deadline'), target: z.string().regex(/^target\.[a-z0-9_]+$/), count, text, short: shortSchema }),
   z.strictObject({ id: slug, main: z.boolean(), kind: z.literal('thrombolysis'), count, text }),
   // глава 4 (spec 2026-10-chapter-4, часть 60а): приёмов врачей-специалистов за главу — столько, с точностью от `accuracy` %,
   // и принимали не меньше `doctors` разных специалистов; `days` смен подряд, за которые в стационаре умерло не больше

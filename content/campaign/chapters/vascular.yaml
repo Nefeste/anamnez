@@ -39,12 +39,15 @@ missions:
     target: target.ecg_chest_pain
     count: 5
     text: { ru: "ЭКГ при боли в груди в первые 10 минут: пять больных" }
+    # «Главы короче» (часть 93, spec 2026-10-short-chapters)
+    short: { count: 3, text: { ru: "ЭКГ при боли в груди в первые 10 минут: три больных" } }
   - id: ct
     main: true
     kind: deadline
     target: target.stroke_ct
     count: 5
     text: { ru: "КТ при подозрении на инсульт в первые 40 минут: пять больных" }
+    short: { count: 3, text: { ru: "КТ при подозрении на инсульт в первые 40 минут: три больных" } }
   - id: lysis
     main: true
     kind: thrombolysis

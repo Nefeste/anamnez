@@ -10,7 +10,7 @@ import {
   caseIncome, consumablesOf, emptyLedger, expensesOf, flowOf, incomeOf, interestOf, type Ledger, levelOf, payerOf, reputationAfter, salariesOf, upkeepOf,
   type WardClose, wardIncome,
 } from '../economy/economy';
-import { type CampaignProgress, campaignEvening, chapterOf, nextChapterOf, startChapter, tutorialDayOf } from '../campaign/campaign';
+import { type CampaignProgress, campaignEvening, chapterOf, interestingOf, nextChapterOf, startChapter, tutorialDayOf } from '../campaign/campaign';
 import { build, emptyPlot, type HospitalState, type Plan, planOf, presetHospital, sizeOf, UNDO_DEPTH, widenPlot } from '../hospital/build';
 import { bedsideIn, DOCTOR, doctorRoom, examWhere, NONE_BROKEN, openBlocks, type Problem, problemsOf, slotKey, type Staffing, workingRooms } from '../hospital/requirements';
 import { applicantsOf, doctorOf, grow, memberAt, presetStaff, PROFILE_PRIOR, readingOf, type StaffMember, speedOf, staffingOf } from '../hospital/staff';
@@ -309,7 +309,7 @@ function chapterPlot(db: ContentDb, preset: Preset): [number, number] {
  * в начале — письма «в начале главы». Остальное — как в песочнице. Что строят и кого нанимают заданием главы
  * (часть 60а), в начале главы нет.
  */
-export function newCampaign(db: ContentDb, opts: { seed: number; season: Season; difficulty?: Difficulty; career: number; chapter?: Id }): ShiftState {
+export function newCampaign(db: ContentDb, opts: { seed: number; season: Season; difficulty?: Difficulty; career: number; chapter?: Id; short?: boolean }): ShiftState {
   const ch = opts.chapter ? db.chapters[opts.chapter] : Object.values(db.chapters)[0];
   const preset = db.presets[ch.preset];
   const hired = applicantsOf(db, opts.seed >>> 0, 0, 1, builtIn(db, ch));
@@ -317,6 +317,8 @@ export function newCampaign(db: ContentDb, opts: { seed: number; season: Season;
     meta: {
       schemaVersion: SHIFT_SCHEMA_VERSION, contentVersion: db.contentVersion, rngVersion: RNG_VERSION, mode: 'campaign', career: opts.career,
       seed: opts.seed >>> 0, season: opts.season, department: ch.department, difficulty: opts.difficulty ?? 'doctor',
+      // «Главы короче» (часть 93, spec 2026-10-short-chapters) — выбирается при начале карьеры
+      ...(opts.short ? { shortChapters: true as const } : {}),
     },
     t: 0,
     day: 0,
@@ -662,7 +664,7 @@ function planDay(db: ContentDb, s: ShiftState) {
   // песочница: с репутацией записываются и приходят чаще или реже (spec 2026-09-own-hospital); «Закрыли соседнюю
   // больницу» (часть 91) — в полтора раза чаще
   const flow = s.economy ? flowOf(db, s.economy.reputation ?? db.economy.reputation.start) : scenarioFlow(s.meta.scenario);
-  const plan: { t: number; kind: VisitKind; key: string; ret?: PlannedReturn; to?: string; only?: readonly Id[]; patient?: Patient }[] = [];
+  const plan: { t: number; kind: VisitKind; key: string; ret?: PlannedReturn; to?: string; only?: readonly Id[]; patient?: Patient; interesting?: true }[] = [];
   // какие отделения больница принимает сегодня (часть 30): с работающей смотровой приёмного — и хирургию
   const admits = departmentsOf(db, s);
   // запись: у вашего кабинета и у каждого нанятого врача — своя (spec 2026-09-hired-doctors);
@@ -718,8 +720,21 @@ function planDay(db: ContentDb, s: ShiftState) {
   const varied = s.meta.variety === true && s.meta.mode !== 'campaign';
   const gen = { department: s.meta.department, departments, season: s.meta.season, ...(varied ? { variety: true } : {}) };
   // пришёл сам (часть 41а): инсульта у него нет — его привозит скорая; к специалисту — с болезнью профиля (часть 59)
-  const selfPatient = (a: { key: string; only?: readonly Id[] }) =>
-    generatePatient(db, fnv1a(`${s.meta.seed}:${d}:${a.key}`), { ...gen, walkIn: true, ...(a.only ? { only: a.only } : {}) });
+  const selfPatient = (a: { key: string; only?: readonly Id[] }, variety = false) =>
+    generatePatient(db, fnv1a(`${s.meta.seed}:${d}:${a.key}`), { ...gen, walkIn: true, ...(a.only ? { only: a.only } : {}), ...(variety ? { variety: true } : {}) });
+  // «Главы короче» (часть 93, spec 2026-10-short-chapters): один-два из пришедших сами и записанных к вам — тот же человек,
+  // но с более редкой болезнью больницы, жребий со сглаженными весами; своя ветвь дня — остальные те же. В день обучения —
+  // нет: у него свои заданные
+  if (s.meta.mode === 'campaign' && s.meta.shortChapters && tutorial.length === 0) {
+    const ir = r.fork('interesting');
+    const free = plan.filter(x => !x.ret && (x.kind === 'walkIn' || (x.kind === 'appointment' && x.key.startsWith('slot:'))));
+    const only = interestingOf(db, departments);
+    for (let k = ir.range(1, 2); k > 0 && free.length > 0; k--) {
+      const [a] = free.splice(ir.range(0, free.length - 1), 1);
+      a.patient = selfPatient({ key: a.key, only }, true);
+      a.interesting = true;
+    }
+  }
   // «Зимний грипп» (часть 91, spec 2026-10-scenarios): на каждого пришедшего сам с ОРВИ, гриппом или пневмонией — ещё один
   // с одной из них, по их частотам, без записи; остальные пришедшие — те же
   if (s.meta.scenario === 'flu') {
@@ -763,6 +778,7 @@ function planDay(db: ContentDb, s: ShiftState) {
       ...(a.ret ? { returnOf: a.ret.of, returnReason: a.ret.reason } : {}),
       ...(a.to ? { to: a.to } : {}),
       ...(teach ? { taught: true as const } : {}),
+      ...(a.interesting && !teach ? { interesting: true as const } : {}),
       // выписали из палаты недолеченным — вернулся хуже: новый случай стационара не оплатят (часть 35)
       ...(a.ret && s.patients[a.ret.of]?.closed?.stay?.end === 'early' ? { afterEarly: true as const } : {}),
       ...(own.length > 1 ? { departments: own } : {}),
@@ -878,7 +894,7 @@ function closeDay(db: ContentDb, s: ShiftState) {
   s.history.push({ ...s.summary, grades: { ...s.summary.grades } });
   // кампания: задания и письма — по итогам дня, в том числе сегодняшнего
   if (s.campaign) {
-    const got = campaignEvening(db, { campaign: s.campaign, history: s.history, hospital: s.hospital, staff: s.staff }, s.day);
+    const got = campaignEvening(db, { campaign: s.campaign, history: s.history, hospital: s.hospital, staff: s.staff, short: s.meta.shortChapters === true }, s.day);
     s.summary.campaign = got;
     s.history[s.history.length - 1].campaign = got;
   }
@@ -2863,7 +2879,8 @@ function profileHere(db: ContentDb, m: StaffMember, admits: readonly Id[]): Id[]
  * сортировке, не повторное обращение и не того, кого вы отпустили ждать результатов. Без
  * доврачебного кабинета срочность никто не определил — берёт по очереди прихода. Специалист (часть 59) —
  * только записанных к нему; терапевт — кроме записанных к специалисту, который сегодня принимает. Заданного пациента
- * первой смены главы (часть 61в) — никто: он для вас. «Своих больных» (часть 76) — тоже: их оставляют вам.
+ * первой смены главы (часть 61в) — никто: он для вас. «Своих больных» (часть 76) — тоже: их оставляют вам. Интересного
+ * больного дня «Главы короче» (часть 93) — тоже: иначе редкое увидел бы не игрок.
  */
 function colleagueTakes(db: ContentDb, s: ShiftState, p: ShiftPatient, m: StaffMember, list: readonly StaffMember[]): boolean {
   if (!newcomer(p)) return false;
@@ -2875,7 +2892,7 @@ function colleagueTakes(db: ContentDb, s: ShiftState, p: ShiftPatient, m: StaffM
 /** Новый, кого нанятый врач может позвать: ждёт, никем не взят и не вызван, не повторный, не со скорой, не «красный». */
 function newcomer(p: ShiftPatient): boolean {
   return p.status === 'waiting' && p.by === undefined && p.calledT === undefined && p.kind !== 'return' && p.kind !== 'ambulance'
-    && !(p.triaged !== false && p.triage === 'red') && !p.taught;
+    && !(p.triaged !== false && p.triage === 'red') && !p.taught && !p.interesting;
 }
 
 /** Записан к специалисту, который сегодня принимает: его берёт только он. */

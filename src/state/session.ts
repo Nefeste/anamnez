@@ -18,7 +18,7 @@ import { build, type BuildCommand, type BuildError, type HospitalState, type Pla
 import { type Block, DOCTOR, doctorRoom, examWhere, openBlocks, type Problem, problemsOf, standInOf, standInsOf, workingRooms } from '@/engine/hospital/requirements';
 import { type ClinicLayout, cropPlan, layoutOf } from '@/engine/hospital/clinic';
 import { memberAt, presetStaff, type StaffMember, staffingOf } from '@/engine/hospital/staff';
-import { type MissionProgress, missionProgress, nextChapterOf, tutorialDayOf } from '@/engine/campaign/campaign';
+import { type MissionProgress, missionProgress, missionsOf, nextChapterOf, tutorialDayOf } from '@/engine/campaign/campaign';
 import { levelOf } from '@/engine/economy/economy';
 import { askMinutes, skillsFor } from '@/engine/career/skills';
 import {
@@ -540,9 +540,14 @@ export function startSandbox(opts: { start: 'empty' | 'clinic'; budget: Budget; 
   }));
 }
 
-/** Новая карьера в слоте `career`: глава 1, её больница и бюджет, письма. Прежняя в этом слоте перезаписывается. */
-export function startCampaign(opts: { career: number; difficulty: Difficulty; seed?: number; season?: Season }) {
-  begin(newCampaign(db, { seed: opts.seed ?? Date.now() % 0x7fffffff, season: opts.season ?? seasonOf(new Date()), difficulty: opts.difficulty, career: opts.career }));
+/**
+ * Новая карьера в слоте `career`: глава 1, её больница и бюджет, письма; `short` — «Главы короче» (часть 93). Прежняя в
+ * этом слоте перезаписывается.
+ */
+export function startCampaign(opts: { career: number; difficulty: Difficulty; short?: boolean; seed?: number; season?: Season }) {
+  begin(newCampaign(db, {
+    seed: opts.seed ?? Date.now() % 0x7fffffff, season: opts.season ?? seasonOf(new Date()), difficulty: opts.difficulty, career: opts.career, short: opts.short,
+  }));
 }
 
 /** Своя больница из песочницы: живая партия или сохранение; песочницы нет — undefined. */
@@ -1465,6 +1470,8 @@ export interface GameSummary {
   career?: number;
   chapter?: string;
   mains?: { done: number; of: number };
+  /** кампания с «Главы короче» (часть 93) */
+  short?: true;
   /** «Смена»: в какой больнице — названием */
   venue?: string;
 }
@@ -1481,12 +1488,13 @@ export async function savedGames(): Promise<GameSummary[]> {
     if (!r) continue;
     const s = r.envelope.data;
     const ch = s.campaign ? db.chapters[s.campaign.chapter] : undefined;
-    const mains = ch?.missions.filter(x => x.main) ?? [];
+    const mains = ch ? missionsOf(ch, s.meta.shortChapters).filter(x => x.main) : [];
     out.push({
       // у карьеры — день главы: во второй главе счёт с её начала (spec 2026-09-chapter-2, часть 34)
       mode: m, savedAt: r.envelope.savedAt, day: s.day - (s.campaign?.since ?? 0), clock: hhmm(minuteOfDay(s.t)), difficulty: s.meta.difficulty ?? 'doctor',
       ...(s.economy ? { cash: s.economy.cash } : {}),
       ...(ch && s.campaign ? { career: c, chapter: ch.id, mains: { done: mains.filter(x => s.campaign!.done[x.id] !== undefined).length, of: mains.length } } : {}),
+      ...(ch && s.meta.shortChapters ? { short: true as const } : {}),
       ...(m === 'single' || m === 'scenario' ? { venue: singleName(s) } : {}),
     });
   }
@@ -1602,8 +1610,8 @@ function buildCampaignView(): CampaignView | undefined {
     if (!rec || !who) return [];
     return [{ id: l.id, from: who.short.ru, role: who.role.ru, portrait: { seed: who.portrait, sex: who.sex, age: who.age }, text: rec.text.ru, day: l.day - c.since, read: !!l.read }];
   });
-  const cv = { campaign: c, history: s.history, hospital: s.hospital, staff: s.staff };
-  const missions = ch.missions.map(m => {
+  const cv = { campaign: c, history: s.history, hospital: s.hospital, staff: s.staff, short: s.meta.shortChapters === true };
+  const missions = missionsOf(ch, cv.short).map(m => {
     const p = missionProgress(db, cv, m);
     const done = c.done[m.id];
     return {
@@ -1872,7 +1880,10 @@ function summaryOf(s: ShiftState): SummaryView | undefined {
     ...(h.economy ? { cash: cashView(db, h.economy) } : {}),
     ...(h.campaign && s.campaign ? {
       chapterDay: {
-        done: h.campaign.done.map(id => db.chapters[s.campaign!.chapter]?.missions.find(m => m.id === id)?.text.ru ?? id),
+        done: h.campaign.done.map(id => {
+          const ch = db.chapters[s.campaign!.chapter];
+          return (ch ? missionsOf(ch, s.meta.shortChapters).find(m => m.id === id)?.text.ru : undefined) ?? id;
+        }),
         letters: h.campaign.letters.length,
       },
     } : {}),

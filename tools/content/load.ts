@@ -1170,6 +1170,8 @@ function checkCampaign(db: ContentDb, errors: string[]) {
     for (const m of c.missions) {
       if (missions.has(m.id)) at(`задание ${m.id} повторяется`);
       missions.add(m.id);
+      // «Главы короче» (часть 93): порог ниже прежнего
+      if (m.short && 'count' in m && m.short.count >= m.count) at(`задание ${m.id}: порог «Главы короче» ${m.short.count} — не ниже ${m.count}`);
       if (m.kind === 'roomWorks' && !db.rooms[m.room]) at(`задание ${m.id}: помещение ${m.room} не найдено`);
       // помещение задания глава строит или оно стоит с начала главы; то, что строят заданием (часть 60а), — не с начала
       if (m.kind === 'roomWorks' && !c.build.includes(m.room) && !db.presets[c.preset]?.rooms.some(r => r.type === m.room && !r.later)) at(`задание ${m.id}: ${m.room} нельзя построить в главе`);
