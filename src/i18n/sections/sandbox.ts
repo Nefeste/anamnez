@@ -235,7 +235,8 @@ export const sandbox = {
   // между числом и единицей — неразрывный пробел (голос студии)
   waitWhat: (n: number, samples: boolean, mean: number, max: number, busy: string) =>
     `${samples ? `проб ${n}` : `прошли ${n}`}, ждали в среднем ${mean}\u00a0мин, дольше всех — ${max}\u00a0мин${busy ? `; в работе ${busy}` : ''}`,
-  waitBusy: (min: number) => (min >= 60 ? `${Math.floor(min / 60)}\u00a0ч${min % 60 > 0 ? ` ${min % 60}\u00a0мин` : ''}` : `${min}\u00a0мин`),
+  // «4 ч 2 мин» не разрывается между часами и минутами
+  waitBusy: (min: number) => (min >= 60 ? `${Math.floor(min / 60)}\u00a0ч${min % 60 > 0 ? `\u00a0${min % 60}\u00a0мин` : ''}` : `${min}\u00a0мин`),
 
   // оплата закрытого приёма — на экране итога
   payment: 'Оплата',

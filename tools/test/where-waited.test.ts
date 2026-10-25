@@ -284,6 +284,6 @@ describe('где ждали на экране', () => {
   test('занятость — часами и минутами, с неразрывным пробелом', () => {
     expect(T.sandbox.waitBusy(45)).toBe('45 мин');
     expect(T.sandbox.waitBusy(60)).toBe('1 ч');
-    expect(T.sandbox.waitBusy(190)).toBe('3 ч 10 мин');
+    expect(T.sandbox.waitBusy(190)).toBe('3 ч 10 мин');
   });
 });
