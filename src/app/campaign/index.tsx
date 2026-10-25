@@ -8,16 +8,20 @@ import type { Difficulty } from '@/engine/shift/types';
 import { T } from '@/i18n';
 import { CAREERS, type GameSummary, loadShift, savedGames, startCampaign } from '@/state/session';
 import { updateSettings, useSettings } from '@/state/settings';
-import { Button, Card, H, P, Screen, Sheet, Toggle } from '@/ui/components';
+import { Button, Card, Choice, H, P, Screen, Sheet, Toggle } from '@/ui/components';
 import { DifficultyChoice } from '@/ui/difficulty';
 
 type Pick = { career: number; saved?: GameSummary; confirm?: boolean; fresh?: boolean };
+/** «Главы» при начале карьеры (часть 93): как есть или короче. */
+type Chapters = 'asis' | 'short';
+const CHAPTERS: Chapters[] = ['asis', 'short'];
 
 export default function CampaignScreen() {
   const t = T.campaign;
   const [games, setGames] = useState<GameSummary[]>([]);
   const [pick, setPick] = useState<Pick>();
   const [difficulty, setDifficulty] = useState<Difficulty>('student');
+  const [chapters, setChapters] = useState<Chapters>('asis');
   const settings = useSettings();
   useFocusEffect(
     useCallback(() => {
@@ -33,7 +37,7 @@ export default function CampaignScreen() {
   const saved = (career: number) => games.find(g => g.career === career);
   const line = (g: GameSummary) => {
     const ch = g.chapter ? db.chapters[g.chapter] : undefined;
-    return t.careerLine(ch ? t.chapter(ch.order, ch.name.ru) : '', Math.max(0, g.day), g.mains?.done ?? 0, g.mains?.of ?? 0);
+    return t.careerLine(ch ? t.chapter(ch.order, ch.name.ru) : '', Math.max(0, g.day), g.mains?.done ?? 0, g.mains?.of ?? 0, g.short === true);
   };
   const choose = (career: number) => {
     const g = saved(career);
@@ -47,7 +51,7 @@ export default function CampaignScreen() {
   };
   const begin = (career: number) => {
     setPick(undefined);
-    startCampaign({ career, difficulty });
+    startCampaign({ career, difficulty, short: chapters === 'short' });
     router.push('/shift');
   };
   return (
@@ -86,6 +90,10 @@ export default function CampaignScreen() {
             <DifficultyChoice value={difficulty} onChange={setDifficulty} />
             {/* «мягкий режим» — при начале карьеры и в настройках (часть 28б): это одна настройка */}
             <Toggle testID="career-soft" title={T.settings.softMode} hint={T.settings.softModeHint} value={settings.softMode} onChange={v => updateSettings({ softMode: v })} />
+            {/* «Главы короче» (часть 93, spec 2026-10-short-chapters) — один раз, при начале карьеры */}
+            <P muted>{t.chapters}</P>
+            <Choice<Chapters> testPrefix="career-chapters" value={chapters} onChange={setChapters} items={CHAPTERS.map(key => ({ key, title: t.chapterChoices[key], hint: t.chapterHints[key] }))} />
+            <P muted>{t.chaptersNote}</P>
             <Button testID="career-begin" title={t.begin} onPress={() => begin(pick.career)} />
           </>
         )}

@@ -48,15 +48,48 @@ export interface MissionProgress {
   done: boolean;
 }
 
-/** Всё, что нужно заданиям: итоги дней главы, больница и штат. */
+/** Всё, что нужно заданиям: итоги дней главы, больница и штат; `short` — «Главы короче» (часть 93). */
 export interface CampaignView {
   campaign: CampaignProgress;
   history: readonly DaySummary[];
   hospital?: HospitalState;
   staff?: readonly StaffMember[];
+  short?: boolean;
 }
 
 export const chapterOf = (db: ContentDb, c: CampaignProgress): Chapter | undefined => db.chapters[c.chapter];
+
+/**
+ * Вес записи, до которого болезнь — «более редкая» для интересного больного дня (часть 93, spec 2026-10-short-chapters):
+ * частые — с весом 300 и 1000 (ОРВИ, грипп, COVID-19, боль в спине, гастроэнтерит, растяжение).
+ */
+export const INTERESTING_WEIGHT = 100;
+
+const interestingCache = new WeakMap<ContentDb, Map<string, readonly Id[]>>();
+/** Болезни отделений больницы для интересного больного дня (часть 93): с весом записи не больше `INTERESTING_WEIGHT`. */
+export function interestingOf(db: ContentDb, departments: readonly Id[]): readonly Id[] {
+  let byDb = interestingCache.get(db);
+  if (!byDb) interestingCache.set(db, (byDb = new Map()));
+  const key = departments.join(',');
+  let out = byDb.get(key);
+  if (!out) {
+    out = Object.keys(db.conditions).sort().filter(id => departments.includes(db.conditions[id].department) && db.conditions[id].weight <= INTERESTING_WEIGHT);
+    byDb.set(key, out);
+  }
+  return out;
+}
+
+const shortCache = new WeakMap<Chapter, Mission[]>();
+/**
+ * Задания главы (часть 93, spec 2026-10-short-chapters): с «Главы короче» — с порогом и текстом `short` у тех, где он
+ * есть (глава 1 — 25 пациентов, глава 3 — по три больных в срок); без — как есть.
+ */
+export function missionsOf(ch: Chapter, short: boolean | undefined): Mission[] {
+  if (!short) return ch.missions;
+  let out = shortCache.get(ch);
+  if (!out) shortCache.set(ch, (out = ch.missions.map(m => (m.short && 'count' in m ? { ...m, count: m.short.count, text: m.short.text } : m))));
+  return out;
+}
 
 /**
  * День смены с обучением (часть 45б): первый день главы; у главы с помещением обучения — день, когда
@@ -250,11 +283,12 @@ export function campaignEvening(db: ContentDb, v: CampaignView, day: number): { 
   const c = v.campaign;
   const ch = chapterOf(db, c);
   if (!ch) return { done: [], letters: [] };
-  const done = ch.missions.filter(m => c.done[m.id] === undefined && missionProgress(db, v, m).done).map(m => m.id);
+  const missions = missionsOf(ch, v.short);
+  const done = missions.filter(m => c.done[m.id] === undefined && missionProgress(db, v, m).done).map(m => m.id);
   for (const id of done) c.done[id] = day;
   const n = day - c.since;
   const letters = lettersFor(ch, w => typeof w === 'object' && (('afterDay' in w && w.afterDay === n) || ('mission' in w && done.includes(w.mission))));
-  if (c.complete === undefined && ch.missions.every(m => !m.main || c.done[m.id] !== undefined)) {
+  if (c.complete === undefined && missions.every(m => !m.main || c.done[m.id] !== undefined)) {
     c.complete = day;
     letters.push(...lettersFor(ch, w => w === 'end'));
   }

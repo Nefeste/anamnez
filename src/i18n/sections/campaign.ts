@@ -9,8 +9,8 @@ export const campaign = {
   career: (n: number) => `Карьера ${n}`,
   newCareer: 'Новая карьера',
   newCareerHint: 'с главы 1 «Участок»',
-  careerLine: (chapter: string, day: number, done: number, of: number) =>
-    `${chapter} · день ${day} · основные задания: ${done} из ${of}`,
+  careerLine: (chapter: string, day: number, done: number, of: number, short = false) =>
+    `${chapter} · день ${day} · основные задания: ${done} из ${of}${short ? ' · главы короче' : ''}`,
   continue: 'Продолжить',
   restart: 'Начать заново',
   restartTitle: (n: number) => `Начать карьеру ${n} заново?`,
@@ -20,6 +20,14 @@ export const campaign = {
     'Вы — молодой врач в посёлке Заречный. Глава за главой: участок, приёмное отделение, большая больница. Сроков нет: глава идёт, пока не выполнены основные задания.',
   begin: 'Начать',
   cancel: 'Отмена',
+  // «Главы короче» (часть 93, spec 2026-10-short-chapters, ответ владельца на вопрос 54)
+  chapters: 'Главы',
+  chapterChoices: { asis: 'Как есть', short: 'Короче' },
+  chapterHints: {
+    asis: 'глава 1 — 40\u00a0пациентов, глава 3 — по пять больных с ЭКГ и КТ в срок; больные — как в жизни',
+    short: 'глава 1 — 25\u00a0пациентов, глава 3 — по три больных в срок; каждый день один-два — с более редкой болезнью',
+  },
+  chaptersNote: 'Выбирается при начале карьеры. Подсказки и разбор — по частотам жизни.',
 
   // глава между сменами
   chapter: (order: number, name: string) => `Глава ${order}. ${name}`,

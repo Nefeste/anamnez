@@ -3449,10 +3449,16 @@ try {
   await page.getByTestId('career-1').click();
   // при начале карьеры — тот же «мягкий режим», что в настройках
   check((await page.getByTestId('career-soft').getAttribute('aria-checked')) === 'false', 'кампания: при начале карьеры — «Мягкий режим», выключен');
+  // «Главы» (часть 93, spec 2026-10-short-chapters): по умолчанию «Как есть»; берём «Короче» — в первый день главы больные те
+  // же (день обучения), задание «принять» — 25
+  const asIs = await page.getByTestId('career-chapters-asis').getAttribute('aria-checked');
+  await page.getByTestId('career-chapters-short').click();
   await page.getByTestId('career-begin').click();
   await page.getByTestId('chapter').waitFor({ timeout: 10_000 });
-  check((await text(page, 'chapter')).startsWith('Глава 1. Участок') && (await page.locator('[data-testid^="mission-"]').count()) === 5,
-    `кампания: глава 1 — ${(await text(page, 'chapter-day'))}, заданий ${await page.locator('[data-testid^="mission-"]').count()}`);
+  const seenMission = await text(page, 'mission-seen');
+  check((await text(page, 'chapter')).startsWith('Глава 1. Участок') && (await page.locator('[data-testid^="mission-"]').count()) === 5
+    && asIs === 'true' && seenMission.includes('Принять 25 пациентов'),
+    `кампания: глава 1 — ${(await text(page, 'chapter-day'))}, заданий ${await page.locator('[data-testid^="mission-"]').count()}; «Главы короче» — ${seenMission.replace(/\n/g, ' · ')}`);
   await page.getByTestId('letter-hello').click();
   await page.getByTestId('letter-text').waitFor({ timeout: 5000 });
   check((await text(page, 'letter-text')).startsWith('Здравствуйте, коллега'), 'кампания: письмо наставника');

@@ -205,7 +205,9 @@ Skia (ADR [0002](adr/0002-expo-react-native-skia.md)). Пока кода нет,
   главы. Три карьеры — три слота сохранения `campaign-1`…`campaign-3`; в сессии —
   `loadShift('campaign', n)` и `startCampaign`; вид главы — `campaignView` (письма, задания
   с ходом словами), экран карьер — `src/app/campaign/index.tsx`, глава между сменами — над
-  своей больницей (`src/ui/campaign.tsx`).
+  своей больницей (`src/ui/campaign.tsx`). С 0.6.17 (часть 93) — «Главы короче»: `meta.shortChapters` при начале
+  карьеры; задания — `missionsOf(ch, short)` с порогами `short` записи главы; план дня — интересный больной
+  (`interestingOf`: болезни больницы с весом записи до `INTERESTING_WEIGHT`, `generatePatient` с `variety` и `only`).
 - **«Смена» (0.0.28)** — режим `single` со своим слотом: `newSingle` — день 1 практики с
   больницей из записи готовой (`preset.village` — со своим штатом) или копией своей из
   песочницы, без кассы. Карта смены — план этой больницы, как у своей. Итог — `singleResult`

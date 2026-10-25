@@ -34,6 +34,8 @@
 // С 0.6.15 — --scenario flu|neighbor|xray (spec 2026-10-scenarios): неделя разумного врача со сценарием и без него на
 // одних зёрнах (--weeks 12, --venue — больница; по умолчанию амбулатория практики, у «соседней» — районная), цели
 // недели — по `scenarioResult`; без ленивого и карьеры.
+// С 0.6.17 — --short (spec 2026-10-short-chapters): карьера и месяцы глав с «Главы короче» — пороги заданий ниже и
+// интересный больной дня.
 import { availableParallelism } from 'node:os';
 import type { Id, Setting } from '../../src/content/types';
 import { nextChapterOf } from '../../src/engine/campaign/campaign';
@@ -76,6 +78,8 @@ const VASCULAR = 'chapter.vascular';
 const CITY = 'chapter.city';
 /** карьера разумного с начала; `--no-career` — без неё */
 const CAREER = !process.argv.includes('--no-career') && !process.argv.includes('--stall');
+/** «Главы короче» (часть 93, spec 2026-10-short-chapters): карьера и месяцы с этой настройкой — пороги и интересный больной дня */
+const SHORT = process.argv.includes('--short');
 
 const { db, errors } = buildDb();
 if (errors.length) {
@@ -489,7 +493,7 @@ function playDay(s: ShiftState, player: Player) {
 }
 
 function run(seed: number, player: Player, chapter: Id): Run {
-  const s = newCampaign(db, { seed, season, career: 1, chapter });
+  const s = newCampaign(db, { seed, season, career: 1, chapter, short: SHORT });
   const out: Run = {
     profit: 0, minCash: s.economy!.cash, cash: 0, reputation: 0,
     arrived: 0, seen: 0, left: 0, unseen: 0, correct: 0, wrong: 0, departments: {},
@@ -793,7 +797,7 @@ const CHAPTERS = Object.values(db.chapters).sort((a, b) => a.order - b.order).ma
 
 /** Карьера разумного с начала: в какой день каждой главы выполнены её основные задания. */
 function career(seed: number): Career {
-  const s = newCampaign(db, { seed, season, career: 1 });
+  const s = newCampaign(db, { seed, season, career: 1, short: SHORT });
   const out: Career = { chapters: CHAPTERS.map(() => undefined), minCash: s.economy!.cash, days: 0 };
   for (let d = 0; d < CAREER_DAYS; d++) {
     const c = s.campaign!;

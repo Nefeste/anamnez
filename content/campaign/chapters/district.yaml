@@ -18,6 +18,8 @@ missions:
     count: 40
     accuracy: 75
     text: { ru: "Принять 40 пациентов с точностью от 75 %" }
+    # «Главы короче» (часть 93, spec 2026-10-short-chapters)
+    short: { count: 25, text: { ru: "Принять 25 пациентов с точностью от 75 %" } }
   - id: lab
     main: true
     kind: roomWorks
