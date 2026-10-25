@@ -41,6 +41,7 @@ export const NO_ECONOMY: ContentDb['economy'] = {
   ricu: { bedDay: 0 },
   box: { bedDay: 0 },
   transfer: { hours: 2, pci: 1 },
+  lab: { setup: 0, perSample: 0 },
   ambulance: { perDay: [0, 0], weight: { minor: 0, moderate: 0, serious: 0, critical: 0 }, severe: 0 },
   reputation: { start: 50, pull: 1, waitShort: 0, waitShortMin: 0, waitLong: 0, waitLongMin: 0, noToilet: 0, died: 0 },
   flow: 0,

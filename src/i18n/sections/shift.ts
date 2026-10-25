@@ -133,6 +133,15 @@ export const shift = {
       worse: (n: number) => `Стало хуже в смотровой: ${n}.`,
       died: (n: number, soft: boolean) => (soft ? `Переведены из смотровой в тяжёлом состоянии: ${n}.` : `Умерли в смотровой: ${n}.`),
     },
+    // где ждали (spec 2026-10-where-waited, часть 96): по месту — сколько прошли, сколько ждали, сколько место работало
+    waits: {
+      title: 'Где ждали',
+      you: 'Ваш приём',
+      doctor: (name: string, role: string) => `${name}, ${role}`,
+      // у лаборатории — пробы, у остальных — люди
+      line: (place: string, what: string) => `${place}: ${what}`,
+      free: (places: string) => `Без очереди: ${places}.`,
+    },
     // сроки по рекомендации за день (spec 2026-10-chapter-3, часть 37): ваши приёмы
     targets: {
       title: 'Сроки',

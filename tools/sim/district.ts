@@ -36,13 +36,15 @@
 // недели — по `scenarioResult`; без ленивого и карьеры.
 // С 0.6.17 — --short (spec 2026-10-short-chapters): карьера и месяцы глав с «Главы короче» — пороги заданий ниже и
 // интересный больной дня.
+// С 0.6.19 — «Где ждали» (spec 2026-10-where-waited, часть 96): по главам — места, где ждали дольше всего в среднем,
+// дольше всех и сколько часов в день место было занято; кабинеты — вид помещения, ваш — отдельно.
 import { availableParallelism } from 'node:os';
 import type { Id, Setting } from '../../src/content/types';
 import { nextChapterOf } from '../../src/engine/campaign/campaign';
 import { Rng } from '../../src/engine/core/rng';
 import { consumablesOf, expensesOf, incomeOf, type Payer, type WardClose, wardIncome } from '../../src/engine/economy/economy';
 import { sizeOf } from '../../src/engine/hospital/build';
-import { examWhere } from '../../src/engine/hospital/requirements';
+import { doctorRoom, examWhere } from '../../src/engine/hospital/requirements';
 import { contextOf, posterior } from '../../src/engine/med/infer';
 import { alsoSettings, recommendedSetting, settingFit, type Venue } from '../../src/engine/med/plan';
 import { choosePlan, decisionLimit, type DoctorPhase, MIN_GAIN, nextStep, runDoctor, type Strategy } from '../../src/engine/med/policy';
@@ -53,7 +55,7 @@ import {
 import { measuresDue } from '../../src/engine/shift/measures';
 import { type Scenario, SCENARIO_DAYS, scenarioPrior } from '../../src/engine/shift/scenarios';
 import { minutesTo, targetsFor, targetStart } from '../../src/engine/shift/targets';
-import { type Command, DAY, SHIFT_END, type ShiftPatient, type ShiftState } from '../../src/engine/shift/types';
+import { type Command, DAY, SHIFT_END, type ShiftPatient, type ShiftState, type WaitStat } from '../../src/engine/shift/types';
 import { daysIn, wardState } from '../../src/engine/shift/ward';
 import { scenarioResult } from '../../src/state/scenario';
 import { buildDb } from '../content/load';
@@ -198,6 +200,8 @@ interface Run {
   ambulance: { arrived: number; sorted: number; under: number; over: number };
   /** первые меры (spec 2026-10-first-measures, часть 95): тяжёлым нужны, даны вовремя, стало хуже, умерли в смотровой */
   measures: { needed: number; onTime: number; worse: number; died: number };
+  /** где ждали (часть 96): по виду помещения — ваш кабинет отдельно, `office.you`; секунды, как в итогах дня */
+  waits: Record<string, WaitStat>;
   ward: { admitted: number; discharged: number; early: number; transferred: number; died: number; severe: number; stayDays: number; stayNorm: number; returnsWorse: number; heavy: number; heavyDied: number; heavyEarly: number };
   /**
    * лучшая неделя задания о смертности главы 4 (spec 2026-10-rules): % тяжёлых, умерших и выписанных раньше срока; нет
@@ -510,6 +514,7 @@ function run(seed: number, player: Player, chapter: Id): Run {
     arrived: 0, seen: 0, left: 0, unseen: 0, correct: 0, wrong: 0, departments: {},
     ambulance: { arrived: 0, sorted: 0, under: 0, over: 0 },
     measures: { needed: 0, onTime: 0, worse: 0, died: 0 },
+    waits: {},
     ward: { admitted: 0, discharged: 0, early: 0, transferred: 0, died: 0, severe: 0, stayDays: 0, stayNorm: 0, returnsWorse: 0, heavy: 0, heavyDied: 0, heavyEarly: 0 },
     heavyWeek: Infinity,
     ops: { done: 0, onTime: 0, late: 0, complicated: 0, waited: 0, complications: 0, good: 0 },
@@ -544,6 +549,15 @@ function run(seed: number, player: Player, chapter: Id): Run {
     out.wrong += h.wrong;
     for (const k of Object.keys(out.ambulance) as (keyof Run['ambulance'])[]) out.ambulance[k] += h.ambulance?.[k] ?? 0;
     for (const k of Object.keys(out.measures) as (keyof Run['measures'])[]) out.measures[k] += h.ambulance?.measures?.[k] ?? 0;
+    const plan = hospitalCtx(db, s).plan;
+    for (const [room, w] of Object.entries(h.waits ?? {})) {
+      const type = plan.rooms.find(r => r.id === room)?.type ?? room;
+      const a = (out.waits[room === doctorRoom(plan) ? 'office.you' : type.replace('room.', '')] ??= { n: 0, total: 0, max: 0, busy: 0 });
+      a.n += w.n;
+      a.total += w.total;
+      a.max = Math.max(a.max, w.max);
+      a.busy += w.busy;
+    }
     for (const [id, t] of Object.entries(h.targets ?? {})) {
       out.targets.onTime += t.onTime;
       out.targets.total += t.total;
@@ -1106,6 +1120,13 @@ for (const chapter of MONTHS) {
     console.log(`  верно по отделениям: ${depts.map(d => `${d.replace('dept.', '')} ${pct(f(r => r.departments[d]?.correct ?? 0), f(r => r.departments[d]?.seen ?? 0)).toFixed(1)} % из ${f(r => r.departments[d]?.seen ?? 0)}`).join(', ')}`);
     console.log(`  скорая: ${(f(r => r.ambulance.arrived) / n).toFixed(1)} в день; ошибок сортировки ${x.triageErrors.toFixed(1)} % (недооценили ${f(r => r.ambulance.under)}, переоценили ${f(r => r.ambulance.over)} из ${f(r => r.ambulance.sorted)})`);
     console.log(`  первые меры: нужны ${f(r => r.measures.needed)}, вовремя ${f(r => r.measures.onTime)}, стало хуже у ${f(r => r.measures.worse)}, умерли в смотровой ${f(r => r.measures.died)}`);
+    const places = [...new Set(rs.flatMap(r => Object.keys(r.waits)))].map(k => {
+      const w = rs.map(r => r.waits[k]).filter(x => x !== undefined);
+      const add = (g: (x: WaitStat) => number) => w.reduce((t, x) => t + g(x), 0);
+      const nn = add(x => x.n);
+      return { k, mean: nn > 0 ? add(x => x.total) / nn / 60 : 0, max: Math.max(...w.map(x => x.max)) / 60, busy: add(x => x.busy) / n / 3600, n: nn / n };
+    }).sort((a, b) => b.mean - a.mean || (a.k < b.k ? -1 : 1));
+    console.log(`  где ждали (в среднем · дольше всех, мин; в день прошли · занято, ч): ${places.map(p => `${p.k} ${p.mean.toFixed(1)} · ${p.max.toFixed(0)}; ${p.n.toFixed(1)} · ${p.busy.toFixed(1)}`).join(' | ')}`);
     const kinds = [...new Set(rs.flatMap(r => Object.keys(r.targets.by)))].sort();
     const kind = (id: Id) => `${id.replace('target.', '')} ${f(r => r.targets.by[id]?.onTime ?? 0)} из ${f(r => r.targets.by[id]?.total ?? 0)}`;
     console.log(`  сроки: в срок ${x.targetsOnTime.toFixed(1)} % из ${x.targetsTotal}${kinds.length > 0 ? ` — ${kinds.map(kind).join(', ')}` : ''}`);

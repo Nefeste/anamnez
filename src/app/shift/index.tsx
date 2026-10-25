@@ -611,6 +611,13 @@ function Summary({ v }: { v: ShiftView }) {
         </Card>
       )}
 
+      {s.waitLines && (
+        <Card testID="summary-waits">
+          <Text style={styles.label}>{t.waits.title}</Text>
+          {s.waitLines.map(line => <P key={line}>{line}</P>)}
+        </Card>
+      )}
+
       {s.targetLines && (
         <Card testID="summary-targets">
           <Text style={styles.label}>{t.targets.title}</Text>

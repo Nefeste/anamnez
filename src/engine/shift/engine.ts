@@ -1061,6 +1061,7 @@ function call(db: ContentDb, s: ShiftState, id: string): Notice[] {
   if (p.kind === 'ambulance' && !p.sorted) return [];
   s.queue = s.queue.filter(x => x !== id);
   p.status = 'inRoom';
+  if (p.calledT === undefined) officeWait(s, p, doctorRoom(hospitalCtx(db, s).plan));
   p.calledT ??= s.t;
   p.wait++; // прежняя проверка терпения недействительна
   s.current = id;
@@ -1197,6 +1198,8 @@ function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pc
     const start = Math.max(go.at + go.walk, s.rooms[room.id] ?? 0);
     const end = start + Math.round((e.time.procedure * MIN * roomPct) / 100);
     s.rooms[room.id] = end;
+    // где ждали (spec 2026-10-where-waited, часть 96): дошёл до кабинета — процедура началась
+    schedule(s, start, { kind: 'served', room: room.id, waited: start - (go.at + go.walk), busy: end - start });
     addPending(s, p, examId, end + after * MIN, obs, { room: room.id, start, end });
     goOut(ctx, p, examId, room.id, end);
     return order;
@@ -1221,30 +1224,46 @@ function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pc
     const same = sameDraw(s, p, to);
     if (same) {
       addPending(s, p, examId, same.lab + wait, first, { room: room.id, start: same.start, end: same.end, draw: to, lab: same.lab, sent: same.sent });
+      toLab(s, room, same.lab);
     } else {
       const go = outFrom(ctx, s, p, to, s.t + order);
       const { start, open } = drawStart(s, to, go.at + go.walk);
       const end = start + cost;
-      if (open) carryLater(s, open, end);
+      if (open) carryLater(ctx, s, open, end);
       s.rooms[to] = end + carry + HANDOFF + carry;
+      // где ждали (часть 96): дошёл до процедурной — забор начался
+      schedule(s, start, { kind: 'served', room: to, waited: start - (go.at + go.walk), busy: cost });
       addPending(s, p, examId, end + carry + wait, first, { room: room.id, start, end, draw: to, lab: end + carry, sent: end });
+      toLab(s, room, end + carry);
       goOut(ctx, p, examId, to, end);
     }
     if (e.repeat && second.length > 0) {
       const draw = s.t + e.repeat.minutes * MIN + walk;
       addPending(s, p, examId, draw + cost + carry + wait, second, { room: room.id, start: draw, end: draw + cost, draw: to, lab: draw + cost + carry }, true);
+      toLab(s, room, draw + cost + carry);
     }
     return order;
   }
   const here = room ? { room: room.id, ...(to !== undefined ? { draw: to } : {}) } : undefined;
   const begin = s.t + away + walk;
-  if (after > 0) addPending(s, p, examId, begin + cost + carry + wait, first, here && { ...here, start: begin, end: begin + cost, lab: begin + cost + carry });
-  else p.results.push({ exam: examId, obs: first, at: s.t + away + cost, step: p.step });
+  if (after > 0) {
+    addPending(s, p, examId, begin + cost + carry + wait, first, here && { ...here, start: begin, end: begin + cost, lab: begin + cost + carry });
+    if (room) toLab(s, room, begin + cost + carry);
+  } else p.results.push({ exam: examId, obs: first, at: s.t + away + cost, step: p.step });
   if (e.repeat && second.length > 0) {
     const draw = s.t + away + e.repeat.minutes * MIN + walk;
     addPending(s, p, examId, draw + cost + carry + wait, second, here && { ...here, start: draw, end: draw + cost, lab: draw + cost + carry }, true);
+    if (room) toLab(s, room, draw + cost + carry);
   }
   return away + cost;
+}
+
+/**
+ * Проба пойдёт в лабораторию (spec 2026-10-where-waited, часть 96): когда дойдёт, лаборант поставит её партию. Анализ не в
+ * лаборатории — постановки нет.
+ */
+function toLab(s: ShiftState, room: { id: string; type: Id }, at: number) {
+  if (room.type === LAB) schedule(s, at, { kind: 'lab', room: room.id, at });
 }
 
 /** Ушёл на обследование в другой кабинет и ещё не вернулся (0.5.12). */
@@ -1309,7 +1328,11 @@ function examSetup(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id) {
   if ('block' in where) return null;
   const queued = !bed && (e.kind === 'imaging' || e.kind === 'functional');
   const rooms = e.room && !bed ? where.rooms.map(id => ctx.plan.rooms.find(r => r.id === id)!) : [];
-  const room = queued ? rooms.reduce((a, b) => ((s.rooms[b.id] ?? 0) < (s.rooms[a.id] ?? 0) ? b : a)) : rooms[0];
+  // лабораторий несколько (spec 2026-10-where-waited, часть 96) — та, где лаборант освободится раньше; поровну — первая
+  const free = (r: { id: string }) => Math.max(s.rooms[r.id] ?? 0, s.t);
+  const room = queued
+    ? rooms.reduce((a, b) => ((s.rooms[b.id] ?? 0) < (s.rooms[a.id] ?? 0) ? b : a))
+    : rooms.length > 1 && rooms[0].type === LAB ? rooms.reduce((a, b) => (free(b) < free(a) ? b : a)) : rooms[0];
   const broken = brokenOf(s);
   const eqId = room?.equipment.find((x, slot) => x !== null && (e.equipment ?? []).includes(x) && !broken.has(slotKey(room.id, slot))) ?? undefined;
   const eq = eqId ? db.equipment[eqId] : undefined;
@@ -1317,15 +1340,27 @@ function examSetup(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id) {
   const roomPct = room ? Math.round((eq?.speed ?? 1) * speedOf(db, memberAt(ctx.staff, room.id, db.rooms[room.type].staff[0]))) : 100;
   // дорога (FR-HOS-4, spec 2026-10-walk-breakdowns): снимок и функциональное — в своём кабинете, материал берут там, где
   // записано (кровь — в процедурном, тропонин и пункцию — в смотровой приёмного)
-  const to = queued ? room?.id : e.collect && !bed ? collectRoom(ctx, p, e.collect) : undefined;
+  const to = queued ? room?.id : e.collect && !bed ? collectRoom(ctx, s, p, e.collect) : undefined;
   const walk = to ? walkSeconds(ctx.plan, fromRoom(ctx, p), to) : 0;
   return { e, ctx, bed, queued, room, eqId, roomPct, walk, to };
 }
 
-/** Где берут материал (FR-HOS-4): лежит в помещении этого вида — там же, иначе — в первом работающем. */
-function collectRoom(ctx: HospitalCtx, p: ShiftPatient, type: Id): string | undefined {
+/**
+ * Где берут материал (FR-HOS-4): лежит в помещении этого вида — там же. Иначе — в работающем (spec 2026-10-where-waited,
+ * часть 96): его забор там ещё не кончился — к нему, одна вена; нет — там, где забор начнётся раньше, с дорогой; поровну
+ * — в первом.
+ */
+function collectRoom(ctx: HospitalCtx, s: ShiftState, p: ShiftPatient, type: Id): string | undefined {
   if (p.bay && ctx.plan.rooms.find(r => r.id === p.bay!.room)?.type === type) return p.bay.room;
-  return ctx.plan.rooms.find(r => r.type === type && ctx.working.has(r.id))?.id;
+  const rooms = ctx.plan.rooms.filter(r => r.type === type && ctx.working.has(r.id));
+  if (rooms.length <= 1) return rooms[0]?.id;
+  const same = rooms.find(r => sameDraw(s, p, r.id));
+  if (same) return same.id;
+  const start = (room: string) => {
+    const go = outFrom(ctx, s, p, room, s.t + ORDER_MINUTES * MIN);
+    return drawStart(s, room, go.at + go.walk).start;
+  };
+  return rooms.map(r => ({ id: r.id, at: start(r.id) })).reduce((a, b) => (b.at < a.at ? b : a)).id;
 }
 
 /**
@@ -1358,14 +1393,19 @@ export function readyIn(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: I
   }
   // кровь (spec 2026-10-clinic-flow): процедурная по одному, проба — до лаборатории
   const carry = room && to !== undefined ? walkSeconds(ctx.plan, to, room.id) / MIN : 0;
+  // лаборант ставит партию (spec 2026-10-where-waited, часть 96): дойдёт, пока он ставит прежние, — подождёт
+  const late = (lab: number) => (room?.type === LAB ? Math.max(0, (s.rooms[room.id] ?? 0) - (s.t + lab * MIN)) / MIN : 0);
   if (room && to !== undefined && to !== fromRoom(ctx, p)) {
     // к его забору — пробирка; медсестра ещё не понесла пробы — за последним; понесла — когда вернётся (spec 2026-10-code-blue)
     const same = sameDraw(s, p, to);
-    if (same) return (same.lab - s.t) / MIN + (after * roomPct) / 100 + (e.repeat?.minutes ?? 0);
-    const go = outFrom(ctx, s, p, to, s.t + ORDER_MINUTES * MIN);
-    return (drawStart(s, to, go.at + go.walk).start - s.t) / MIN + e.time.procedure + carry + (after * roomPct) / 100 + (e.repeat?.minutes ?? 0);
+    const lab = same ? (same.lab - s.t) / MIN : (() => {
+      const go = outFrom(ctx, s, p, to, s.t + ORDER_MINUTES * MIN);
+      return (drawStart(s, to, go.at + go.walk).start - s.t) / MIN + e.time.procedure + carry;
+    })();
+    return lab + late(lab) + (after * roomPct) / 100 + (e.repeat?.minutes ?? 0);
   }
-  return away + walk / MIN + e.time.procedure + carry + (room ? (after * roomPct) / 100 : after) + (e.repeat?.minutes ?? 0);
+  const lab = away + walk / MIN + e.time.procedure + carry;
+  return lab + late(lab) + (room ? (after * roomPct) / 100 : after) + (e.repeat?.minutes ?? 0);
 }
 
 /** Его забор в этой процедурной, который ещё не кончился (spec 2026-10-code-blue): к нему — ещё пробирка. */
@@ -1410,13 +1450,16 @@ function openDraws(s: ShiftState, room: string): OpenDraws | undefined {
  * Медсестра понесёт пробы позже — в `sent` (spec 2026-10-code-blue): их анализ — позже на столько же; нанятый врач,
  * который ждёт результатов у себя, — дождётся их.
  */
-function carryLater(s: ShiftState, open: OpenDraws, sent: number) {
+function carryLater(ctx: HospitalCtx, s: ShiftState, open: OpenDraws, sent: number) {
   for (const { p, x } of open.items) {
     const shift = sent - (x.sent ?? x.end!);
     x.sent = sent;
     x.lab = (x.lab ?? x.end!) + shift;
     x.readyAt += shift;
     schedule(s, x.readyAt, { kind: 'result', id: p.id });
+    // в лабораторию — позже (часть 96): партию лаборант поставит, когда она дойдёт
+    const lab = x.room ? ctx.plan.rooms.find(r => r.id === x.room) : undefined;
+    if (lab && shift > 0) toLab(s, lab, x.lab);
     const step = p.status === 'inRoom' && p.by !== undefined ? s.events.find(ev => ev.event.kind === 'colleague' && ev.event.id === p.id) : undefined;
     if (step && step.t < x.readyAt) step.t = x.readyAt;
   }
@@ -1461,6 +1504,10 @@ function closePatient(db: ContentDb, s: ShiftState, p: ShiftPatient, dead?: 'die
   // последний бокс успели занять — перевести в инфекционную больницу (spec 2026-10-chapter-4, часть 49а)
   if (p.draft.setting === 'box' && freeBoxBeds(db, s).length === 0) p.draft.setting = 'ambulance';
   const closed = closeCase(db, s, p, dead);
+  // где ждали (часть 96): кабинет врача занят его приёмами — ваш или нанятого
+  const ctx = hospitalCtx(db, s);
+  const office = p.by ? ctx.staff.find(m => m.id === p.by)?.room : doctorRoom(ctx.plan);
+  if (office) waitStat(s, office, 0, p.spent.seconds, 0);
   if (p.by) closed.by = p.by;
   if (p.from) closed.from = p.from;
   p.closed = closed;
@@ -2119,6 +2166,8 @@ function seatAtDoor(db: ContentDb, s: ShiftState) {
 function placeInBay(db: ContentDb, s: ShiftState, p: ShiftPatient, bay: Bed) {
   p.bay = bay;
   p.bayT = s.t;
+  // где ждали (часть 96): у входа, с бригадой, пока не освободилась койка
+  waitStat(s, bay.room, s.t - p.arriveT, 0);
   for (const m of needsOf(db, p)) {
     const every = stepSeconds(s, p, m);
     for (let k = 1; k <= arrestStep(m); k++) schedule(s, s.t + k * every, { kind: 'worse', id: p.id, measure: m.id, step: k });
@@ -2711,6 +2760,10 @@ function handle(db: ContentDb, s: ShiftState, ev: ShiftEvent, notices: Notice[])
       if (p && !p.closed && p.code !== undefined) closeDead(db, s, p, notices, false);
       return;
     }
+    case 'lab':
+      return labBatch(db, s, ev.room, ev.at);
+    case 'served':
+      return waitStat(s, ev.room, ev.waited, ev.busy);
     case 'shiftEnd':
       notices.push({ kind: 'shiftEnd' });
   }
@@ -2775,7 +2828,7 @@ function intakeOf(ctx: HospitalCtx, s: ShiftState, nurse: boolean, rush: boolean
     const start = at(r);
     const end = start + (type === 'room.triage' ? TRIAGE : REGISTRATION);
     s.rooms[r.id] = end;
-    return { room: r.id, start, end };
+    return { room: r.id, start, end, at: from + walkSeconds(ctx.plan, room, r.id) };
   };
   const reg = desk('room.reception', s.t) ?? { room: '', start: s.t, end: s.t };
   const triage = nurse ? desk('room.triage', reg.end, reg.room || undefined) : undefined;
@@ -2811,13 +2864,13 @@ function nextAtNurse(ctx: HospitalCtx, s: ShiftState, from: number, room?: strin
     const at = Math.max(was.start, free);
     free = at + (was.end - was.start);
     if (at === was.start) continue;
-    q.intake!.nurse = { room: was.room, start: at, end: free };
+    q.intake!.nurse = { ...was, start: at, end: free };
     const ev = s.events.find(x => x.event.kind === 'nurse' && x.event.id === q.id);
     if (ev) ev.t = free;
   }
   if (behind.length > 0) s.events.sort((a, b) => a.t - b.t || a.seq - b.seq);
   s.rooms[r.id] = Math.max(s.rooms[r.id] ?? 0, free);
-  return { room: r.id, start, end };
+  return { room: r.id, start, end, at: from + walkSeconds(ctx.plan, room, r.id) };
 }
 
 /** Давление, пульс, температура и сатурация у медсестры — своей ветвью зерна: те же, когда бы она ни мерила. */
@@ -2831,6 +2884,8 @@ const vitalsOf = (db: ContentDb, s: ShiftState, p: ShiftPatient) => runExam(db, 
 function nurse(db: ContentDb, s: ShiftState, p: ShiftPatient, notices: Notice[]) {
   if (p.status === 'waiting' && (!p.intake || p.intake.rush)) return vitalsInQueue(db, s, p, notices);
   if (p.status !== 'intake') return;
+  // где ждали (часть 96): у регистратуры и медсестры — теперь их время известно, сдвигать его некому
+  for (const d of [p.intake?.reg, p.intake?.nurse]) if (d?.at !== undefined && d.room) waitStat(s, d.room, d.start - d.at, d.end - d.start);
   if (p.intake?.rush) {
     // без очереди: медсестра увидела — зовёт врача; цвет — по жалобе, витальные — когда закончит, если его не позвали
     delete p.triaged;
@@ -2954,6 +3009,63 @@ function sortQueue(s: ShiftState) {
     const y = s.patients[b];
     return rankOf(x) - rankOf(y) || x.queuedT - y.queuedT || (a < b ? -1 : 1);
   });
+}
+
+/**
+ * Пробы дошли до лаборатории (spec 2026-10-where-waited, часть 96): все, что пришли вместе, — одна партия. Лаборант ставит
+ * её `setup` минут и по `perSample` на пробу, с поправкой навыка и черты; ставит предыдущую — эта ждёт, и её результаты
+ * позже на столько же: постановка — часть времени анализа. Ждёте результата одной из них у себя — без очереди, как проба
+ * cito: обещанное время не сдвигается, а следующая партия ждёт и её.
+ */
+function labBatch(db: ContentDb, s: ShiftState, room: string, at: number) {
+  const batch = Object.values(s.patients).flatMap(p => p.pending.filter(x => x.room === room && x.lab === at && x.set === undefined).map(x => ({ p, x })));
+  if (batch.length === 0) return;
+  const ctx = hospitalCtx(db, s);
+  const r = ctx.plan.rooms.find(q => q.id === room);
+  if (r?.type !== LAB) return;
+  const pct = speedOf(db, memberAt(ctx.staff, room, db.rooms[r.type].staff[0]));
+  const busy = Math.round(((db.economy.lab.setup + db.economy.lab.perSample * batch.length) * MIN * pct) / 100);
+  const free = s.rooms[room] ?? 0;
+  const start = batch.some(({ p, x }) => awaited(s, p, x)) ? at : Math.max(at, free);
+  s.rooms[room] = Math.max(at, free) + busy;
+  waitStat(s, room, start - at, busy, batch.length);
+  for (const { x } of batch) x.set = start;
+  if (start === at) return;
+  for (const { p, x } of batch) {
+    x.readyAt += start - at;
+    schedule(s, x.readyAt, { kind: 'result', id: p.id });
+    // нанятый врач ждёт результатов у себя — дождётся и этих
+    const step = p.status === 'inRoom' && p.by !== undefined ? s.events.find(ev => ev.event.kind === 'colleague' && ev.event.id === p.id) : undefined;
+    if (step && step.t < x.readyAt) step.t = x.readyAt;
+  }
+  s.events.sort((a, b) => a.t - b.t || a.seq - b.seq);
+}
+
+/** Лаборатория: пробы она получает партиями, их ставит лаборант (часть 96). */
+const LAB = 'room.lab';
+
+/**
+ * Где ждали (spec 2026-10-where-waited, часть 96): у места — ещё `n` прошедших, каждый ждал `waited` секунд, и `busy` секунд
+ * работы. Пишется, когда время обслуживания стало известно и больше не сдвинется.
+ */
+function waitStat(s: ShiftState, place: string, waited: number, busy: number, n = 1) {
+  const w = ((s.summary.waits ??= {})[place] ??= { n: 0, total: 0, max: 0, busy: 0 });
+  const x = Math.max(0, Math.round(waited));
+  w.n += n;
+  w.total += x * n;
+  if (n > 0) w.max = Math.max(w.max, x);
+  w.busy += Math.max(0, Math.round(busy));
+}
+
+/**
+ * Ждал врача (часть 96): с минуты, как оформили — после регистратуры и медсестры, без очереди — с её первой минуты, — до
+ * вызова; в строку его кабинета. Привезённого скорой врач смотрит в смотровой: его ожидание — у койки, не здесь.
+ */
+function officeWait(s: ShiftState, p: ShiftPatient, office: string | undefined) {
+  if (!office || p.kind === 'ambulance') return;
+  const i = p.intake;
+  const since = !i ? p.arriveT : i.rush ? (i.nurse ?? i.reg).start : (i.nurse ?? i.reg).end;
+  waitStat(s, office, s.t - since, 0);
 }
 
 /** Результаты пришли. Ушедший на анализы возвращается в очередь — впереди, по времени прихода. */
@@ -3087,6 +3199,7 @@ function staffDesks(db: ContentDb, s: ShiftState) {
       p.by = m.id;
       p.phase = {};
     }
+    if (p.calledT === undefined) officeWait(s, p, m.room);
     p.calledT ??= s.t;
     p.wait++; // прежняя проверка терпения недействительна
     p.spent.seconds += MIN;
