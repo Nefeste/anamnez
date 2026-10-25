@@ -18,7 +18,7 @@ import {
   BANDS, type ChapterSrc, chapterSchema, type CharacterSrc, characterSchema, type ConditionSrc, conditionSchema, type EconomySrc, economySchema, type EquipmentSrc, equipmentSchema, type ExamSrc, examSchema, type FindingSrc, findingSchema,
   type LinkSrc, PREVALENCE, type PresetSrc, presetSchema, type ProbabilitySrc, type ProfessionSrc, professionSchema, type RiskSrc, type RoleSrc, riskSchema, roleSchema, type RoomSrc, roomSchema,
   type TipSrc, tipSchema, type TreatmentSrc, treatmentSchema, versionSchema, type AchievementSrc, achievementSchema, type ScoreSrc, scoreSchema,
-  type RuleSrc, ruleSchema, type TargetSrc, targetSchema, type SkillSrc, skillSchema,
+  type RuleSrc, ruleSchema, type TargetSrc, targetSchema, type MeasureSrc, measureSchema, type SkillSrc, skillSchema,
 } from './schema';
 
 export const CONTENT_DIR = join(import.meta.dir, '../../content');
@@ -152,6 +152,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
   const scores: Record<string, ScoreSrc> = {};
   const rules: Record<string, RuleSrc> = {};
   const targets: Record<string, TargetSrc> = {};
+  const measures: Record<string, MeasureSrc> = {};
   const skills: Record<string, SkillSrc> = {};
   let economy: EconomySrc | undefined;
   let contentVersion = 0;
@@ -236,11 +237,14 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     } else if (top === 'targets') {
       const x = check(targetSchema);
       if (x) { expectId(x.id, 'target'); put(targets, x); }
+    } else if (top === 'measures') {
+      const x = check(measureSchema);
+      if (x) { expectId(x.id, 'measure'); put(measures, x); }
     } else if (top === 'career' && rel.split('/')[1] === 'skills') {
       const x = check(skillSchema);
       if (x) { expectId(x.id, 'skill'); put(skills, x); }
     } else {
-      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, people/professions, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/economy.yaml, campaign/characters, campaign/chapters, campaign/tips, achievements, scores, rules, targets, career/skills)`);
+      errors.push(`${rel}: файл вне известных разделов (conditions, findings, exams, risks, people/professions, treatments, hospital/rooms, hospital/equipment, hospital/roles, hospital/presets, hospital/economy.yaml, campaign/characters, campaign/chapters, campaign/tips, achievements, scores, rules, targets, measures, career/skills)`);
     }
   }
   if (!contentVersion) errors.push('version.yaml: нет contentVersion');
@@ -379,6 +383,13 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     }
     // только со скорой (часть 41а): скорая такое везёт — у болезни есть тактика и тяжесть, которую возят
     if (c.arrival === 'ambulance' && (c.checkup || !c.treatment || c.severity === 'minor')) errors.push(`${owner}: приходят только со скорой, а скорая такое не везёт (профосмотр, без тактики или лёгкое)`);
+    // скорая везёт и такое (часть 95): параметры объявлены, тяжесть — выше своей, болезнь лечат (без тактики не везут)
+    if (c.carried) {
+      checkWhen(owner, 'скорая везёт', c.carried.when, c.params);
+      const rank = ['minor', 'moderate', 'serious', 'critical'];
+      if (rank.indexOf(c.carried.severity) <= rank.indexOf(c.severity)) errors.push(`${owner}: скорая везёт с тяжестью ${c.carried.severity}, а она не выше своей (${c.severity})`);
+      if (!c.treatment || c.checkup) errors.push(`${owner}: скорая везёт, а такое не везут (профосмотр или без тактики)`);
+    }
     // острый период проходит в стационаре (часть 41а): к сроку стационара, и это не «проходит само»
     if (c.course.settles && !c.course.stay) errors.push(`${owner}: острый период проходит в стационаре, а срока стационара (course.stay) нет`);
     if (c.course.settles && c.course.selfLimiting) errors.push(`${owner}: и «проходит само», и «острый период проходит в стационаре» — что-то одно`);
@@ -858,6 +869,31 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
       errors.push(`${x.id}: в ${x.room} ни одно из обследований срока не делают у постели за ${x.minutes} минут`);
     }
   }
+  // первые меры (spec 2026-10-first-measures, часть 95): назначение из базы и у каждой меры своё; признаки — из базы, числа —
+  // только у признаков с числом; цель у болезни — из базы; порядок кнопок без повторов
+  const orders = new Set<number>();
+  const byTx = new Set<string>();
+  const numeric = (f: string) => findings[f]?.value !== undefined;
+  for (const x of Object.values(measures)) {
+    if (!treatments[x.tx]) errors.push(`${x.id}: назначение ${x.tx} не найдено`);
+    if (byTx.has(x.tx)) errors.push(`${x.id}: назначение ${x.tx} — уже у другой меры`);
+    byTx.add(x.tx);
+    if (orders.has(x.order)) errors.push(`${x.id}: порядок ${x.order} — уже у другой меры`);
+    orders.add(x.order);
+    if (x.every[0] > x.every[1]) errors.push(`${x.id}: шаг ухудшения — «от» больше «до»`);
+    if (!findings[x.severe.f]) errors.push(`${x.id}: признак тяжёлого ${x.severe.f} не найден`);
+    if (x.severe.max !== undefined && !numeric(x.severe.f)) errors.push(`${x.id}: порог у признака ${x.severe.f} без числа`);
+    if (x.severe.seen && !exams['exam.vitals']?.checks.some(k => k.f === x.severe.f)) errors.push(`${x.id}: «в листе передачи» — а фельдшер ${x.severe.f} не меряет`);
+    for (const st of x.steps) {
+      for (const f of Object.keys(st.change)) if (!numeric(f)) errors.push(`${x.id}: ступень — сдвиг у признака ${f} без числа или не найденного`);
+      for (const f of st.add) if (!findings[f]) errors.push(`${x.id}: ступень — признак ${f} не найден`);
+    }
+    for (const f of [...Object.keys(x.effect.to), ...Object.values(x.effect.toFor ?? {}).flatMap(o => Object.keys(o))]) {
+      if (!numeric(f)) errors.push(`${x.id}: цель меры у признака ${f} без числа или не найденного`);
+    }
+    for (const c of Object.keys(x.effect.toFor ?? {})) if (!conditions[c]) errors.push(`${x.id}: цель меры у болезни ${c} — болезнь не найдена`);
+    for (const f of x.effect.clears) if (!findings[f]) errors.push(`${x.id}: мера снимает признак ${f} — не найден`);
+  }
   checkWho({ conditions, findings, exams, risks }, errors);
   checkHospital({ rooms, equipment, roles, exams, conditions, treatments }, errors);
 
@@ -876,6 +912,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     scores: Object.fromEntries(Object.values(scores).sort((a, b) => (a.id < b.id ? -1 : 1)).map(x => [x.id, x])),
     rules: Object.fromEntries(Object.values(rules).sort((a, b) => (a.id < b.id ? -1 : 1)).map(x => [x.id, x])),
     targets: Object.fromEntries(Object.values(targets).sort((a, b) => (a.id < b.id ? -1 : 1)).map(x => [x.id, x])),
+    measures: Object.fromEntries(Object.values(measures).sort((a, b) => a.order - b.order).map(x => [x.id, x])),
     // умения — по специальности, затем по уровню: так их показывает профиль
     skills: Object.fromEntries(Object.values(skills).sort((a, b) => (a.department < b.department ? -1 : a.department > b.department ? 1 : a.level - b.level || (a.id < b.id ? -1 : 1))).map(x => [x.id, x])),
     economy: economy
@@ -895,6 +932,7 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (c.icd10) out.icd10 = c.icd10;
     if (c.checkup) out.checkup = true;
     if (c.arrival) out.arrival = c.arrival;
+    if (c.carried) out.carried = c.carried;
     if (c.isolation) out.isolation = c.isolation;
     if (c.group) out.group = c.group;
     if (c.source) out.source = c.source;

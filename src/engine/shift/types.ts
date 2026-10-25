@@ -208,6 +208,15 @@ export interface ShiftPatient {
   departments?: Id[];
   /** фибрилляция желудочков в смотровой (часть 39б): когда её сняли разрядом */
   arrest?: number;
+  /**
+   * положили в смотровую приёмного (spec 2026-10-first-measures, часть 95): с этой минуты тяжёлому без нужной первой меры
+   * хуже по ступеням; у входа, с бригадой скорой, часы не идут. Нет — больной из сохранения до 0.6.18, часов у него нет
+   */
+  bayT?: number;
+  /** первые меры (часть 95): назначение, когда назначили и когда медсестра смотровой сделала */
+  measures?: { tx: Id; at: number; done: number }[];
+  /** остановка кровообращения без нужной меры (часть 95): «Код синий» с этой минуты, приём закроется смертью */
+  code?: number;
 }
 
 export interface ClosedCase {
@@ -248,6 +257,20 @@ export interface ClosedCase {
   review?: 'due' | 'lenient';
   /** трудность случая (часть 92, spec 2026-10-case-difficulty) — у ваших приёмов: ряд у двери, хватило ли расспроса и осмотра */
   hardness?: CaseHardness;
+  /**
+   * первые меры (spec 2026-10-first-measures, часть 95): какая была нужна тяжёлому, через сколько минут от того, как его
+   * положили в смотровую, дана (нет — не дана) и на сколько ступеней успело стать хуже
+   */
+  measures?: MeasureResult[];
+  /** умер в смотровой приёмного до решения (часть 95); в «мягком режиме» — переведён в тяжёлом состоянии */
+  ed?: true;
+}
+
+/** Первая мера тяжёлого в разборе (часть 95): мера, через сколько минут дана (нет — не дана), ступеней хуже. */
+export interface MeasureResult {
+  measure: Id;
+  given?: number;
+  steps: number;
 }
 
 export type ShiftEvent =
@@ -269,6 +292,10 @@ export type ShiftEvent =
   | { kind: 'opEnd'; id: string }
   /** фибрилляция желудочков у лежащего в смотровой (spec 2026-10-chapter-3, часть 39б) */
   | { kind: 'arrest'; id: string }
+  /** тяжёлому без первой меры хуже на ступень `step` (spec 2026-10-first-measures, часть 95); последняя — остановка */
+  | { kind: 'worse'; id: string; measure: Id; step: number }
+  /** «Код синий» без успеха (часть 95): приём закрывается смертью */
+  | { kind: 'edDeath'; id: string }
   | { kind: 'shiftEnd' };
 
 export type Command =
@@ -307,6 +334,8 @@ export type Command =
   | { kind: 'replan'; id: string; treatments: Id[] }
   /** скорая (часть 27): врач сортирует привезённого по листу передачи */
   | { kind: 'sort'; id: string; triage: Triage }
+  /** первая мера (spec 2026-10-first-measures, часть 95): медсестре смотровой — назначение `tx` лежащему в ней */
+  | { kind: 'measure'; id: string; tx: Id }
   /** обход (часть 28): лежащего — в операционную, операцией его диагноза */
   | { kind: 'operate'; id: string }
   /** «мягкий режим» из настроек (часть 28б): вместо смерти — перевод в тяжёлом состоянии */
@@ -330,6 +359,12 @@ export type Notice =
   | { kind: 'ambulance'; id: string }
   /** фибрилляция желудочков в смотровой (часть 39б): под монитором — разряд, ритм восстановлен */
   | { kind: 'arrest'; id: string }
+  /** тяжёлому без первой меры хуже (spec 2026-10-first-measures, часть 95): сигнал монитора и автопауза */
+  | { kind: 'worse'; id: string; measure: Id; step: number }
+  /** остановка кровообращения без первой меры (часть 95): «Код синий» */
+  | { kind: 'code'; id: string }
+  /** умер в смотровой (часть 95); `soft` — «мягкий режим»: переведён в тяжёлом состоянии */
+  | { kind: 'died'; id: string; soft?: true }
   | { kind: 'shiftEnd' };
 
 export interface DaySummary {
@@ -398,6 +433,11 @@ export interface AmbulanceDay {
   sorted: number;
   under: number;
   over: number;
+  /**
+   * первые меры (spec 2026-10-first-measures, часть 95): скольким тяжёлым мера была нужна и скольким дана вовремя — до
+   * первой ступени; у скольких стало хуже; сколько умерли в смотровой (в «мягком режиме» — переведены)
+   */
+  measures?: { needed: number; onTime: number; worse: number; died: number };
 }
 
 export interface WardDay {

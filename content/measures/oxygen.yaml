@@ -1,0 +1,32 @@
+id: measure.oxygen
+name: { ru: "Кислород" }
+tx: tx.oxygen_mask
+abc: B
+order: 1
+minutes: 2
+# шаг ухудшения без меры — игровая оценка: рекомендации времени до остановки не называют (spec 2026-10-first-measures)
+every: [20, 40]
+# тяжёлый — кислород у его болезни «обязательно» (порог сатурации у болезни, часть 38б) и сатурация 91 % и ниже: 3 балла
+# NEWS2 по одному показателю, срочный ответ (RCP 2017; score.news2), — и так намерил фельдшер: ошибка листа передачи часов
+# не запускает
+severe: { f: vital.spo2_low, max: 91, roles: [require], seen: true }
+# ступени — игровая оценка: сатурация ниже на 3, дыхание чаще на 2; на третьей — спутанность
+steps:
+  - { change: { vital.spo2_low: -3, vital.tachypnea: 2 } }
+  - { change: { vital.spo2_low: -3, vital.tachypnea: 2 } }
+  - { change: { vital.spo2_low: -3, vital.tachypnea: 2 }, add: [sym.confusion] }
+# сатурация — к нижней границе цели 94–98 % (BTS 2017), при ХОБЛ — к середине цели 88–92 % (603_3; RCUK, «B»)
+effect:
+  undo: true
+  to: { vital.spo2_low: 94 }
+  toFor: { cond.copd_exacerbation: { vital.spo2_low: 90 } }
+texts:
+  hint: { ru: "Маска с кислородом: сатурация поднимается за минуты. Причину не лечит — даёт время её найти." }
+  why: { ru: "Сатурация ниже порога болезни — при пневмонии, сепсисе и инфаркте ниже 90 %, при ХОБЛ 92 % и ниже. Цель — 94–98 %, при ХОБЛ — 88–92 %." }
+sources:
+  - { kind: guideline, title: "O'Driscoll BR, Howard LS, Earis J, Mak V. BTS guideline for oxygen use in adults in healthcare and emergency settings. Thorax 2017;72(Suppl 1):ii1–ii90", org: "British Thoracic Society", year: 2017, note: "цель сатурации 94–98 %, при риске гиперкапнической дыхательной недостаточности 88–92 %; сверено 25.10.2026" }
+  - { kind: guideline, title: "Resuscitation Council UK. The ABCDE approach", org: "Resuscitation Council UK", year: 2024, url: "https://www.resus.org.uk/library/abcde-approach", note: "опубликовано 2015, пересмотр 2021, обновление 2024; «B»: кислород и пересмотр, при ХОБЛ цель 88–92 %; сверено 25.10.2026" }
+  - { kind: score, title: "Royal College of Physicians. National Early Warning Score (NEWS) 2: Standardising the assessment of acute-illness severity in the NHS. Updated report of a working party. London: RCP, 2017", org: "Royal College of Physicians", year: 2017, note: "сатурация 91 % и ниже — 3 балла по одному показателю: срочный ответ; та же запись, что score.news2" }
+  - { kind: guideline, title: "Хроническая обструктивная болезнь легких", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/603_3", note: "ID 603_3, опубликованы 17.12.2024, применяются; сверено с рубрикатором 25.10.2026; кислородотерапия при SpO2 ≤ 92 %, цель 88–92 % — как в записи обострения ХОБЛ (часть 38б)" }
+  - { kind: guideline, title: "Soar J, Böttiger BW, Carli P и др. European Resuscitation Council Guidelines 2021: Adult advanced life support. Resuscitation 2021;161:115–151", org: "European Resuscitation Council", year: 2021, note: "doi:10.1016/j.resuscitation.2021.02.010; профилактика остановки кровообращения в больнице: ей часто предшествует ухудшение, оценка и первые меры — по ABCDE; сверено 25.10.2026" }
+review: draft

@@ -17,12 +17,13 @@ import { Portrait } from '@/render/Portrait';
 import { CLINIC } from '@/state/clinicMap';
 import { blockText, type CashView } from '@/state/sandboxView';
 import {
-  type AmbulanceRow, callPatient, closeDay, leaveCase, loadShift, nextDay, openCase, openColleagueCase, pauseClock, type QueueRow, type ShiftView, SPEEDS, type Speed, type SummaryView,
+  alarmIn, type AmbulanceRow, callPatient, closeDay, giveMeasure, leaveCase, loadShift, nextDay, openCase, openColleagueCase, pauseClock, type QueueRow, type ShiftView, SPEEDS, type Speed, type SummaryView,
   type RoomView, saveNow, setSpeed, skipIdle, sortAmbulance, startSandbox, startShift, TICK_MS, tick, useBuild, useCampaign, usePrepareIdle, useShift, type WhoView,
 } from '@/state/session';
 import { CaseRow } from '@/ui/case/CaseRow';
 import { gradeColor } from '@/ui/case/OutcomeScreen';
 import { Button, Card, Chip, Chips, H, Lamp, P, Screen, Sheet, Tabs, Urgency } from '@/ui/components';
+import { FirstMeasures } from '@/ui/case/FirstMeasures';
 import { DifficultyChoice } from '@/ui/difficulty';
 import { ChapterCard, MentorTip } from '@/ui/campaign';
 import { NewSandbox } from '@/ui/sandbox';
@@ -202,8 +203,9 @@ function Queue({ v }: { v: ShiftView }) {
       let door = 0;
       const id = setInterval(() => {
         const notices = tick(TICK_MS);
-        // остановка сердца в смотровой — тревога монитора: она важнее остальных сигналов (FR-AV-1)
-        if (notices.some(n => n.kind === 'arrest')) {
+        // остановка сердца в смотровой — тревога монитора: она важнее остальных сигналов (FR-AV-1); с частью 95 — и «хуже»
+        // без первой меры, и код синий
+        if (alarmIn(notices)) {
           play('alarm');
           buzz('alarm');
         } else if (notices.some(n => (n.kind === 'arrived' && n.triage === 'red') || n.kind === 'ambulance')) {
@@ -233,7 +235,7 @@ function Queue({ v }: { v: ShiftView }) {
 
   const skip = () => {
     const notices = skipIdle();
-    if (notices.some(n => n.kind === 'arrest')) {
+    if (alarmIn(notices)) {
       play('alarm');
       buzz('alarm');
     } else if (notices.some(n => (n.kind === 'arrived' && n.triage === 'red') || n.kind === 'ambulance')) {
@@ -350,6 +352,14 @@ function Queue({ v }: { v: ShiftView }) {
         </Card>
       )}
 
+      {/* первые меры (spec 2026-10-first-measures, часть 95): отсортированные в смотровой — монитор и меры по касанию */}
+      {v.bays.length > 0 && (
+        <Card testID="shift-bays">
+          <Text style={styles.label}>{t.ambulance.bays}</Text>
+          {v.bays.map(a => <Button key={a.id} testID={`bay-${a.id}`} kind="plain" lamp={a.worse} title={a.name} hint={a.line} onPress={() => setHandover(a.id)} />)}
+        </Card>
+      )}
+
       <Card>
         <Text style={styles.label}>{t.queue}</Text>
         {v.queue.length === 0 && v.intake.length === 0 ? <P muted>{t.queueEmpty}</P> : v.queue.map((r, i) => (
@@ -392,7 +402,7 @@ function Queue({ v }: { v: ShiftView }) {
         <Button kind="plain" testID="shift-close-day-early" title={t.closeDay} hint={t.closeDayHint(v.counts.unseen)} onPress={closeDay} />
       )}
 
-      <Handover row={v.ambulance.find(a => a.id === handover)} onClose={() => setHandover(undefined)} />
+      <Handover row={v.ambulance.find(a => a.id === handover) ?? v.bays.find(a => a.id === handover)} onClose={() => setHandover(undefined)} />
       {/* первая смена главы 2 (spec 2026-09-chapter-2, часть 34б): привезённый ждёт сортировки — подсказка; не поверх листа передачи */}
       {handover === undefined && <MentorTip screen="queue" />}
     </Screen>
@@ -414,15 +424,24 @@ function Handover({ row, onClose }: { row?: AmbulanceRow; onClose: () => void })
           {row.handover.measured.map(m => <P key={m}>{m}</P>)}
           {row.handover.news2 ? <P muted testID="handover-news2">{row.handover.news2}</P> : null}
           {row.handover.flag ? <P muted testID="handover-flag">{row.handover.flag}</P> : null}
-          <Text style={styles.label}>{t.sortLabel}</Text>
-          {(['red', 'yellow', 'green'] as const).map(c => (
-            <Button key={c} testID={`sort-${c}`} kind="plain" title={t.sort[c]} onPress={() => {
-              buzz('tap');
-              sortAmbulance(row.id, c);
-              onClose();
-            }} />
-          ))}
-          <P muted>{t.sortHint}</P>
+          {/* первые меры (часть 95): сразу, до сортировки и после — делает медсестра смотровой */}
+          {row.handover.measures ? <FirstMeasures v={row.handover.measures} testID="handover-measures" onGive={tx => {
+            buzz('tap');
+            giveMeasure(row.id, tx);
+          }} /> : null}
+          {row.sorted ? null : (
+            <>
+              <Text style={styles.label}>{t.sortLabel}</Text>
+              {(['red', 'yellow', 'green'] as const).map(c => (
+                <Button key={c} testID={`sort-${c}`} kind="plain" title={t.sort[c]} onPress={() => {
+                  buzz('tap');
+                  sortAmbulance(row.id, c);
+                  onClose();
+                }} />
+              ))}
+              <P muted>{t.sortHint}</P>
+            </>
+          )}
         </>
       ) : null}
     </Sheet>

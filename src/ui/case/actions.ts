@@ -15,6 +15,8 @@ export interface CaseActions {
   chooseSetting(setting: Setting): void;
   /** дифференциальный ряд (spec 2026-10-differential): добавить гипотезу или убрать её */
   toggleHypothesis(id: Id): void;
+  /** смена: первая мера лежащему в смотровой (spec 2026-10-first-measures, часть 95) — делает медсестра */
+  measure?(tx: Id): void;
   finish(): void;
   routes: { decision: Href; outcome: Href };
 }

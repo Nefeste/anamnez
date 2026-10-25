@@ -485,6 +485,11 @@ export interface Condition {
   /** приходят только со скорой (spec 2026-10-chapter-3, часть 41а): инсульт привозят в смотровую приёмного */
   arrival?: 'ambulance';
   /**
+   * скорая везёт и такое (spec 2026-10-first-measures, часть 95): при этих значениях параметров — с весом этой тяжести, и
+   * привезённый — всегда с ними: большая рана головы с кровопотерей, хотя рана головы — лёгкое
+   */
+  carried?: { when: Record<string, string[]>; severity: Condition['severity'] };
+  /**
    * заразна (spec 2026-10-chapter-4, часть 49а): путь передачи — контактный или воздушно-капельный; в стационаре лежит в
    * боксе, в общей палате соседи — контактные
    */
@@ -1288,6 +1293,43 @@ export interface Target {
   review: Review;
 }
 
+/** Буква ABCDE первой меры (spec 2026-10-first-measures): дыхание, кровообращение, сознание. */
+export type Abcde = 'A' | 'B' | 'C' | 'D' | 'E';
+
+/**
+ * Первая мера у привезённого скорой (spec 2026-10-first-measures, часть 95): назначение, которое медсестра смотровой
+ * делает сразу, до решения. Тяжёлому без неё хуже по ступеням: `steps` — сдвиги монитора, после последней — остановка.
+ */
+export interface Measure {
+  id: Id;
+  name: Text;
+  tx: Id;
+  abc: Abcde;
+  /** порядок кнопок */
+  order: number;
+  /** минут у медсестры: мера сделана через столько от назначения */
+  minutes: number;
+  /** шаг ухудшения без меры, минут: [от, до], жребий у каждого больного свой */
+  every: [number, number];
+  /**
+   * кто тяжёлый: признак `f` есть у правды (и его число не выше `max`), а роль назначения у болезни — одна из `roles`;
+   * нет `roles` — при любой болезни; `seen` — и фельдшер это намерил: ошибка листа передачи часов не запускает
+   */
+  severe: { f: Id; max?: number; roles?: string[]; seen?: true };
+  /** ступени без меры: сдвиг числа признака и новые признаки (спутанность, кома) */
+  steps: { change: Record<Id, number>; add: Id[] }[];
+  /**
+   * что делает мера: `undo` — ступени отменяются (монитор как при поступлении), иначе только встают; `to` — число признака
+   * к цели (сатурация 94 %), `toFor` — у этих болезней своя цель (ХОБЛ — 90 %); `clears` — признаки уходят через `after`
+   * минут (сознание после глюкозы)
+   */
+  effect: { undo: boolean; to: Record<Id, number>; toFor?: Record<Id, Record<Id, number>>; clears: Id[]; after: number };
+  /** hint — что это, why — когда нужна, простыми словами */
+  texts: { hint: Text; why: Text };
+  sources: Source[];
+  review: Review;
+}
+
 export interface ContentDb {
   contentVersion: number;
   hash: string;
@@ -1313,6 +1355,8 @@ export interface ContentDb {
   rules: Record<Id, Rule>;
   /** сроки: ЭКГ при боли в груди за 10 минут (spec 2026-10-chapter-3, часть 37) */
   targets: Record<Id, Target>;
+  /** первые меры у привезённых скорой (spec 2026-10-first-measures, часть 95): по порядку кнопок */
+  measures: Record<Id, Measure>;
   /** умения врача по специальностям (spec 2026-10-skills, часть 75) */
   skills: Record<Id, Skill>;
   /** производное: какие обследования проверяют признак */

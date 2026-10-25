@@ -116,6 +116,14 @@ export const conditionSchema = z.strictObject({
    */
   arrival: z.literal('ambulance').optional(),
   /**
+   * скорая везёт и такое (spec 2026-10-first-measures, часть 95): при этих значениях параметров — с весом этой тяжести, а
+   * привезённый — всегда с ними: большая рана головы с кровопотерей, хотя рана головы — лёгкое
+   */
+  carried: z.strictObject({
+    when: z.record(z.string(), z.array(z.string()).min(1)),
+    severity: z.enum(['moderate', 'serious', 'critical']),
+  }).optional(),
+  /**
    * заразна (spec 2026-10-chapter-4, часть 49а): путь передачи — контактный (кишечные инфекции) или воздушно-капельный; в
    * стационаре лежит в боксе (место `box`), в общей палате соседи — контактные
    */
@@ -1176,7 +1184,46 @@ export type TipSrc = z.infer<typeof tipSchema>;
 export type AchievementSrc = z.infer<typeof achievementSchema>;
 export type ScoreSrc = z.infer<typeof scoreSchema>;
 export type RuleSrc = z.infer<typeof ruleSchema>;
+/**
+ * Первая мера у привезённого скорой (spec 2026-10-first-measures, часть 95): назначение, которое медсестра смотровой делает
+ * сразу; тяжёлому без неё хуже по ступеням, после последней — остановка.
+ */
+const findingRef = z.string().regex(/^(sym|sign|vital|lab|img|ecg|hx)\.[a-z0-9_]+$/);
+export const measureSchema = z.strictObject({
+  id: z.string().regex(/^measure\.[a-z0-9_]+$/),
+  name: text,
+  tx: txId,
+  abc: z.enum(['A', 'B', 'C', 'D', 'E']),
+  order: z.number().int().min(1),
+  /** минут у медсестры */
+  minutes: z.number().int().min(1).max(30),
+  /** шаг ухудшения без меры, минут: [от, до] */
+  every: z.tuple([z.number().int().min(5), z.number().int().min(5)]),
+  severe: z.strictObject({
+    f: findingRef,
+    max: z.number().optional(),
+    roles: z.array(z.enum(['firstLine', 'acceptable', 'supportive', 'require', 'beforeTransfer'])).min(1).optional(),
+    /** и в листе передачи: опасность, которой фельдшер не намерил, часов не запускает */
+    seen: z.literal(true).optional(),
+  }),
+  steps: z.array(z.strictObject({
+    change: z.record(findingRef, z.number()).default({}),
+    add: z.array(findingRef).default([]),
+  })).min(1),
+  effect: z.strictObject({
+    undo: z.boolean(),
+    to: z.record(findingRef, z.number()).default({}),
+    toFor: z.record(z.string().regex(/^cond\.[a-z0-9_]+$/), z.record(findingRef, z.number())).optional(),
+    clears: z.array(findingRef).default([]),
+    after: z.number().int().min(0).default(0),
+  }),
+  texts: z.strictObject({ hint: text, why: text }),
+  sources: z.array(source).min(1),
+  review,
+});
+
 export type TargetSrc = z.infer<typeof targetSchema>;
+export type MeasureSrc = z.infer<typeof measureSchema>;
 export type SkillSrc = z.infer<typeof skillSchema>;
 export type LinkSrc = z.infer<typeof link>;
 export type ProbabilitySrc = z.infer<typeof probability>;

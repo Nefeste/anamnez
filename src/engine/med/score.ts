@@ -55,7 +55,14 @@ export type ScoreNote =
    * на момент разреза — осложнённая стадия болезни `of` (перфорация, часть 28б): часов от начала
    * болезни до операции; `before` — была уже при поступлении
    */
-  | { code: 'op.complicated'; tx: Id; of: Id; hours: number; before: boolean };
+  | { code: 'op.complicated'; tx: Id; of: Id; hours: number; before: boolean }
+  /**
+   * первая мера тяжёлого (spec 2026-10-first-measures, часть 95): дана вовремя — до первой ступени; дана, когда стало хуже
+   * на `steps` ступеней; не дана — за это время стало хуже на `steps`. `minutes` — от того, как положили в смотровую
+   */
+  | { code: 'measure.onTime'; tx: Id; minutes: number }
+  | { code: 'measure.late'; tx: Id; minutes: number; steps: number }
+  | { code: 'measure.missed'; tx: Id; steps: number };
 
 export interface CaseInput {
   verdict: 'correct' | 'partly' | 'wrong';
@@ -78,6 +85,13 @@ export interface CaseInput {
   should?: Setting;
   /** оценки сроков приёма (spec 2026-10-chapter-3, часть 37): ЭКГ при боли в груди за 10 минут */
   targets?: Grade[];
+  /**
+   * первые меры тяжёлого (spec 2026-10-first-measures, часть 95): назначение, через сколько минут дано (первой мерой или в
+   * решении; нет — не дано) и на сколько ступеней к тому времени стало хуже
+   */
+  measures?: { tx: Id; steps: number; given?: number }[];
+  /** умер в смотровой до решения (часть 95) */
+  ed?: true;
   /**
    * «Практикант» (spec 2026-10-trainee): разбор мягче — обоснованность и бережливость считаются и видны, но в общую
    * оценку не входят: новичок назначает лишнее и ставит диагноз по подсказке, а учится на лечении и безопасности
@@ -234,6 +248,19 @@ export function scoreBase(x: Omit<CaseInput, 'rationalCost'>): ScoreBase {
       else { safety = worst(safety, 'C'); notes.push({ code: 'safety.redFlagUnchecked', f: r.f }); }
     }
   }
+
+  // первые меры (часть 95): дана, когда успело стать хуже, — безопасность не выше B, с третьей ступени — C; не дана, а стало
+  // хуже, — замечание (оценку снижает обязательное лечение, которого нет); умер в смотровой — D
+  for (const m of x.measures ?? []) {
+    if (m.given === undefined) {
+      if (m.steps > 0) notes.push({ code: 'measure.missed', tx: m.tx, steps: m.steps });
+    } else if (m.steps === 0) notes.push({ code: 'measure.onTime', tx: m.tx, minutes: m.given });
+    else {
+      safety = worst(safety, m.steps >= 3 ? 'C' : 'B');
+      notes.push({ code: 'measure.late', tx: m.tx, minutes: m.given, steps: m.steps });
+    }
+  }
+  if (x.ed) safety = 'D';
 
   // сроки (часть 37) — десятая доля общей; у приёма без срока общая — как прежде
   const targets = x.targets && x.targets.length > 0 ? worst(...x.targets) : undefined;

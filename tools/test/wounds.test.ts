@@ -245,8 +245,9 @@ describe('на экране и в энциклопедии', () => {
     expect(titles).toEqual(expect.arrayContaining(['Раны и повязки', 'Прививки и сыворотки']));
     const groups = Object.fromEntries(treatmentGroupsFor([]).map(g => [g.key, g.items.map(x => x.id)]));
     // и туалет ожоговой раны с повязкой (часть 32д-2), удаление клеща и иммуноглобулин против клещевого энцефалита (часть 51а),
-    // антитоксин ботулинический (часть 51в), иммуноглобулин человека нормальный при миастеническом кризе (часть 58в)
-    expect(groups.wounds.sort()).toEqual([OPEN, DRESSING, SUTURE, 'tx.burn_dressing', 'tx.tick_removal'].sort());
+    // антитоксин ботулинический (часть 51в), иммуноглобулин человека нормальный при миастеническом кризе (часть 58в), давящая
+    // повязка — первая мера у скорой (часть 95)
+    expect(groups.wounds.sort()).toEqual([OPEN, DRESSING, SUTURE, 'tx.burn_dressing', 'tx.tick_removal', 'tx.pressure_dressing'].sort());
     expect(groups.vaccines.sort()).toEqual([RIG, RABIES, TIG, TOXOID, 'tx.tbe_ig', 'tx.botulism_antitoxin', 'tx.ivig'].sort());
   });
 

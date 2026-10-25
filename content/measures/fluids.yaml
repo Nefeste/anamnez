@@ -1,0 +1,30 @@
+id: measure.fluids
+name: { ru: "Инфузия" }
+tx: tx.iv_fluids
+abc: C
+order: 2
+minutes: 5
+# шаг ухудшения без меры — игровая оценка (spec 2026-10-first-measures)
+every: [20, 40]
+# тяжёлый — давление ниже 90 (3 балла NEWS2) и инфузия — в тактике его болезни: при застое в лёгких у сердечной
+# недостаточности она вредна, и давление ниже 90 лечат в «Решении»; давление ниже 90 — в листе передачи: ошибка тонометра
+# фельдшера часов не запускает
+severe: { f: vital.bp_low, roles: [firstLine, acceptable, supportive, require, beforeTransfer], seen: true }
+# ступени — игровая оценка: верхнее давление ниже на 6, пульс чаще на 8; на третьей — спутанность
+steps:
+  - { change: { vital.bp_low: -6, vital.tachycardia: 8 } }
+  - { change: { vital.bp_low: -6, vital.tachycardia: 8 } }
+  - { change: { vital.bp_low: -6, vital.tachycardia: 8 }, add: [sym.confusion] }
+# держит: давление и пульс — как при поступлении, дальше не падает; выше не поднимает — на жидкость отвечает примерно
+# половина (Michard, Teboul 2002), причину лечат дальше
+effect: { undo: true }
+texts:
+  hint: { ru: "Капельница с солевым раствором: при шоке — первая мера, пока ищут причину. Шок держит, но не лечит: при сепсисе нужен антибиотик, при анафилаксии — адреналин, при кетоацидозе — инсулин." }
+  why: { ru: "Давление ниже 90 у того, кому раствор в вену показан: сепсис, кетоацидоз, анафилаксия, надпочечниковый криз, кровотечение. При застое в лёгких — не нужно." }
+sources:
+  - { kind: guideline, title: "Resuscitation Council UK. The ABCDE approach", org: "Resuscitation Council UK", year: 2024, url: "https://www.resus.org.uk/library/abcde-approach", note: "«C»: шок — гиповолемия, пока не доказано другое; болюс жидкости, нет улучшения — повторить; сверено 25.10.2026" }
+  - { kind: review, title: "Michard F, Teboul JL. Predicting fluid responsiveness in ICU patients: a critical analysis of the evidence. Chest 2002;121(6):2000–2008", year: 2002, note: "doi:10.1378/chest.121.6.2000; сердечный выброс от жидкости растёт примерно у половины больных" }
+  - { kind: score, title: "Royal College of Physicians. National Early Warning Score (NEWS) 2: Standardising the assessment of acute-illness severity in the NHS. Updated report of a working party. London: RCP, 2017", org: "Royal College of Physicians", year: 2017, note: "верхнее давление 90 и ниже — 3 балла по одному показателю: срочный ответ" }
+  - { kind: guideline, title: "Сепсис (у взрослых)", org: "Минздрав РФ", year: 2024, url: "https://cr.minzdrav.gov.ru/view-cr/898_1", note: "ID 898_1, опубликованы 27.12.2024, применяются; сверено с рубрикатором 25.10.2026; инфузия кристаллоидов при сепсисе с гипотензией — как в записи сепсиса" }
+  - { kind: guideline, title: "Soar J, Böttiger BW, Carli P и др. European Resuscitation Council Guidelines 2021: Adult advanced life support. Resuscitation 2021;161:115–151", org: "European Resuscitation Council", year: 2021, note: "doi:10.1016/j.resuscitation.2021.02.010; ухудшение перед остановкой, ABCDE; гиповолемия — обратимая причина остановки" }
+review: draft

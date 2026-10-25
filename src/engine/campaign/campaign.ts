@@ -142,10 +142,12 @@ export interface Mortality {
  */
 function mortalityOf(history: readonly DaySummary[], days: readonly DaySummary[]): Mortality {
   const before = history.find(h => h.day === days[0].day - 1)?.ward?.heavyLying ?? 0;
+  // умер в смотровой до решения (spec 2026-10-first-measures, часть 95) — тяжёлый и умерший, хотя в палату не лёг
+  const ed = (h: DaySummary) => h.ambulance?.measures?.died ?? 0;
   return {
-    died: days.reduce((a, h) => a + (h.ward?.heavyDied ?? 0), 0),
+    died: days.reduce((a, h) => a + (h.ward?.heavyDied ?? 0) + ed(h), 0),
     early: days.reduce((a, h) => a + (h.ward?.heavyEarly ?? 0), 0),
-    lying: before + days.reduce((a, h) => a + (h.ward?.heavy ?? 0), 0),
+    lying: before + days.reduce((a, h) => a + (h.ward?.heavy ?? 0) + ed(h), 0),
   };
 }
 

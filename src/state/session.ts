@@ -29,6 +29,7 @@ import {
   wardBeds, catchUp, prepareFinish, reviewedCase, waitUntil,
 } from '@/engine/shift/engine';
 import { BUDGET, type Challenge, challengeBlock } from '@/engine/shift/challenges';
+import { bayVitals, measuresDue, valueKey } from '@/engine/shift/measures';
 import { isXray, type Scenario, SCENARIO_DAYS, SCENARIOS, scenarioFits, scenarioPrior } from '@/engine/shift/scenarios';
 import { minutesTo, targetStart, targetsFor } from '@/engine/shift/targets';
 import {
@@ -37,8 +38,8 @@ import {
 import { T } from '@/i18n';
 import { lowerFirst } from '@/i18n/case';
 import {
-  type Arrival, type CaseTarget, type Decision, decisionOf, hhmm, makeCaseView, outcomeText, patientName, resultName, type SettingOption, treatmentGroupsFor,
-  type VisitView,
+  type Arrival, type CaseTarget, type Decision, decisionOf, type FirstMeasuresView, hhmm, makeCaseView, type MeasureButton, outcomeText, patientName, resultName,
+  type SettingOption, treatmentGroupsFor, type VisitView,
 } from './caseView';
 import { daysIn, stayNorm, vitalOn, WARD_VITALS, type WardState, wardState } from '@/engine/shift/ward';
 import { staffAge, type StaffPortrait } from '@/render/look';
@@ -326,6 +327,8 @@ export interface ShiftView {
   inpatients: number;
   /** привезённые скорой, что ждут сортировки врачом (часть 27) */
   ambulance: AmbulanceRow[];
+  /** отсортированные, что лежат в смотровой (spec 2026-10-first-measures, часть 95): монитор и первые меры — по касанию */
+  bays: AmbulanceRow[];
 }
 
 interface Session {
@@ -781,10 +784,28 @@ function absorb(sess: Session, notices: Notice[]) {
   if (!p || sess.s.current !== p.id) return;
   sess.meanwhile = meanwhileOf(sess.s, p, tail.notices, tail.doctor?.justDone);
   sess.urgent = urgentIn(tail.notices);
-  sess.alarm = tail.notices.some(n => n.kind === 'arrest');
+  sess.alarm = alarmIn(tail.notices);
 }
 
 const urgentIn = (notices: Notice[]) => notices.some(n => (n.kind === 'arrived' && n.triage === 'red') || n.kind === 'ambulance');
+/** Тревога монитора: остановка сердца в смотровой (0.5.7), а с частью 95 — «хуже» без первой меры и код синий. */
+export const alarmIn = (notices: readonly Notice[]) => notices.some(n => n.kind === 'arrest' || n.kind === 'worse' || n.kind === 'code');
+
+/**
+ * Что стало хуже — для сигнала (часть 95): числа монитора, которые сдвигает ступень нужды, и что эта ступень добавила
+ * (спутанность, у глюкозы — оглушение, кома, судороги).
+ */
+function worseText(s: ShiftState, p: ShiftPatient, measure: Id, step: number): string {
+  const t = T.shift.ambulance;
+  const m = db.measures[measure];
+  const v = bayVitals(db, s, p);
+  const label: Record<Id, (x: number) => string> = { 'vital.spo2_low': t.spo2, 'vital.bp_low': t.bp, 'vital.tachycardia': t.pulse, 'vital.tachypnea': t.breath };
+  const parts = Object.keys(m?.steps[0]?.change ?? {})
+    .filter(f => label[f] && v.values[valueKey(db, f)] !== undefined)
+    .map(f => label[f](Math.round(v.values[valueKey(db, f)])));
+  for (const f of m?.steps[step - 1]?.add ?? []) parts.push(lowerFirst(db.findings[f]?.name.ru ?? f));
+  return parts.join(', ');
+}
 
 let frameQueued = false;
 function nextFrame(f: () => void) {
@@ -835,7 +856,7 @@ export function tick(ms: number = TICK_MS): Notice[] {
   const part = inParts ? more : undefined;
   const notices: Notice[] = [];
   const { pauseOnRed, pauseOnResults } = settings();
-  const redOf = (ns: Notice[]) => (pauseOnRed ? ns.find(n => (n.kind === 'arrived' && n.triage === 'red') || n.kind === 'ambulance') : undefined);
+  const redOf = (ns: Notice[]) => (pauseOnRed ? ns.find(n => (n.kind === 'arrived' && n.triage === 'red') || n.kind === 'ambulance' || n.kind === 'worse' || n.kind === 'code' || n.kind === 'died') : undefined);
   const backOf = (ns: Notice[]) => (pauseOnResults ? ns.find(n => n.kind === 'resultsReady' && sess.s.patients[n.id].status === 'waiting') : undefined);
   if (sess.s.until !== undefined) {
     const clock = sess.tail?.clock;
@@ -853,6 +874,10 @@ export function tick(ms: number = TICK_MS): Notice[] {
   const back = backOf(notices);
   if (red && red.kind === 'ambulance') pause(sess, T.shift.pause.ambulance(nameOf(sess.s.patients[red.id])));
   else if (red && red.kind === 'arrived') pause(sess, T.shift.pause.red(nameOf(sess.s.patients[red.id])));
+  // первые меры (часть 95): хуже без меры, код синий, смерть в смотровой
+  else if (red && red.kind === 'worse') pause(sess, T.shift.pause.worse(nameOf(sess.s.patients[red.id]), worseText(sess.s, sess.s.patients[red.id], red.measure, red.step)));
+  else if (red && red.kind === 'code') pause(sess, T.shift.pause.code(nameOf(sess.s.patients[red.id])));
+  else if (red && red.kind === 'died') pause(sess, T.shift.pause.died(nameOf(sess.s.patients[red.id]), female(sess.s.patients[red.id]), red.soft === true));
   else if (back && back.kind === 'resultsReady') pause(sess, T.shift.pause.results(nameOf(sess.s.patients[back.id])));
   changed();
   return notices;
@@ -922,7 +947,7 @@ export function skipIdle(): Notice[] {
   for (let spent = 0; spent < SKIP_MAX && !allDone(sess.s); spent += 60) {
     const notices = run(sess, { kind: 'advance', seconds: 60 });
     out.push(...notices);
-    if (sess.s.queue.length > 0 || notices.some(n => n.kind === 'shiftEnd' || n.kind === 'ambulance')) break;
+    if (sess.s.queue.length > 0 || notices.some(n => n.kind === 'shiftEnd' || n.kind === 'ambulance' || n.kind === 'worse' || n.kind === 'code' || n.kind === 'died')) break;
   }
   sess.paused = false;
   sess.pauseReason = undefined;
@@ -978,7 +1003,7 @@ function doctor(cmd: Command, justDone?: Id) {
   } else {
     sess.meanwhile = meanwhileOf(sess.s, p, notices, justDone);
     sess.urgent = urgentIn(notices);
-    sess.alarm = notices.some(n => n.kind === 'arrest');
+    sess.alarm = alarmIn(notices);
   }
   changed();
 }
@@ -1002,7 +1027,7 @@ export function examineAll(exams: readonly Id[]) {
   const notices = order.flatMap(exam => run(sess, { kind: 'exam', exam }));
   sess.meanwhile = meanwhileOf(sess.s, p, notices, order[order.length - 1]);
   sess.urgent = urgentIn(notices);
-  sess.alarm = notices.some(n => n.kind === 'arrest');
+  sess.alarm = alarmIn(notices);
   changed();
 }
 
@@ -1775,6 +1800,9 @@ function record(sess: Session, notices: Notice[]) {
     else if (n.kind === 'left' && p) item('left', T.shift.notice.left(nameOf(p), female(p)));
     else if (n.kind === 'ambulance' && p) item('red', T.shift.notice.ambulance(nameOf(p), complaintOf(p)));
     else if (n.kind === 'arrest' && p) item('red', T.shift.notice.arrest(nameOf(p)));
+    else if (n.kind === 'worse' && p) item('red', T.shift.notice.worse(nameOf(p), worseText(s, p, n.measure, n.step)));
+    else if (n.kind === 'code' && p) item('red', T.shift.notice.code(nameOf(p)));
+    else if (n.kind === 'died' && p) item('red', T.shift.notice.died(nameOf(p), female(p), n.soft === true));
     else if (n.kind === 'shiftEnd') item('end', T.shift.notice.end);
   }
   sess.log.length = Math.min(sess.log.length, LOG_SIZE);
@@ -1788,6 +1816,14 @@ function meanwhileOf(s: ShiftState, p: ShiftPatient, notices: Notice[], justDone
   const out: string[] = [];
   const arrived = notices.filter((n): n is Extract<Notice, { kind: 'arrived' }> => n.kind === 'arrived');
   for (const n of notices) if (n.kind === 'arrest' && s.patients[n.id]) out.push(T.shift.notice.arrest(nameOf(s.patients[n.id])));
+  // первые меры (часть 95): код синий, смерть и «хуже» в смотровой — так же первыми, их звук — тревога монитора
+  for (const n of notices) {
+    const q = n.kind === 'code' || n.kind === 'died' || n.kind === 'worse' ? s.patients[n.id] : undefined;
+    if (!q) continue;
+    if (n.kind === 'code') out.push(T.shift.notice.code(nameOf(q)));
+    else if (n.kind === 'died') out.push(T.shift.notice.died(nameOf(q), female(q), n.soft === true));
+    else if (n.kind === 'worse') out.push(T.shift.notice.worse(nameOf(q), worseText(s, q, n.measure, n.step)));
+  }
   for (const n of notices) if (n.kind === 'ambulance') out.push(T.shift.notice.ambulance(nameOf(s.patients[n.id]), complaintOf(s.patients[n.id])));
   for (const n of arrived) if (n.triage === 'red') out.push(T.shift.notice.red(nameOf(s.patients[n.id]), complaintOf(s.patients[n.id])));
   for (const r of p.results) if (r.step === p.step && r.exam !== justDone) out.push(T.spikes.patient.ready(resultName(r.exam, r.repeat)));
@@ -1848,7 +1884,9 @@ function summaryOf(s: ShiftState): SummaryView | undefined {
   const all = Object.values(s.patients);
   const cases = all.filter(p => p.closed && !p.closed.by && closedDay(p) === h.day).sort((a, b) => a.closed!.at - b.closed!.at);
   // нанятые врачи (spec 2026-09-hired-doctors): строка на каждого — его приёмы за день
-  const caseRow = (p: ShiftPatient): CaseRow => ({ id: p.id, name: nameOf(p), verdict: p.closed!.verdict, overall: p.closed!.grades.overall, diagnosis: db.conditions[p.closed!.diagnosis].name.ru });
+  const caseRow = (p: ShiftPatient): CaseRow => ({ id: p.id, name: nameOf(p), verdict: p.closed!.verdict, overall: p.closed!.grades.overall,
+    // умер в смотровой до решения (часть 95) — диагноза нет
+    diagnosis: db.conditions[p.closed!.diagnosis]?.name.ru ?? T.spikes.patient.noDiagnosis });
   const colleagues = Object.entries(h.colleagues ?? {}).sort(([a], [b]) => (a < b ? -1 : 1)).map(([id, c]) => {
     const m = s.staff?.find(x => x.id === id);
     return {
@@ -1891,7 +1929,7 @@ function summaryOf(s: ShiftState): SummaryView | undefined {
     ...(s.meta.mode === 'single' || s.meta.mode === 'scenario' ? { single: singleView(s) } : {}),
     ...(s.meta.mode === 'scenario' && scenarioView(s) ? { scenario: scenarioView(s) } : {}),
     ...(h.ward ? { wardLines: wardLines(h.ward) } : {}),
-    ...(h.ambulance && h.ambulance.arrived > 0 ? { ambulanceLines: ambulanceLines(h.ambulance) } : {}),
+    ...(h.ambulance && h.ambulance.arrived > 0 ? { ambulanceLines: ambulanceLines(h.ambulance, s.meta.soft === true) } : {}),
     ...(h.targets && Object.keys(h.targets).length > 0 ? { targetLines: targetDayLines(h.targets) } : {}),
     ...(h.surgery && h.surgery.done > 0 ? { surgeryLines: surgeryLines(h.surgery) } : {}),
   };
@@ -1912,11 +1950,18 @@ function surgeryLines(x: NonNullable<ShiftState['summary']['surgery']>): string[
 }
 
 /** Скорая за день — строками итогов: привезли, отсортировали, сколько совпало со шкалой. */
-function ambulanceLines(a: NonNullable<ShiftState['summary']['ambulance']>): string[] {
+function ambulanceLines(a: NonNullable<ShiftState['summary']['ambulance']>, soft: boolean): string[] {
   const t = T.shift.summary.ambulance;
   const out = [t.line(a.arrived, a.sorted)];
   if (a.sorted > 0) out.push(t.check(a.sorted - a.under - a.over, a.under, a.over));
   if (a.arrived > a.sorted) out.push(t.unsorted(a.arrived - a.sorted));
+  // первые меры (spec 2026-10-first-measures, часть 95): скольким тяжёлым нужны, скольким вовремя, у скольких хуже, умерли
+  const m = a.measures;
+  if (m && m.needed + m.died > 0) {
+    out.push(t.measures(m.onTime, m.needed));
+    if (m.worse > 0) out.push(t.worse(m.worse));
+    if (m.died > 0) out.push(t.died(m.died, soft));
+  }
   return out;
 }
 
@@ -1938,6 +1983,7 @@ function wardLines(w: NonNullable<ShiftState['summary']['ward']>): string[] {
 const EMPTY: Omit<ShiftView, 'version' | 'status' | 'mode'> = {
   difficulty: 'student', day: 0, clock: '', dayOpen: false, afterHours: false, allDone: false, speed: 1, paused: false,
   queue: [], intake: [], away: [], log: [], counts: { seen: 0, left: 0, waiting: 0, unseen: 0 }, restored: false, people: [], who: {}, colleagues: [], signs: [], inpatients: 0, ambulance: [],
+  bays: [],
 };
 
 function buildShiftView(): ShiftView {
@@ -1981,6 +2027,7 @@ function buildShiftView(): ShiftView {
     colleagues: colleagueRows(s),
     inpatients: inpatientsOf(s).length,
     ambulance: ambulanceRows(s),
+    bays: bayRows(s),
     ...(s.hospital ? { rooms: roomsOf(s) } : {}),
     ...(layout ? { layout } : {}),
     ...(s.staff?.some(m => m.room && db.roles[m.role]?.profile) ? { offices: specialistOffices(s) } : {}),
@@ -2317,38 +2364,124 @@ export interface HandoverView {
   measured: string[];
   news2?: string;
   flag?: string;
+  /** лежит в смотровой (spec 2026-10-first-measures, часть 95): монитор и первые меры; у входа, на каталке, — нет */
+  measures?: FirstMeasuresView;
 }
 
-/** Привезённый скорой, что ждёт сортировки: кто, повод, где лежит, лист передачи. */
+/**
+ * Привезённый скорой, что ждёт сортировки, или отсортированный, что лежит в смотровой (часть 95): кто, повод, где лежит,
+ * лист передачи; `worse` — без первой меры ему уже хуже.
+ */
 export interface AmbulanceRow {
   id: string;
   name: string;
   line: string;
   handover: HandoverView;
+  sorted?: true;
+  worse?: true;
 }
 
 function ambulanceRows(s: ShiftState): AmbulanceRow[] {
-  const t = T.shift.ambulance;
   const door = new Set(atDoorOf(s).map(p => p.id));
   return Object.values(s.patients)
     .filter(p => p.kind === 'ambulance' && p.status === 'waiting' && !p.sorted)
     .sort((a, b) => a.arriveT - b.arriveT || (a.id < b.id ? -1 : 1))
-    .map(p => {
-      const paramedic = p.results.find(r => r.exam === 'exam.vitals');
-      const student = easyLevel(s.meta.difficulty) && p.scale !== undefined;
-      const flag = student && p.scale?.flag ? db.findings[p.scale.flag]?.name.ru : undefined;
-      return {
-        id: p.id,
-        name: `${nameOf(p)}, ${T.spikes.patient.years(p.patient.age)}`,
-        line: `${t.reason(complaintOf(p))} · ${door.has(p.id) ? t.door : t.bay}`,
-        handover: {
-          reason: t.sheetReason(complaintOf(p)),
-          measured: (paramedic?.obs ?? []).filter(o => o.value !== undefined).map(o => observationText(db, o, p.patient.sex, p.patient.seed)),
-          ...(student && p.scale ? { news2: t.news2(p.scale.news2) } : {}),
-          ...(flag && p.scale ? { flag: t.flag(flag, p.scale.triage) } : {}),
-        },
-      };
-    });
+    .map(p => handoverRow(s, p, door.has(p.id)));
+}
+
+/** Отсортированные привезённые, что лежат в смотровой (часть 95): монитор и первые меры — по касанию. */
+function bayRows(s: ShiftState): AmbulanceRow[] {
+  return Object.values(s.patients)
+    .filter(p => p.kind === 'ambulance' && p.sorted && p.bay && !p.closed && (p.status === 'waiting' || p.status === 'inRoom' || p.status === 'away'))
+    .sort((a, b) => a.arriveT - b.arriveT || (a.id < b.id ? -1 : 1))
+    .map(p => handoverRow(s, p, false));
+}
+
+function handoverRow(s: ShiftState, p: ShiftPatient, door: boolean): AmbulanceRow {
+  const t = T.shift.ambulance;
+  const paramedic = p.results.find(r => r.exam === 'exam.vitals');
+  const student = easyLevel(s.meta.difficulty) && p.scale !== undefined;
+  const flag = student && p.scale?.flag ? db.findings[p.scale.flag]?.name.ru : undefined;
+  const measures = firstMeasuresOf(s, p);
+  return {
+    id: p.id,
+    name: `${nameOf(p)}, ${T.spikes.patient.years(p.patient.age)}`,
+    line: p.sorted && measures ? `${measures.lines.map(l => l.text).join(', ')} · ${t.bayOpen}` : `${t.reason(complaintOf(p))} · ${door ? t.door : t.bay}`,
+    handover: {
+      reason: t.sheetReason(complaintOf(p)),
+      measured: (paramedic?.obs ?? []).filter(o => o.value !== undefined).map(o => observationText(db, o, p.patient.sex, p.patient.seed)),
+      ...(student && p.scale ? { news2: t.news2(p.scale.news2) } : {}),
+      ...(flag && p.scale ? { flag: t.flag(flag, p.scale.triage) } : {}),
+      ...(measures ? { measures } : {}),
+    },
+    ...(p.sorted ? { sorted: true as const } : {}),
+    ...(measures?.lines.some(l => l.worse) ? { worse: true as const } : {}),
+  };
+}
+
+/**
+ * Первые меры лежащего в смотровой (spec 2026-10-first-measures, часть 95): монитор — лист передачи со сдвигами ступеней и
+ * мер, со стрелкой; под монитором с дефибриллятором — «Монитор», без него цифры называет медсестра. Кнопки мер; «Практиканту»
+ * и «Студенту» — что сделать сразу по листу, тем же правилом, что у разумного врача: подсказка по известному, а не по правде.
+ */
+function firstMeasuresOf(s: ShiftState, p: ShiftPatient, now = s.t): FirstMeasuresView | undefined {
+  if (p.kind !== 'ambulance' || !p.bay || p.closed) return undefined;
+  const t = T.shift.ambulance;
+  const v = bayVitals(db, s, p, now);
+  const lines: FirstMeasuresView['lines'] = [];
+  const num = (f: Id, text: (x: number) => string, bad: (d: number) => boolean) => {
+    const key = valueKey(db, f);
+    const x = v.values[key];
+    if (x === undefined) return;
+    const d = v.delta[key] ?? 0;
+    lines.push({ text: `${text(Math.round(x))}${d < 0 ? ' ↓' : d > 0 ? ' ↑' : ''}`, ...(bad(d) ? { worse: true as const } : {}) });
+  };
+  num('vital.spo2_low', t.spo2, d => d < 0);
+  num('vital.bp_low', t.bp, d => d < 0);
+  num('vital.tachycardia', t.pulse, d => d > 0);
+  num('vital.tachypnea', t.breath, d => d > 0);
+  for (const f of v.added) lines.push({ text: lowerFirst(db.findings[f]?.name.ru ?? f), worse: true });
+  if (v.cleared) lines.push({ text: t.woke(female(p)) });
+  const buttons: MeasureButton[] = Object.values(db.measures).map(m => {
+    const x = p.measures?.find(y => y.tx === m.tx);
+    const state: MeasureButton['state'] = !x ? 'give' : x.done > now ? 'doing' : 'done';
+    const note = !x ? t.give : x.done > now ? t.doing(Math.max(1, Math.ceil((x.done - now) / 60))) : t.done(hhmm(minuteOfDay(x.done)));
+    return { tx: m.tx, name: m.name.ru, state, note };
+  });
+  const hints = easyLevel(s.meta.difficulty) ? measureHints(s, p) : [];
+  return {
+    title: bedsideEquipment(db, s, p).includes('eq.monitor_defib') ? t.monitor : t.nurse,
+    lines, buttons, ...(hints.length > 0 ? { hints } : {}), ...(p.code !== undefined ? { code: true as const } : {}),
+  };
+}
+
+/** Что сделать сразу по листу передачи и тому, что уже известно (часть 95), — правило разумного врача; данное — не повторяет. */
+function measureHints(s: ShiftState, p: ShiftPatient): string[] {
+  const t = T.shift.ambulance.hint;
+  const obs = observationsOf(p);
+  const given = new Set((p.measures ?? []).map(m => m.tx));
+  const base = bayVitals(db, s, p, p.bayT ?? s.t).values;
+  const out: string[] = [];
+  for (const tx of measuresDue(db, p.patient.complaints, obs)) {
+    if (given.has(tx)) continue;
+    if (tx === 'tx.oxygen_mask') out.push(t.oxygen(Math.round(base[valueKey(db, 'vital.spo2_low')] ?? 0)));
+    else if (tx === 'tx.iv_fluids') out.push(t.fluids(Math.round(base[valueKey(db, 'vital.bp_low')] ?? 0)));
+    else if (tx === 'tx.dextrose_iv') out.push(t.glucose);
+    else if (tx === 'tx.pressure_dressing') out.push(t.bleeding);
+  }
+  // сознание спутано, а сахар не мерили — глюкометр: гипогликемию находят им
+  const dazed = ['sym.confusion', 'sym.found_unconscious', 'sign.gcs_low', 'sign.gcs_coma'].some(f => obs.some(o => o.f === f && o.shown));
+  if (dazed && !p.done.includes('exam.glucometer') && !given.has('tx.dextrose_iv')) out.push(t.glucometer);
+  return out;
+}
+
+/** Первая мера (часть 95): медсестре смотровой — назначение лежащему в ней; минут врача не стоит. */
+export function giveMeasure(id: string, tx: Id) {
+  const sess = live();
+  if (!sess || !sess.s.dayOpen) return;
+  run(sess, { kind: 'measure', id, tx }, partBudget());
+  save();
+  changed();
 }
 
 /** Отсортировать привезённого скорой: цвет — место в очереди. */
@@ -2572,7 +2705,7 @@ function buildCaseView(): VisitView | undefined {
       if (b) unavailable[eid] = b.challenge === 'thrifty' ? T.challenges.budgetLeft(T.common.rub(b.left)) : T.challenges.blocked[b.challenge];
     }
   }
-  return makeCaseView({
+  const view = makeCaseView({
     version,
     patient: p.patient,
     // у вас в кабинете — ваше время: конец последнего действия, пока больница его доживает (0.5.13)
@@ -2628,6 +2761,23 @@ function buildCaseView(): VisitView | undefined {
     ...(p.by && !p.closed ? { colleague: colleagueOf(s, p) } : {}),
     ...(p.closed?.by ? { byDoctor: byDoctorLine(s, p.closed.by) } : {}),
   });
+  return withMeasures(s, p, now, view);
+}
+
+/**
+ * Первые меры в карте (spec 2026-10-first-measures, часть 95): лежит в смотровой — монитор и кнопки мер; данная мера — в
+ * листе назначений отмечена, с временем, снять её нельзя.
+ */
+function withMeasures(s: ShiftState, p: ShiftPatient, now: number, view: VisitView): VisitView {
+  const measures = p.by === undefined ? firstMeasuresOf(s, p, now) : undefined;
+  const given = new Map((p.measures ?? []).map(m => [m.tx, m.done] as const));
+  if (!measures && given.size === 0) return view;
+  const lock = (x: VisitView['treatments'][number]): VisitView['treatments'][number] =>
+    (given.has(x.id) ? { ...x, warning: T.shift.ambulance.given(hhmm(minuteOfDay(given.get(x.id)!))), locked: true } : x);
+  return {
+    ...view, ...(measures ? { measures } : {}),
+    treatments: view.treatments.map(lock), suggested: view.suggested.map(lock), treatmentGroups: view.treatmentGroups.map(g => ({ ...g, items: g.items.map(lock) })),
+  };
 }
 
 let shiftCache: { version: number; view: ShiftView } | null = null;

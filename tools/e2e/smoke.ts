@@ -9,6 +9,7 @@ import { slotKey } from '../../src/engine/hospital/requirements';
 import { presetStaff } from '../../src/engine/hospital/staff';
 import { generatePatient } from '../../src/engine/med/generate';
 import { apply, newCampaign, newSandbox, newScenario, newShift, newSingle } from '../../src/engine/shift/engine';
+import { bayVitals, needsOf, valueKey } from '../../src/engine/shift/measures';
 import { DAY, SHIFT_END, SHIFT_SCHEMA_VERSION } from '../../src/engine/shift/types';
 import { makeCaseView } from '../../src/state/caseView';
 import { placeOf } from '../../src/ui/case/places';
@@ -402,6 +403,34 @@ function ambulanceSave(): { save: string; id: string; dx: string; scale: string;
     save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s }), id: p.id, dx: p.patient.truth.conditions[0].id, scale: p.scale!.triage,
     ...(flag ? { flag } : {}), cars: cars.length,
   };
+}
+
+/**
+ * Первые меры у скорой (spec 2026-10-first-measures, часть 95): смотровая приёмного; привезли с низкой сатурацией —
+ * кислород ему нужен сразу. Он лежит в смотровой, ещё не отсортирован; часы стоят на минуте, когда его положили.
+ */
+function measuresSave(): { save: string; id: string; spo2: number; scale: string; dx: string } {
+  const { db } = buildDb();
+  for (let seed = 21; seed < 221; seed++) {
+    const s = newSandbox(db, { seed, season: 'winter', difficulty: 'student', start: 'clinic', budget: db.economy.sandbox.budgets.generous });
+    const cells: [number, number][] = [];
+    for (let x = 29; x <= 38; x++) for (let y = 7; y <= 9; y++) cells.push([x, y]);
+    apply(db, s, { kind: 'build', cmd: { kind: 'corridor', cells } });
+    apply(db, s, { kind: 'build', cmd: { kind: 'room', type: 'room.emergency', size: 'M', x: 29, y: 1, rot: 0 } });
+    apply(db, s, { kind: 'buildEnd' });
+    const er = s.hospital!.rooms[s.hospital!.rooms.length - 1].id;
+    apply(db, s, { kind: 'assign', id: s.staff!.find(m => m.role === 'role.nurse' && m.room === 'r7')!.id, room: er });
+    apply(db, s, { kind: 'nextDay' });
+    for (let i = 0; i < 6 * 60; i++) {
+      const p = Object.values(s.patients).find(q => q.kind === 'ambulance' && q.bayT !== undefined && !q.sorted && !q.closed && needsOf(db, q).some(m => m.id === 'measure.oxygen'));
+      if (p) {
+        const spo2 = Math.round(bayVitals(db, s, p).values[valueKey(db, 'vital.spo2_low')]);
+        return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s }), id: p.id, spo2, scale: p.scale!.triage, dx: p.patient.truth.conditions[0].id };
+      }
+      apply(db, s, { kind: 'advance', seconds: 60 });
+    }
+  }
+  throw new Error('e2e: не нашли привезённого с низкой сатурацией');
 }
 
 /**
@@ -2197,6 +2226,63 @@ try {
     && (amb.cars === 1 || ambDay.includes(`Не отсортировали до конца дня: ${amb.cars - 1}.`)), `скорая, итоги дня: ${ambDay.replace(/\n/g, ' · ')}`);
   await page.waitForTimeout(1500); // лист меню «Продолжить» ещё уезжает вниз (веб)
   await page.screenshot({ path: join(OUT, '17-ambulance-summary.png'), fullPage: true });
+
+  // первые меры у скорой (spec 2026-10-first-measures, часть 95): привезли с низкой сатурацией — в листе передачи монитор
+  // и «Первые меры», на «Студенте» — что сделать сразу; «Кислород» делает медсестра, после сортировки он «В смотровой»; в
+  // карте — «дано в …», в листе назначений кислород отмечен, с временем, снять нельзя
+  const ox = measuresSave();
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', ox.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId(`ambulance-${ox.id}`).waitFor({ timeout: 15_000 });
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId(`ambulance-${ox.id}`).click();
+  await page.getByTestId('handover-measures').waitFor({ timeout: 5000 });
+  const firstSheet = await text(page, 'handover-measures');
+  check(firstSheet.includes(`сатурация ${ox.spo2}\u00a0%`) && firstSheet.includes(`кислород — сатурация ${ox.spo2}\u00a0%`) && (await text(page, 'measure-tx.oxygen_mask')).includes('дать'),
+    `первые меры, лист передачи: ${firstSheet.replace(/\n/g, ' · ').slice(0, 260)}`);
+  await page.getByTestId('measure-tx.oxygen_mask').click();
+  const doing = await text(page, 'measure-tx.oxygen_mask');
+  check(doing.includes('медсестра: 2\u00a0мин') && (await page.getByTestId('measure-tx.oxygen_mask').getAttribute('aria-checked')) === 'true',
+    `первые меры: кислород — ${doing.replace(/\n/g, ' · ')}`);
+  await page.waitForTimeout(500);
+  await page.screenshot({ path: join(OUT, '17-first-measures.png') });
+  await page.getByTestId(`sort-${ox.scale}`).click();
+  await page.getByTestId('handover-sheet').waitFor({ state: 'detached', timeout: 5000 });
+  const bay = await text(page, `bay-${ox.id}`);
+  check(bay.includes('монитор и первые меры'), `первые меры: «В смотровой» — ${bay.replace(/\n/g, ' · ')}`);
+  await page.getByTestId(`queue-${ox.id}`).click();
+  await visible(page, 'visit-decide').waitFor({ timeout: 10_000 });
+  // расспрос — минуты: медсестра за них успевает
+  await tab(page, 'ask');
+  await page.getByTestId('exam-exam.ask_complaints').click();
+  await page.getByTestId('done-exam.ask_complaints').waitFor({ timeout: 5000 });
+  await page.getByTestId('exam-exam.ask_onset').click();
+  await page.getByTestId('done-exam.ask_onset').waitFor({ timeout: 5000 });
+  // в карте, на «Карте», — коротко: строка монитора и «Первые меры»; кнопки мер — в листе по касанию
+  await part(page, 'results');
+  const head = await visibleText(page, 'visit-measures');
+  check(/^МОНИТОР|^МЕДСЕСТРА СМОТРОВОЙ/.test(head) && /Кислород: дано в \d\d:\d\d/.test(head) && (await visible(page, 'measure-tx.oxygen_mask').count()) === 0,
+    `первые меры, карта: ${head.replace(/\n/g, ' · ').slice(0, 200)}`);
+  await visible(page, 'visit-measures-open').first().click();
+  await page.getByTestId('visit-measures-sheet').waitFor({ timeout: 5000 });
+  check((await page.getByTestId('measure-tx.oxygen_mask').getAttribute('aria-checked')) === 'true' && (await page.getByTestId('measure-tx.iv_fluids').isEnabled()),
+    'первые меры, карта: лист мер — кислород дан, инфузию можно дать');
+  await page.getByTestId('visit-measures-sheet-close').click();
+  await page.getByTestId('visit-measures-sheet').waitFor({ state: 'detached', timeout: 5000 });
+  await visible(page, 'visit-decide').click();
+  await page.getByTestId(`dx-${ox.dx}`).click();
+  await page.getByTestId('decision-to-plan').click();
+  const given = visible(page, 'tx-tx.oxygen_mask').first();
+  check((await given.getAttribute('aria-checked')) === 'true' && (await given.isDisabled()) && /первая мера — дано в \d\d:\d\d/.test(await given.innerText()),
+    `первые меры, лист назначений: ${(await given.innerText()).replace(/\n/g, ' · ')}`);
+  await page.getByTestId('visit-finish').click();
+  await page.getByTestId('visit-outcome').waitFor({ timeout: 10_000 });
+  await page.getByTestId('shift-to-queue').click();
 
   // сроки и ЭКГ у постели (spec 2026-10-chapter-3, часть 37): привезли давящую боль в груди —
   // в карте строка срока, ЭКГ у постели за 5 минут, результат сразу; в разборе — «Сроки», в

@@ -136,6 +136,15 @@ export function generatePatient(db: ContentDb, seed: number, ctx: GenContext): P
     // производный параметр (часть 32г) не бросается: его считают по признакам ниже
     for (const name of sortedKeys(c.params ?? {})) if (!c.derived?.[name]) params[name] = paramRng.fork(`${id}.${name}`).weightedKey(c.params![name]);
     if (id === primaryId) for (const [name, value] of Object.entries(ctx.params ?? {})) if (c.params?.[name]?.[value] !== undefined && !c.derived?.[name]) params[name] = value;
+    // привезённый скорой с болезнью, которую везут только при этих параметрах (часть 95), — с ними: значение из
+    // разрешённых по их весам, своя ветвь
+    if (id === primaryId && ctx.carried && c.carried) {
+      for (const [name, values] of Object.entries(c.carried.when)) {
+        if (values.includes(params[name])) continue;
+        const allowed = Object.fromEntries(values.filter(v => (c.params?.[name]?.[v] ?? 0) > 0).map(v => [v, c.params![name][v]]));
+        if (Object.keys(allowed).length > 0) params[name] = paramRng.fork(`${id}.${name}:carried`).weightedKey(allowed);
+      }
+    }
     const { day, stage } = id === primaryId ? presentationDay(c, courseRng.fork(id)) : { day: 0, stage: c.stages[0].id };
     return { id, role: id === primaryId ? 'primary' : 'comorbid', day, stage, params };
   });
@@ -237,9 +246,20 @@ function pickPrimary(db: ContentDb, rng: Rng, who: Who, carried?: GenContext['ca
   return rng.weighted(ids.map((id, i) => ({ id, w: Math.round(w[i] * 100) })), x => x.w).id;
 }
 
-/** Множитель скорой: вес тяжести болезни; осмотры и болезни без лечения не везут. */
+/**
+ * Множитель скорой: вес тяжести болезни; осмотры и болезни без лечения не везут. Везёт и лёгкое при параметрах `carried`
+ * (spec 2026-10-first-measures, часть 95): вес той тяжести, умноженный на долю таких значений, — большая рана головы.
+ */
 export function carriedWeight(c: Condition, carried: NonNullable<GenContext['carried']>): number {
-  return c.checkup || !c.treatment ? 0 : carried[c.severity];
+  if (c.checkup || !c.treatment) return 0;
+  if (!c.carried) return carried[c.severity];
+  let share = 1;
+  for (const [name, values] of Object.entries(c.carried.when)) {
+    const dist = c.params?.[name] ?? {};
+    const total = Object.values(dist).reduce((a, w) => a + w, 0);
+    share *= total > 0 ? values.reduce((a, v) => a + (dist[v] ?? 0), 0) / total : 0;
+  }
+  return carried[c.carried.severity] * share;
 }
 
 /**

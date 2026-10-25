@@ -440,10 +440,12 @@ function lifeOfStaff(layout: ClinicLayout, s: ShiftState, life: Life, staff: Pla
 /**
  * «Код синий» (spec 2026-10-code-blue): остановка сердца у лежащего в смотровой приёмного — медсестра этой смотровой и
  * анестезиолог-реаниматолог палаты интенсивной терапии или реанимации `CODE` секунд у его койки; потом — на свои места.
+ * С частью 95 — и остановка кровообращения без первой меры (`code`, spec 2026-10-first-measures).
  */
 function codeTeam(layout: ClinicLayout, s: ShiftState, staff: Placement[]) {
+  const on = (at: number | undefined) => at !== undefined && s.t >= at && s.t - at < CODE;
   for (const p of Object.values(s.patients)) {
-    if (p.arrest === undefined || !p.bay || s.t < p.arrest || s.t - p.arrest >= CODE) continue;
+    if (!p.bay || !(on(p.arrest) || on(p.code))) continue;
     const bed = layout.beds[p.bay.room]?.[p.bay.bed];
     if (!bed) continue;
     const room = p.bay.room;

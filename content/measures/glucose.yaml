@@ -1,0 +1,30 @@
+id: measure.glucose
+name: { ru: "Глюкоза" }
+tx: tx.dextrose_iv
+abc: D
+order: 3
+minutes: 3
+# шаг ухудшения без меры — игровая оценка (spec 2026-10-first-measures)
+every: [20, 40]
+# тяжёлый — гипогликемия (у признака ниже 3,0 ммоль/л — уровень 2, 290_2, раздел 3.7) у того, кому декстроза показана
+severe: { f: lab.glucose_low, roles: [firstLine, acceptable, require] }
+# ступени — игровая оценка: сахар ниже на 0,3; оглушение, кома, судороги
+steps:
+  - { change: { lab.glucose_low: -0.3 }, add: [sign.gcs_low] }
+  - { change: { lab.glucose_low: -0.3 }, add: [sign.gcs_coma] }
+  - { change: { lab.glucose_low: -0.3 }, add: [sym.seizure_ongoing] }
+# сахар — в норме, сознание — через 8 минут: медиана в обеих группах (Moore, Woollard 2005)
+effect:
+  undo: true
+  to: { lab.glucose_low: 6 }
+  clears: [sym.confusion, sign.gcs_low, sign.gcs_coma, sym.seizure_ongoing]
+  after: 8
+texts:
+  hint: { ru: "Декстроза в вену струйно: при гипогликемии человек приходит в себя за несколько минут. Без сознания ничего в рот." }
+  why: { ru: "Гипогликемия по глюкометру. Глюкометр — каждому со спутанностью, оглушением и комой: гипогликемия бывает «маской» инсульта и отравления." }
+sources:
+  - { kind: guideline, title: "Сахарный диабет 2 типа у взрослых", org: "Минздрав РФ", year: 2022, url: "https://cr.minzdrav.gov.ru/view-cr/290_2", note: "ID 290_2, опубликованы 12.07.2022, применяются; сверено с рубрикатором 25.10.2026; раздел 3.7: уровни гипогликемии — 2 (ниже 3,0 ммоль/л), 3 — тяжёлая; тяжёлая — декстроза в вену струйно, без сознания ничего в рот" }
+  - { kind: guideline, title: "Сахарный диабет 1 типа у взрослых", org: "Минздрав РФ", year: 2026, url: "https://cr.minzdrav.gov.ru/view-cr/286_3", note: "ID 286_3, опубликованы 02.03.2026, применяются; сверено с рубрикатором 25.10.2026; раздел 3.6: те же уровни и лечение, через 15 минут не купируется — повторить" }
+  - { kind: paper, title: "Moore C, Woollard M. Dextrose 10% or 50% in the treatment of hypoglycaemia out of hospital? A randomised controlled trial. Emerg Med J 2005;22(7):512–515", year: 2005, note: "PMID 15983093; 51 больной без сознания с глюкозой не выше 4 ммоль/л: медиана времени до восстановления — 8 минут в обеих группах; сверено 25.10.2026" }
+  - { kind: guideline, title: "Resuscitation Council UK. The ABCDE approach", org: "Resuscitation Council UK", year: 2024, url: "https://www.resus.org.uk/library/abcde-approach", note: "«D»: глюкоза крови из пальца у постели, чтобы исключить гипогликемию; сверено 25.10.2026" }
+review: draft
