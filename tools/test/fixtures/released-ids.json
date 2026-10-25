@@ -1,6 +1,6 @@
 {
-  "version": "0.6.17",
-  "base": 82,
+  "version": "0.6.18",
+  "base": 83,
   "ids": {
     "achievements": [
       "ach.allergy_10",
@@ -1162,6 +1162,12 @@
       "job.unemployed",
       "job.welder"
     ],
+    "measures": [
+      "measure.bleeding",
+      "measure.fluids",
+      "measure.glucose",
+      "measure.oxygen"
+    ],
     "presets": [
       "preset.city",
       "preset.clinic",
@@ -1476,6 +1482,7 @@
       "tx.potassium_iv",
       "tx.ppi",
       "tx.ppi_iv",
+      "tx.pressure_dressing",
       "tx.probiotic",
       "tx.procainamide",
       "tx.propylthiouracil",

@@ -55,6 +55,8 @@ interface Condition {
   severity: 'minor' | 'moderate' | 'serious' | 'critical';
   checkup?: boolean;                     // бывает без жалоб — находят на профосмотре
   arrival?: 'ambulance';                 // с 0.3.10: привозит только скорая — среди пришедших самих нет
+  carried?: { when: Record<string, string[]>; severity: 'moderate' | 'serious' | 'critical' }; // с 0.6.18: при этих
+                                         // значениях параметров скорая везёт с весом этой тяжести (большая рана головы)
   isolation?: 'contact' | 'airborne';    // с 0.4.3: заразна — в стационаре бокс, в общей палате соседи контактные
   epidemiology: {
     prevalence: P;                      // из полосы распространённости
@@ -268,6 +270,20 @@ interface Treatment {
   };
   // позже: room?, staff?, time? (процедуры в кабинетах), findings в effects
   // (жаропонижающее снимает температуру), sideEffects: { add: Id; p: P; if?: Id }[]
+}
+
+// Первая мера у скорой (с 0.6.18, spec 2026-10-first-measures) — content/measures/: назначение, буква ABCDE, минуты
+// медсестры смотровой, кто тяжёлый, ступени без меры, что делает мера. Числа — игровая оценка по источникам записи.
+interface Measure {
+  id: Id; name: Text; tx: Id; abc: 'A' | 'B' | 'C' | 'D' | 'E'; order: number; minutes: number;
+  every: [number, number];               // шаг ухудшения без меры, минуты; свой у больного — ветвь worse:<id>:<мера>
+  severe: { f: Id; max?: number; roles?: string[]; seen?: true }; // признак правды и порог числа; роль назначения у
+                                         // основной болезни (firstLine, require…); seen — и в листе передачи фельдшера
+  steps: { change: Record<Id, number>; add: Id[] }[]; // ступени: сдвиги чисел монитора и новые признаки; после
+                                         // последней — остановка
+  effect: { undo: boolean; to: Record<Id, number>; toFor?: Record<Id, Record<Id, number>>; clears: Id[];
+    after: number };                     // undo — ступени отменяются; to — число к цели; clears — уходят через after минут
+  texts: { hint: Text; why: Text }; sources: Source[]; review: Review;
 }
 
 // Каталог больницы — content/hospital/ (spec 2026-09-own-hospital). gen — родительный
@@ -867,6 +883,13 @@ interface Patient {
 - С 0.5.19 — «свои больные» (spec 2026-10-own-patients): в настройках — `mine` (группы `BodySystem`, по умолчанию пусто),
   у смены — `meta.mine` и команда `mine`. Группа больного (`routeOf`) — по видимому, считается и в состояние не пишется.
   Поле необязательное, `schemaVersion` прежний.
+- С 0.6.18 — первые меры у скорой (spec 2026-10-first-measures): у пациента смены — `bayT` (когда положили в смотровую),
+  `measures: { tx, at, done }[]` (назначил врач, сделала медсестра), `code` (минута кода синего); ступени не хранятся —
+  считаются по времени от `bayT` до минуты меры (`stepsAt`). Команда `{ kind: 'measure'; id; tx }`, события
+  `{ kind: 'worse'; id; measure; step }` и `{ kind: 'edDeath'; id }`, уведомления `worse`, `code`, `died { soft? }`. У
+  закрытого приёма — `measures: { measure, given?, steps }[]` и `ed: true` (умер в смотровой до решения; диагноза нет —
+  `diagnosis: ''`), в итогах дня у скорой — `measures: { needed, onTime, worse, died }`. Поля необязательные,
+  `schemaVersion` прежний; у больных из сохранений до 0.6.18 нет `bayT` — часов у них нет.
 
 Храним неделю принятых (их исходы — в итогах следующих дней), тех, к кому вернутся, и лежащих;
 ушедших и не принятых в прошлые дни — нет. После недели практики снимок — около 270 КБ.

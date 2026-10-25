@@ -30,12 +30,13 @@ import { type Grade, scoreBase, type ScoreBase, scoreThrift, worstGrade } from '
 import { askMinutes, examSkillWith, mentorOf } from '../career/skills';
 import type { Observation, Patient } from '../med/types';
 import {
-  type ClosedCase, type ColleagueDay, type Command, DAY, type DaySummary, type Desk, type Difficulty, easyLevel, HANDOFF, hospitalDay, type Notice, type PendingResult, type PlannedReturn, REGISTRATION, SHIFT_END, SHIFT_SCHEMA_VERSION,
+  type ClosedCase, type ColleagueDay, type Command, DAY, type DaySummary, type Desk, type Difficulty, easyLevel, HANDOFF, hospitalDay, type MeasureResult, type Notice, type PendingResult, type PlannedReturn, REGISTRATION, SHIFT_END, SHIFT_SCHEMA_VERSION,
   SHIFT_START, type ShiftEvent, type ShiftPatient, type ShiftState, TRIAGE, type Triage, type VisitKind, type WardDay, type AmbulanceDay, type SurgeryDay,
 } from './types';
 import { CARD_EXAMS, type Challenge, CHALLENGES, challengeBlock, reviewExams } from './challenges';
 import { FLU_IDS, type Scenario, SCENARIO_DAYS, scenarioAmbulance, scenarioFlow, scenarioPrior, xrayBroken } from './scenarios';
 import { COMPLICATION_DAYS, complicationAt, complicationsOf, deathsOf, onsetHours, operationFor } from './surgery';
+import { arrestStep, CODE_SECONDS, measureDone, measureOf, needsOf, stepsAt, stepSeconds } from './measures';
 import { dueIn, type TargetPlace, targetResults } from './targets';
 import { type Bed, daysIn, type StayEnd, stayNorm, wardCourse, wardState } from './ward';
 
@@ -493,6 +494,8 @@ function command(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
       // операцию выбирают «В операционную», а не в списке лечения (часть 28)
       if (!p || !db.treatments[cmd.id] || db.treatments[cmd.id].kind === 'surgery') return [];
       const has = p.draft.treatments.includes(cmd.id);
+      // первая мера (spec 2026-10-first-measures, часть 95) дана — из листа назначений её не снять
+      if (has && p.measures?.some(m => m.tx === cmd.id)) return [];
       // лечение у постели (часть 39а): тромболизис — только лежащему под монитором; лечение реанимации (spec
       // 2026-10-chapter-4, часть 47) — ИВЛ — если в ней есть свободная койка
       const ricu = freeRicuBeds(db, s).length > 0;
@@ -549,6 +552,8 @@ function command(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
       return replan(db, s, cmd.id, cmd.treatments);
     case 'sort':
       return sortAmbulance(db, s, cmd.id, cmd.triage);
+    case 'measure':
+      return orderMeasure(db, s, cmd.id, cmd.tx);
     case 'operate':
       return operate(db, s, cmd.id);
     case 'soft':
@@ -1435,9 +1440,10 @@ function finish(db: ContentDb, s: ShiftState): Notice[] {
 
 /**
  * Закрыть приём — ваш или нанятого врача: оценки, оплата, итоги дня, повторное обращение.
- * Приёмы врача идут в его строку итогов, а ваши строки — только о ваших приёмах.
+ * Приёмы врача идут в его строку итогов, а ваши строки — только о ваших приёмах. `dead` — умер в смотровой до решения
+ * (spec 2026-10-first-measures, часть 95): исход — смерть или, в «мягком режиме», перевод; в палату он не ложится.
  */
-function closePatient(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
+function closePatient(db: ContentDb, s: ShiftState, p: ShiftPatient, dead?: 'died' | 'transferred'): ClosedCase {
   // не дождались — результат приходит в пустоту: случай решён тем, что было известно
   p.pending = [];
   delete p.out;
@@ -1454,7 +1460,7 @@ function closePatient(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase
   if (p.draft.setting === 'surgery' && !canOperate(db, s, p.draft.diagnosis, p)) p.draft.setting = 'ambulance';
   // последний бокс успели занять — перевести в инфекционную больницу (spec 2026-10-chapter-4, часть 49а)
   if (p.draft.setting === 'box' && freeBoxBeds(db, s).length === 0) p.draft.setting = 'ambulance';
-  const closed = closeCase(db, s, p);
+  const closed = closeCase(db, s, p, dead);
   if (p.by) closed.by = p.by;
   if (p.from) closed.from = p.from;
   p.closed = closed;
@@ -1465,6 +1471,14 @@ function closePatient(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase
     if (d !== 0) {
       closed.notes.push({ code: d > 0 ? 'triage.under' : 'triage.over', triage: p.scale.triage, news2: p.scale.news2, ...(p.scale.flag ? { flag: p.scale.flag } : {}) });
     }
+  }
+  // первые меры за день (часть 95): скольким тяжёлым мера была нужна, скольким дана вовремя — до первой ступени, у
+  // скольких стало хуже
+  if (closed.measures) {
+    const day = measuresDay(s);
+    day.needed += closed.measures.length;
+    day.onTime += closed.measures.filter(m => m.given !== undefined && m.steps === 0).length;
+    if (closed.measures.some(m => m.steps > 0)) day.worse++;
   }
   // сроки за день (часть 37): ваши приёмы — у скольких срок был и у скольких выполнен; с частью 45а —
   // и оценки по порядку закрытия, для заданий «срок у N больных подряд»; срок с серией (часть 60а) — и в строку серии
@@ -1524,7 +1538,7 @@ function closePatient(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase
     s.returns.push({ day: s.day + Math.max(1, back.day), of: p.id, reason: back.reason, ...(back.as ? { as: back.as } : {}) });
     sum.returnsPlanned++;
   }
-  if (STAYS.includes(closed.plan.setting)) admit(db, s, p);
+  if (STAYS.includes(closed.plan.setting) && !dead) admit(db, s, p);
   return closed;
 }
 
@@ -1565,9 +1579,12 @@ export function observationsOf(p: ShiftPatient): Observation[] {
   return [...complaintObservations(p.patient), ...p.results.flatMap(r => r.obs)];
 }
 
-/** Закрыть случай: проверить план по правде, промотать болезнь, поставить оценки (`10` §8–10). */
-function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
-  const dx = p.draft.diagnosis!;
+/**
+ * Закрыть случай: проверить план по правде, промотать болезнь, поставить оценки (`10` §8–10). `dead` — умер в смотровой до
+ * решения (часть 95): диагноз и лист назначений — из черновика (диагноза нет — пусто), исход — смерть или перевод.
+ */
+function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient, dead?: 'died' | 'transferred'): ClosedCase {
+  const dx = p.draft.diagnosis ?? '';
   const patient = p.patient;
   const truth = patient.truth.conditions[0].id;
   const cond = db.conditions[truth];
@@ -1578,7 +1595,7 @@ function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
   const beliefs = p.by ? posterior(db, candidates, obs, contextOf(db, patient, obs, scenarioPrior(s.meta.scenario))) : reviewTimeline(db, s.meta, p)[p.results.length];
   const confidence = beliefs.find(b => b.id === dx)?.p ?? 0;
   // в операционную — операцией поставленного диагноза (часть 28): по тому, что видно на снимке (часть 32б)
-  const op = p.draft.setting === 'surgery' ? operationFor(db, dx, likelyParams(db, dx, obs, patient)) : undefined;
+  const op = p.draft.setting === 'surgery' && !dead ? operationFor(db, dx, likelyParams(db, dx, obs, patient)) : undefined;
   const plan = { treatments: op ? [...new Set([...p.draft.treatments, op])].sort() : [...p.draft.treatments], setting: p.draft.setting };
   // аппараты у постели в момент решения (часть 39а): под монитором тромболизис был возможен
   const bedside = bedsideEquipment(db, s, p);
@@ -1592,7 +1609,12 @@ function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
   // переведённый из больницы с приёмным (часть 39б): инфаркт с подъёмом ST — исход по часам до реперфузии; осложнение
   // обследования (часть 50а) — раньше всего
   const soft = s.meta.soft === true;
-  const outcome = examHarmOutcome(db, plan, ev, branch(s, `outcome:${p.id}`), soft) ?? rscFor(db, s, p, plan) ?? observe(db, patient, plan, ev, branch(s, `outcome:${p.id}`), soft);
+  const outcome: Outcome = dead === 'transferred' ? { kind: 'transferred', day: 0, cured: false, severe: true }
+    : dead === 'died' ? { kind: 'died', day: 0, cured: false }
+    : examHarmOutcome(db, plan, ev, branch(s, `outcome:${p.id}`), soft) ?? rscFor(db, s, p, plan) ?? observe(db, patient, plan, ev, branch(s, `outcome:${p.id}`), soft);
+  // первые меры (часть 95): какая была нужна тяжёлому, когда дана — первой мерой или в листе назначений решения, на сколько
+  // ступеней успело стать хуже
+  const measures = measureResults(db, s, p, plan.treatments, dead !== undefined);
   // разумный врач разбора — посчитанный заранее (0.5.11, NFR-PRF-1): у вашего приёма — пока вы думаете; не готов —
   // досчитывается здесь. У приёма нанятого врача — по требованию (spec 2026-10-engine-speed, ч. 1): бережливость и общая
   // оценка досчитываются `settleReviews` (в свободное время и при закрытии дня), а читаются `reviewedCase`
@@ -1611,6 +1633,8 @@ function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
     // что было правильно выбрать здесь: со своей палатой — положить в неё, со своей операционной — оперировать
     should: choiceFor(recommendedSetting(db, patient, p.results.map(r => r.exam), bedside, rooms), venueOf(db, s, operationFor(db, truth, primaryOf(patient).params) ?? null, plan.setting)),
     ...(targets.length > 0 ? { targets: targets.map(t => t.grade) } : {}),
+    ...(measures.length > 0 ? { measures: measures.map(m => ({ tx: db.measures[m.measure].tx, steps: m.steps, ...(m.given !== undefined ? { given: m.given } : {}) })) } : {}),
+    ...(dead ? { ed: true as const } : {}),
     // «Практикант» (spec 2026-10-trainee): обоснованность и бережливость — для сведения
     ...(s.meta.difficulty === 'trainee' ? { lenient: true as const } : {}),
   });
@@ -1622,10 +1646,26 @@ function closeCase(db: ContentDb, s: ShiftState, p: ShiftPatient): ClosedCase {
     at: s.t, diagnosis: dx, verdict, confidence, plan, outcome, grades, notes: later ? [...base.notes] : notes, rationalCost: rational.cost, rationalMoney: rational.money,
     ...(targets.length > 0 ? { targets } : {}), ...(bedside.length > 0 ? { bedside } : {}), ...(rooms.length > 0 ? { rooms: [...rooms] } : {}),
     ...(p.arrest !== undefined ? { arrest: true as const } : {}),
+    ...(measures.length > 0 ? { measures } : {}), ...(dead ? { ed: true as const } : {}),
     ...(later ? { review: base.lenient ? 'lenient' as const : 'due' as const } : {}),
     // трудность вашего случая (часть 92) — для профиля: доля верных среди трудных
     ...(later ? {} : { hardness: hardnessFor(db, s.meta, p) }),
   };
+}
+
+/**
+ * Первые меры тяжёлого в разборе (часть 95): каждая нужная — через сколько минут от того, как положили в смотровую, дана
+ * (первой мерой — когда сделала медсестра; в листе назначений решения — в минуту решения; умер — не дана) и на сколько
+ * ступеней к тому времени стало хуже.
+ */
+function measureResults(db: ContentDb, s: ShiftState, p: ShiftPatient, treatments: readonly Id[], dead: boolean): MeasureResult[] {
+  if (p.bayT === undefined) return [];
+  return needsOf(db, p).map(m => {
+    const done = measureDone(p, m.tx);
+    const at = done !== undefined && done <= s.t ? done : !dead && treatments.includes(m.tx) ? s.t : undefined;
+    const steps = stepsAt(s, p, m, at ?? s.t);
+    return { measure: m.id, steps, ...(at !== undefined ? { given: Math.round((at - p.bayT!) / MIN) } : {}) };
+  });
 }
 
 /** Что разбору нужно о смене: зерно, отделения и испытания (часть 91) — разумный врач разбора с теми же запретами. */
@@ -2067,8 +2107,87 @@ function seatAtDoor(db: ContentDb, s: ShiftState) {
   for (const p of atDoorOf(s)) {
     const bay = freeBays(db, s)[0];
     if (!bay) return;
-    p.bay = bay;
+    placeInBay(db, s, p, bay);
   }
+}
+
+/**
+ * Положить в смотровую (spec 2026-10-first-measures, часть 95): с этой минуты тяжёлому без нужной первой меры хуже по
+ * ступеням — события на каждую ступень и остановку, у каждой меры свой шаг; сделанная к тому времени мера их гасит. У входа,
+ * с бригадой скорой, часы не шли.
+ */
+function placeInBay(db: ContentDb, s: ShiftState, p: ShiftPatient, bay: Bed) {
+  p.bay = bay;
+  p.bayT = s.t;
+  for (const m of needsOf(db, p)) {
+    const every = stepSeconds(s, p, m);
+    for (let k = 1; k <= arrestStep(m); k++) schedule(s, s.t + k * every, { kind: 'worse', id: p.id, measure: m.id, step: k });
+  }
+}
+
+/**
+ * Первая мера (часть 95): медсестра смотровой делает её лежащему там — по одной, за последней назначенной в этой смотровой;
+ * у «Кода синего» — после него; ушёл на снимок — когда вернётся. Минут врача не стоит. Назначение — в листе назначений, снять
+ * его нельзя.
+ */
+function orderMeasure(db: ContentDb, s: ShiftState, id: string, tx: Id): Notice[] {
+  const p = s.patients[id];
+  const m = measureOf(db, tx);
+  if (!s.dayOpen || !p || !m || p.kind !== 'ambulance' || !p.bay || p.closed || p.code !== undefined) return [];
+  if ((p.status !== 'waiting' && p.status !== 'inRoom' && p.status !== 'away') || p.measures?.some(x => x.tx === tx)) return [];
+  const room = p.bay.room;
+  let start = s.t;
+  for (const q of Object.values(s.patients)) {
+    if (q.bay?.room !== room) continue;
+    for (const x of q.measures ?? []) start = Math.max(start, x.done);
+    if (q.code !== undefined) start = Math.max(start, q.code + CODE_SECONDS);
+  }
+  if (p.out && p.out.back > start) start = p.out.back;
+  (p.measures ??= []).push({ tx, at: s.t, done: start + m.minutes * MIN });
+  if (!p.draft.treatments.includes(tx)) p.draft.treatments = [...p.draft.treatments, tx].sort();
+  return [];
+}
+
+/**
+ * Ступень без первой меры (часть 95): мера к этой минуте сделана, приём закрыт, больной уже не в смотровой — ничего. Иначе —
+ * сигнал и автопауза, отсортированного в очереди медсестра поднимает до «красного»; последняя ступень — остановка
+ * кровообращения: «Код синий» и через 10 минут смерть, в «мягком режиме» — сразу перевод в тяжёлом состоянии.
+ */
+function worse(db: ContentDb, s: ShiftState, p: ShiftPatient | undefined, ev: { measure: Id; step: number }, notices: Notice[]) {
+  const m = db.measures[ev.measure];
+  if (!p || !m || p.closed || !p.bay || p.code !== undefined) return;
+  if (p.status !== 'waiting' && p.status !== 'inRoom' && p.status !== 'away') return;
+  const done = measureDone(p, m.tx);
+  if (done !== undefined && done <= s.t) return;
+  if (ev.step < arrestStep(m)) {
+    notices.push({ kind: 'worse', id: p.id, measure: m.id, step: ev.step });
+    if (p.sorted && p.triage !== 'red') {
+      p.triage = 'red';
+      sortQueue(s);
+    }
+    return;
+  }
+  if (s.meta.soft) return closeDead(db, s, p, notices, true);
+  p.code = s.t;
+  notices.push({ kind: 'code', id: p.id });
+  schedule(s, s.t + CODE_SECONDS, { kind: 'edDeath', id: p.id });
+}
+
+/**
+ * Умер в смотровой до решения (часть 95): приём закрывается сам — диагноз и лист назначений из черновика, исход — смерть, в
+ * «мягком режиме» — перевод в тяжёлом состоянии. Задание главы 4 считает его, как смерть тяжёлого.
+ */
+function closeDead(db: ContentDb, s: ShiftState, p: ShiftPatient, notices: Notice[], soft: boolean) {
+  if (s.current === p.id) s.current = undefined;
+  s.queue = s.queue.filter(x => x !== p.id);
+  closePatient(db, s, p, soft ? 'transferred' : 'died');
+  const day = measuresDay(s);
+  day.died++;
+  notices.push({ kind: 'died', id: p.id, ...(soft ? { soft: true as const } : {}) });
+}
+
+function measuresDay(s: ShiftState) {
+  return (ambulanceDay(s).measures ??= { needed: 0, onTime: 0, worse: 0, died: 0 });
 }
 
 function ambulanceDay(s: ShiftState): AmbulanceDay {
@@ -2585,6 +2704,13 @@ function handle(db: ContentDb, s: ShiftState, ev: ShiftEvent, notices: Notice[])
     }
     case 'free':
       return staffDesks(db, s);
+    case 'worse':
+      return worse(db, s, s.patients[ev.id], ev, notices);
+    case 'edDeath': {
+      const p = s.patients[ev.id];
+      if (p && !p.closed && p.code !== undefined) closeDead(db, s, p, notices, false);
+      return;
+    }
     case 'shiftEnd':
       notices.push({ kind: 'shiftEnd' });
   }
@@ -2756,7 +2882,7 @@ function arriveByAmbulance(db: ContentDb, s: ShiftState, p: ShiftPatient, notice
   p.status = 'waiting';
   p.queuedT = s.t;
   const bay = freeBays(db, s)[0];
-  if (bay) p.bay = bay;
+  if (bay) placeInBay(db, s, p, bay);
   s.summary.arrived++;
   // вернулся с другой болезнью (часть 41б): инсульт после ТИА — тоже повторное обращение
   if (p.returnOf !== undefined) s.summary.returnsToday++;

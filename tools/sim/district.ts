@@ -50,6 +50,7 @@ import {
   apply, atDoctor, bedDayOf, bedsideEquipment, brokenOf, candidatesOf, careUnit, catchUp, current, isOut, freeBeds, freeBoxBeds, freeIcuBeds, freeRicuBeds, hospitalCtx, inBox, inIcu, inpatientsOf, inRicu, meetIn, moreUrgent, newCampaign,
   newScenario, newSingle, observationsOf, operationOf, prepareFinish, prepareReview, readyIn, targetPlace,
 } from '../../src/engine/shift/engine';
+import { measuresDue } from '../../src/engine/shift/measures';
 import { type Scenario, SCENARIO_DAYS, scenarioPrior } from '../../src/engine/shift/scenarios';
 import { minutesTo, targetsFor, targetStart } from '../../src/engine/shift/targets';
 import { type Command, DAY, SHIFT_END, type ShiftPatient, type ShiftState } from '../../src/engine/shift/types';
@@ -195,6 +196,8 @@ interface Run {
   /** по отделению болезни, которой болен на самом деле: принято и верно */
   departments: Record<Id, { seen: number; correct: number }>;
   ambulance: { arrived: number; sorted: number; under: number; over: number };
+  /** первые меры (spec 2026-10-first-measures, часть 95): тяжёлым нужны, даны вовремя, стало хуже, умерли в смотровой */
+  measures: { needed: number; onTime: number; worse: number; died: number };
   ward: { admitted: number; discharged: number; early: number; transferred: number; died: number; severe: number; stayDays: number; stayNorm: number; returnsWorse: number; heavy: number; heavyDied: number; heavyEarly: number };
   /**
    * лучшая неделя задания о смертности главы 4 (spec 2026-10-rules): % тяжёлых, умерших и выписанных раньше срока; нет
@@ -408,6 +411,14 @@ function playDay(s: ShiftState, player: Player) {
       if (p.kind !== 'ambulance' || p.status !== 'waiting' || p.sorted || !p.scale) continue;
       step({ kind: 'sort', id: p.id, triage: player === 'rational' ? p.scale.triage : 'green' });
     }
+    // первые меры (spec 2026-10-first-measures, часть 95): разумный — по известному, сразу по листу передачи и по ходу
+    // приёма; ленивый — нет
+    if (player === 'rational') {
+      for (const p of Object.values(s.patients)) {
+        if (p.kind !== 'ambulance' || !p.bay || p.closed || p.code !== undefined || !['waiting', 'inRoom', 'away'].includes(p.status)) continue;
+        for (const tx of measuresDue(db, p.patient.complaints, observationsOf(p))) if (!p.measures?.some(m => m.tx === tx)) step({ kind: 'measure', id: p.id, tx });
+      }
+    }
     // оформляется (spec 2026-10-clinic-flow) — ещё придёт в очередь
     const waiting = Object.values(s.patients).some(p => p.status === 'away' || p.status === 'coming' || p.status === 'intake' || (p.kind === 'ambulance' && p.status === 'waiting' && !p.sorted));
     if (s.t % DAY >= SHIFT_END && s.queue.length === 0 && !s.current && !waiting) break;
@@ -498,6 +509,7 @@ function run(seed: number, player: Player, chapter: Id): Run {
     profit: 0, minCash: s.economy!.cash, cash: 0, reputation: 0,
     arrived: 0, seen: 0, left: 0, unseen: 0, correct: 0, wrong: 0, departments: {},
     ambulance: { arrived: 0, sorted: 0, under: 0, over: 0 },
+    measures: { needed: 0, onTime: 0, worse: 0, died: 0 },
     ward: { admitted: 0, discharged: 0, early: 0, transferred: 0, died: 0, severe: 0, stayDays: 0, stayNorm: 0, returnsWorse: 0, heavy: 0, heavyDied: 0, heavyEarly: 0 },
     heavyWeek: Infinity,
     ops: { done: 0, onTime: 0, late: 0, complicated: 0, waited: 0, complications: 0, good: 0 },
@@ -531,6 +543,7 @@ function run(seed: number, player: Player, chapter: Id): Run {
     out.correct += h.correct;
     out.wrong += h.wrong;
     for (const k of Object.keys(out.ambulance) as (keyof Run['ambulance'])[]) out.ambulance[k] += h.ambulance?.[k] ?? 0;
+    for (const k of Object.keys(out.measures) as (keyof Run['measures'])[]) out.measures[k] += h.ambulance?.measures?.[k] ?? 0;
     for (const [id, t] of Object.entries(h.targets ?? {})) {
       out.targets.onTime += t.onTime;
       out.targets.total += t.total;
@@ -1092,6 +1105,7 @@ for (const chapter of MONTHS) {
     const depts = [...new Set(rs.flatMap(r => Object.keys(r.departments)))].sort();
     console.log(`  верно по отделениям: ${depts.map(d => `${d.replace('dept.', '')} ${pct(f(r => r.departments[d]?.correct ?? 0), f(r => r.departments[d]?.seen ?? 0)).toFixed(1)} % из ${f(r => r.departments[d]?.seen ?? 0)}`).join(', ')}`);
     console.log(`  скорая: ${(f(r => r.ambulance.arrived) / n).toFixed(1)} в день; ошибок сортировки ${x.triageErrors.toFixed(1)} % (недооценили ${f(r => r.ambulance.under)}, переоценили ${f(r => r.ambulance.over)} из ${f(r => r.ambulance.sorted)})`);
+    console.log(`  первые меры: нужны ${f(r => r.measures.needed)}, вовремя ${f(r => r.measures.onTime)}, стало хуже у ${f(r => r.measures.worse)}, умерли в смотровой ${f(r => r.measures.died)}`);
     const kinds = [...new Set(rs.flatMap(r => Object.keys(r.targets.by)))].sort();
     const kind = (id: Id) => `${id.replace('target.', '')} ${f(r => r.targets.by[id]?.onTime ?? 0)} из ${f(r => r.targets.by[id]?.total ?? 0)}`;
     console.log(`  сроки: в срок ${x.targetsOnTime.toFixed(1)} % из ${x.targetsTotal}${kinds.length > 0 ? ` — ${kinds.map(kind).join(', ')}` : ''}`);

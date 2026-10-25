@@ -161,6 +161,26 @@ export interface Draft {
   hypotheses?: Id[];
 }
 
+/** Кнопка первой меры (spec 2026-10-first-measures, часть 95): назначение и имя; дать, медсестра делает или дано. */
+export interface MeasureButton {
+  tx: Id;
+  name: string;
+  state: 'give' | 'doing' | 'done';
+  note: string;
+}
+
+/**
+ * Первые меры лежащего в смотровой (часть 95): монитор (без монитора цифры называет медсестра), кнопки мер, а «Практиканту» и
+ * «Студенту» — что сделать сразу по листу передачи; `code` — «Код синий»: мер больше не назначить.
+ */
+export interface FirstMeasuresView {
+  title: string;
+  lines: { text: string; worse?: true }[];
+  buttons: MeasureButton[];
+  hints?: string[];
+  code?: true;
+}
+
 export interface VisitView {
   version: number;
   title: string;
@@ -206,9 +226,10 @@ export interface VisitView {
   diagnoses: DiagnosisGroup[];
   /**
    * всё лечение базы по алфавиту; warning — противопоказание, о котором врач уже знает; disabled —
-   * здесь не назначить (часть 39а: тромболизис без монитора у постели), warning — почему
+   * здесь не назначить (часть 39а: тромболизис без монитора у постели), warning — почему; locked — первая мера дана
+   * (часть 95): отмечена, снять нельзя, warning — когда дана
    */
-  treatments: { id: Id; name: string; warning?: string; disabled?: boolean }[];
+  treatments: { id: Id; name: string; warning?: string; disabled?: boolean; locked?: true }[];
   /** то же лечение — по группам (антибиотики, обезболивающие…) для экрана решения */
   treatmentGroups: { key: string; title: string; items: VisitView['treatments'] }[];
   /**
@@ -246,6 +267,8 @@ export interface VisitView {
   waitMinutes?: number;
   /** смена: что делается у постели и сколько минут (часть 37: ЭКГ в смотровой приёмного) */
   bedside?: Record<Id, number>;
+  /** смена: привезённый скорой лежит в смотровой — монитор и первые меры (spec 2026-10-first-measures, часть 95) */
+  measures?: FirstMeasuresView;
   /** смена: обследования, которые с умениями дня идут дольше или короче базы (spec 2026-10-skills), — их минуты */
   minutes?: Record<Id, number>;
   /**
@@ -1236,8 +1259,15 @@ export function noteText(n: ScoreNote): string {
     case 'op.late': return t.opLate(tx(n.tx), n.hours, n.window, n.onset === true, n.observed === true);
     case 'op.complication': return t.opComplication(tx(n.tx));
     case 'op.complicated': return t.opComplicated(db.conditions[n.of]?.complication?.name.ru ?? n.of, n.hours, n.before);
+    // первые меры (часть 95): когда дана и — почему была нужна, словами записи меры
+    case 'measure.onTime': return `${t.measureOnTime(tx(n.tx), n.minutes)}. ${measureWhy(n.tx)}`;
+    case 'measure.late': return `${t.measureLate(tx(n.tx), n.minutes, n.steps)}. ${measureWhy(n.tx)}`;
+    case 'measure.missed': return `${t.measureMissed(tx(n.tx), n.steps)}. ${measureWhy(n.tx)}`;
   }
 }
+
+/** Почему первая мера была нужна (spec 2026-10-first-measures): текст `why` её записи. */
+const measureWhy = (tx: Id) => Object.values(db.measures).find(m => m.tx === tx)?.texts.why.ru ?? '';
 
 /** Вопрос об анамнезе жизни — аллергия, лекарства, болезни родных: все его признаки — из анамнеза (`hx.`). */
 export const lifeHistory = (id: Id): boolean => db.exams[id].checks.every(c => c.f.startsWith('hx.'));

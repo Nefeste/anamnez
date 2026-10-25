@@ -22,6 +22,7 @@ import { type CardTab, CardTabs } from './CardTabs';
 import { Dangers, dangerLine } from './Dangers';
 import { Differential } from './Differential';
 import { BodyMap, PlacePanel } from './Examine';
+import { FirstMeasures } from './FirstMeasures';
 import { lineMark } from './marks';
 import type { ExamPlace } from './places';
 import { longestOf, partsOf, Referral } from './Referral';
@@ -291,6 +292,13 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
             <>
               {v.returnNote ? <P testID="visit-return">{v.returnNote}</P> : null}
               {v.payerNote ? <P muted testID="visit-payer">{v.payerNote}</P> : null}
+              {/* привезённый скорой в смотровой (spec 2026-10-first-measures, часть 95): монитор и первые меры — на «Карте»,
+                  а не в шапке, чтобы шапка не отнимала места у вкладок; хуже — строкой «За это время» с любой вкладки */}
+              {v.measures ? (
+                <Card>
+                  <FirstMeasures v={v.measures} onGive={readOnly ? undefined : actions.measure} testID="visit-measures" compact />
+                </Card>
+              ) : null}
               {/* сделанные сроки — здесь, идущие — в шапке; номер строки — тот же, что в шапке */}
               {v.targets?.some(x => x.done) ? (
                 <Card>

@@ -146,6 +146,8 @@ export const spikes = {
     correct: 'Верно',
     partly: 'Почти: та же тактика',
     wrong: 'Неверно',
+    // умер в смотровой приёмного до решения (часть 95): диагноза в черновике не было
+    noDiagnosis: 'Диагноз не поставлен',
     truth: (name: string) => `На самом деле: ${name}`,
     confidence: (n: number) => `Уверенность идеального врача в вашем диагнозе: ${n} из 10`,
     pearls: 'Что запомнить',
@@ -334,6 +336,12 @@ export const spikes = {
       // стадия болезни на момент разреза (часть 28б): перфорация — уже при поступлении или пока ждали
       opComplicated: (name: string, hours: number, before: boolean) =>
         before ? `Осложнение — ${name}, уже при поступлении: от начала болезни ${hours}\u00a0ч` : `Осложнение — ${name}, пока ждали операции: от начала болезни до разреза ${hours}\u00a0ч`,
+      // первые меры у скорой (spec 2026-10-first-measures, часть 95): через сколько минут от того, как положили в смотровую
+      measureOnTime: (tx: string, minutes: number) => `Первая мера — ${lowerFirst(tx)}: через ${minutes}\u00a0мин, вовремя, пока не стало хуже`,
+      measureLate: (tx: string, minutes: number, steps: number) =>
+        `Первая мера — ${lowerFirst(tx)}: через ${minutes}\u00a0мин, поздно — успело стать хуже ${steps === 1 ? 'на ступень' : `на ${steps}\u00a0ступени`}`,
+      measureMissed: (tx: string, steps: number) =>
+        steps >= 4 ? `Первой меры не было — ${lowerFirst(tx)}: остановка кровообращения` : `Первой меры не было — ${lowerFirst(tx)}: стало хуже ${steps === 1 ? 'на ступень' : `на ${steps}\u00a0ступени`}`,
     },
     done: 'Уже сделано',
     cost: (min: number, rub: number) => (rub > 0 ? `${min}\u00a0мин · ${rub}\u00a0₽` : `${min}\u00a0мин`),

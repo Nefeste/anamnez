@@ -211,7 +211,9 @@ describe('скорая на экране смены', () => {
     forgetShift();
     await loadShift('sandbox');
     const plain = shiftView().ambulance.find(r => r.id === p.id)!;
-    expect(plain.handover).toEqual({ reason: row.handover.reason, measured: row.handover.measured });
+    // (и первые меры у лежащего в смотровой, часть 95, — на любом уровне)
+    const { reason, measured, news2, flag } = plain.handover;
+    expect({ reason, measured, news2, flag }).toEqual({ reason: row.handover.reason, measured: row.handover.measured, news2: undefined, flag: undefined });
     forgetShift();
   });
 });

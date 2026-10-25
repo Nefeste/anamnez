@@ -57,7 +57,7 @@ export function DecisionScreen({ view: v, actions }: { view: VisitView; actions:
   // строка листа — с галочкой; противопоказание, о котором врач знает, и почему здесь не назначить — под названием
   const txRow = (x: VisitView['treatments'][number]) => (
     <CheckRow key={x.id} testID={`tx-${x.id}`} title={x.name} hint={x.warning} on={v.draft.treatments.includes(x.id)}
-      disabled={x.disabled && !v.draft.treatments.includes(x.id)} onPress={() => actions.toggleTreatment(x.id)}
+      disabled={x.locked || (x.disabled && !v.draft.treatments.includes(x.id))} onPress={() => actions.toggleTreatment(x.id)}
       onInfo={() => setTerm(treatmentTerm(x.id))} infoLabel={t.whatIsIt} indent={!found}
       icon={{ icon: treatmentIcon(x.id), state: v.draft.treatments.includes(x.id) ? 'chosen' : 'off' }} />
   );

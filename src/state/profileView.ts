@@ -101,7 +101,8 @@ export function archiveRows(archive: readonly CaseRecord[]): ArchiveRow[] {
     return {
       key: r.key,
       title: T.profile.row(r.day, `${patientName(p.patient)}, ${T.spikes.patient.years(p.patient.age)}`),
-      diagnosis: db.conditions[c.diagnosis]?.name.ru ?? c.diagnosis,
+      // умер в смотровой до решения (часть 95) — диагноза нет
+      diagnosis: db.conditions[c.diagnosis]?.name.ru ?? (c.diagnosis || T.spikes.patient.noDiagnosis),
       verdict: c.verdict,
       overall: c.grades.overall,
     };

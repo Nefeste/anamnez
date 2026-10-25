@@ -35,7 +35,7 @@ export interface TargetDecision {
 
 type Seen = Pick<ShiftPatient, 'patient' | 'bay' | 'results'>;
 /** Что нужно, чтобы найти начало отсчёта: приход, результаты и (у отсчёта от правила, часть 48а) жалобы и возраст. */
-type Timed = Pick<ShiftPatient, 'arriveT' | 'results'> & Partial<Pick<ShiftPatient, 'patient'>>;
+type Timed = Pick<ShiftPatient, 'arriveT' | 'results'> & Partial<Pick<ShiftPatient, 'patient' | 'measures'>>;
 
 /** Когда пришёл первый результат, показавший одну из находок срока; не показал — undefined. */
 function foundAt(p: Pick<ShiftPatient, 'results'>, t: Target): number | undefined {
@@ -126,13 +126,15 @@ const decided = (t: Target, d: TargetDecision) => t.treatments.some(tx => d.plan
 
 /**
  * Через сколько минут от начала отсчёта сделано: первый пришедший результат обследования срока или,
- * у срока на назначение и место, решение (часть 39б). Нет — undefined.
+ * у срока на назначение и место, решение (часть 39б); назначение, данное первой мерой (spec
+ * 2026-10-first-measures, часть 95), — в минуту, когда медсестра его сделала. Нет — undefined.
  */
 export function minutesTo(db: ContentDb, p: Timed, t: Target, decision?: TargetDecision): number | undefined {
   const start = targetStart(db, p, t);
   if (start === undefined) return undefined;
   const exam = p.results.filter(r => t.exams.includes(r.exam)).reduce((m, r) => Math.min(m, r.at), Infinity);
-  const at = Math.min(exam, decision && decided(t, decision) ? decision.t : Infinity);
+  const measured = (p.measures ?? []).filter(m => t.treatments.includes(m.tx) && (decision === undefined || m.done <= decision.t)).reduce((m, x) => Math.min(m, x.done), Infinity);
+  const at = Math.min(exam, measured, decision && decided(t, decision) ? decision.t : Infinity);
   return at === Infinity ? undefined : Math.round((at - start) / 60);
 }
 

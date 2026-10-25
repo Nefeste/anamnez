@@ -44,9 +44,9 @@ export function OutcomeScreen({ view, next, back, more }: { view: VisitView | un
     <Screen footer={<Button testID={next.testID} title={next.title} onPress={next.run} />}>
       <Card>
         {view.byDoctor ? <P testID="visit-by-doctor">{view.byDoctor}</P> : null}
-        <H>{x.verdict === 'correct' ? t.correct : x.verdict === 'partly' ? t.partly : t.wrong}</H>
+        <H>{!x.diagnosis ? t.noDiagnosis : x.verdict === 'correct' ? t.correct : x.verdict === 'partly' ? t.partly : t.wrong}</H>
         <P testID="visit-truth">{t.truth(x.truthName)}</P>
-        <P muted>{view.byDoctor ? t.doctorConfidence(x.outOf10) : t.confidence(x.outOf10)}</P>
+        {x.diagnosis ? <P muted>{view.byDoctor ? t.doctorConfidence(x.outOf10) : t.confidence(x.outOf10)}</P> : null}
         <Text style={styles.label}>{t.outcomeLabel}</Text>
         <P testID="visit-outcome">{x.outcome}</P>
         {view.firstTry && <P muted testID="visit-first-try">{view.firstTry}</P>}
@@ -124,7 +124,7 @@ export function OutcomeScreen({ view, next, back, more }: { view: VisitView | un
         {x.pearls.map((p, i) => <P key={i}>{`• ${p}`}</P>)}
         {/* разбор → энциклопедия: настоящая болезнь и, если ошиблись, та, что поставили */}
         <Button testID="visit-truth-article" kind="plain" title={T.encyclopedia.truthArticle(x.truthName)} onPress={() => openArticle(x.truth)} />
-        {x.diagnosis !== x.truth && (
+        {x.diagnosis !== x.truth && db.conditions[x.diagnosis] && (
           <Button testID="visit-chosen-article" kind="plain" title={T.encyclopedia.truthArticle(db.conditions[x.diagnosis].name.ru)} onPress={() => openArticle(x.diagnosis)} />
         )}
         {more && <Button testID={more.testID} kind="plain" title={more.title} onPress={more.run} />}

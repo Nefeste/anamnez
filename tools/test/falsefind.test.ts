@@ -110,7 +110,7 @@ const exam = (id: string, kind: Exam['kind']): Exam => ({
   checks: [{ f: 'sign.f', sens: 8000, spec: 9000 }], texts: { summary: { ru: id } }, sources: [], review: 'draft',
 });
 const mini: ContentDb = {
-  contentVersion: 1, hash: 'test', risks: {}, jobs: {}, treatments: {}, rooms: {}, equipment: {}, roles: {}, presets: {}, economy: NO_ECONOMY, characters: {}, chapters: {}, tips: {}, achievements: {}, scores: {}, rules: {}, targets: {}, skills: {}, revealedBy: {},
+  contentVersion: 1, hash: 'test', risks: {}, jobs: {}, treatments: {}, rooms: {}, equipment: {}, roles: {}, presets: {}, economy: NO_ECONOMY, characters: {}, chapters: {}, tips: {}, achievements: {}, scores: {}, rules: {}, targets: {}, measures: {}, skills: {}, revealedBy: {},
   conditions: {
     'cond.a': cond('cond.a', [{ f: 'sym.x', p: P_ONE }, { f: 'sign.f', p: 8000 }]),
     'cond.b': cond('cond.b', [{ f: 'sym.y', p: P_ONE }]),

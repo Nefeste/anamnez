@@ -57,6 +57,15 @@ describe('«код синий»', () => {
     for (const x of team) expect(after.find(y => y.id === x.id)!.where).toEqual(posts.get(x.id)!);
   });
 
+  test('остановка кровообращения без первой меры (часть 95, `code`): та же бригада у койки, пока идёт код', () => {
+    const { s, map, p } = withBay();
+    p.code = s.t;
+    const team = placements(db, map, s).filter(x => x.doing.kind === 'code');
+    expect(team.map(x => (x.doing as { role: string }).role).sort()).toEqual(['erNurse', 'icuDoctor']);
+    apply(db, s, { kind: 'advance', seconds: CODE });
+    expect(placements(db, map, s).some(x => x.doing.kind === 'code')).toBe(false);
+  });
+
   test('на экране — «Код синий: остановка сердца», смотровая приёмного, и что ритм восстановлен', () => {
     const line = T.shift.notice.arrest('Иванов Пётр');
     expect(line.startsWith('Код синий: остановка сердца')).toBe(true);
