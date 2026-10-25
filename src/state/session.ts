@@ -2173,7 +2173,10 @@ function roomsOf(s: ShiftState): Record<string, RoomView> {
     }
     // где ждали сегодня (spec 2026-10-where-waited, часть 96): то же, что в итогах дня, к этой минуте
     const w = s.summary.waits?.[r.id];
-    if (w && w.n > 0) now.push(t.roomToday(waitWhat(s, r.id, w)));
+    if (w && w.n > 0) {
+      const busy = Math.round(w.busy / 60);
+      now.push(t.roomToday(w.n, r.type === 'room.lab', Math.round(w.total / w.n / 60)), t.roomTodayMore(Math.round(w.max / 60), busy > 0 ? t.waitBusy(busy) : ''));
+    }
     out[r.id] = { ...base[r.id], lines: [...base[r.id].lines, ...now] };
   }
   return out;

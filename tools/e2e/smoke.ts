@@ -2007,7 +2007,7 @@ try {
     regText = (await page.getByTestId('map-room').count()) > 0 ? await text(page, 'map-room') : '';
     if (regText.startsWith('Регистратура')) break;
   }
-  check(regText.startsWith('Регистратура') && /Сегодня: прошли \d+, ждали в среднем \d+\s*мин, дольше всех — \d+\s*мин/.test(regText),
+  check(regText.startsWith('Регистратура') && /Сегодня: прошли \d+, ждали в среднем \d+\s*мин\s+Дольше всех — \d+\s*мин/.test(regText),
     `песочница: касание регистратуры — «${regText.replace(/\n/g, ' · ')}»`);
   await page.getByTestId('map-room').screenshot({ path: join(OUT, '13-room-today.png') });
   await page.getByTestId('shift-call').click();

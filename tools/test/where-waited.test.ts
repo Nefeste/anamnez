@@ -270,7 +270,8 @@ describe('где ждали на экране', () => {
     s.summary.waits = { ...s.summary.waits, [reg]: { n: 2, total: 24 * MIN, max: 15 * MIN, busy: 4 * MIN } };
     await load(s);
     const today = shiftView().rooms?.[reg]?.lines ?? [];
-    expect(today).toContain(T.sandbox.roomToday(T.sandbox.waitWhat(2, false, 12, 15, T.sandbox.waitBusy(4))));
+    // на карте — двумя строками: строка помещения в одну строку экрана, длинная обрезалась бы
+    expect(today.slice(-2)).toEqual([T.sandbox.roomToday(2, false, 12), T.sandbox.roomTodayMore(15, T.sandbox.waitBusy(4))]);
     closeDay();
     const lines = shiftView().summary?.waitLines ?? [];
     expect(lines[0]).toBe(T.shift.summary.waits.line(db.rooms['room.reception'].name.ru, T.sandbox.waitWhat(2, false, 12, 15, T.sandbox.waitBusy(4))));
