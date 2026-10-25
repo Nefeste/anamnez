@@ -8,7 +8,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { db } from '@/content';
 import { T } from '@/i18n';
 import { VERSION } from '@/info';
-import { dailyMenuHint, useDailyStarted } from '@/state/daily';
+import { dailyMenuHint, prepareDailyEvery, useDailyStarted } from '@/state/daily';
 import { loadProfile, setDoctor, useProfile } from '@/state/profile';
 import { DOCTOR_AGE, doctorName, portraitSeed, practiceView, rankName } from '@/state/profileView';
 import { SCENARIO_DAYS } from '@/engine/shift/scenarios';
@@ -30,6 +30,8 @@ export default function Menu() {
     loadSettings();
     loadProfile();
   }, []);
+  // трудный случай дня (часть 92) — подбирается заранее, пока меню на виду
+  useFocusEffect(useCallback(() => prepareDailyEvery(), []));
   // сохранения — с диска, каждый раз, когда меню снова на виду
   useFocusEffect(
     useCallback(() => {

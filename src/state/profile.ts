@@ -55,6 +55,8 @@ export interface ProfileStats {
   timed: number;
   antibiotics: { given: number; indicated: number };
   danger: { met: number; caught: number };
+  /** трудные случаи (часть 92, с 0.6.16): сколько встретилось и у скольких диагноз верный */
+  hard: { met: number; correct: number };
 }
 
 /** Закрытый приём — всё, из чего заново строится его разбор (session.ts, archiveCaseView). */
@@ -146,7 +148,7 @@ export interface ProfileView extends Profile {
 const GRADES: Grade[] = ['A', 'B', 'C', 'D'];
 const emptyStats = (): ProfileStats => ({
   cases: 0, correct: 0, partly: 0, wrong: 0, grades: { A: 0, B: 0, C: 0, D: 0 }, money: 0,
-  minutes: 0, timed: 0, antibiotics: { given: 0, indicated: 0 }, danger: { met: 0, caught: 0 },
+  minutes: 0, timed: 0, antibiotics: { given: 0, indicated: 0 }, danger: { met: 0, caught: 0 }, hard: { met: 0, correct: 0 },
 });
 const emptyProgress = (): CareerProgress => ({ got: {}, days: 0, run: 0, gradeA: 0, thrift: 0, allergy: 0, noLeftDays: 0, daily: 0, closedDays: [] });
 const empty = (): Profile => ({ stats: emptyStats(), seen: {}, archive: [], achievements: emptyProgress(), daily: {}, best: {}, experience: {} });
@@ -204,6 +206,7 @@ export function sanitizeProfile(data: unknown): Profile {
   const grades = isObject(st.grades) ? st.grades : {};
   const ab = isObject(st.antibiotics) ? st.antibiotics : {};
   const dn = isObject(st.danger) ? st.danger : {};
+  const hd = isObject(st.hard) ? st.hard : {};
   out.stats = {
     cases: count(st.cases), correct: count(st.correct), partly: count(st.partly), wrong: count(st.wrong),
     grades: { A: count(grades.A), B: count(grades.B), C: count(grades.C), D: count(grades.D) },
@@ -211,6 +214,7 @@ export function sanitizeProfile(data: unknown): Profile {
     minutes: count(st.minutes), timed: count(st.timed),
     antibiotics: { given: count(ab.given), indicated: count(ab.indicated) },
     danger: { met: count(dn.met), caught: count(dn.caught) },
+    hard: { met: count(hd.met), correct: count(hd.correct) },
   };
   if (isObject(d.seen)) for (const [id, n] of Object.entries(d.seen)) if (count(n) > 0) out.seen[id] = count(n);
   const a = isObject(d.achievements) ? d.achievements : {};
@@ -366,6 +370,7 @@ export function recordCases(cases: readonly Omit<CaseRecord, 'key'>[]): number {
   }
   const stats: ProfileStats = {
     ...current.stats, grades: { ...current.stats.grades }, antibiotics: { ...current.stats.antibiotics }, danger: { ...current.stats.danger },
+    hard: { ...current.stats.hard },
   };
   const seen = { ...current.seen };
   const experience = { ...current.experience };
@@ -392,6 +397,11 @@ export function recordCases(cases: readonly Omit<CaseRecord, 'key'>[]): number {
     if (f.danger) {
       stats.danger.met++;
       if (f.caught) stats.danger.caught++;
+    }
+    // трудный случай (часть 92): по мере разбора, посчитанной при закрытии приёма
+    if (closed.hardness?.level === 'hard') {
+      stats.hard.met++;
+      if (closed.verdict === 'correct') stats.hard.correct++;
     }
     ach.run = f.correct ? ach.run + 1 : 0;
     if (f.gradeA) ach.gradeA++;

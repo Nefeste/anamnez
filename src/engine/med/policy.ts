@@ -692,6 +692,8 @@ export interface DoctorRun {
   part(): boolean | undefined;
   /** решение принято — считать больше нечего (0.5.13) */
   done(): boolean;
+  /** что сделано к этому шагу: обследования по порядку и наблюдения (часть 92 — подбор «Случая дня» до первого анализа) */
+  sofar(): { exams: readonly Id[]; observations: readonly Observation[] };
   result(): DoctorResult;
 }
 
@@ -736,6 +738,7 @@ export function startRational(db: ContentDb, patient: Patient, rng: Rng, opt: Do
     step,
     part,
     done: () => decision !== undefined,
+    sofar: () => ({ exams: done, observations: obs }),
     result: () => {
       while (!step());
       return (out ??= resultOf(db, patient, decision!, done, obs));

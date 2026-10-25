@@ -68,6 +68,8 @@ export interface PracticeView {
   minutes?: number;
   antibiotics?: { ok: number; of: number };
   danger?: { ok: number; of: number };
+  /** трудные случаи (часть 92): верный диагноз — из скольких; с 0.6.16 */
+  hard?: { ok: number; of: number };
   seen: { n: number; of: number };
 }
 
@@ -84,6 +86,7 @@ export function practiceView(p: Profile): PracticeView | undefined {
     ...(s.timed > 0 ? { minutes: Math.round(s.minutes / s.timed) } : {}),
     ...(s.antibiotics.given > 0 ? { antibiotics: { ok: s.antibiotics.indicated, of: s.antibiotics.given } } : {}),
     ...(s.danger.met > 0 ? { danger: { ok: s.danger.caught, of: s.danger.met } } : {}),
+    ...(s.hard.met > 0 ? { hard: { ok: s.hard.correct, of: s.hard.met } } : {}),
     seen: { n: seen, of: total },
   };
 }
