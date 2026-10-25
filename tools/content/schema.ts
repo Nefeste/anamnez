@@ -834,6 +834,8 @@ export const economySchema = z.strictObject({
   box: z.strictObject({ bedDay: int }),
   /** перевод в сосудистый центр (часть 39б): часов пути и часов от приезда до вмешательства */
   transfer: z.strictObject({ hours: z.number().int().min(1).max(12), pci: z.number().int().min(0).max(6) }),
+  /** лаборатория (часть 96): постановка партии — минут на партию и на каждую пробу */
+  lab: z.strictObject({ setup: z.number().int().min(0).max(60), perSample: z.number().int().min(0).max(10) }),
   /**
    * скорая (spec 2026-09-chapter-2, часть 27): машин за смену, если работает смотровая приёмного;
    * вес болезни по тяжести (с распространённостью) и доля тяжёлых среди тех, у кого тяжесть есть, %

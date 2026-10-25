@@ -156,6 +156,8 @@ export interface SummaryView {
   targetLines?: string[];
   /** операционная за день (часть 28): операций, в срок и позже, осложнения */
   surgeryLines?: string[];
+  /** где ждали (spec 2026-10-where-waited, часть 96): места по убыванию среднего ожидания; без очереди — одной строкой */
+  waitLines?: string[];
 }
 
 /** Итог «Смены»: оценки по категориям, общая, строки, лучший в этой больнице. */
@@ -1932,7 +1934,56 @@ function summaryOf(s: ShiftState): SummaryView | undefined {
     ...(h.ambulance && h.ambulance.arrived > 0 ? { ambulanceLines: ambulanceLines(h.ambulance, s.meta.soft === true) } : {}),
     ...(h.targets && Object.keys(h.targets).length > 0 ? { targetLines: targetDayLines(h.targets) } : {}),
     ...(h.surgery && h.surgery.done > 0 ? { surgeryLines: surgeryLines(h.surgery) } : {}),
+    ...(h.waits && Object.values(h.waits).some(w => w.n > 0) ? { waitLines: waitLines(s, h.waits) } : {}),
   };
+}
+
+/** Меньше стольких минут в среднем — «без очереди» (часть 96): строкой не выделять. */
+const NO_QUEUE_MIN = 5;
+
+/**
+ * Где ждали за день (spec 2026-10-where-waited, часть 96) — строками итогов: места по убыванию среднего ожидания, первая —
+ * узкое место; где ждали меньше `NO_QUEUE_MIN` минут — одной строкой «Без очереди».
+ */
+function waitLines(s: ShiftState, waits: NonNullable<ShiftState['summary']['waits']>): string[] {
+  const t = T.shift.summary.waits;
+  // помещение снесли после того дня — его строки нет
+  const plan = hospitalCtx(db, s).plan;
+  const places = Object.entries(waits).filter(([room, w]) => w.n > 0 && plan.rooms.some(r => r.id === room))
+    .map(([room, w]) => ({ room, w, mean: w.total / w.n / 60 }))
+    .sort((a, b) => b.mean - a.mean || (a.room < b.room ? -1 : 1));
+  const out = places.filter(x => x.mean >= NO_QUEUE_MIN).map(x => t.line(placeName(s, x.room), waitWhat(s, x.room, x.w)));
+  const free = places.filter(x => x.mean < NO_QUEUE_MIN).map(x => placeName(s, x.room, true));
+  if (free.length > 0) out.push(t.free(T.sandbox.andList(free)));
+  return out;
+}
+
+/** «прошли 14, ждали в среднем 9 мин, дольше всех — 22 мин; в работе 3 ч 10 мин» — у лаборатории пробы (часть 96). */
+function waitWhat(s: ShiftState, room: string, w: { n: number; total: number; max: number; busy: number }): string {
+  const t = T.sandbox;
+  const lab = hospitalCtx(db, s).plan.rooms.find(r => r.id === room)?.type === 'room.lab';
+  const busy = Math.round(w.busy / 60);
+  return t.waitWhat(w.n, lab, Math.round(w.total / w.n / 60), Math.round(w.max / 60), busy > 0 ? t.waitBusy(busy) : '');
+}
+
+/**
+ * Место в «Где ждали» (часть 96): помещение — по виду, таких несколько — с номером по плану; ваш кабинет — «Ваш приём»,
+ * кабинет нанятого врача — врач. `inList` — в перечне «Без очереди»: со строчной, кроме имён.
+ */
+function placeName(s: ShiftState, room: string, inList = false): string {
+  const t = T.shift.summary.waits;
+  const ctx = hospitalCtx(db, s);
+  const r = ctx.plan.rooms.find(x => x.id === room);
+  if (!r) return room;
+  const low = (x: string) => (inList ? lowerFirst(x) : x);
+  if (r.type === 'room.office') {
+    if (r.id === doctorRoom(ctx.plan)) return low(t.you);
+    const m = ctx.staff.find(x => x.room === r.id && db.roles[x.role]?.stands === DOCTOR);
+    if (m) return t.doctor(personName(m.sex, m.seed), lowerFirst(db.roles[m.role]?.name.ru ?? ''));
+  }
+  const same = ctx.plan.rooms.filter(x => x.type === r.type);
+  const name = db.rooms[r.type]?.name.ru ?? r.type;
+  return low(same.length > 1 ? `${name} ${same.indexOf(r) + 1}` : name);
 }
 
 /** Сроки за день — строками итогов: «ЭКГ при боли в груди в срок: 5 из 6». */
@@ -2095,7 +2146,10 @@ function roomsOf(s: ShiftState): Record<string, RoomView> {
         const exam = db.exams[x.exam]?.name.ru ?? x.exam;
         // ещё в процедурной — медсестра понесёт с пробами следующих (spec 2026-10-code-blue)
         if (x.sent !== undefined && s.t < x.sent) now.push(t.roomRack(exam, nameOf(p)));
-        else now.push(x.lab !== undefined && s.t < x.lab ? t.roomCarry(exam, nameOf(p)) : t.roomInWork(exam, nameOf(p), hhmm(minuteOfDay(x.readyAt))));
+        else if (x.lab !== undefined && s.t < x.lab) now.push(t.roomCarry(exam, nameOf(p)));
+        // лаборант ставит предыдущую партию (часть 96)
+        else if (x.set !== undefined && s.t < x.set) now.push(t.roomSetQueue(exam, nameOf(p)));
+        else now.push(t.roomInWork(exam, nameOf(p), hhmm(minuteOfDay(x.readyAt))));
       }
       if (here.length > LAB_LINES) now.push(t.roomMore(here.length - LAB_LINES));
       if (here.length === 0) now.push(t.roomFree);
@@ -2116,6 +2170,12 @@ function roomsOf(s: ShiftState): Record<string, RoomView> {
       const next = here.filter(({ x }) => (x.start ?? 0) > s.t).length;
       if (next > 0) now.push(t.roomNext(next));
       if (!at && next === 0) now.push(t.roomFree);
+    }
+    // где ждали сегодня (spec 2026-10-where-waited, часть 96): то же, что в итогах дня, к этой минуте
+    const w = s.summary.waits?.[r.id];
+    if (w && w.n > 0) {
+      const busy = Math.round(w.busy / 60);
+      now.push(t.roomToday(w.n, r.type === 'room.lab', Math.round(w.total / w.n / 60)), t.roomTodayMore(Math.round(w.max / 60), busy > 0 ? t.waitBusy(busy) : ''));
     }
     out[r.id] = { ...base[r.id], lines: [...base[r.id].lines, ...now] };
   }
@@ -2409,7 +2469,8 @@ function handoverRow(s: ShiftState, p: ShiftPatient, door: boolean): AmbulanceRo
     line: p.sorted && measures ? `${measures.lines.map(l => l.text).join(', ')} · ${t.bayOpen}` : `${t.reason(complaintOf(p))} · ${door ? t.door : t.bay}`,
     handover: {
       reason: t.sheetReason(complaintOf(p)),
-      measured: (paramedic?.obs ?? []).filter(o => o.value !== undefined).map(o => observationText(db, o, p.patient.sex, p.patient.seed)),
+      // у порогов того же измерения — пульс от 150, давление ниже 100 — своего текста нет: строку пишет само измерение
+      measured: (paramedic?.obs ?? []).filter(o => o.value !== undefined).map(o => observationText(db, o, p.patient.sex, p.patient.seed)).filter(m => m !== ''),
       ...(student && p.scale ? { news2: t.news2(p.scale.news2) } : {}),
       ...(flag && p.scale ? { flag: t.flag(flag, p.scale.triage) } : {}),
       ...(measures ? { measures } : {}),

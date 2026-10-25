@@ -226,6 +226,17 @@ export const sandbox = {
   roomDraw: (name: string) => `Берут кровь: ${name}`,
   roomDrawNext: (n: number) => `Ждут забора: ${n}`,
   roomFree: 'Сейчас свободно',
+  // лаборант ставит предыдущую партию (spec 2026-10-where-waited, часть 96)
+  roomSetQueue: (exam: string, name: string) => `${exam} — ${name}: ждёт постановки`,
+  // где ждали сегодня (часть 96): то же, что в итогах дня, к этой минуте — двумя короткими строками: строка помещения
+  // на карте — в одну строку экрана
+  roomToday: (n: number, samples: boolean, mean: number) => `Сегодня: ${samples ? `проб ${n}` : `прошли ${n}`}, ждали в среднем ${mean}\u00a0мин`,
+  roomTodayMore: (max: number, busy: string) => `Дольше всех — ${max}\u00a0мин${busy ? `, в работе ${busy}` : ''}`,
+  // между числом и единицей — неразрывный пробел (голос студии)
+  waitWhat: (n: number, samples: boolean, mean: number, max: number, busy: string) =>
+    `${samples ? `проб ${n}` : `прошли ${n}`}, ждали в среднем ${mean}\u00a0мин, дольше всех — ${max}\u00a0мин${busy ? `; в работе ${busy}` : ''}`,
+  // «4 ч 2 мин» не разрывается между часами и минутами
+  waitBusy: (min: number) => (min >= 60 ? `${Math.floor(min / 60)}\u00a0ч${min % 60 > 0 ? `\u00a0${min % 60}\u00a0мин` : ''}` : `${min}\u00a0мин`),
 
   // оплата закрытого приёма — на экране итога
   payment: 'Оплата',

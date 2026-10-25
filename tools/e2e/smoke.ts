@@ -1993,6 +1993,23 @@ try {
   const labText = await text(page, 'map-room');
   check(labText.startsWith('Лаборатория') && labText.includes('Работает') && labText.includes('Лаборант: '), `песочница: касание помещения — «${labText.replace(/\n/g, ' · ')}»`);
   await page.screenshot({ path: join(OUT, '13-sandbox-room.png') });
+  // где ждали сегодня (spec 2026-10-where-waited, часть 96): регистратура уже оформила первых — у неё «Сегодня: …»; касание
+  // — в клетку подальше от регистратора и очереди, рядом с человеком касание выбрало бы его
+  const desk = CLINIC.rooms.find(r => r.type === 'reception')!;
+  const clerk = CLINIC.staff.find(x => x.role === 'registrar')!.cell;
+  const inside: [number, number][] = [];
+  for (let x = desk.x + 1; x < desk.x + desk.w - 1; x++) for (let y = desk.y + 1; y < desk.y + desk.h - 1; y++) inside.push([x, y]);
+  inside.sort((u, v) => Math.hypot(v[0] - clerk[0], v[1] - clerk[1]) - Math.hypot(u[0] - clerk[0], u[1] - clerk[1]));
+  let regText = '';
+  for (const cell of inside.slice(0, 6)) {
+    await ownMap.click({ position: { x: (cell[0] + 0.5) * ownCell, y: (cell[1] + 0.5) * ownCell } });
+    await page.waitForTimeout(300);
+    regText = (await page.getByTestId('map-room').count()) > 0 ? await text(page, 'map-room') : '';
+    if (regText.startsWith('Регистратура')) break;
+  }
+  check(regText.startsWith('Регистратура') && /Сегодня: прошли \d+, ждали в среднем \d+\s*мин\s+Дольше всех — \d+\s*мин/.test(regText),
+    `песочница: касание регистратуры — «${regText.replace(/\n/g, ' · ')}»`);
+  await page.getByTestId('map-room').screenshot({ path: join(OUT, '13-room-today.png') });
   await page.getByTestId('shift-call').click();
   await page.getByTestId('exam-exam.ask_complaints').waitFor({ timeout: 10_000 });
   await showOrder(page, 'exam.tsh');
@@ -2224,8 +2241,14 @@ try {
   const ambDay = await text(page, 'summary-ambulance');
   check(ambDay.includes(`Привезли: ${amb.cars}, отсортировали: 1.`) && ambDay.includes('Со шкалой совпало: 1. Недооценили: 0, переоценили: 0.')
     && (amb.cars === 1 || ambDay.includes(`Не отсортировали до конца дня: ${amb.cars - 1}.`)), `скорая, итоги дня: ${ambDay.replace(/\n/g, ' · ')}`);
+  // где ждали (spec 2026-10-where-waited, часть 96): места по убыванию среднего ожидания; где меньше 5 минут — одной строкой
+  await page.getByTestId('summary-waits').waitFor({ timeout: 10_000 });
+  const waitsDay = await text(page, 'summary-waits');
+  // заголовок карточки — капителью (textTransform), в тексте страницы он прописными
+  check(/^где ждали/i.test(waitsDay) && /(: (прошли|проб) \d+, ждали в среднем \d+\s*мин|Без очереди: )/.test(waitsDay), `где ждали, итоги дня: ${waitsDay.replace(/\n/g, ' · ')}`);
   await page.waitForTimeout(1500); // лист меню «Продолжить» ещё уезжает вниз (веб)
   await page.screenshot({ path: join(OUT, '17-ambulance-summary.png'), fullPage: true });
+  await page.getByTestId('summary-waits').screenshot({ path: join(OUT, '17-where-waited.png') });
 
   // первые меры у скорой (spec 2026-10-first-measures, часть 95): привезли с низкой сатурацией — в листе передачи монитор
   // и «Первые меры», на «Студенте» — что сделать сразу; «Кислород» делает медсестра, после сортировки он «В смотровой»; в

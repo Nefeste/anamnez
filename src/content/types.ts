@@ -954,6 +954,11 @@ export interface Economy {
    * вмешательства — по ним исход переведённого с подъёмом ST
    */
   transfer: { hours: number; pci: number };
+  /**
+   * лаборатория (spec 2026-10-where-waited, часть 96): постановка партии — минут на партию и на каждую пробу; пока
+   * лаборант ставит партию, следующая ждёт
+   */
+  lab: { setup: number; perSample: number };
   /** скорая: машин за смену; вес болезни по тяжести; доля тяжёлых, % (часть 27) */
   ambulance: { perDay: [number, number]; weight: Record<'minor' | 'moderate' | 'serious' | 'critical', number>; severe: number };
   /** репутация 0–100: начало, на сколько % вечером сдвигается к оценке дня, поправки оценки; `died` — за каждого умершего в стационаре (часть 35) */

@@ -138,7 +138,9 @@ describe('песочница', () => {
       sendAway();
     }
     const rooms = buildView()!.plan.rooms;
-    const of = (type: string) => shiftView().rooms![rooms.find(r => r.type === type)!.id].lines;
+    // «Сегодня: …» (spec 2026-10-where-waited, часть 96) — последней строкой, о прошедших; здесь — что сейчас
+    const today = (l: string) => l.startsWith(T.sandbox.roomToday(0, false, 0).slice(0, 8)) || l.startsWith(T.sandbox.roomTodayMore(0, '').slice(0, 11));
+    const of = (type: string) => shiftView().rooms![rooms.find(r => r.type === type)!.id].lines.filter(l => !today(l));
     const s = shiftState()!;
     const [a, b] = ids.map(id => s.patients[id]);
     const x = a.pending.find(q => q.exam === 'exam.cbc')!;
