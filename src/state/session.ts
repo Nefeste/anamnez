@@ -2409,7 +2409,8 @@ function handoverRow(s: ShiftState, p: ShiftPatient, door: boolean): AmbulanceRo
     line: p.sorted && measures ? `${measures.lines.map(l => l.text).join(', ')} · ${t.bayOpen}` : `${t.reason(complaintOf(p))} · ${door ? t.door : t.bay}`,
     handover: {
       reason: t.sheetReason(complaintOf(p)),
-      measured: (paramedic?.obs ?? []).filter(o => o.value !== undefined).map(o => observationText(db, o, p.patient.sex, p.patient.seed)),
+      // у порогов того же измерения — пульс от 150, давление ниже 100 — своего текста нет: строку пишет само измерение
+      measured: (paramedic?.obs ?? []).filter(o => o.value !== undefined).map(o => observationText(db, o, p.patient.sex, p.patient.seed)).filter(m => m !== ''),
       ...(student && p.scale ? { news2: t.news2(p.scale.news2) } : {}),
       ...(flag && p.scale ? { flag: t.flag(flag, p.scale.triage) } : {}),
       ...(measures ? { measures } : {}),

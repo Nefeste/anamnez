@@ -203,6 +203,9 @@ describe('скорая на экране смены', () => {
     await loadShift('sandbox');
     const row = shiftView().ambulance.find(r => r.id === p.id)!;
     expect(row.handover.measured.length).toBeGreaterThan(0);
+    // пороги того же измерения — пульс от 150, давление ниже 100 — своей строки не пишут: пустых строк в листе нет
+    // (замечание владельца 25.10.2026 — длинные промежутки между пульсом, давлением и дыханием)
+    expect(row.handover.measured.filter(m => m.trim() === '')).toEqual([]);
     expect(row.handover.news2).toBe(T.shift.ambulance.news2(p.scale!.news2));
     expect(row.handover.flag).toBe(T.shift.ambulance.flag(db.findings[p.scale!.flag!].name.ru, p.scale!.triage));
     // на «Враче» — только повод и измерения
