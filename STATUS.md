@@ -4,7 +4,7 @@
 ([устав, `docs/04-process.md`](https://github.com/Nefeste/gornitsa/blob/main/docs/04-process.md)).
 
 **Версия:** 0.6.19, где ждали — `versionCode` 139, база 83, [`README.md`](README.md). Выпущена
-[0.6.18](https://github.com/Nefeste/anamnez/releases/tag/v0.6.18); у v0.6.4, v0.6.6 и v0.6.15 APK нет — упал сценарий.
+[0.6.19](https://github.com/Nefeste/anamnez/releases/tag/v0.6.19) (25.10.2026); у v0.6.4, v0.6.6 и v0.6.15 APK нет — упал сценарий.
 
 **Этап:** 7 — выход в магазины ([дорожная карта](docs/07-roadmap.md), «Путь к 1.0»): 0.5.1–0.5.20 — музыка,
 «Практикант», ложные находки, быстродействие, правила, крапивница и ДКА, разбор, умения, свои больные, ответ на виду;
@@ -27,4 +27,4 @@ RuStore и support@gornitsa.games; сверка базы консультант�
 - PR выпуска 1.0.0 (`app.json` — путь владельца) сливает и тег `v1.0.0` ставит владелец; первый APK — через консоль;
 - вопросы — [Issues с меткой `владелец`](https://github.com/Nefeste/anamnez/labels/владелец): 6 и 7 решены 20.10.2026
   (закрывает владелец), 27 и 39 — 1.0 не держат, 48 ([#159](https://github.com/Nefeste/anamnez/issues/159)) — ADR об
-  отступлении от устава; 50–62 решены 24.10.
+  отступлении от устава, 63 ([#188](https://github.com/Nefeste/anamnez/issues/188)) — звуки под CC BY и устав; 50–62 решены 24.10.
