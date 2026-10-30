@@ -1,7 +1,7 @@
 // из votchina: tools/test/guardrails.test.ts @ 1cd15dc
 // Порядок работы с репозиторием (ADR студии 0018 и 0019): пути владельца в CODEOWNERS,
 // проверки на PR, автослияние по метке, сборка APK только по тегу. Тест держит то, что
-// легко сломать правкой одного файла: список путей, разбор CODEOWNERS для automerge.yml,
+// легко сломать правкой одного файла: список путей, разбор CODEOWNERS (тот же, что в наборе),
 // имена, по которым workflow находят друг друга, и машины CI.
 import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync } from 'node:fs';
@@ -44,6 +44,8 @@ describe('workflow', () => {
       const text = read(`.github/workflows/${f}`);
       expect({ f, latest: text.includes('ubuntu-latest') }).toEqual({ f, latest: false });
       for (const [job, def] of Object.entries<any>(YAML.parse(text).jobs)) {
+        // задание из набора gornitsa-kit (`uses:`) выбирает машину само — там тоже ubuntu-24.04
+        if (def.uses) continue;
         expect({ f, job, runsOn: def['runs-on'] }).toEqual({ f, job, runsOn: 'ubuntu-24.04' });
       }
     }
@@ -103,18 +105,34 @@ describe('workflow', () => {
     }
     expect(steps).not.toMatch(/gradle|prebuild/i);
     const am = wf('automerge.yml');
-    const env = am.jobs.automerge.steps.find((s: any) => s.env?.CHECK).env;
-    expect(env.CHECK).toBe(pr.jobs.checks.name);
-    expect(env.LABEL).toBe('ревью: ок');
+    expect(am.jobs.automerge.with.check).toBe(pr.jobs.checks.name);
+    expect(am.jobs.automerge.with.label).toBe('ревью: ок');
     expect(am.on.workflow_run.workflows).toEqual([pr.name]);
   });
 
-  test('автослияние берёт правила из main и код PR не выгружает', () => {
+  // Сама логика — в наборе студии gornitsa-kit (ADR студии 0022): там выгружается только
+  // `.github` из main, а код PR не запускается. Здесь — что вызов идёт из main, а не из PR.
+  test('автослияние — из набора gornitsa-kit, на событиях, которые берут файл из main', () => {
     const am = wf('automerge.yml');
     expect(Object.keys(am.on).sort()).toEqual(['pull_request_target', 'workflow_run']);
-    const checkouts = am.jobs.automerge.steps.filter((s: any) => String(s.uses).startsWith('actions/checkout'));
-    expect(checkouts.map((s: any) => [s.with.ref, s.with['sparse-checkout']])).toEqual([
-      ['${{ github.event.repository.default_branch }}', '.github'],
-    ]);
+    expect(Object.keys(am.jobs)).toEqual(['automerge']);
+    expect(am.jobs.automerge.uses).toBe('Nefeste/gornitsa-kit/.github/workflows/automerge.yml@v1');
+  });
+
+  test('RuStore — из набора gornitsa-kit, только руками, пакет игры', () => {
+    const rs = wf('rustore.yml');
+    expect(Object.keys(rs.on)).toEqual(['workflow_dispatch']);
+    expect(rs.jobs.upload.uses).toBe('Nefeste/gornitsa-kit/.github/workflows/rustore.yml@v1');
+    expect(rs.jobs.upload.with.package).toBe(JSON.parse(read('app.json')).expo.android.package);
+  });
+
+  test('ключ, подпись и содержимое APK — действия набора; без сети, белый список — файлом', () => {
+    const steps = wf('android.yml').jobs.build.steps;
+    const kit = (name: string) => steps.find((s: any) => s.uses === `Nefeste/gornitsa-kit/actions/${name}@v1`);
+    expect(kit('android-keystore').with['gradle-prefix']).toBe('ANAMNEZ');
+    expect(kit('android-signature').with['keystore-file']).toBe('${{ steps.keystore.outputs.file }}');
+    const contents = kit('android-contents').with;
+    expect(contents.forbid).toContain('INTERNET');
+    expect(read(contents['allow-file'])).toContain('android.permission.VIBRATE');
   });
 });
