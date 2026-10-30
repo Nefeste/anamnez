@@ -1,0 +1,7 @@
+# Разрешения, которые может просить релизный APK «Анамнеза» (проверка «Содержимое» в
+# android.yml, действие android-contents набора gornitsa-kit). Строка — полное имя; «*» в
+# конце — любая концовка. Всё прочее — ошибка сборки: нужное добавить сюда и в
+# docs/05-process.md, ненужное — в blockedPermissions в app.json. Сети нет (ADR 0006).
+android.permission.VIBRATE
+android.permission.MODIFY_AUDIO_SETTINGS
+games.gornitsa.anamnez.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION

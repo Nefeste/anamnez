@@ -41,7 +41,7 @@
 9. **Выход 1.0.** Первая версия — руками через консоль: `anamnez-N.apk` из релиза `v1.0.0`. Со второй — Actions →
    RuStore → Run workflow (`.github/workflows/rustore.yml`): APK из релиза ложится в черновик, на модерацию — галочкой
    «submit» или кнопкой в консоли. API RuStore принимает только вторую и следующие версии
-   (`tools/store/rustore.mjs`); `versionCode` должен расти — годится APK из Releases, пересобранный — нет. AAB не
+   (загрузку делает набор студии `gornitsa-kit`); `versionCode` должен расти — годится APK из Releases, пересобранный — нет. AAB не
    собирается: RuStore берёт APK.
 
 **Что держит 1.0** (`docs/07-roadmap.md`, «Путь к 1.0»; `docs/12-publishing.md` §8) — решения владельца 20.10.2026:
