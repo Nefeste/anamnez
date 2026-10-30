@@ -83,11 +83,15 @@ in Russian.
   emergency department, wards, isolation boxes and an operating room, hiring, the cash desk. Doctors
   you hire see patients on their own, specialists have their own appointments, and new patients from
   the disease groups you pick are left for you. Insurance pays for a justified diagnosis and for
-  tests that were indicated.
+  tests that were indicated. The end-of-day summary shows where patients waited: for each place, how
+  many went through, how long they waited and how long it was busy, with the bottleneck first.
 - **Emergency department.** The ambulance brings in the seriously ill, and urgency is checked
-  against the NEWS2 score. You do a ward round every morning and discharge patients when they are
-  better; a surgical team works in the operating room — and the longer an appendicitis or a
-  perforated ulcer waits, the more dangerous it gets.
+  against the NEWS2 score. Seriously ill patients in the exam bay get first measures, from oxygen to
+  a pressure dressing: the bay nurse gives them, and the bedside monitor shows what got worse. Without
+  the measure they need, a seriously ill patient gets worse every 20–40 minutes, and a cardiac arrest
+  calls a code blue: the team runs to the bed. You do a ward round every morning and discharge
+  patients when they are better; a surgical team works in the operating room — and the longer an
+  appendicitis or a perforated ulcer waits, the more dangerous it gets.
 - **Four difficulty levels.** Trainee: “Looks like” hints, what relates to the complaint comes first
   in questions, examination and tests, and the review is gentler. Student: hints, and tests never
   err. Resident: up to three “Looks like” conditions with confidence in words, and tests sometimes err.
@@ -150,6 +154,9 @@ chronic illnesses that run in the background of the main one.
   with reviews, and achievements — no deadlines and no streaks.
 - A “Shift” at a hospital of your choice and a “Case of the day” — one patient a day, the same for
   everyone; any of the last 30 days can be played at any time.
+- Challenges — a shift with a condition: no history taking, no tests or scans, or no more than
+  1,500 ₽ of tests per patient. Week-long scenarios — five shifts with a special patient flow and a
+  goal of their own: “Winter flu”, “The hospital next door has closed”, “The X-ray is broken”.
 - Two themes: the light “Chart” — paper and blue ink — and the dark “Monitor”. Or follow the phone.
 - Progress moves to another phone as a file.
 
