@@ -14,10 +14,10 @@
 **Решения владельца 20.10.2026** — люди к 1.0 больше не держат: проверка на телефоне (приёмка 7) пройдена; живая
 проверка (вопрос 6, [#100](https://github.com/Nefeste/anamnez/issues/100)) — игроками после выхода, замечания — отзывы
 RuStore и support@gornitsa.games; сверка базы консультантом (вопрос 7, приёмка 9,
-[#101](https://github.com/Nefeste/anamnez/issues/101)) для 1.0 снята — записи остаются `review: draft`.
+[#101](https://github.com/Nefeste/anamnez/issues/101)) для 1.0 снята — записи остаются `review: draft`, ADR
+[0020](docs/adr/0020-release-with-draft-base.md).
 
-**Что дальше:** 1.0.0 — [`store/README.md`](store/README.md); части 95 и 96 (ответы владельца на вопросы 58 и 60)
-сделаны.
+**Что дальше:** 1.0.0 — [`store/README.md`](store/README.md); части до 1.0 сделаны, магазин — по 0.6.19 (30.10.2026).
 
 **Ждёт владельца:**
 
@@ -26,5 +26,5 @@ RuStore и support@gornitsa.games; сверка базы консультант�
   [`store/README.md`](store/README.md); защита `main` — шаги в #127;
 - PR выпуска 1.0.0 (`app.json` — путь владельца) сливает и тег `v1.0.0` ставит владелец; первый APK — через консоль;
 - вопросы — [Issues с меткой `владелец`](https://github.com/Nefeste/anamnez/labels/владелец): 6 и 7 решены 20.10.2026
-  (закрывает владелец), 27 и 39 — 1.0 не держат, 48 ([#159](https://github.com/Nefeste/anamnez/issues/159)) — ADR об
-  отступлении от устава, 63 ([#188](https://github.com/Nefeste/anamnez/issues/188)) — звуки под CC BY и устав; 50–62 решены 24.10.
+  (закрывает владелец), 27 и 39 — 1.0 не держат, 64 ([#191](https://github.com/Nefeste/anamnez/issues/191)) —
+  репозиторий после выхода 1.0; 48 и 63 решены 30.10.2026: ADR 0020, звуки под CC BY — правкой устава.
