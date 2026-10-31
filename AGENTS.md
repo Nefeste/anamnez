@@ -118,6 +118,10 @@ charter's `docs/05-rules.md` and are not repeated here. Project rules:
   and branch protection cannot tell an agent from the owner: never merge, never enable
   auto-merge by hand (API, MCP tool or UI) and never create a `vX.Y.Z` tag (`docs/05-process.md`,
   «Слияние»).
+- Results of agent work — reports, audits, reviews, check results, a subagent's hand-back — are always
+  committed to the repository in the same PR as the work: the spec's «Журнал проверок», the month's
+  journal or a document next to the work, with key screenshots under `docs/specs/img/`. The session's
+  scratchpad and the chat are not a record (owner's decision 31.10.2026).
 - The release build has **no `INTERNET` permission** (ADR 0006); it is removed from the release
   manifest by a config plugin, debug keeps it for Metro. Any new permission must be added to the
   CI whitelist consciously.
