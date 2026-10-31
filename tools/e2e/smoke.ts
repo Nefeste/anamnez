@@ -1954,7 +1954,8 @@ try {
   check(await runClockUntil(page, async () => (await closable.count()) > 0, 180_000), 'песочница: смена дожита до конца дня');
   await closable.first().click();
   await page.getByTestId('summary-cash').waitFor({ timeout: 10_000 });
-  check((await text(page, 'summary-seen')).startsWith('Принято: 1 из'), `песочница с пустого участка, итоги дня: ${await text(page, 'summary-seen')}`);
+  // плитка «Принято» карточки дня (spec 2026-10-premium-polish): подпись и число — строками
+  check(/^Принято\n1 из \d+$/.test(await text(page, 'summary-seen')), `песочница с пустого участка, итоги дня: ${(await text(page, 'summary-seen')).replace('\n', ' ')}`);
   check((await text(page, 'cash-now')).startsWith('В кассе: ') && (await page.getByTestId('cash-oms').count()) + (await page.getByTestId('cash-dms').count()) + (await page.getByTestId('cash-self').count()) === 1,
     `песочница с пустого участка, касса: ${await text(page, 'cash-now')}`);
   await page.goto(base);
@@ -1993,19 +1994,32 @@ try {
   const labText = await text(page, 'map-room');
   check(labText.startsWith('Лаборатория') && labText.includes('Работает') && labText.includes('Лаборант: '), `песочница: касание помещения — «${labText.replace(/\n/g, ' · ')}»`);
   await page.screenshot({ path: join(OUT, '13-sandbox-room.png') });
-  // где ждали сегодня (spec 2026-10-where-waited, часть 96): регистратура уже оформила первых — у неё «Сегодня: …»; касание
-  // — в клетку подальше от регистратора и очереди, рядом с человеком касание выбрало бы его
+  // где ждали сегодня (spec 2026-10-where-waited, часть 96): у регистратуры, оформившей кого-то по очереди, — «Сегодня: …»;
+  // касание — в клетку подальше от регистратора и очереди, рядом с человеком касание выбрало бы его
   const desk = CLINIC.rooms.find(r => r.type === 'reception')!;
   const clerk = CLINIC.staff.find(x => x.role === 'registrar')!.cell;
   const inside: [number, number][] = [];
   for (let x = desk.x + 1; x < desk.x + desk.w - 1; x++) for (let y = desk.y + 1; y < desk.y + desk.h - 1; y++) inside.push([x, y]);
   inside.sort((u, v) => Math.hypot(v[0] - clerk[0], v[1] - clerk[1]) - Math.hypot(u[0] - clerk[0], u[1] - clerk[1]));
-  let regText = '';
-  for (const cell of inside.slice(0, 6)) {
-    await ownMap.click({ position: { x: (cell[0] + 0.5) * ownCell, y: (cell[1] + 0.5) * ownCell } });
-    await page.waitForTimeout(300);
-    regText = (await page.getByTestId('map-room').count()) > 0 ? await text(page, 'map-room') : '';
-    if (regText.startsWith('Регистратура')) break;
+  const tapReception = async () => {
+    let shown = '';
+    for (const cell of inside.slice(0, 6)) {
+      await ownMap.click({ position: { x: (cell[0] + 0.5) * ownCell, y: (cell[1] + 0.5) * ownCell } });
+      await page.waitForTimeout(300);
+      shown = (await page.getByTestId('map-room').count()) > 0 ? await text(page, 'map-room') : '';
+      if (shown.startsWith('Регистратура')) break;
+    }
+    return shown;
+  };
+  let regText = await tapReception();
+  // с тревожной жалобой регистратор ведёт сразу к медсестре, и в «Сегодня» регистратуры это не идёт; песочница засеяна
+  // временем запуска, и первым в очереди бывает такой — тогда часы идут, пока регистратура не оформит кого-то по очереди
+  // (так упал прогон 31.10.2026)
+  if (!regText.includes('Сегодня: ')) {
+    await fastClock(page);
+    await runClockUntil(page, async () => (regText = await tapReception()).includes('Сегодня: '));
+    await page.getByTestId('tab-pause').click();
+    regText = await tapReception();
   }
   check(regText.startsWith('Регистратура') && /Сегодня: прошли \d+, ждали в среднем \d+\s*мин\s+Дольше всех — \d+\s*мин/.test(regText),
     `песочница: касание регистратуры — «${regText.replace(/\n/g, ' · ')}»`);
@@ -2112,8 +2126,10 @@ try {
   await page.getByTestId('shift-close-day').click();
   await page.getByTestId('summary-colleagues').waitFor({ timeout: 10_000 });
   const colleagues = await text(page, 'summary-colleagues');
-  check(/вами \d+, врачами [1-9]\d*$/.test(await text(page, 'summary-seen')) && /терапевт\nПринято: [1-9]/.test(colleagues),
-    `нанятый врач, итоги дня: ${await text(page, 'summary-seen')} · ${colleagues.replace(/\n/g, ' · ')}`);
+  // с нанятым врачом: в плитке — все вместе, строкой под плитками — кто сколько (spec 2026-10-premium-polish)
+  check(/^Принято\n\d+ из \d+$/.test(await text(page, 'summary-seen')) && /^Вами — \d+, врачами — [1-9]\d*$/.test(await text(page, 'summary-seen-by'))
+    && /терапевт\nПринято: [1-9]/.test(colleagues),
+    `нанятый врач, итоги дня: ${(await text(page, 'summary-seen')).replace('\n', ' ')} · ${await text(page, 'summary-seen-by')} · ${colleagues.replace(/\n/g, ' · ')}`);
   await page.waitForTimeout(1500); // лист меню «Продолжить» ещё уезжает вниз (веб)
   await page.screenshot({ path: join(OUT, '14-hired-summary.png'), fullPage: true });
   // разбор приёма врача — как ваш: кто вёл, его лечение, как прошёл бы разумный
@@ -4291,7 +4307,7 @@ try {
   await p2.getByTestId('shift-close-day').click();
   await p2.getByTestId('summary-seen').waitFor({ timeout: 10_000 });
   const seen = await text(p2, 'summary-seen');
-  check(/^Принято: \d+ из \d+$/.test(seen), `итоги дня: ${seen}`);
+  check(/^Принято\n\d+ из \d+$/.test(seen), `итоги дня: ${seen.replace('\n', ' ')}`);
   await p2.screenshot({ path: join(OUT, '09-shift-summary.png'), fullPage: true });
   await p2.locator('[data-testid^="case-"]').first().click();
   await p2.getByTestId('visit-truth').waitFor({ timeout: 10_000 });

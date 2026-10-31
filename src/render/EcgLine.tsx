@@ -1,8 +1,11 @@
 // Кривая ЭКГ под названием игры в «Мониторе» (spec 2026-09-own-look, часть 25): ровная линия
 // и один удар — зубец P, комплекс QRS, зубец T. Не бежит и не мигает: вид не торопит. Холст в
 // меню один, поэтому WebGL он держит, а не отдаёт после рисунка, как снимки в списках.
+// На экране загрузки (spec 2026-10-premium-polish) по той же кривой бежит отрезок: `start` и `end` —
+// доли пути, общие значения Reanimated.
 import { Canvas, Path, Skia } from '@shopify/react-native-skia';
 import { useMemo } from 'react';
+import type { SharedValue } from 'react-native-reanimated';
 
 /** Точки кривой в долях: x — ширины, y — вверх от базовой линии в долях высоты. */
 const BEAT: [number, number, 'L' | 'Q', number?, number?][] = [
@@ -21,21 +24,26 @@ const BEAT: [number, number, 'L' | 'Q', number?, number?][] = [
   [1, 0, 'L'],
 ];
 
-export function EcgLine({ width, height, color }: { width: number; height: number; color: string }) {
-  const path = useMemo(() => {
-    const base = height * 0.62;
-    const y = (up: number) => base - up * height;
-    const p = Skia.Path.Make();
-    p.moveTo(0, base);
-    for (const [x, up, kind, cx, cup] of BEAT) {
-      if (kind === 'Q') p.quadTo((cx ?? x) * width, y(cup ?? 0), x * width, y(up));
-      else p.lineTo(x * width, y(up));
-    }
-    return p;
-  }, [width, height]);
+/** Путь кривой в холсте `width` × `height`: базовая линия — на 0,62 высоты. */
+export function ecgPath(width: number, height: number) {
+  const base = height * 0.62;
+  const y = (up: number) => base - up * height;
+  const p = Skia.PathBuilder.Make();
+  p.moveTo(0, base);
+  for (const [x, up, kind, cx, cup] of BEAT) {
+    if (kind === 'Q') p.quadTo((cx ?? x) * width, y(cup ?? 0), x * width, y(up));
+    else p.lineTo(x * width, y(up));
+  }
+  return p.detach();
+}
+
+export function EcgLine({ width, height, color, start, end, strokeWidth = 2 }: {
+  width: number; height: number; color: string; start?: SharedValue<number>; end?: SharedValue<number>; strokeWidth?: number;
+}) {
+  const path = useMemo(() => ecgPath(width, height), [width, height]);
   return (
     <Canvas style={{ width, height }}>
-      <Path path={path} style="stroke" strokeWidth={2} strokeJoin="round" strokeCap="round" color={color} />
+      <Path path={path} style="stroke" strokeWidth={strokeWidth} strokeJoin="round" strokeCap="round" color={color} start={start ?? 0} end={end ?? 1} />
     </Canvas>
   );
 }

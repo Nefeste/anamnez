@@ -100,20 +100,29 @@ export const shift = {
   toSummary: 'К итогам дня',
   noPatient: 'В кабинете никого',
   summary: {
-    title: (d: number) => `Итоги дня ${d}`,
-    seen: (seen: number, arrived: number) => `Принято: ${seen} из ${arrived}`,
-    // с нанятыми врачами: прежние строки — о ваших приёмах
-    seenAll: (mine: number, theirs: number, arrived: number) => `Принято: ${mine + theirs} из ${arrived} — вами ${mine}, врачами ${theirs}`,
+    // карточка дня (spec 2026-10-premium-polish): «День N закрыт», главные числа — плитками, остальное — строками,
+    // каждое число один раз
+    closed: (d: number) => `День ${d} закрыт`,
+    tileSeen: 'Принято',
+    tileCorrect: 'Верный диагноз',
+    tileConfidence: 'Уверенность идеального врача',
+    tileLeft: 'Ушли, не дождавшись',
+    of: (a: number, b: number) => `${a} из ${b}`,
+    pct: (n: number) => `${n} %`,
+    none: '—',
+    achievementsLabel: 'Достижения дня',
+    // с нанятыми врачами: плитка «Принято» — все вместе, строка — кто сколько; строки о диагнозах и деньгах — о ваших
+    // приёмах
+    seenBy: (mine: number, theirs: number) => `Вами — ${mine}, врачами — ${theirs}`,
+    // верных — в плитке; здесь — остальное
+    verdictRest: (partly: number, wrong: number) => `Диагноз почти верен: ${partly} · неверен: ${wrong}`,
     colleagues: 'Врачи',
     colleague: (name: string, role: string) => `${name}, ${role}`,
     colleagueGone: 'Врач, который больше не работает',
     colleagueLine: (seen: number, correct: number, partly: number, wrong: number, g: Record<string, number>, taken: number) =>
       `Принято: ${seen} · верно: ${correct} · почти: ${partly} · неверно: ${wrong} · оценки A — ${g.A} · B — ${g.B} · C — ${g.C} · D — ${g.D}${taken > 0 ? ` · вы забрали: ${taken}` : ''}`,
-    left: (n: number) => `Ушли, не дождавшись: ${n}`,
     unseen: (n: number) => `Не успели принять: ${n}`,
-    verdicts: (correct: number, partly: number, wrong: number) => `Диагноз верен: ${correct} · почти: ${partly} · неверно: ${wrong}`,
     grades: 'Оценки случаев',
-    confidence: (n: number) => `Уверенность идеального врача в ваших диагнозах: в среднем ${n} из 10`,
     money: (spent: string, rational: string) => `Обследования: ${spent}; разумному врачу хватило бы ${rational}`,
     returns: (planned: number, today: number) => `Вернутся на приём: ${planned} · пришли повторно сегодня: ${today}`,
     moneyNote: 'Деньги пока только для показа: тратить их не на что',

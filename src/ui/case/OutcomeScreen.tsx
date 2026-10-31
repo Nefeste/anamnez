@@ -6,8 +6,9 @@ import { Text } from '../text';
 import { db } from '@/content';
 import { T } from '@/i18n';
 import type { VisitView } from '@/state/caseView';
-import { Button, Card, H, P, Screen } from '@/ui/components';
+import { AchievementLine, Button, Card, H, P, Screen, Urgency } from '@/ui/components';
 import { openArticle } from '@/ui/encyclopedia';
+import { Loading } from '@/ui/Loading';
 import { makeStyles, space, type Theme, useTheme } from '@/ui/theme';
 import type { FooterAction } from './actions';
 
@@ -20,15 +21,7 @@ export function OutcomeScreen({ view, next, back, more }: { view: VisitView | un
   const x = view?.decision;
 
   // приём закрывается (0.5.13): разбор досчитывается в следующих кадрах — пара мгновений на медленном телефоне
-  if (!x && view?.finishing) {
-    return (
-      <Screen>
-        <Card>
-          <P muted testID="visit-finishing">{d.finishing}</P>
-        </Card>
-      </Screen>
-    );
-  }
+  if (!x && view?.finishing) return <Loading caption={d.finishing} testID="visit-finishing" />;
 
   if (!x) {
     return (
@@ -44,7 +37,9 @@ export function OutcomeScreen({ view, next, back, more }: { view: VisitView | un
     <Screen footer={<Button testID={next.testID} title={next.title} onPress={next.run} />}>
       <Card>
         {view.byDoctor ? <P testID="visit-by-doctor">{view.byDoctor}</P> : null}
-        <H>{!x.diagnosis ? t.noDiagnosis : x.verdict === 'correct' ? t.correct : x.verdict === 'partly' ? t.partly : t.wrong}</H>
+        {/* вердикт — штампом цвета итога (spec 2026-10-premium-polish): верно — зелёный, почти — жёлтый, неверно — красный */}
+        <Urgency big testID="visit-verdict" level={x.verdict === 'correct' ? 'green' : x.verdict === 'partly' ? 'yellow' : 'red'}
+          label={!x.diagnosis ? t.noDiagnosis : x.verdict === 'correct' ? t.correct : x.verdict === 'partly' ? t.partly : t.wrong} />
         <P testID="visit-truth">{t.truth(x.truthName)}</P>
         {x.diagnosis ? <P muted>{view.byDoctor ? t.doctorConfidence(x.outOf10) : t.confidence(x.outOf10)}</P> : null}
         <Text style={styles.label}>{t.outcomeLabel}</Text>
@@ -54,7 +49,7 @@ export function OutcomeScreen({ view, next, back, more }: { view: VisitView | un
 
       {view.achievements && (
         <Card testID="visit-achievements">
-          {view.achievements.map(a => <P key={a}>{T.profile.achievementLine(a)}</P>)}
+          {view.achievements.map(a => <AchievementLine key={a} text={T.profile.achievementLine(a)} />)}
         </Card>
       )}
 

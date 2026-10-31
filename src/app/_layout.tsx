@@ -19,6 +19,7 @@ import { saveNow, setStore, timeInParts } from '@/state/session';
 import { loadSettings, setSettingsStore } from '@/state/settings';
 import { rawStore } from '@/state/storage';
 import { installFonts } from '@/ui/fonts';
+import { hideSplash } from '@/ui/splash';
 import { useTheme } from '@/ui/theme';
 
 setStore(rawStore);
@@ -43,6 +44,10 @@ export default function RootLayout() {
   // музыка — когда прочитаны настройки: выключившему её она не заиграет на миг
   useEffect(() => {
     loadSettings().then(startMusic);
+  }, []);
+  // веб: экран собран — страница загрузки гаснет (на телефоне ничего не делает)
+  useEffect(() => {
+    hideSplash();
   }, []);
   // приём — на смене и в «Случае дня»: там музыка тише; справочное её не меняет (0.5.12, отзыв на 0.5.11)
   useEffect(() => {
@@ -72,6 +77,8 @@ export default function RootLayout() {
             headerShadowVisible: false,
             contentStyle: { backgroundColor: t.colors.bg },
             headerBackTitle: T.common.back,
+            // экраны выезжают справа, как в системных приложениях Android (spec 2026-10-premium-polish)
+            animation: 'slide_from_right',
           }}>
           <Stack.Screen name="index" options={{ title: T.common.appName, headerShown: false }} />
           <Stack.Screen name="settings" options={{ title: T.settings.title }} />

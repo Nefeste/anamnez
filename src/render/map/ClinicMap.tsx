@@ -48,6 +48,13 @@ const LAMP_OFF = '#A7B1B3';
 const BOOK_COVER = '#3F6F8F';
 const BOOK_PAGE = '#FBF8F0';
 const CLEAR = 'rgba(0, 0, 0, 0)';
+/**
+ * Тень предметов и людей (spec 2026-10-premium-polish): тот же атлас цветом тени (`srcIn` — силуэт), сдвинутый к
+ * юго-востоку, как от верхнего света; один лишний слой на предметы и один на людей.
+ */
+export const SHADOW = Skia.Color('rgba(28, 43, 45, 0.22)');
+export const SHADOW_DX = CELL_PX * 0.07;
+export const SHADOW_DY = CELL_PX * 0.1;
 /** Где аппараты светятся: на ЭКГ, рентгене и КТ — пока пациент у аппарата, в лаборатории — пока идут анализы. */
 const GLOWING: ReadonlySet<string> = new Set(['ecg', 'xray', 'lab', 'or', 'ultrasound', 'emergency', 'icu', 'ct', 'ricu', 'mri', 'endoscopy']);
 
@@ -110,6 +117,8 @@ export function ClinicMap({ layout, people, signs = [], width, active, label, se
   const turned = useMemo(() => objectTurns(layout.grid, layout.objects, layout.staff.map(s => s.cell)), [layout]);
   const objectSprites = useMemo(() => layout.objects.map(o => atlas.objectRect(o.kind)), [layout, atlas]);
   const objectXforms = useMemo(() => layout.objects.map((o, i) => Skia.RSXform(...cellXform(angleOf(turned[i]), o.x, o.y, px))), [layout, turned, px]);
+  const objectShadows = useMemo(() => layout.objects.map(() => SHADOW), [layout]);
+  const personShadows = useMemo(() => Array.from({ length: CAPACITY }, () => SHADOW), []);
   // аппараты, которые светятся: рисунок «работает» — поверх обычного, свой слой атласа
   const machines = useMemo(() => {
     const owners = objectRooms(layout.rooms, layout.objects);
@@ -282,11 +291,17 @@ export function ClinicMap({ layout, people, signs = [], width, active, label, se
                 style="stroke" strokeWidth={CELL_PX * 0.2} color={t.colors.mark} />
             )}
             {machines.map((m, i) => <Glow key={i} x={m.x} y={m.y} color={m.color} room={m.room} on={on} />)}
+            <Group transform={[{ translateX: SHADOW_DX }, { translateY: SHADOW_DY }]}>
+              <Atlas image={atlas.image} sprites={objectSprites} transforms={objectXforms} colors={objectShadows} colorBlendMode="srcIn" />
+            </Group>
             <Atlas image={atlas.image} sprites={objectSprites} transforms={objectXforms} />
             {machines.length > 0 && <Atlas image={atlas.image} sprites={litSprites} transforms={litXforms} />}
             {lamps.map(l => <Lamp key={l.room} x={l.x} y={l.y} room={l.room} on={on} />)}
             <Circle cx={ringX} cy={ringY} r={CELL_PX * 0.72} color={t.colors.markSoft} />
             <Circle cx={ringX} cy={ringY} r={CELL_PX * 0.72} style="stroke" strokeWidth={CELL_PX * 0.12} color={t.colors.mark} />
+            <Group transform={[{ translateX: SHADOW_DX }, { translateY: SHADOW_DY }]}>
+              <Atlas image={atlas.image} sprites={bodySprites} transforms={personXforms} colors={personShadows} colorBlendMode="srcIn" />
+            </Group>
             <Atlas image={atlas.image} sprites={bodySprites} transforms={personXforms} />
             <Atlas image={atlas.image} sprites={headSprites} transforms={personXforms} />
             {stalls.length > 0 && <Atlas image={atlas.image} sprites={stallSprites} transforms={stallXforms} />}

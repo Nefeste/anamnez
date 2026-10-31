@@ -22,10 +22,12 @@ import {
 } from '@/state/session';
 import { CaseRow } from '@/ui/case/CaseRow';
 import { gradeColor } from '@/ui/case/OutcomeScreen';
-import { Button, Card, Chip, Chips, H, Lamp, P, Screen, Sheet, Tabs, Urgency } from '@/ui/components';
+import { StatTile } from '@/ui/charts';
+import { AchievementLine, Button, Card, Chip, Chips, H, Lamp, P, Screen, Sheet, Tabs, Urgency } from '@/ui/components';
 import { FirstMeasures } from '@/ui/case/FirstMeasures';
 import { DifficultyChoice } from '@/ui/difficulty';
 import { ChapterCard, MentorTip } from '@/ui/campaign';
+import { Loading } from '@/ui/Loading';
 import { NewSandbox } from '@/ui/sandbox';
 import { makeStyles, space, touch, useTheme } from '@/ui/theme';
 
@@ -38,15 +40,7 @@ export default function ShiftScreen() {
   // в паузах игры — разбор приёмов заранее: и нанятых врачей, пока идут часы (0.5.11, NFR-PRF-1)
   usePrepareIdle();
 
-  if (v.status === 'idle' || v.status === 'loading') {
-    return (
-      <Screen>
-        <Card>
-          <P muted>{T.shift.loading}</P>
-        </Card>
-      </Screen>
-    );
-  }
+  if (v.status === 'idle' || v.status === 'loading') return <Loading caption={T.shift.loading} />;
   if (v.status === 'none') {
     if (v.mode === 'sandbox') return <NewSandbox onStart={opts => startSandbox(opts)} />;
     if (v.mode === 'campaign') return <NoCareer />;
@@ -113,8 +107,12 @@ function Evening({ v }: { v: ShiftView }) {
   const b = useBuild();
   const c = useCampaign();
   const { width } = useWindowDimensions();
+  const styles = useStyles();
+  const theme = useTheme();
+  // план — в рамке, как карта смены: в «Мониторе» — зелёной, как снимок на негатоскопе
+  const frame = theme.shape.ruled ? 1 : 2;
   if (!b) return null;
-  const w = Math.min(width, 640) - 32;
+  const w = Math.min(width, 640) - 32 - 2 * frame;
   const h = Math.round((w * b.plan.grid.h) / b.plan.grid.w);
   const labels = b.plan.rooms.map(r => ({ id: r.id, name: db.rooms[r.type].name.ru, x: r.x, y: r.y, w: r.w, h: r.h, door: r.door, down: b.problems[r.id].length > 0 }));
   return (
@@ -127,7 +125,9 @@ function Evening({ v }: { v: ShiftView }) {
         <P muted testID="sandbox-reputation">{t.reputation(b.reputation)}</P>
         <P muted testID="sandbox-level">{b.level}</P>
       </Card>
-      <BuildMap testID="sandbox-plan" plan={b.plan} width={w} height={h} tool="look" labels={labels} label={t.mapLabel} still onGhostMove={() => undefined} onStroke={() => undefined} onTapCell={() => undefined} />
+      <View style={[styles.planFrame, { borderWidth: frame }]}>
+        <BuildMap testID="sandbox-plan" plan={b.plan} width={w} height={h} tool="look" labels={labels} label={t.mapLabel} still onGhostMove={() => undefined} onStroke={() => undefined} onTapCell={() => undefined} />
+      </View>
       <OwnHospital />
     </Screen>
   );
@@ -541,21 +541,12 @@ function Summary({ v }: { v: ShiftView }) {
     <Screen footer={footer}>
       {s.scenario && <ScenarioCard r={s.scenario} />}
       {s.single && <SingleCard r={s.single} />}
-      <Card>
-        <H>{t.title(s.day)}</H>
-        <P testID="summary-seen">{s.theirs > 0 ? t.seenAll(s.seen, s.theirs, s.arrived) : t.seen(s.seen, s.arrived)}</P>
-        {s.left > 0 && <P>{t.left(s.left)}</P>}
-        {s.unseen > 0 && <P>{t.unseen(s.unseen)}</P>}
-        {s.seen > 0 && <P>{t.verdicts(s.correct, s.partly, s.wrong)}</P>}
-        {s.confidence !== undefined && <P>{t.confidence(s.confidence)}</P>}
-        {s.seen > 0 && <P>{t.money(T.common.rub(s.money), T.common.rub(s.rationalMoney))}</P>}
-        <P>{t.returns(s.returnsPlanned, s.returnsToday)}</P>
-        {!own && <P muted>{t.moneyNote}</P>}
-      </Card>
+      <DayCard s={s} own={own} />
 
       {s.achievements.length > 0 && (
         <Card testID="summary-achievements">
-          {s.achievements.map(a => <P key={a}>{T.profile.achievementLine(a)}</P>)}
+          <Text style={styles.label}>{t.achievementsLabel}</Text>
+          {s.achievements.map(a => <AchievementLine key={a} text={T.profile.achievementLine(a)} />)}
         </Card>
       )}
 
@@ -648,6 +639,37 @@ function Summary({ v }: { v: ShiftView }) {
         }} />
       </Sheet>
     </Screen>
+  );
+}
+
+/**
+ * Карточка дня (spec 2026-10-premium-polish): «День N закрыт», главные числа плитками — принято, верных диагнозов,
+ * уверенность идеального врача, ушли не дождавшись — и строками только то, чего в плитках нет: кто сколько принял с
+ * нанятыми врачами, не успели принять, почти верные и неверные диагнозы, обследования против разумного врача, повторные.
+ * Каждое число — один раз.
+ */
+function DayCard({ s, own }: { s: SummaryView; own: boolean }) {
+  const styles = useStyles();
+  const t = T.shift.summary;
+  const correct = s.seen > 0 ? `${s.correct} · ${t.pct(Math.round((100 * s.correct) / s.seen))}` : t.none;
+  const confidence = s.confidence === undefined ? t.none : t.of(s.confidence, 10);
+  return (
+    <View testID="summary-day" style={styles.hero}>
+      <Text accessibilityRole="header" style={styles.heroTitle}>{t.closed(s.day)}</Text>
+      {/* четыре плитки по две в ряд */}
+      <View style={styles.tiles}>
+        <StatTile testID="summary-seen" label={t.tileSeen} value={t.of(s.seen + s.theirs, s.arrived)} />
+        <StatTile label={t.tileCorrect} value={correct} />
+        <StatTile label={t.tileConfidence} value={confidence} />
+        <StatTile label={t.tileLeft} value={String(s.left)} />
+      </View>
+      {s.theirs > 0 && <P testID="summary-seen-by">{t.seenBy(s.seen, s.theirs)}</P>}
+      {s.unseen > 0 && <P>{t.unseen(s.unseen)}</P>}
+      {s.seen > 0 && <P>{t.verdictRest(s.partly, s.wrong)}</P>}
+      {s.seen > 0 && <P>{t.money(T.common.rub(s.money), T.common.rub(s.rationalMoney))}</P>}
+      <P>{t.returns(s.returnsPlanned, s.returnsToday)}</P>
+      {!own && <P muted>{t.moneyNote}</P>}
+    </View>
   );
 }
 
@@ -784,6 +806,7 @@ const useStyles = makeStyles(t => ({
   // скорости — рядом с часами, если помещаются все четыре подписи; иначе — строкой ниже
   speeds: { flex: 1, minWidth: t.shape.ruled ? 220 : 250 },
   mapFrame: { margin: space.s, borderColor: t.shape.ruled ? t.colors.edge : t.colors.accent, borderRadius: t.shape.ruled ? 2 : 8, overflow: 'hidden' },
+  planFrame: { alignSelf: 'center', borderColor: t.shape.ruled ? t.colors.edge : t.colors.accent, borderRadius: t.shape.ruled ? 2 : 8, overflow: 'hidden' },
   itemDisabled: { opacity: 0.6 },
   pressed: { opacity: 0.8 },
   itemHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.s },
@@ -806,4 +829,11 @@ const useStyles = makeStyles(t => ({
   lineTitle: { flexShrink: 1, fontSize: 15, lineHeight: 22, color: t.colors.ink },
   lineSum: { fontSize: 15, lineHeight: 22, fontWeight: '600', color: t.colors.ink, fontVariant: ['tabular-nums'] },
   logRed: { color: t.colors.red, fontWeight: '600' },
+  // карточка дня: в «Медкарте» — лист с двойной чертой снизу под заголовком, в «Мониторе» — панель с полосой цвета ЭКГ
+  hero: {
+    backgroundColor: t.colors.card, borderRadius: t.shape.card, borderWidth: 1, borderColor: t.colors.edge, padding: space.l, gap: space.m,
+    borderTopWidth: t.shape.ruled ? 1 : 4, borderTopColor: t.shape.ruled ? t.colors.edge : t.colors.accent,
+  },
+  heroTitle: { fontFamily: t.fonts.title, fontSize: 24, lineHeight: 30, fontWeight: '700', color: t.colors.ink },
+  tiles: { flexDirection: 'row', flexWrap: 'wrap', gap: space.s },
 }));

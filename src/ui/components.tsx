@@ -4,6 +4,8 @@
 // и зелёная кнопка.
 import { type ReactNode, type Ref, useImperativeHandle, useRef, useState } from 'react';
 import { type LayoutChangeEvent, Modal, Pressable, ScrollView, StyleSheet, View, type ViewStyle } from 'react-native';
+import { Icon } from './Icon';
+import { AWARD_ICON } from './iconShapes';
 import type { ItemIcon } from './itemIcons';
 import { RowIcon, type RowState } from './RowIcon';
 import { Text } from './text';
@@ -133,16 +135,36 @@ export function Ruled({ children, testID }: { children: ReactNode; testID?: stri
  * Срочность — цветом, словом и значком (подпись из T.shift.triage): в «Медкарте» — штамп
  * контуром, чуть повёрнутый; в «Мониторе» — плашка контуром.
  */
-export function Urgency({ level, label }: { level: 'red' | 'yellow' | 'green'; label: string }) {
+export function Urgency({ level, label, big, testID }: { level: 'red' | 'yellow' | 'green'; label: string; big?: boolean; testID?: string }) {
   const styles = useStyles();
   const t = useTheme();
   const ink = level === 'yellow' ? t.colors.yellowText : t.colors[level];
-  return <Text style={[styles.urgency, { borderColor: t.colors[level], color: ink }, t.shape.stamp && styles.urgencyStamp]}>{label}</Text>;
+  // `big` — штамп вердикта на итоге приёма (spec 2026-10-premium-polish): крупнее, прописными
+  return (
+    <Text testID={testID} style={[styles.urgency, big && styles.urgencyBig, { borderColor: t.colors[level], color: ink }, t.shape.stamp && styles.urgencyStamp]}>
+      {label}
+    </Text>
+  );
 }
 
 export function H({ children }: { children: ReactNode }) {
   const styles = useStyles();
   return <Text style={styles.h}>{children}</Text>;
+}
+
+/**
+ * Полученное достижение — строкой с медалью на ленте слева (spec 2026-10-premium-polish): на итоге приёма и дня; та же
+ * медаль зелёным — у полученных в списке достижений профиля.
+ */
+export function AchievementLine({ text }: { text: string }) {
+  const styles = useStyles();
+  const t = useTheme();
+  return (
+    <View style={styles.achievement}>
+      <Icon shape={AWARD_ICON} size={24} color={t.colors.green} />
+      <Text style={[styles.p, styles.fill]}>{text}</Text>
+    </View>
+  );
 }
 
 export function P({ children, muted, testID }: { children: ReactNode; muted?: boolean; testID?: string }) {
@@ -396,7 +418,9 @@ const useStyles = makeStyles(t => ({
   marginLine: { position: 'absolute', top: 0, bottom: 0, left: MARGIN, width: 1.5, backgroundColor: t.colors.margin },
   urgency: { flexShrink: 0, fontSize: 12, fontWeight: '700', borderWidth: 1.5, borderRadius: t.shape.stamp ? 3 : 10, paddingHorizontal: space.s - 1, paddingVertical: 1, overflow: 'hidden' },
   urgencyStamp: { transform: [{ rotate: '-2deg' }] },
+  urgencyBig: { alignSelf: 'flex-start', fontSize: 17, lineHeight: 22, letterSpacing: 1.5, textTransform: 'uppercase', borderWidth: 2, paddingHorizontal: space.m, paddingVertical: space.xs },
   h: { fontFamily: t.fonts.title, fontSize: 19, fontWeight: '700', color: t.colors.ink },
+  achievement: { flexDirection: 'row', alignItems: 'center', gap: space.m },
   p: { fontSize: 15, lineHeight: 21, color: t.colors.ink },
   muted: { color: t.colors.muted },
   btn: { minHeight: touch, backgroundColor: t.colors.accent, borderRadius: t.shape.radius, paddingHorizontal: space.l, paddingVertical: space.m, justifyContent: 'center' },

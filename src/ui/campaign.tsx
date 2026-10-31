@@ -8,14 +8,17 @@ import { Portrait } from '@/render/Portrait';
 import { type CampaignView, type MissionView, moveToNextChapter, readLetter, seenTip, tipsOff, useTip } from '@/state/session';
 import type { TipScreen } from '@/state/tips';
 import { Button, Card, H, P, Sheet } from './components';
+import { Icon } from './Icon';
+import { AWARD_ICON } from './iconShapes';
 import { Text } from './text';
-import { makeStyles, space } from './theme';
+import { makeStyles, space, useTheme } from './theme';
 
 /** Первые слова письма — подпись под именем в списке. */
 const opening = (text: string) => (text.length > 60 ? `${text.slice(0, 60).replace(/\s+\S*$/, '')}…` : text);
 
 export function ChapterCard({ c }: { c: CampaignView }) {
   const styles = useStyles();
+  const theme = useTheme();
   const t = T.campaign;
   const [open, setOpen] = useState<string>();
   const [move, setMove] = useState(false);
@@ -27,10 +30,19 @@ export function ChapterCard({ c }: { c: CampaignView }) {
   };
   return (
     <>
+      {/* глава пройдена (spec 2026-10-premium-polish) — своей карточкой над главой */}
+      {c.after && (
+        <View testID="chapter-done" style={styles.done}>
+          <View style={styles.doneHead}>
+            <Icon shape={AWARD_ICON} size={26} color={theme.colors.green} />
+            <Text accessibilityRole="header" style={styles.doneTitle}>{t.completeTitle}</Text>
+          </View>
+          <P testID="chapter-complete">{c.after}</P>
+        </View>
+      )}
       <Card testID="chapter">
         <H>{c.title}</H>
         <P muted testID="chapter-day">{`${c.place} · ${t.day(c.day)}`}</P>
-        {c.after && <P testID="chapter-complete">{c.after}</P>}
         {next && (
           <Button
             testID="chapter-next"
@@ -135,6 +147,10 @@ function Mission({ m }: { m: MissionView }) {
 
 const useStyles = makeStyles(t => ({
   label: { fontSize: 13, fontWeight: '700', letterSpacing: 1.2, color: t.colors.muted, textTransform: 'uppercase', marginTop: space.s },
+  // «Глава пройдена»: карточка мягкого цвета выделения с отметкой
+  done: { backgroundColor: t.colors.accentSoft, borderRadius: t.shape.card, borderWidth: 1, borderColor: t.colors.accent, padding: space.l, gap: space.s },
+  doneHead: { flexDirection: 'row', alignItems: 'center', gap: space.m },
+  doneTitle: { fontFamily: t.fonts.title, fontSize: 21, lineHeight: 26, fontWeight: '700', color: t.colors.ink },
   head: { flexDirection: 'row', alignItems: 'center', gap: space.m },
   headText: { flex: 1, gap: 2 },
   mission: { flexDirection: 'row', gap: space.s, alignItems: 'flex-start', paddingVertical: 2 },

@@ -6,15 +6,15 @@ import { BAND, BAND_CELL, MARK, RUSHNIK_HEIGHT, type Stitch, stitchesOf, THREADS
 
 /** Крестики — две диагонали в клетке с полями; нить кумача и ели — отдельными путями. */
 function paths(stitches: readonly Stitch[], cell: number, inset: number) {
-  const out = { x: Skia.Path.Make(), o: Skia.Path.Make() };
+  const b = { x: Skia.PathBuilder.Make(), o: Skia.PathBuilder.Make() };
   for (const { col, row, thread } of stitches) {
     const [x0, y0, x1, y1] = [col * cell + inset, row * cell + inset, (col + 1) * cell - inset, (row + 1) * cell - inset];
-    out[thread].moveTo(x0, y0);
-    out[thread].lineTo(x1, y1);
-    out[thread].moveTo(x1, y0);
-    out[thread].lineTo(x0, y1);
+    b[thread].moveTo(x0, y0);
+    b[thread].lineTo(x1, y1);
+    b[thread].moveTo(x1, y0);
+    b[thread].lineTo(x0, y1);
   }
-  return out;
+  return { x: b.x.detach(), o: b.o.detach() };
 }
 
 /** Знак студии: `size` — сторона квадрата, px; меньше 16 крестики сливаются (брендбук). */

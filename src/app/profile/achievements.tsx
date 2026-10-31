@@ -6,11 +6,14 @@ import { T } from '@/i18n';
 import { loadProfile, useProfile } from '@/state/profile';
 import { achievementCount, achievementGroups } from '@/state/profileView';
 import { Card, P, Screen } from '@/ui/components';
+import { Icon } from '@/ui/Icon';
+import { AWARD_ICON } from '@/ui/iconShapes';
 import { Text } from '@/ui/text';
-import { makeStyles, space } from '@/ui/theme';
+import { makeStyles, space, useTheme } from '@/ui/theme';
 
 export default function AchievementsScreen() {
   const styles = useStyles();
+  const theme = useTheme();
   const p = useProfile();
   useEffect(() => {
     loadProfile();
@@ -28,7 +31,10 @@ export default function AchievementsScreen() {
           <Text style={styles.label}>{g.title}</Text>
           {g.items.map(a => (
             <View key={a.id} testID={`achievement-${a.id}`} style={styles.row}>
-              <Text style={[styles.mark, a.got !== undefined && styles.markGot]}>{a.got !== undefined ? '✓' : '○'}</Text>
+              {/* полученное — медаль, как на итоге приёма и дня (spec 2026-10-premium-polish); остальные — пустой кружок */}
+              {a.got !== undefined
+                ? <View style={styles.medal}><Icon shape={AWARD_ICON} size={20} color={theme.colors.green} /></View>
+                : <Text style={styles.mark}>○</Text>}
               <View style={styles.text}>
                 <Text style={[styles.name, a.got === undefined && styles.nameMuted]}>{a.name}</Text>
                 <Text style={styles.meta}>{a.got ?? a.need}</Text>
@@ -45,7 +51,7 @@ const useStyles = makeStyles(t => ({
   label: { fontSize: 13, fontWeight: '700', letterSpacing: 1.2, color: t.colors.muted, textTransform: 'uppercase', marginBottom: space.xs },
   row: { flexDirection: 'row', gap: space.s, alignItems: 'flex-start', paddingVertical: 4 },
   mark: { width: 20, fontSize: 16, lineHeight: 22, color: t.colors.muted },
-  markGot: { color: t.colors.green, fontWeight: '700' },
+  medal: { width: 20, height: 22, justifyContent: 'center' },
   text: { flex: 1, gap: 1 },
   name: { fontSize: 15, lineHeight: 21, fontWeight: '600', color: t.colors.ink },
   nameMuted: { fontWeight: '400' },

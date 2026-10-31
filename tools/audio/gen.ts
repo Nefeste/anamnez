@@ -187,10 +187,86 @@ export function makeAmbient(): Float32Array {
   return normalize(out, 0.35);
 }
 
+/** Отрезок шума с огибающей: `attack` и `release` — секунды; полоса — фильтром снаружи. */
+function burst(out: Float32Array, at: number, sec: number, src: Float32Array, gain: number, attack: number, release: number) {
+  const s0 = Math.round(at * RATE);
+  const n = Math.round(sec * RATE);
+  for (let i = 0; i < n && s0 + i < out.length; i++) {
+    const t = i / RATE;
+    const env = Math.min(1, t / attack, (sec - t) / release);
+    out[s0 + i] += gain * Math.max(0, env) * src[(s0 + i) % src.length];
+  }
+}
+
+/**
+ * Манжета тонометра (spec 2026-10-premium-polish, осмотр у постели): пять качков груши — шипящие толчки воздуха, каждый
+ * чуть выше тоном, — и спуск воздуха шипением, которое затихает. Шум — из генератора игры, в полосе телефона.
+ */
+export function makeCuff(): Float32Array {
+  const out = len(1.7);
+  const air = biquad(biquad(noise(out.length, 'cuff'), 'hp', 700, 0.8), 'lp', 2600, 0.8);
+  for (let k = 0; k < 5; k++) burst(out, 0.05 + k * 0.2, 0.11, air, 0.9 + k * 0.05, 0.015, 0.05);
+  // спуск — длинный, тише, к концу глуше
+  const s0 = Math.round(1.08 * RATE);
+  const hiss = biquad(air, 'lp', 1500, 0.7);
+  for (let i = 0; s0 + i < out.length; i++) {
+    const t = i / RATE;
+    out[s0 + i] += 0.5 * Math.min(1, t / 0.03) * Math.exp(-t / 0.28) * hiss[s0 + i];
+  }
+  return fadeOut(normalize(out, 0.42), 0.05);
+}
+
+/** Писк монитора (ЭКГ, приборы у постели): три коротких мягких тона пульсоксиметра — до третьей октавы, с обертоном. */
+export function makeMonitor(): Float32Array {
+  const out = len(1.15);
+  for (const at of [0, 0.42, 0.84]) {
+    const s0 = Math.round(at * RATE), n = Math.round(0.09 * RATE);
+    for (let i = 0; i < n && s0 + i < out.length; i++) {
+      const t = i / RATE;
+      const env = Math.max(0, Math.min(1, t / 0.008, (0.09 - t) / 0.03));
+      out[s0 + i] += env * (Math.sin(2 * Math.PI * 1046.5 * t) + 0.25 * Math.sin(2 * Math.PI * 2093 * t));
+    }
+  }
+  return normalize(out, 0.36);
+}
+
+/**
+ * Экспозиция рентгена (снимок, КТ, МРТ): гул трубки — тон 400 Гц с обертонами и дрожью 100 Гц, полсекунды, — и щелчок
+ * реле в конце.
+ */
+export function makeXray(): Float32Array {
+  const out = len(0.75);
+  const n = Math.round(0.52 * RATE);
+  for (let i = 0; i < n; i++) {
+    const t = i / RATE;
+    const env = Math.max(0, Math.min(1, t / 0.03, (0.52 - t) / 0.06));
+    const am = 1 - 0.35 * (0.5 + 0.5 * Math.sin(2 * Math.PI * 100 * t));
+    let v = 0;
+    [1, 0.5, 0.3, 0.18].forEach((amp, k) => (v += amp * Math.sin(2 * Math.PI * 400 * (k + 1) * t)));
+    out[i] += env * am * v;
+  }
+  const click = biquad(noise(Math.round(0.03 * RATE), 'xray'), 'hp', 1800, 0.7);
+  burst(out, 0.56, 0.025, click, 2.2, 0.001, 0.015);
+  return normalize(out, 0.4);
+}
+
+/** Пробирки (анализы в лабораторию, экспресс-тесты): два стеклянных «тинь» разной высоты, затухают быстро. */
+export function makeTubes(): Float32Array {
+  const out = len(0.6);
+  const GLASS: [number, number, number][] = [[1, 1, 0.05], [2.7, 0.35, 0.025], [5.1, 0.15, 0.012]];
+  note(out, 0.02, 2400, 0.8, GLASS, 0.001);
+  note(out, 0.17, 3050, 0.65, GLASS, 0.001);
+  return fadeOut(normalize(out, 0.34), 0.05);
+}
+
 if (import.meta.main) {
   writeFileSync(join(OUT, 'tap.wav'), wav(makeTap()));
   writeFileSync(join(OUT, 'ready.wav'), wav(makeReady()));
   writeFileSync(join(OUT, 'urgent.wav'), wav(makeUrgent()));
   writeFileSync(join(OUT, 'alarm.wav'), wav(makeAlarm()));
+  writeFileSync(join(OUT, 'cuff.wav'), wav(makeCuff()));
+  writeFileSync(join(OUT, 'monitor.wav'), wav(makeMonitor()));
+  writeFileSync(join(OUT, 'xray.wav'), wav(makeXray()));
+  writeFileSync(join(OUT, 'tubes.wav'), wav(makeTubes()));
   console.log('звуки записаны в assets/audio; фон амбулатории — tools/audio/clinic.ts');
 }
