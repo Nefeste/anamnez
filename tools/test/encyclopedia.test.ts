@@ -123,6 +123,8 @@ describe('энциклопедия', () => {
     expect(sectionView(db, 'tips').groups.flatMap(g => g.items.map(i => i.id))).toEqual([
       'tip.start', 'tip.examine', 'tip.strep', 'tip.decision', 'tip.urine', 'tip.review', 'tip.handover', 'tip.appendicitis', 'tip.rounds',
       'tip.stemi', 'tip.stroke', 'tip.forehead', 'tip.sepsis', 'tip.mallory', 'tip.dehydration',
+      // часть 100: «Метки в очереди» — последней по порядку, хоть и из главы 1
+      'tip.labels',
     ]);
     const strep = article(db, 'tip.strep')!;
     expect([strep.section, strep.subtitle]).toEqual(['tips', 'Подсказка · Анна Сергеевна']);

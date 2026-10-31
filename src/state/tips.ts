@@ -29,9 +29,11 @@ export interface TipMoment {
    */
   tested: number;
   decided: boolean;
+  /** в кабинете, а в очереди ждёт кто-то срочнее (часть 100) */
+  urgent?: boolean;
 }
 
-export function momentOf(db: ContentDb, screen: TipScreen, p: ShiftPatient): TipMoment {
+export function momentOf(db: ContentDb, screen: TipScreen, p: ShiftPatient, urgent = false): TipMoment {
   const kinds = p.done.map(id => db.exams[id]?.kind);
   return {
     screen,
@@ -41,11 +43,12 @@ export function momentOf(db: ContentDb, screen: TipScreen, p: ShiftPatient): Tip
     examined: kinds.filter(k => k === 'physical').length,
     tested: kinds.filter(k => k !== undefined && k !== 'ask' && k !== 'physical' && k !== 'bedside').length,
     decided: !!p.closed,
+    ...(urgent ? { urgent: true } : {}),
   };
 }
 
 /** Момент одной строкой: пока он тот же, вторая подсказка подряд не показывается. */
-export const momentKey = (m: TipMoment) => `${m.screen}:${m.patient}:${m.asked}:${m.examined}:${m.tested}`;
+export const momentKey = (m: TipMoment) => `${m.screen}:${m.patient}:${m.asked}:${m.examined}:${m.tested}${m.urgent ? ':urgent' : ''}`;
 
 /**
  * К месту ли подсказка: карта открылась, а врач ещё не спрашивал и не осматривал; задал два
@@ -70,6 +73,9 @@ export function tipFits(t: Tip, m: TipMoment): boolean {
       return m.screen === 'queue';
     case 'rounds':
       return m.screen === 'rounds';
+    // ждёт кто-то срочнее (часть 100) — пока врач в карте и приём не закрыт
+    case 'urgent':
+      return card && m.urgent === true;
   }
 }
 

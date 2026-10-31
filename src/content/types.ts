@@ -1088,6 +1088,11 @@ export interface Chapter {
    * заданного получает первый пришедший того же вида
    */
   tutorialGap?: number;
+  /**
+   * спокойный учебный день (часть 100, spec 2026-10-publish-ready; ответ владельца на вопрос 67): половина потока, а
+   * пришедшие сами и записанные, кроме заданных, — только с жалобами «в порядке очереди». Глава 1
+   */
+  tutorialCalm?: true;
   missions: Mission[];
   letters: Letter[];
 }
@@ -1096,7 +1101,8 @@ export interface Chapter {
  * Когда подсказка наставника к месту: открылась карта, после первых вопросов, у пациента с
  * болезнью, «Решение», разбор; ждёт сортировки привезённый скорой, обход (часть 34б).
  */
-export type TipWhen = 'caseOpen' | 'afterAsk' | 'decision' | 'review' | 'ambulance' | 'rounds' | { condition: Id };
+/** `urgent` (часть 100): в карте пациента, когда ждёт кто-то срочнее — полоса «Попросить подождать» */
+export type TipWhen = 'caseOpen' | 'afterAsk' | 'decision' | 'review' | 'ambulance' | 'rounds' | 'urgent' | { condition: Id };
 
 /** Подсказка наставника в первую смену главы (spec 2026-09-campaign). */
 export interface Tip {

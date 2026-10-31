@@ -1750,7 +1750,8 @@ function tipMoment(screen: TipScreen): TipMoment | undefined {
         ? inpatientsOf(s)[0]?.id
         : s.current;
   const p = id ? s.patients[id] : undefined;
-  return p ? momentOf(db, screen, p) : undefined;
+  // ждёт кто-то срочнее (часть 100): подсказка про метки и «Попросить подождать»
+  return p ? momentOf(db, screen, p, screen === 'card' && p.status === 'inRoom' && moreUrgent(db, s, p)) : undefined;
 }
 
 function buildTipView(screen: TipScreen): TipView | undefined {

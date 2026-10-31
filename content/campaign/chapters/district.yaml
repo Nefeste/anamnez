@@ -11,6 +11,9 @@ department: dept.therapy
 build: [room.reception, room.waiting, room.office, room.triage, room.procedure, room.lab, room.ecg, room.toilet]
 # первая смена — с наставником: первые трое пришедших — с этими болезнями, подсказки по одной
 tutorial: [cond.arvi, cond.strep_pharyngitis, cond.cystitis]
+# спокойный учебный день (часть 100, ответ владельца на вопрос 67): половина потока, у незаданных — без «нужно скоро»;
+# замер новичка — bun tools/sim/first-day.ts
+tutorialCalm: true
 missions:
   - id: seen
     main: true

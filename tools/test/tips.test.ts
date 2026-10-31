@@ -163,3 +163,21 @@ describe('подсказки в карьере', () => {
     expect(tipView('card')).toBeUndefined();
   });
 });
+
+// часть 100 (spec 2026-10-publish-ready): в учебный день главы 1 — подсказка про метки, когда ждёт кто-то срочнее
+describe('подсказка «Метки в очереди»', () => {
+  const moment = (urgent: boolean): TipMoment => ({
+    screen: 'card', patient: '1-01', condition: 'cond.arvi', asked: 1, examined: 0, tested: 0, decided: false, ...(urgent ? { urgent: true } : {}),
+  });
+  const others = Object.keys(db.tips).filter(id => id !== 'tip.labels');
+
+  test('ждёт кто-то срочнее — подсказка; не ждёт — нет', () => {
+    expect(tipFor(db, { shown: others }, moment(true), undefined, 'chapter.district')?.id).toBe('tip.labels');
+    expect(tipFor(db, { shown: others }, moment(false), undefined, 'chapter.district')).toBeUndefined();
+  });
+
+  test('только в главе 1; срочность — новый момент для «Понятно»', () => {
+    expect(tipFor(db, { shown: others }, moment(true), undefined, 'chapter.hospital')).toBeUndefined();
+    expect(momentKey(moment(true))).not.toBe(momentKey(moment(false)));
+  });
+});

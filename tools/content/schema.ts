@@ -958,6 +958,8 @@ export const chapterSchema = z.strictObject({
   tutorialRoom: z.union([roomId, z.array(roomId).min(1)]).optional(),
   /** промежуток обучения, минут (часть 46в): заданные пациенты — по порядку списка, не разом */
   tutorialGap: z.number().int().min(1).max(240).optional(),
+  /** спокойный учебный день (часть 100): половина потока, у незаданных — только жалобы «в порядке очереди» */
+  tutorialCalm: z.literal(true).optional(),
   missions: z.array(missionSchema).min(1),
   letters: z.array(letterSchema).default([]),
 });
@@ -976,7 +978,7 @@ export const tipSchema = z.strictObject({
   name: text,
   // ambulance — ждёт сортировки привезённый скорой; rounds — обход (часть 34б)
   when: z.union([
-    z.literal('caseOpen'), z.literal('afterAsk'), z.literal('decision'), z.literal('review'), z.literal('ambulance'), z.literal('rounds'),
+    z.literal('caseOpen'), z.literal('afterAsk'), z.literal('decision'), z.literal('review'), z.literal('ambulance'), z.literal('rounds'), z.literal('urgent'),
     z.strictObject({ condition: z.string().regex(/^cond\.[a-z0-9_]+$/) }),
   ]),
   text,
