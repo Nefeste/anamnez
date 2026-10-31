@@ -130,11 +130,19 @@
     <noscript>
       You need to enable JavaScript to run this app.
     </noscript>
-    <div id="splash" role="progressbar" aria-busy="true" aria-label="%WEB_TITLE%">
-      <div class="name">%WEB_TITLE%</div>
+    <div id="splash" role="progressbar" aria-busy="true">
+      <div class="name"></div>
       <div class="rule"></div>
       <div class="bar"><div class="fill"><div class="sweep"></div></div></div>
     </div>
+    <!-- название — из <title> (имя игры из app.json): сборка подставляет его только туда -->
+    <script>
+      (function () {
+        var s = document.getElementById('splash');
+        s.setAttribute('aria-label', document.title);
+        s.querySelector('.name').textContent = document.title;
+      })();
+    </script>
     <!-- The root element for your Expo app. -->
     <div id="root"></div>
   </body>

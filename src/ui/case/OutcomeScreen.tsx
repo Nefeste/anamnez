@@ -6,7 +6,7 @@ import { Text } from '../text';
 import { db } from '@/content';
 import { T } from '@/i18n';
 import type { VisitView } from '@/state/caseView';
-import { Button, Card, H, P, Screen, Urgency } from '@/ui/components';
+import { AchievementLine, Button, Card, H, P, Screen, Urgency } from '@/ui/components';
 import { openArticle } from '@/ui/encyclopedia';
 import { Loading } from '@/ui/Loading';
 import { makeStyles, space, type Theme, useTheme } from '@/ui/theme';
@@ -49,7 +49,7 @@ export function OutcomeScreen({ view, next, back, more }: { view: VisitView | un
 
       {view.achievements && (
         <Card testID="visit-achievements">
-          {view.achievements.map(a => <P key={a}>{T.profile.achievementLine(a)}</P>)}
+          {view.achievements.map(a => <AchievementLine key={a} text={T.profile.achievementLine(a)} />)}
         </Card>
       )}
 

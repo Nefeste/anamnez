@@ -23,7 +23,7 @@ import {
 import { CaseRow } from '@/ui/case/CaseRow';
 import { gradeColor } from '@/ui/case/OutcomeScreen';
 import { StatTile } from '@/ui/charts';
-import { Button, Card, Chip, Chips, H, Lamp, P, Screen, Sheet, Tabs, Urgency } from '@/ui/components';
+import { AchievementLine, Button, Card, Chip, Chips, H, Lamp, P, Screen, Sheet, Tabs, Urgency } from '@/ui/components';
 import { FirstMeasures } from '@/ui/case/FirstMeasures';
 import { DifficultyChoice } from '@/ui/difficulty';
 import { ChapterCard, MentorTip } from '@/ui/campaign';
@@ -107,8 +107,12 @@ function Evening({ v }: { v: ShiftView }) {
   const b = useBuild();
   const c = useCampaign();
   const { width } = useWindowDimensions();
+  const styles = useStyles();
+  const theme = useTheme();
+  // план — в рамке, как карта смены: в «Мониторе» — зелёной, как снимок на негатоскопе
+  const frame = theme.shape.ruled ? 1 : 2;
   if (!b) return null;
-  const w = Math.min(width, 640) - 32;
+  const w = Math.min(width, 640) - 32 - 2 * frame;
   const h = Math.round((w * b.plan.grid.h) / b.plan.grid.w);
   const labels = b.plan.rooms.map(r => ({ id: r.id, name: db.rooms[r.type].name.ru, x: r.x, y: r.y, w: r.w, h: r.h, door: r.door, down: b.problems[r.id].length > 0 }));
   return (
@@ -121,7 +125,9 @@ function Evening({ v }: { v: ShiftView }) {
         <P muted testID="sandbox-reputation">{t.reputation(b.reputation)}</P>
         <P muted testID="sandbox-level">{b.level}</P>
       </Card>
-      <BuildMap testID="sandbox-plan" plan={b.plan} width={w} height={h} tool="look" labels={labels} label={t.mapLabel} still onGhostMove={() => undefined} onStroke={() => undefined} onTapCell={() => undefined} />
+      <View style={[styles.planFrame, { borderWidth: frame }]}>
+        <BuildMap testID="sandbox-plan" plan={b.plan} width={w} height={h} tool="look" labels={labels} label={t.mapLabel} still onGhostMove={() => undefined} onStroke={() => undefined} onTapCell={() => undefined} />
+      </View>
       <OwnHospital />
     </Screen>
   );
@@ -551,7 +557,7 @@ function Summary({ v }: { v: ShiftView }) {
       {s.achievements.length > 0 && (
         <Card testID="summary-achievements">
           <Text style={styles.label}>{t.achievementsLabel}</Text>
-          {s.achievements.map(a => <Achievement key={a} name={a} />)}
+          {s.achievements.map(a => <AchievementLine key={a} text={T.profile.achievementLine(a)} />)}
         </Card>
       )}
 
@@ -659,22 +665,13 @@ function DayHero({ s }: { s: SummaryView }) {
   return (
     <View testID="summary-hero" style={styles.hero}>
       <Text accessibilityRole="header" style={styles.heroTitle}>{t.closed(s.day)}</Text>
+      {/* четыре плитки по две в ряд: принято, верный диагноз, уверенность, ушли не дождавшись */}
       <View style={styles.tiles}>
         <StatTile label={t.tileSeen} value={t.of(s.seen + s.theirs, s.arrived)} />
         <StatTile label={t.tileCorrect} value={correct} />
         <StatTile label={t.tileConfidence} value={confidence} />
+        <StatTile label={t.tileLeft} value={String(s.left)} />
       </View>
-    </View>
-  );
-}
-
-/** Достижение дня — с отметкой слева; текст — тот же, что на итоге приёма и в профиле. */
-function Achievement({ name }: { name: string }) {
-  const styles = useStyles();
-  return (
-    <View style={styles.achievement}>
-      <View style={styles.medal} aria-hidden importantForAccessibility="no"><View style={styles.medalDot} /></View>
-      <P>{T.profile.achievementLine(name)}</P>
     </View>
   );
 }
@@ -812,6 +809,7 @@ const useStyles = makeStyles(t => ({
   // скорости — рядом с часами, если помещаются все четыре подписи; иначе — строкой ниже
   speeds: { flex: 1, minWidth: t.shape.ruled ? 220 : 250 },
   mapFrame: { margin: space.s, borderColor: t.shape.ruled ? t.colors.edge : t.colors.accent, borderRadius: t.shape.ruled ? 2 : 8, overflow: 'hidden' },
+  planFrame: { alignSelf: 'center', borderColor: t.shape.ruled ? t.colors.edge : t.colors.accent, borderRadius: t.shape.ruled ? 2 : 8, overflow: 'hidden' },
   itemDisabled: { opacity: 0.6 },
   pressed: { opacity: 0.8 },
   itemHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: space.s },
@@ -841,7 +839,4 @@ const useStyles = makeStyles(t => ({
   },
   heroTitle: { fontFamily: t.fonts.title, fontSize: 24, lineHeight: 30, fontWeight: '700', color: t.colors.ink },
   tiles: { flexDirection: 'row', flexWrap: 'wrap', gap: space.s },
-  achievement: { flexDirection: 'row', alignItems: 'center', gap: space.m },
-  medal: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: t.colors.accent, alignItems: 'center', justifyContent: 'center' },
-  medalDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: t.colors.accent },
 }));

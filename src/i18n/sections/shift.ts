@@ -106,6 +106,7 @@ export const shift = {
     tileSeen: 'Принято',
     tileCorrect: 'Верный диагноз',
     tileConfidence: 'Уверенность',
+    tileLeft: 'Ушли, не дождавшись',
     of: (a: number, b: number) => `${a} из ${b}`,
     pct: (n: number) => `${n} %`,
     none: '—',

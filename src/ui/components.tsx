@@ -150,6 +150,17 @@ export function H({ children }: { children: ReactNode }) {
   return <Text style={styles.h}>{children}</Text>;
 }
 
+/** Полученное достижение — строкой с медалью слева (spec 2026-10-premium-polish): на итоге приёма и дня. */
+export function AchievementLine({ text }: { text: string }) {
+  const styles = useStyles();
+  return (
+    <View style={styles.achievement}>
+      <View style={styles.medal} aria-hidden importantForAccessibility="no"><View style={styles.medalDot} /></View>
+      <Text style={[styles.p, styles.fill]}>{text}</Text>
+    </View>
+  );
+}
+
 export function P({ children, muted, testID }: { children: ReactNode; muted?: boolean; testID?: string }) {
   const styles = useStyles();
   return <Text testID={testID} style={[styles.p, muted && styles.muted]}>{children}</Text>;
@@ -403,6 +414,9 @@ const useStyles = makeStyles(t => ({
   urgencyStamp: { transform: [{ rotate: '-2deg' }] },
   urgencyBig: { alignSelf: 'flex-start', fontSize: 17, lineHeight: 22, letterSpacing: 1.5, textTransform: 'uppercase', borderWidth: 2, paddingHorizontal: space.m, paddingVertical: space.xs },
   h: { fontFamily: t.fonts.title, fontSize: 19, fontWeight: '700', color: t.colors.ink },
+  achievement: { flexDirection: 'row', alignItems: 'center', gap: space.m },
+  medal: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: t.colors.accent, alignItems: 'center', justifyContent: 'center' },
+  medalDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: t.colors.accent },
   p: { fontSize: 15, lineHeight: 21, color: t.colors.ink },
   muted: { color: t.colors.muted },
   btn: { minHeight: touch, backgroundColor: t.colors.accent, borderRadius: t.shape.radius, paddingHorizontal: space.l, paddingVertical: space.m, justifyContent: 'center' },
