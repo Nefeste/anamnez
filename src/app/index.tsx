@@ -15,6 +15,7 @@ import { SCENARIO_DAYS } from '@/engine/shift/scenarios';
 import { type GameSummary, loadShift, savedGames } from '@/state/session';
 import { loadSettings, updateSettings, useSettings } from '@/state/settings';
 import { Button, Card, H, P, Screen } from '@/ui/components';
+import { Loading } from '@/ui/Loading';
 import { Badge, Cover, DailyCard, MenuFoot, type MenuItem, MenuList, MenuSpacer } from '@/ui/menu';
 import { DoctorForm } from '@/ui/profile';
 
@@ -47,11 +48,11 @@ export default function Menu() {
     }, []),
   );
 
-  // настройки и профиль читаются доли секунды: не мелькать меню перед оговоркой
-  if (settings.status !== 'ready' || profile.status !== 'ready') return <Screen bare>{null}</Screen>;
+  // настройки и профиль читаются доли секунды: не мелькать меню перед оговоркой; пока ждём — экран загрузки
+  if (settings.status !== 'ready' || profile.status !== 'ready') return <Loading bare />;
   if (!settings.disclaimerAccepted) return <Disclaimer />;
   if (!profile.doctor) return <DoctorForm bare submitTitle={T.profile.start} onSubmit={setDoctor} />;
-  if (games === null) return <Screen bare>{null}</Screen>;
+  if (games === null) return <Loading bare />;
 
   const t = T.menu;
   const last = games[0];
@@ -104,9 +105,11 @@ export function continueHint(g: GameSummary): string {
   return T.menu.continueHint(g.day, g.clock, T.shift.difficulty[g.difficulty]);
 }
 
+/** Оговорка первого запуска — под обложкой игры: название видно с первого экрана (spec 2026-10-premium-polish). */
 function Disclaimer() {
   return (
     <Screen bare footer={<Button testID="accept-disclaimer" title={T.common.understood} onPress={() => updateSettings({ disclaimerAccepted: true })} />}>
+      <Cover version={VERSION} />
       <Card>
         <H>{T.common.disclaimerTitle}</H>
         <P>{T.common.disclaimer}</P>

@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="%LANG_ISO_CODE%">
+  <head>
+    <meta charset="utf-8" />
+    <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>%WEB_TITLE%</title>
+    <!-- The `react-native-web` recommended style reset: https://necolas.github.io/react-native-web/docs/setup/#root-element -->
+    <style id="expo-reset">
+      /* These styles make the body full-height */
+      html,
+      body {
+        height: 100%;
+      }
+      /* These styles disable body scrolling if you are using <ScrollView> */
+      body {
+        overflow: hidden;
+      }
+      /* These styles make the root element full-height */
+      #root {
+        display: flex;
+        height: 100%;
+        flex: 1;
+      }
+    </style>
+    <!--
+      Страница загрузки веб-сборки (spec 2026-10-premium-polish): название игры и полоса хода, пока грузятся код и
+      CanvasKit. Цвета — тем «Медкарты» и «Монитора» (src/ui/palette.ts), по теме браузера. Ход двигает index.web.ts
+      (data-stage), прячет корневой экран (src/ui/splash.web.ts). Кодом, без картинок.
+    -->
+    <style id="anamnez-splash">
+      #splash {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 18px;
+        background: #f3eee3;
+        color: #1f2d3d;
+        font-family: 'PT Serif', Georgia, serif;
+        z-index: 10;
+        transition: opacity 0.35s ease-out;
+      }
+      #splash[data-done='1'] {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #splash .name {
+        font-size: 30px;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        margin-left: 0.18em;
+      }
+      #splash .rule {
+        width: 180px;
+        height: 4px;
+        border-top: 2px solid rgba(43, 78, 140, 0.55);
+        border-bottom: 1px solid rgba(43, 78, 140, 0.55);
+      }
+      #splash .bar {
+        position: relative;
+        width: 180px;
+        height: 4px;
+        border-radius: 2px;
+        background: rgba(43, 78, 140, 0.18);
+        overflow: hidden;
+      }
+      #splash .fill {
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 15%;
+        border-radius: 2px;
+        background: #2b4e8c;
+        transition: width 0.4s ease-out;
+      }
+      #splash[data-stage='1'] .fill {
+        width: 55%;
+      }
+      #splash[data-stage='2'] .fill {
+        width: 85%;
+      }
+      #splash[data-stage='3'] .fill {
+        width: 100%;
+      }
+      #splash .sweep {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.55) 50%, rgba(255, 255, 255, 0) 100%);
+        animation: anamnez-sweep 1.4s linear infinite;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #splash .sweep {
+          animation: none;
+        }
+      }
+      @keyframes anamnez-sweep {
+        from {
+          transform: translateX(-100%);
+        }
+        to {
+          transform: translateX(100%);
+        }
+      }
+      @media (prefers-color-scheme: dark) {
+        #splash {
+          background: #0e1a1d;
+          color: #e4f1ee;
+          font-family: 'Golos Text', system-ui, sans-serif;
+        }
+        #splash .rule {
+          border-color: rgba(61, 220, 132, 0.55);
+        }
+        #splash .bar {
+          background: rgba(61, 220, 132, 0.18);
+        }
+        #splash .fill {
+          background: #3ddc84;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <!-- Use static rendering with Expo Router to support running without JavaScript. -->
+    <noscript>
+      You need to enable JavaScript to run this app.
+    </noscript>
+    <div id="splash" role="progressbar" aria-busy="true" aria-label="%WEB_TITLE%">
+      <div class="name">%WEB_TITLE%</div>
+      <div class="rule"></div>
+      <div class="bar"><div class="fill"><div class="sweep"></div></div></div>
+    </div>
+    <!-- The root element for your Expo app. -->
+    <div id="root"></div>
+  </body>
+</html>
