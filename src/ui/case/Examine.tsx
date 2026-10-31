@@ -13,7 +13,7 @@ import { makeStyles, space, touch, useTheme } from '@/ui/theme';
 import { Text } from '../text';
 import { BodyFigure } from './BodyFigure';
 import { ExamRow } from './ExamRow';
-import { BODY_PLACES, type ExamPlace, placeOf, SHELVES } from './places';
+import { BODY_PLACES, type ExamPlace, inPlaceOrder, placeOf, SHELVES } from './places';
 
 const DOT = 28;
 
@@ -115,7 +115,7 @@ export function PlacePanel({ v, place, ids, focus, isOpen, toggle, onExam, expla
   const scroll = useRef<ScrollView>(null);
   // новый ответ — к нему, когда строка разложилась
   const want = useRef<string | null>(null);
-  const here = ids.filter(id => placeOf(id) === place);
+  const here = inPlaceOrder(ids.filter(id => placeOf(id) === place));
   const main = focus ? here.filter(id => focus.has(id) || v.done.includes(id)) : here;
   const rest = focus ? here.filter(id => !main.includes(id)) : [];
   const restKey = `rest:examine:${place}`;

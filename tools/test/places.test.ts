@@ -3,7 +3,7 @@
 import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
 import { BODY_H, BODY_POINTS, BODY_SHAPE, BODY_W } from '../../src/ui/bodyShape';
-import { BODY_PLACES, EXAM_PLACES, SHELVES } from '../../src/ui/case/places';
+import { BODY_PLACES, EXAM_PLACES, inPlaceOrder, SHELVES } from '../../src/ui/case/places';
 
 const examined = Object.values(db.exams).filter(e => e.kind === 'physical' || e.kind === 'bedside');
 
@@ -46,5 +46,25 @@ describe('фигура в «Осмотреть»', () => {
       const { x, y } = BODY_POINTS[p];
       expect({ p, inside: x > 0 && x < BODY_W && y > 0 && y < BODY_H }).toEqual({ p, inside: true });
     }
+  });
+});
+
+// часть 97 (spec 2026-10-publish-ready): у больного с кашлем первым в «Весь больной» стоял неврологический осмотр, а
+// шкала CIWA-Ar — рядом с общим осмотром
+describe('порядок осмотров в панели места', () => {
+  const whole = Object.keys(EXAM_PLACES).filter(id => EXAM_PLACES[id] === 'whole');
+
+  test('«Весь больной»: общий осмотр — первым, шкала — последней', () => {
+    const shuffled = [...whole].reverse();
+    const ordered = inPlaceOrder(shuffled);
+    expect(ordered[0]).toBe('exam.general_exam');
+    expect(ordered.at(-1)).toBe('exam.ciwa');
+    expect([...ordered].sort()).toEqual([...whole].sort());
+  });
+
+  test('не разложенные — после разложенных, в прежнем порядке', () => {
+    expect(inPlaceOrder(['exam.new_b', 'exam.neuro_exam', 'exam.new_a', 'exam.general_exam'])).toEqual([
+      'exam.general_exam', 'exam.neuro_exam', 'exam.new_b', 'exam.new_a',
+    ]);
   });
 });
