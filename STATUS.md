@@ -23,7 +23,7 @@ RuStore и support@gornitsa.games; сверка базы консультант�
 
 - название по ФИПС (классы МКТУ 9 и 41) — PR выпуска 1.0.0 слит, тег стоит; подтвердить проверку для `store/README.md`;
 - RuStore: [карточка с предзаказом](https://www.rustore.ru/catalog/app/games.gornitsa.anamnez) открыта 20.10.2026 —
-  обновить в ней описание и снимки по 0.6.19, ключ API — [`store/README.md`](store/README.md); защита `main` — #127;
+  обновить в ней описание и снимки из `store/`, ключ API — [`store/README.md`](store/README.md); защита `main` — #127;
 - первый APK — через консоль: `anamnez-124.apk` (1.0.0) или 1.1.0 после её тега; звук и плавность — на телефоне;
   после публикации — токен сайта, потом закрыть репозиторий (ADR [0021](docs/adr/0021-private-after-release.md));
 - вопросы — [Issues с меткой `владелец`](https://github.com/Nefeste/anamnez/labels/владелец): 6 и 7 решены 20.10.2026
