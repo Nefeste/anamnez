@@ -43,7 +43,7 @@ describe('звуки', () => {
   const licenses = readFileSync(join(DIR, 'LICENSES.md'), 'utf8');
 
   test('каждый файл — WAV моно 16 бит 22 050 Гц, без перегрузки, со строкой в LICENSES.md', () => {
-    expect(files).toEqual(['alarm.wav', 'ambient.wav', 'arrived.wav', 'phone.wav', 'ready.wav', 'tap.wav', 'urgent.wav']);
+    expect(files).toEqual(['alarm.wav', 'ambient.wav', 'arrived.wav', 'cuff.wav', 'monitor.wav', 'phone.wav', 'ready.wav', 'tap.wav', 'tubes.wav', 'urgent.wav', 'xray.wav']);
     for (const f of files) {
       const { header, x } = read(f);
       expect({ f, ...header }).toEqual({ f, riff: 'RIFF', wave: 'WAVE', pcm: 1, channels: 1, rate: RATE, bits: 16, data: 'data' });
@@ -91,6 +91,43 @@ describe('звуки', () => {
     expect(band(2200, 2500)).toBeGreaterThan(band(9000, 11000) * 1000);
     // на пиках — тише шагов и дверей фона
     expect(peak(x)).toBeLessThan(peak(read('ambient.wav').x));
+  });
+
+  test('приборы и процедуры (spec 2026-10-premium-polish): короче двух секунд, не громче «срочного»; манжета — пять качков и спуск', () => {
+    const urgent = read('urgent.wav').x;
+    for (const f of ['cuff.wav', 'monitor.wav', 'xray.wav', 'tubes.wav']) {
+      const { x } = read(f);
+      expect({ f, short: x.length / RATE < 2 }).toEqual({ f, short: true });
+      expect({ f, quiet: peak(x) <= peak(urgent) }).toEqual({ f, quiet: true });
+    }
+    // манжета: пять толчков по 0,2 с — громкость по 50 мс пять раз поднимается над тишиной до спуска
+    const cuff = read('cuff.wav').x;
+    const h = Math.round(0.05 * RATE);
+    const level = Array.from({ length: Math.floor(cuff.length / h) }, (_, i) => rms(cuff.subarray(i * h, (i + 1) * h)));
+    const top = Math.max(...level.slice(0, 21));
+    const pumps = level.slice(0, 21).map(v => v > top / 4).filter((v, i, a) => v && !a[i - 1]).length;
+    expect(pumps).toBe(5);
+    // монитор: три тона до третьей октавы
+    const mon = read('monitor.wav').x;
+    const beeps = [0, 0.42, 0.84].map(at => tone(mon.subarray(Math.round((at + 0.01) * RATE), Math.round((at + 0.08) * RATE)), 1046.5));
+    const quiet = tone(mon.subarray(Math.round(0.2 * RATE), Math.round(0.3 * RATE)), 1046.5);
+    for (const b of beeps) expect(b).toBeGreaterThan(quiet * 100);
+  });
+
+  test('у обследований — звук прибора: давление — манжета, ЭКГ — монитор, снимок — рентген, анализы — пробирки; расспрос и осмотр молчат', async () => {
+    const { examSoundOf } = await import('../../src/ui/case/sounds');
+    const { db } = await import('../../src/content');
+    expect(examSoundOf(db.exams['exam.vitals'])).toBe('cuff');
+    expect(examSoundOf(db.exams['exam.ecg'])).toBe('monitor');
+    expect(examSoundOf(db.exams['exam.xray_chest'])).toBe('xray');
+    expect(examSoundOf(db.exams['exam.ask_complaints'])).toBeUndefined();
+    expect(examSoundOf(db.exams['exam.lung_auscultation'])).toBeUndefined();
+    const sounds = new Set(Object.values(db.exams).map(e => examSoundOf(e)));
+    expect(sounds.has('tubes')).toBe(true);
+    for (const e of Object.values(db.exams)) {
+      const s = examSoundOf(e);
+      expect({ id: e.id, silent: s === undefined, talkOrHands: e.kind === 'ask' || e.kind === 'physical' }).toEqual({ id: e.id, silent: s === undefined, talkOrHands: s === undefined });
+    }
   });
 
   test('приход пациента — короче секунды с половиной и тише сигналов «готов» и «срочный»', () => {

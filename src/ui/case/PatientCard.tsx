@@ -27,7 +27,14 @@ import { lineMark } from './marks';
 import type { ExamPlace } from './places';
 import { longestOf, partsOf, Referral } from './Referral';
 import { ResultPicture } from './ResultPicture';
+import { examSound } from './sounds';
 import { Questions, Talk } from './Talk';
+
+/** Звук прибора или процедуры по обследованию (spec 2026-10-premium-polish); у расспроса и осмотра руками его нет. */
+function sound(exam: string) {
+  const s = examSound(exam);
+  if (s) play(s);
+}
 
 type Where = 'known' | 'list';
 /** Часть «Карты» (вопрос 46): журнал результатов или доска гипотез. */
@@ -195,6 +202,7 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
   // касание — вибрацией: звук касания на телефоне не понравился (отзыв на 0.0.2)
   const doExam = (id: string) => {
     buzz('tap');
+    sound(id);
     follow(`done:${id}`);
     actions.act(id);
   };
@@ -206,6 +214,7 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
   const send = () => {
     if (marked.length === 0 || over) return;
     buzz('tap');
+    sound(marked[0]);
     follow(`done:${marked[0]}`);
     setMarked([]);
     if (actions.actAll) actions.actAll(marked);
@@ -401,6 +410,7 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
           <PlacePanel v={v} place={place} ids={groups.examine} focus={focus} isOpen={isOpen} toggle={toggle}
             onExam={id => {
               buzz('tap');
+              sound(id);
               actions.act(id);
             }}
             explain={explain} onClose={() => pickPlace(place)} />

@@ -14,6 +14,10 @@
 | `music-menu.mp3` | «Vaporware» (Calm Piano 1), The Cynic Project — <https://opengameart.org/content/calm-piano-1-vaporware>, файл `003_Vaporware_2.mp3`; перекодирован `tools/audio/music.mjs` | CC0 |
 | `music-shift.mp3` | «Contemplation», Joth — <https://opengameart.org/content/contemplation-0>, файл `Contemplation.mp3`; перекодирован `tools/audio/music.mjs` | CC0 |
 | `alarm.wav` | синтезирован `tools/audio/gen.ts` | собственность проекта |
+| `cuff.wav` | синтезирован `tools/audio/gen.ts` (манжета тонометра: качки груши и спуск воздуха, шум из генератора игры) | собственность проекта |
+| `monitor.wav` | синтезирован `tools/audio/gen.ts` (три тона пульсоксиметра) | собственность проекта |
+| `xray.wav` | синтезирован `tools/audio/gen.ts` (гул трубки и щелчок реле) | собственность проекта |
+| `tubes.wav` | синтезирован `tools/audio/gen.ts` (два стеклянных тона) | собственность проекта |
 | `phone.wav` | собран `tools/audio/clinic.ts` из записи Cloud16 Films «Automatic Electric (AE) Telephone Ringing» <https://archive.org/details/yellow-ae-80>, файл `Yellow_AE80.mp3`: звонок укорочен до секунды, три звонка через 5 с, глуше (с 0.6.6) | CC BY 4.0 |
 
 ## Наборы CC0

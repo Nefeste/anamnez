@@ -3,14 +3,19 @@
 // Громкость, фон и вибрация — из настроек игрока. Приход пациента, фон амбулатории и музыка (часть 62) — из
 // наборов CC0, далёкие голоса в фоне и телефон регистратуры (0.6.6) — из записей под CC BY, авторы — в «Лицензиях»
 // (ADR 0019; tools/audio/clinic.ts, tools/audio/music.mjs, assets/audio/LICENSES.md). Тревога монитора при остановке
-// сердца (0.5.7) — синтезирована, как касание и сигналы (tools/audio/gen.ts).
+// сердца (0.5.7) — синтезирована, как касание и сигналы (tools/audio/gen.ts). Приборы и процедуры (spec
+// 2026-10-premium-polish): манжета, монитор, рентген, пробирки — тоже синтез; какой звук у какого обследования —
+// src/ui/case/sounds.ts.
 import { type AudioPlayer, createAudioPlayer } from 'expo-audio';
 import * as Haptics from 'expo-haptics';
 import { AppState, Platform } from 'react-native';
 import { settings } from '@/state/settings';
 import type { MusicScene } from './scene';
 
-export type SoundName = 'tap' | 'ready' | 'urgent' | 'arrived' | 'alarm';
+export type SoundName = 'tap' | 'ready' | 'urgent' | 'arrived' | 'alarm' | DeviceSound;
+/** Звуки приборов и процедур: играют по действию врача, тише сигналов. */
+export type DeviceSound = 'cuff' | 'monitor' | 'xray' | 'tubes';
+const DEVICES: readonly DeviceSound[] = ['cuff', 'monitor', 'xray', 'tubes'];
 /** Звуки фона: петля амбулатории и телефон регистратуры, что звонит в ней изредка. */
 type Background = 'ambient' | 'phone';
 
@@ -22,11 +27,15 @@ const SOURCES: Record<SoundName | Background, number> = {
   alarm: require('../../assets/audio/alarm.wav'),
   ambient: require('../../assets/audio/ambient.wav'),
   phone: require('../../assets/audio/phone.wav'),
+  cuff: require('../../assets/audio/cuff.wav'),
+  monitor: require('../../assets/audio/monitor.wav'),
+  xray: require('../../assets/audio/xray.wav'),
+  tubes: require('../../assets/audio/tubes.wav'),
 };
 
 const players: Partial<Record<SoundName | Background, AudioPlayer>> = {};
-// приход пациента — тише сигналов: он частый и ничего не требует
-const volume = { ui: 0.6, events: 0.9, arrived: 0.6, ambient: 0.25 };
+// приход пациента — тише сигналов: он частый и ничего не требует; приборы — ещё тише: звучат на каждое действие
+const volume = { ui: 0.6, events: 0.9, arrived: 0.6, device: 0.5, ambient: 0.25 };
 
 function player(name: SoundName | Background): AudioPlayer {
   let p = players[name];
@@ -41,7 +50,8 @@ export function play(name: SoundName) {
   const level = settings().sound;
   if (level === 0) return;
   const p = player(name);
-  p.volume = (name === 'tap' ? volume.ui : name === 'arrived' ? volume.arrived : volume.events) * level;
+  const base = name === 'tap' ? volume.ui : name === 'arrived' ? volume.arrived : (DEVICES as readonly string[]).includes(name) ? volume.device : volume.events;
+  p.volume = base * level;
   p.seekTo(0).catch(() => undefined);
   p.play();
 }
