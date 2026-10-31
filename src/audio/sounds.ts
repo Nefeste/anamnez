@@ -66,7 +66,7 @@ let ambientWanted = false;
  */
 export function setAmbient(on: boolean) {
   ambientWanted = on;
-  applyAmbient(AppState.currentState === 'active');
+  applyAmbient(AppState.currentState === 'active', true);
 }
 
 /**
@@ -88,23 +88,49 @@ function ringLater([from, to]: [number, number]) {
   }, from + Math.random() * (to - from));
 }
 
-function applyAmbient(active: boolean) {
+/** Фон затихает и нарастает (часть 98, spec 2026-10-publish-ready): ушли со смены в кабинет — без обрыва. */
+let ambientFade: ReturnType<typeof setInterval> | null = null;
+
+/** Фон: экран сменился — плавно, за `FADE_MS`, как музыка; игру свернули или развернули — сразу. */
+function applyAmbient(active: boolean, smooth = false) {
   if (Platform.OS === 'web') return;
+  if (ambientFade) {
+    clearInterval(ambientFade);
+    ambientFade = null;
+  }
   const s = settings();
   const audible = ambientWanted && active && s.ambience && s.sound > 0;
   if (!audible && !players.ambient) return;
   const p = player('ambient');
   p.loop = true;
-  p.volume = volume.ambient * s.sound;
+  const target = audible ? volume.ambient * s.sound : 0;
   if (audible) {
-    p.play();
     if (!phoneTimer) ringLater(PHONE_FIRST_MS);
   } else {
-    p.pause();
     if (phoneTimer) clearTimeout(phoneTimer);
     phoneTimer = null;
     players.phone?.pause();
   }
+  if (!smooth) {
+    p.volume = target;
+    if (audible) p.play();
+    else p.pause();
+    return;
+  }
+  const from = p.playing ? p.volume : 0;
+  if (audible && !p.playing) {
+    p.volume = 0;
+    p.play();
+  }
+  const t0 = Date.now();
+  ambientFade = setInterval(() => {
+    const x = Math.min(1, (Date.now() - t0) / FADE_MS);
+    p.volume = from + (target - from) * x;
+    if (x < 1) return;
+    if (ambientFade) clearInterval(ambientFade);
+    ambientFade = null;
+    if (!audible) p.pause();
+  }, FADE_STEP_MS);
 }
 
 export type { MusicScene } from './scene';

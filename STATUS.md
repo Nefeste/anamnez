@@ -3,7 +3,7 @@
 Не длиннее 30 строк; правится в том же PR, что меняет версию, этап или вопросы владельцу
 ([устав, `docs/04-process.md`](https://github.com/Nefeste/gornitsa/blob/main/docs/04-process.md)).
 
-**Версия:** 1.1.1, приём понятнее — `versionCode` 142, база 84, [`README.md`](README.md). Выпущена
+**Версия:** 1.1.2, вид на узком экране — `versionCode` 143, база 84, [`README.md`](README.md). Выпущена
 [1.0.0](https://github.com/Nefeste/anamnez/releases/tag/v1.0.0) (31.10.2026); у v0.6.4, v0.6.6 и v0.6.15 APK нет — упал сценарий.
 
 **Этап:** 7 — выход в магазины ([дорожная карта](docs/07-roadmap.md)): 0.5.x — музыка, «Практикант», ложные находки,

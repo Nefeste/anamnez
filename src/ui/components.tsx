@@ -287,12 +287,16 @@ function SheetBody({ onClose, closeTitle, children, testID }: SheetProps) {
  */
 const TAB_SLOP = { top: space.xs, bottom: space.xs };
 
-export function Tabs<K extends string>({ items, value, onChange, testPrefix = 'tab', folder }: { items: { key: K; title: string }[]; value: K; onChange: (k: K) => void; testPrefix?: string; folder?: boolean }) {
+export function Tabs<K extends string>({ items, value, onChange, testPrefix = 'tab', folder, twoRows }: {
+  items: { key: K; title: string }[]; value: K; onChange: (k: K) => void; testPrefix?: string; folder?: boolean;
+  /** по две вкладки в ряд: длинные подписи не режутся на узком экране (часть 98) */
+  twoRows?: boolean;
+}) {
   const styles = useStyles();
   const t = useTheme();
   const tabbed = folder && t.shape.folderTabs;
   return (
-    <View style={tabbed ? styles.folders : styles.tabs} accessibilityRole="tablist">
+    <View style={tabbed ? styles.folders : [styles.tabs, twoRows && styles.tabsWrap]} accessibilityRole="tablist">
       {items.map(({ key, title }) => {
         const on = key === value;
         return (
@@ -303,7 +307,7 @@ export function Tabs<K extends string>({ items, value, onChange, testPrefix = 't
             aria-selected={on}
             hitSlop={TAB_SLOP}
             onPress={() => onChange(key)}
-            style={({ pressed }) => (tabbed ? [styles.folder, on && styles.folderOn, pressed && styles.btnPressed] : [styles.tab, on && styles.tabOn, pressed && styles.btnPressed])}>
+            style={({ pressed }) => (tabbed ? [styles.folder, on && styles.folderOn, pressed && styles.btnPressed] : [styles.tab, twoRows && styles.tabHalf, on && styles.tabOn, pressed && styles.btnPressed])}>
             <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={[styles.tabText, on && (tabbed ? styles.folderTextOn : styles.tabTextOn)]}>{title}</Text>
           </Pressable>
         );
@@ -448,6 +452,9 @@ const useStyles = makeStyles(t => ({
     : { flexDirection: 'row', backgroundColor: t.colors.card, borderRadius: t.shape.radius, borderWidth: 1, borderColor: t.colors.edge, padding: space.xs, gap: space.xs },
   tab: { flex: 1, minHeight: touch - 2 * space.xs, borderRadius: Math.max(2, t.shape.radius - space.xs), alignItems: 'center', justifyContent: 'center', paddingHorizontal: space.xs },
   tabOn: { backgroundColor: t.colors.accent },
+  // по две в ряд: каждая — около половины, остаток делят поровну
+  tabsWrap: { flexWrap: 'wrap' },
+  tabHalf: { flexBasis: '45%' },
   tabText: { fontSize: 15, fontWeight: '700', color: t.shape.stamp ? t.colors.accent : t.colors.muted },
   tabTextOn: { color: t.colors.onAccent },
   // закладки картотеки: выбранная — цвета листа и сливается с ним
