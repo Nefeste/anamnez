@@ -370,6 +370,16 @@
      "path": "node_modules/expo-router"
     },
     {
+     "name": "expo-splash-screen",
+     "version": "57.0.10",
+     "license": "MIT",
+     "holder": "Copyright (c) 2015-present 650 Industries, Inc. (aka Expo)",
+     "texts": [
+      "e0b5e770"
+     ],
+     "path": "node_modules/expo-splash-screen"
+    },
+    {
      "name": "expo-status-bar",
      "version": "57.0.1",
      "license": "MIT",
