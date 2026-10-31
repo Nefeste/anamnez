@@ -13,6 +13,7 @@ import { scheduleOnRN } from 'react-native-worklets';
 import type { Cell } from '@/content/types';
 import type { Plan } from '@/engine/hospital/build';
 import { useTheme } from '@/ui/theme';
+import { SHADOW, SHADOW_DX, SHADOW_DY } from './ClinicMap';
 import { CELL_PX, recordFloor, recordGridLines } from './floor';
 import { doorOnTop, roomLabel } from './labels';
 import { PLAN_MUTED } from './metrics';
@@ -111,6 +112,8 @@ export function BuildMap({ plan, width, height, tool, ghost, selected, labels, l
   const turned = useMemo(() => objectTurns(plan.grid, plan.objects, plan.rooms.flatMap(r => Object.values(r.staff))), [plan]);
   const objectSprites = useMemo(() => plan.objects.map(o => atlas.objectRect(o.kind)), [plan, atlas]);
   const objectXforms = useMemo(() => plan.objects.map((o, i) => Skia.RSXform(...cellXform(angleOf(turned[i]), o.x, o.y, px))), [plan, turned, px]);
+  // тени предметов (spec 2026-10-premium-polish) — как на карте смены
+  const objectShadows = useMemo(() => plan.objects.map(() => SHADOW), [plan]);
   const zoom = useSharedValue(fit);
   const tx = useSharedValue((width - plotW * fit) / 2);
   const ty = useSharedValue((height - plotH * fit) / 2);
@@ -274,6 +277,9 @@ export function BuildMap({ plan, width, height, tool, ghost, selected, labels, l
           <Group transform={transform}>
             <Picture picture={floor} />
             <Picture picture={lines} />
+            <Group transform={[{ translateX: SHADOW_DX }, { translateY: SHADOW_DY }]}>
+              <Atlas image={atlas.image} sprites={objectSprites} transforms={objectXforms} colors={objectShadows} colorBlendMode="srcIn" />
+            </Group>
             <Atlas image={atlas.image} sprites={objectSprites} transforms={objectXforms} />
             {chosen && (
               <Rect x={(chosen.x + 0.5) * CELL_PX} y={(chosen.y + 0.5) * CELL_PX} width={(chosen.w - 1) * CELL_PX} height={(chosen.h - 1) * CELL_PX} style="stroke" strokeWidth={2.5} color={t.colors.mark} />

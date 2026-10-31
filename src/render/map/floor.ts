@@ -3,7 +3,10 @@
 // 22): стена — тёмная полоса по середине стеновых клеток, по обе стороны — пол того, что за
 // ней; дверь — проём со створкой и дугой открывания; наружная стена толще. Пол и стены —
 // прямоугольниками, подряд одного цвета — одним: запись проигрывается на каждом кадре.
-import { PaintStyle, Skia, type SkPaint, type SkPicture } from '@shopify/react-native-skia';
+// Свет (spec 2026-10-premium-polish): у стен — полоска затенения на полу, в помещениях — слабые
+// блики потолочных ламп; это тоже часть записи, по одному прямоугольнику с градиентом на отрезок
+// стены и по кругу на лампу — кадр не дорожает.
+import { PaintStyle, Skia, type SkPaint, type SkPicture, TileMode } from '@shopify/react-native-skia';
 import { CELL, type Grid, type RoomType } from '@/engine/hospital/grid';
 import { CELL_PX, CORRIDOR, OUTSIDE, ROOM_TINT, WALL_IN, WALL_OUT } from './metrics';
 
@@ -17,6 +20,16 @@ const LEAF = '#5E6D72';
 const MAT = '#8A8272';
 /** Длина створки — доля клетки: проём — клетка. */
 const LEAF_LEN = 0.92;
+/**
+ * Затенение у стены: от полосы стены на пол, доля клетки; гаснет к краю. Не дальше 0,2 клетки от
+ * полосы — там пол ещё своего цвета (его проверяет mapdraw.test).
+ */
+export const SHADE_W = 0.16;
+const SHADE = 'rgba(28, 43, 45, 0.18)';
+const SHADE_CLEAR = 'rgba(28, 43, 45, 0)';
+/** Блик потолочной лампы: светлое пятно в середине помещения, гаснет к стенам. */
+const LAMP_LIGHT = 'rgba(255, 255, 255, 0.16)';
+const LAMP_CLEAR = 'rgba(255, 255, 255, 0)';
 
 /** Помещения — из плана стройки (`room.lab`) или прежней записи (`lab`): оттенок один. */
 type FloorRoom = { type: string; x: number; y: number; w: number; h: number };
@@ -152,6 +165,26 @@ export function recordFloor(layout: { grid: Grid; rooms: readonly FloorRoom[]; e
     }
   }
 
+  // блики потолочных ламп: в середине пола помещения, по длинной стороне — несколько; круг не
+  // шире пола, к его краю гаснет — у стены пол своего цвета
+  for (const r of rooms) {
+    const iw = r.w - 2;
+    const ih = r.h - 2;
+    if (iw < 1 || ih < 1) continue;
+    const radius = Math.min(iw, ih) / 2;
+    const along = iw >= ih ? iw : ih;
+    const n = Math.max(1, Math.round(along / (2 * radius + 1)));
+    for (let k = 0; k < n; k++) {
+      const u = (k + 0.5) / n;
+      const cx = iw >= ih ? r.x + 1 + u * iw : r.x + 1 + iw / 2;
+      const cy = iw >= ih ? r.y + 1 + ih / 2 : r.y + 1 + u * ih;
+      const glow = Skia.Paint();
+      glow.setAntiAlias(true);
+      glow.setShader(Skia.Shader.MakeRadialGradient({ x: cx * S, y: cy * S }, radius * S, [Skia.Color(LAMP_LIGHT), Skia.Color(LAMP_CLEAR)], null, TileMode.Clamp));
+      c.drawCircle(cx * S, cy * S, radius * S, glow);
+    }
+  }
+
   // стена — полоса по середине клеток, отрезками от середины до середины соседней стены и до
   // косяка двери; подряд одной толщины — одним прямоугольником. У наружной стены (рядом улица)
   // полоса толще; отрезок между толстой и тонкой — по тонкой; конец у стены продлён на
@@ -186,6 +219,29 @@ export function recordFloor(layout: { grid: Grid; rooms: readonly FloorRoom[]; e
     }
     flush();
   };
+  // затенение у стены — по обе стороны полосы, градиентом от полосы на пол; рисуется до полос,
+  // и там, где отрезки пересекаются, полоса закрывает тень
+  const shade = (x0: number, y0: number, x1: number, y1: number, from: [number, number], to: [number, number]) => {
+    const p = Skia.Paint();
+    p.setShader(Skia.Shader.MakeLinearGradient({ x: from[0] * S, y: from[1] * S }, { x: to[0] * S, y: to[1] * S }, [Skia.Color(SHADE), Skia.Color(SHADE_CLEAR)], null, TileMode.Clamp));
+    c.drawRect(Skia.XYWHRect(x0 * S, y0 * S, (x1 - x0) * S, (y1 - y0) * S), p);
+  };
+  for (let y = 0; y < h; y++) {
+    runs(w, i => [i, y], (a, b, t) => {
+      const top = y + 0.5 - t / 2;
+      const bottom = y + 0.5 + t / 2;
+      shade(a, top - SHADE_W, b, top, [a, top], [a, top - SHADE_W]);
+      shade(a, bottom, b, bottom + SHADE_W, [a, bottom], [a, bottom + SHADE_W]);
+    });
+  }
+  for (let x = 0; x < w; x++) {
+    runs(h, i => [x, i], (a, b, t) => {
+      const left = x + 0.5 - t / 2;
+      const right = x + 0.5 + t / 2;
+      shade(left - SHADE_W, a, left, b, [left, a], [left - SHADE_W, a]);
+      shade(right, a, right + SHADE_W, b, [right, a], [right + SHADE_W, a]);
+    });
+  }
   for (let y = 0; y < h; y++) runs(w, i => [i, y], (a, b, t) => box(a, y + 0.5 - t / 2, b, y + 0.5 + t / 2, WALL));
   for (let x = 0; x < w; x++) runs(h, i => [x, i], (a, b, t) => box(x + 0.5 - t / 2, a, x + 0.5 + t / 2, b, WALL));
   // середина наружной стены и одинокой стены без соседей — квадратом своей толщины

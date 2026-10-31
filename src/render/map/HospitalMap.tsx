@@ -8,6 +8,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useDerivedValue, useFrameCallback, useSharedValue } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import type { HospitalLayout } from '@/engine/hospital/grid';
+import { SHADOW, SHADOW_DX, SHADOW_DY } from './ClinicMap';
 import { bodyIndex, staffFigure } from './figures';
 import { CELL_PX, recordFloor } from './floor';
 import { angleOf, objectTurns } from './orient';
@@ -44,6 +45,9 @@ export function HospitalMap({ layout, width, height, people = 60, paused, onCell
   );
   const bodySprites = useMemo(() => figures.map(f => atlas.bodyRect(f.body)), [figures, atlas]);
   const headSprites = useMemo(() => figures.map(f => atlas.headRect(f.head)), [figures, atlas]);
+  // тени (spec 2026-10-premium-polish) — как на карте смены
+  const objectShadows = useMemo(() => layout.objects.map(() => SHADOW), [layout]);
+  const personShadows = useMemo(() => figures.map(() => SHADOW), [figures]);
 
   // Игровые часы для ворклета и маршруты на UI-потоке.
   const clock = useSharedValue(0);
@@ -138,7 +142,13 @@ export function HospitalMap({ layout, width, height, people = 60, paused, onCell
       <Canvas style={{ width, height }}>
         <Group transform={transform}>
           <Picture picture={floor} />
+          <Group transform={[{ translateX: SHADOW_DX }, { translateY: SHADOW_DY }]}>
+            <Atlas image={atlas.image} sprites={objectSprites} transforms={objectXforms} colors={objectShadows} colorBlendMode="srcIn" />
+          </Group>
           <Atlas image={atlas.image} sprites={objectSprites} transforms={objectXforms} />
+          <Group transform={[{ translateX: SHADOW_DX }, { translateY: SHADOW_DY }]}>
+            <Atlas image={atlas.image} sprites={bodySprites} transforms={personXforms} colors={personShadows} colorBlendMode="srcIn" />
+          </Group>
           <Atlas image={atlas.image} sprites={bodySprites} transforms={personXforms} />
           <Atlas image={atlas.image} sprites={headSprites} transforms={personXforms} />
         </Group>
