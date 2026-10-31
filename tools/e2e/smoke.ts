@@ -1994,19 +1994,32 @@ try {
   const labText = await text(page, 'map-room');
   check(labText.startsWith('Лаборатория') && labText.includes('Работает') && labText.includes('Лаборант: '), `песочница: касание помещения — «${labText.replace(/\n/g, ' · ')}»`);
   await page.screenshot({ path: join(OUT, '13-sandbox-room.png') });
-  // где ждали сегодня (spec 2026-10-where-waited, часть 96): регистратура уже оформила первых — у неё «Сегодня: …»; касание
-  // — в клетку подальше от регистратора и очереди, рядом с человеком касание выбрало бы его
+  // где ждали сегодня (spec 2026-10-where-waited, часть 96): у регистратуры, оформившей кого-то по очереди, — «Сегодня: …»;
+  // касание — в клетку подальше от регистратора и очереди, рядом с человеком касание выбрало бы его
   const desk = CLINIC.rooms.find(r => r.type === 'reception')!;
   const clerk = CLINIC.staff.find(x => x.role === 'registrar')!.cell;
   const inside: [number, number][] = [];
   for (let x = desk.x + 1; x < desk.x + desk.w - 1; x++) for (let y = desk.y + 1; y < desk.y + desk.h - 1; y++) inside.push([x, y]);
   inside.sort((u, v) => Math.hypot(v[0] - clerk[0], v[1] - clerk[1]) - Math.hypot(u[0] - clerk[0], u[1] - clerk[1]));
-  let regText = '';
-  for (const cell of inside.slice(0, 6)) {
-    await ownMap.click({ position: { x: (cell[0] + 0.5) * ownCell, y: (cell[1] + 0.5) * ownCell } });
-    await page.waitForTimeout(300);
-    regText = (await page.getByTestId('map-room').count()) > 0 ? await text(page, 'map-room') : '';
-    if (regText.startsWith('Регистратура')) break;
+  const tapReception = async () => {
+    let shown = '';
+    for (const cell of inside.slice(0, 6)) {
+      await ownMap.click({ position: { x: (cell[0] + 0.5) * ownCell, y: (cell[1] + 0.5) * ownCell } });
+      await page.waitForTimeout(300);
+      shown = (await page.getByTestId('map-room').count()) > 0 ? await text(page, 'map-room') : '';
+      if (shown.startsWith('Регистратура')) break;
+    }
+    return shown;
+  };
+  let regText = await tapReception();
+  // с тревожной жалобой регистратор ведёт сразу к медсестре, и в «Сегодня» регистратуры это не идёт; песочница засеяна
+  // временем запуска, и первым в очереди бывает такой — тогда часы идут, пока регистратура не оформит кого-то по очереди
+  // (так упал прогон 31.10.2026)
+  if (!regText.includes('Сегодня: ')) {
+    await fastClock(page);
+    await runClockUntil(page, async () => (regText = await tapReception()).includes('Сегодня: '));
+    await page.getByTestId('tab-pause').click();
+    regText = await tapReception();
   }
   check(regText.startsWith('Регистратура') && /Сегодня: прошли \d+, ждали в среднем \d+\s*мин\s+Дольше всех — \d+\s*мин/.test(regText),
     `песочница: касание регистратуры — «${regText.replace(/\n/g, ' · ')}»`);
