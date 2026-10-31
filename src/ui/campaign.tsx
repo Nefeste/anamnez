@@ -27,10 +27,19 @@ export function ChapterCard({ c }: { c: CampaignView }) {
   };
   return (
     <>
+      {/* глава пройдена (spec 2026-10-premium-polish) — своей карточкой над главой */}
+      {c.after && (
+        <View testID="chapter-done" style={styles.done}>
+          <View style={styles.doneHead}>
+            <View style={styles.medal} aria-hidden importantForAccessibility="no"><View style={styles.medalDot} /></View>
+            <Text accessibilityRole="header" style={styles.doneTitle}>{t.completeTitle}</Text>
+          </View>
+          <P testID="chapter-complete">{c.after}</P>
+        </View>
+      )}
       <Card testID="chapter">
         <H>{c.title}</H>
         <P muted testID="chapter-day">{`${c.place} · ${t.day(c.day)}`}</P>
-        {c.after && <P testID="chapter-complete">{c.after}</P>}
         {next && (
           <Button
             testID="chapter-next"
@@ -135,6 +144,12 @@ function Mission({ m }: { m: MissionView }) {
 
 const useStyles = makeStyles(t => ({
   label: { fontSize: 13, fontWeight: '700', letterSpacing: 1.2, color: t.colors.muted, textTransform: 'uppercase', marginTop: space.s },
+  // «Глава пройдена»: карточка мягкого цвета выделения с отметкой
+  done: { backgroundColor: t.colors.accentSoft, borderRadius: t.shape.card, borderWidth: 1, borderColor: t.colors.accent, padding: space.l, gap: space.s },
+  doneHead: { flexDirection: 'row', alignItems: 'center', gap: space.m },
+  doneTitle: { fontFamily: t.fonts.title, fontSize: 21, lineHeight: 26, fontWeight: '700', color: t.colors.ink },
+  medal: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: t.colors.accent, alignItems: 'center', justifyContent: 'center' },
+  medalDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: t.colors.accent },
   head: { flexDirection: 'row', alignItems: 'center', gap: space.m },
   headText: { flex: 1, gap: 2 },
   mission: { flexDirection: 'row', gap: space.s, alignItems: 'flex-start', paddingVertical: 2 },

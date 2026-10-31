@@ -133,11 +133,16 @@ export function Ruled({ children, testID }: { children: ReactNode; testID?: stri
  * Срочность — цветом, словом и значком (подпись из T.shift.triage): в «Медкарте» — штамп
  * контуром, чуть повёрнутый; в «Мониторе» — плашка контуром.
  */
-export function Urgency({ level, label }: { level: 'red' | 'yellow' | 'green'; label: string }) {
+export function Urgency({ level, label, big, testID }: { level: 'red' | 'yellow' | 'green'; label: string; big?: boolean; testID?: string }) {
   const styles = useStyles();
   const t = useTheme();
   const ink = level === 'yellow' ? t.colors.yellowText : t.colors[level];
-  return <Text style={[styles.urgency, { borderColor: t.colors[level], color: ink }, t.shape.stamp && styles.urgencyStamp]}>{label}</Text>;
+  // `big` — штамп вердикта на итоге приёма (spec 2026-10-premium-polish): крупнее, прописными
+  return (
+    <Text testID={testID} style={[styles.urgency, big && styles.urgencyBig, { borderColor: t.colors[level], color: ink }, t.shape.stamp && styles.urgencyStamp]}>
+      {label}
+    </Text>
+  );
 }
 
 export function H({ children }: { children: ReactNode }) {
@@ -396,6 +401,7 @@ const useStyles = makeStyles(t => ({
   marginLine: { position: 'absolute', top: 0, bottom: 0, left: MARGIN, width: 1.5, backgroundColor: t.colors.margin },
   urgency: { flexShrink: 0, fontSize: 12, fontWeight: '700', borderWidth: 1.5, borderRadius: t.shape.stamp ? 3 : 10, paddingHorizontal: space.s - 1, paddingVertical: 1, overflow: 'hidden' },
   urgencyStamp: { transform: [{ rotate: '-2deg' }] },
+  urgencyBig: { alignSelf: 'flex-start', fontSize: 17, lineHeight: 22, letterSpacing: 1.5, textTransform: 'uppercase', borderWidth: 2, paddingHorizontal: space.m, paddingVertical: space.xs },
   h: { fontFamily: t.fonts.title, fontSize: 19, fontWeight: '700', color: t.colors.ink },
   p: { fontSize: 15, lineHeight: 21, color: t.colors.ink },
   muted: { color: t.colors.muted },

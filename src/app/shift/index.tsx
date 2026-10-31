@@ -22,10 +22,12 @@ import {
 } from '@/state/session';
 import { CaseRow } from '@/ui/case/CaseRow';
 import { gradeColor } from '@/ui/case/OutcomeScreen';
+import { StatTile } from '@/ui/charts';
 import { Button, Card, Chip, Chips, H, Lamp, P, Screen, Sheet, Tabs, Urgency } from '@/ui/components';
 import { FirstMeasures } from '@/ui/case/FirstMeasures';
 import { DifficultyChoice } from '@/ui/difficulty';
 import { ChapterCard, MentorTip } from '@/ui/campaign';
+import { Loading } from '@/ui/Loading';
 import { NewSandbox } from '@/ui/sandbox';
 import { makeStyles, space, touch, useTheme } from '@/ui/theme';
 
@@ -38,15 +40,7 @@ export default function ShiftScreen() {
   // в паузах игры — разбор приёмов заранее: и нанятых врачей, пока идут часы (0.5.11, NFR-PRF-1)
   usePrepareIdle();
 
-  if (v.status === 'idle' || v.status === 'loading') {
-    return (
-      <Screen>
-        <Card>
-          <P muted>{T.shift.loading}</P>
-        </Card>
-      </Screen>
-    );
-  }
+  if (v.status === 'idle' || v.status === 'loading') return <Loading caption={T.shift.loading} />;
   if (v.status === 'none') {
     if (v.mode === 'sandbox') return <NewSandbox onStart={opts => startSandbox(opts)} />;
     if (v.mode === 'campaign') return <NoCareer />;
@@ -541,6 +535,7 @@ function Summary({ v }: { v: ShiftView }) {
     <Screen footer={footer}>
       {s.scenario && <ScenarioCard r={s.scenario} />}
       {s.single && <SingleCard r={s.single} />}
+      <DayHero s={s} />
       <Card>
         <H>{t.title(s.day)}</H>
         <P testID="summary-seen">{s.theirs > 0 ? t.seenAll(s.seen, s.theirs, s.arrived) : t.seen(s.seen, s.arrived)}</P>
@@ -555,7 +550,8 @@ function Summary({ v }: { v: ShiftView }) {
 
       {s.achievements.length > 0 && (
         <Card testID="summary-achievements">
-          {s.achievements.map(a => <P key={a}>{T.profile.achievementLine(a)}</P>)}
+          <Text style={styles.label}>{t.achievementsLabel}</Text>
+          {s.achievements.map(a => <Achievement key={a} name={a} />)}
         </Card>
       )}
 
@@ -648,6 +644,38 @@ function Summary({ v }: { v: ShiftView }) {
         }} />
       </Sheet>
     </Screen>
+  );
+}
+
+/**
+ * Карточка дня (spec 2026-10-premium-polish): «День N закрыт» и главные числа плитками — принято, верных диагнозов,
+ * уверенность. Подробности — строками в карточке ниже.
+ */
+function DayHero({ s }: { s: SummaryView }) {
+  const styles = useStyles();
+  const t = T.shift.summary;
+  const correct = s.seen > 0 ? `${s.correct} · ${t.pct(Math.round((100 * s.correct) / s.seen))}` : t.none;
+  const confidence = s.confidence === undefined ? t.none : t.of(s.confidence, 10);
+  return (
+    <View testID="summary-hero" style={styles.hero}>
+      <Text accessibilityRole="header" style={styles.heroTitle}>{t.closed(s.day)}</Text>
+      <View style={styles.tiles}>
+        <StatTile label={t.tileSeen} value={t.of(s.seen + s.theirs, s.arrived)} />
+        <StatTile label={t.tileCorrect} value={correct} />
+        <StatTile label={t.tileConfidence} value={confidence} />
+      </View>
+    </View>
+  );
+}
+
+/** Достижение дня — с отметкой слева; текст — тот же, что на итоге приёма и в профиле. */
+function Achievement({ name }: { name: string }) {
+  const styles = useStyles();
+  return (
+    <View style={styles.achievement}>
+      <View style={styles.medal} aria-hidden importantForAccessibility="no"><View style={styles.medalDot} /></View>
+      <P>{T.profile.achievementLine(name)}</P>
+    </View>
   );
 }
 
@@ -806,4 +834,14 @@ const useStyles = makeStyles(t => ({
   lineTitle: { flexShrink: 1, fontSize: 15, lineHeight: 22, color: t.colors.ink },
   lineSum: { fontSize: 15, lineHeight: 22, fontWeight: '600', color: t.colors.ink, fontVariant: ['tabular-nums'] },
   logRed: { color: t.colors.red, fontWeight: '600' },
+  // карточка дня: в «Медкарте» — лист с двойной чертой снизу под заголовком, в «Мониторе» — панель с полосой цвета ЭКГ
+  hero: {
+    backgroundColor: t.colors.card, borderRadius: t.shape.card, borderWidth: 1, borderColor: t.colors.edge, padding: space.l, gap: space.m,
+    borderTopWidth: t.shape.ruled ? 1 : 4, borderTopColor: t.shape.ruled ? t.colors.edge : t.colors.accent,
+  },
+  heroTitle: { fontFamily: t.fonts.title, fontSize: 24, lineHeight: 30, fontWeight: '700', color: t.colors.ink },
+  tiles: { flexDirection: 'row', flexWrap: 'wrap', gap: space.s },
+  achievement: { flexDirection: 'row', alignItems: 'center', gap: space.m },
+  medal: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: t.colors.accent, alignItems: 'center', justifyContent: 'center' },
+  medalDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: t.colors.accent },
 }));

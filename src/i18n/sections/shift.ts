@@ -101,6 +101,15 @@ export const shift = {
   noPatient: 'В кабинете никого',
   summary: {
     title: (d: number) => `Итоги дня ${d}`,
+    // карточка дня сверху (spec 2026-10-premium-polish): главные числа плитками
+    closed: (d: number) => `День ${d} закрыт`,
+    tileSeen: 'Принято',
+    tileCorrect: 'Верный диагноз',
+    tileConfidence: 'Уверенность',
+    of: (a: number, b: number) => `${a} из ${b}`,
+    pct: (n: number) => `${n} %`,
+    none: '—',
+    achievementsLabel: 'Достижения дня',
     seen: (seen: number, arrived: number) => `Принято: ${seen} из ${arrived}`,
     // с нанятыми врачами: прежние строки — о ваших приёмах
     seenAll: (mine: number, theirs: number, arrived: number) => `Принято: ${mine + theirs} из ${arrived} — вами ${mine}, врачами ${theirs}`,
