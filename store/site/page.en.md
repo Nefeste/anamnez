@@ -5,6 +5,9 @@ description: "A doctor simulator for Android: take the history, examine, order t
 kind: Doctor simulator
 status: dev
 lead: "Every patient is a puzzle: ask, examine, order tests and X-rays, make a diagnosis and treat."
+links:
+  - text: Pre-order on RuStore
+    url: https://www.rustore.ru/catalog/app/games.gornitsa.anamnez
 icon: icon/icon-512.png
 feature: graphics/feature-1024x500.png
 og: graphics/cover-1920x1080.png
@@ -41,6 +44,9 @@ card:
     - Your own hospital with an emergency department, wards and an operating room
     - A review of every visit, a campaign with a mentor and a case of the day
     - Free, offline and ad-free
+  links:
+    - text: RuStore
+      url: https://www.rustore.ru/catalog/app/games.gornitsa.anamnez
 note: A game. Not a medical device and not a substitute for a doctor’s advice.
 facts:
   platform: Android
@@ -183,5 +189,6 @@ see a doctor; in an emergency, call your local emergency number (112 in Russia a
 ## What’s next
 
 Coming up: new campaign chapters. The game is
-being prepared for release in RuStore for Android, in Russian first. Questions:
+being prepared for release in RuStore for Android, in Russian first; pre-orders are open — the button is at the
+top of the page. Questions:
 support@gornitsa.games.
