@@ -1,7 +1,7 @@
 // Имя, пол и портрет врача: при первом запуске, после оговорки, и из профиля. Имя уже
 // подставлено — из тех же списков, что у пациентов, — его можно оставить, поменять или взять
 // другое; портрет — один из шести, нарисованных кодом (spec 2026-09-profile, часть 16).
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { Text, TextInput } from './text';
 import { T } from '@/i18n';
@@ -14,7 +14,11 @@ import { makeStyles, space, touch } from './theme';
 const MAX = 30;
 
 /** `bare` — без шапки: первый запуск, на месте меню. */
-export function DoctorForm({ initial, submitTitle, onSubmit, bare }: { initial?: Doctor; submitTitle: string; onSubmit: (d: Doctor) => void; bare?: boolean }) {
+export function DoctorForm({ initial, submitTitle, onSubmit, bare, head }: {
+  initial?: Doctor; submitTitle: string; onSubmit: (d: Doctor) => void; bare?: boolean;
+  /** над анкетой — обложка игры при первом запуске, как над оговоркой и меню (часть 98) */
+  head?: ReactNode;
+}) {
   const styles = useStyles();
   const t = T.profile;
   const [d, setD] = useState<Doctor>(() => initial ?? suggestDoctor(Math.random() < 0.5 ? 'f' : 'm', Math.random));
@@ -30,6 +34,7 @@ export function DoctorForm({ initial, submitTitle, onSubmit, bare }: { initial?:
   };
   return (
     <Screen bare={bare} footer={<Button testID="doctor-submit" title={submitTitle} disabled={!ok} onPress={() => onSubmit(d)} />}>
+      {head}
       <Card>
         <H>{t.doctorTitle}</H>
         <P>{t.doctorText}</P>

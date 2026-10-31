@@ -12,7 +12,8 @@ export function DifficultyChoice({ value, onChange }: { value: Difficulty; onCha
   return (
     <>
       <Text style={styles.label}>{t.title}</Text>
-      <Tabs<Difficulty> testPrefix="difficulty" value={value} onChange={onChange}
+      {/* четыре длинные подписи в один ряд на 360 точках резались («Практ…») — по две в ряд (часть 98) */}
+      <Tabs<Difficulty> testPrefix="difficulty" value={value} onChange={onChange} twoRows
         items={[{ key: 'trainee', title: t.trainee }, { key: 'student', title: t.student }, { key: 'resident', title: t.resident }, { key: 'doctor', title: t.doctor }]} />
       <P muted testID="difficulty-text">{t[`${value}Text`]}</P>
     </>

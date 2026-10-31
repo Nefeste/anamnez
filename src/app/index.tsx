@@ -51,7 +51,7 @@ export default function Menu() {
   // настройки и профиль читаются доли секунды: не мелькать меню перед оговоркой; пока ждём — экран загрузки
   if (settings.status !== 'ready' || profile.status !== 'ready') return <Loading bare />;
   if (!settings.disclaimerAccepted) return <Disclaimer />;
-  if (!profile.doctor) return <DoctorForm bare submitTitle={T.profile.start} onSubmit={setDoctor} />;
+  if (!profile.doctor) return <DoctorForm bare head={<Cover version={VERSION} />} submitTitle={T.profile.start} onSubmit={setDoctor} />;
   if (games === null) return <Loading bare />;
 
   const t = T.menu;
