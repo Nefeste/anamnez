@@ -1,8 +1,8 @@
 export const menu = {
-  subtitle: (version: string) => `Симулятор врача · версия ${version} · в разработке`,
+  subtitle: (version: string) => `Симулятор врача · версия ${version}`,
   // обложка «Медкарты»: под названием — курсивом, под двойной чертой — версия
   tag: 'симулятор врача',
-  versionLine: (version: string) => `версия ${version} · в разработке`,
+  versionLine: (version: string) => `версия ${version}`,
   continue: 'Продолжить',
   continueHint: (day: number, hh: string, level: string) => `практика в амбулатории: день ${day}, ${hh} · ${level}`,
   practice: 'Практика в амбулатории',
