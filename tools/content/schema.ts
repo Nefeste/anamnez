@@ -1006,6 +1006,7 @@ export const achievementSchema = z.discriminatedUnion('kind', [
   z.strictObject({ ...achievementBase, kind: z.literal('department'), department: z.string().regex(/^dept\.[a-z0-9_]+$/) }),
   z.strictObject({ ...achievementBase, kind: z.literal('roomWorks'), room: roomId }),
   z.strictObject({ ...achievementBase, kind: z.literal('chapter'), chapter: z.string().regex(/^chapter\.[a-z0-9_]+$/) }),
+  z.strictObject({ ...achievementBase, kind: z.literal('career') }),
   // испытание «Смены» (часть 91, spec 2026-10-challenges)
   z.strictObject({ ...achievementBase, kind: z.literal('challenge'), challenge: z.enum(['mute', 'rural', 'thrifty']) }),
   // сценарий: неделя с выполненными целями (часть 91, spec 2026-10-scenarios)

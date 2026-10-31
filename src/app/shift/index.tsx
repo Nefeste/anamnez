@@ -26,7 +26,7 @@ import { StatTile } from '@/ui/charts';
 import { AchievementLine, Button, Card, Chip, Chips, H, Lamp, P, Screen, Sheet, Tabs, Urgency } from '@/ui/components';
 import { FirstMeasures } from '@/ui/case/FirstMeasures';
 import { DifficultyChoice } from '@/ui/difficulty';
-import { ChapterCard, MentorTip } from '@/ui/campaign';
+import { CareerDone, ChapterCard, MentorTip } from '@/ui/campaign';
 import { Loading } from '@/ui/Loading';
 import { NewSandbox } from '@/ui/sandbox';
 import { makeStyles, space, touch, useTheme } from '@/ui/theme';
@@ -524,6 +524,10 @@ function Summary({ v }: { v: ShiftView }) {
   const styles = useStyles();
   const t = T.shift.summary;
   const [confirm, setConfirm] = useState(false);
+  // карьера пройдена сегодня (часть 99) — наверху итогов, до дня; «Работать дальше» убирает её в строку главы
+  const cv = useCampaign();
+  const [careerOff, setCareerOff] = useState(false);
+  const career = v.mode === 'campaign' && cv?.career?.fresh && cv.after && !careerOff ? { n: cv.career, after: cv.after } : undefined;
   const s = v.summary;
   if (!s) return null;
   const own = v.mode === 'sandbox' || v.mode === 'campaign';
@@ -541,6 +545,7 @@ function Summary({ v }: { v: ShiftView }) {
     <Screen footer={footer}>
       {s.scenario && <ScenarioCard r={s.scenario} />}
       {s.single && <SingleCard r={s.single} />}
+      {career && <CareerDone career={career.n} after={career.after} onFold={() => setCareerOff(true)} />}
       <DayCard s={s} own={own} />
 
       {s.achievements.length > 0 && (
@@ -727,7 +732,7 @@ function CampaignDay({ d }: { d: NonNullable<SummaryView['chapterDay']> }) {
           {d.letters > 0 && <P muted>{T.campaign.todayLetters(d.letters)}</P>}
         </Card>
       )}
-      {c && <ChapterCard c={c} />}
+      {c && <ChapterCard c={c} careerShown />}
     </>
   );
 }

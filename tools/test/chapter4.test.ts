@@ -414,15 +414,27 @@ describe('глава 4 между сменами', () => {
     expect(t.mortalityProgress(7, 7, x(1, 13, 2), 10)).toBe('за последние 7\u00a0дней из 13\u00a0тяжёлых умер 1, выписаны раньше срока 2 — 23,1\u00a0%');
   });
 
-  test('глава 4 — последняя: выполнена — «следующей главы пока нет», кнопки нет', async () => {
+  test('глава 4 — последняя: выполнена — «Карьера пройдена» с числами карьеры, без «пока», кнопки нет', async () => {
     const store = memoryStore();
     setStore(store);
     const s = newCampaign(db, { seed: 123, season: 'winter', career: 2, chapter: ch4.id });
     s.campaign!.complete = 0;
+    // часть 99: числа — суммой по закрытым дням; нанятые врачи не в счёт
+    const day = (seen: number, correct: number, theirs = 0) => ({ ...({} as DaySummary), seen, correct, theirs });
+    s.history.push(day(10, 8, 5), day(12, 9));
     await saveSlot(store, 'campaign-2', s, SHIFT_SCHEMA_VERSION, 'x');
     await loadShift('campaign', 2);
     const c = campaignView()!;
     expect([c.after, c.next]).toEqual([T.campaign.completeLast, undefined]);
+    expect(c.after).not.toContain('пока');
+    expect(c.career).toEqual({ days: 2, seen: 22, correct: 17, chapters: 4, path: ['Участок', 'Приёмное', 'Сердце и мозг', 'Большая больница'], fresh: true });
+  });
+
+  // часть 99: в конце главы 4 — письмо главного врача и письмо наставницы, эпилог
+  test('глава 4 выполнена — вечером письма главного врача и наставницы', () => {
+    const ends = ch4.letters.filter(l => l.when === 'end');
+    expect(ends.map(l => [l.id, l.from])).toEqual([['end', 'char.city_chief'], ['farewell', 'char.mentor']]);
+    expect(ends[1].text.ru).toContain('Заречном');
   });
 });
 
