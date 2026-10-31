@@ -5,6 +5,9 @@ description: "Симулятор врача на Android: расспросите
 kind: Симулятор врача
 status: dev
 lead: "Каждый пациент — загадка: расспросите, осмотрите, назначьте анализы и снимки, поставьте диагноз и вылечите."
+links:
+  - text: Предзаказ в RuStore
+    url: https://www.rustore.ru/catalog/app/games.gornitsa.anamnez
 icon: icon/icon-512.png
 feature: graphics/feature-1024x500.png
 og: graphics/cover-1920x1080.png
@@ -41,6 +44,9 @@ card:
     - Своя больница с приёмным, скорой, палатами и операционной
     - Разбор каждого приёма, кампания с наставником и «Случай дня»
     - Бесплатно, без интернета и без рекламы
+  links:
+    - text: RuStore
+      url: https://www.rustore.ru/catalog/app/games.gornitsa.anamnez
 note: Игра. Не является медицинским изделием и не заменяет консультацию врача.
 facts:
   platform: Android
@@ -178,5 +184,5 @@ facts:
 ## Что дальше
 
 Впереди — новые главы кампании. Игра готовится к
-выходу в RuStore для Android; когда откроется предзаказ, здесь появится кнопка.
+выходу в RuStore для Android; предзаказ уже открыт — кнопка вверху страницы.
 Почта для вопросов: support@gornitsa.games.
