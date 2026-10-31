@@ -60,6 +60,15 @@ describe('достижения: условия', () => {
     expect(achieved(db, ach('ach.district'), facts({ chapters: ['chapter.district'] }))).toBe(true);
   });
 
+  // часть 99 (spec 2026-10-publish-ready): медаль «Карьера пройдена» — за все главы кампании, не за одну последнюю
+  test('карьера пройдена — выполнены все главы', () => {
+    const chapters = Object.keys(db.chapters);
+    expect(chapters.length).toBe(4);
+    expect(achieved(db, ach('ach.career'), facts({ chapters }))).toBe(true);
+    expect(achieved(db, ach('ach.career'), facts({ chapters: chapters.slice(1) }))).toBe(false);
+    expect(achieved(db, ach('ach.career'), facts({ chapters: ['chapter.city'] }))).toBe(false);
+  });
+
   test('новые — только ещё не полученные, по порядку записи', () => {
     const f = facts({ cases: 50, days: 1, run: 5 });
     expect(newAchievements(db, f, {})).toEqual(['ach.first_patient', 'ach.first_shift', 'ach.cases_50', 'ach.run_5']);

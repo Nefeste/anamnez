@@ -7,6 +7,7 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native';
+import { db } from '@/content';
 import { CHALLENGES } from '@/engine/shift/challenges';
 import { T } from '@/i18n';
 import { Portrait } from '@/render/Portrait';
@@ -14,7 +15,7 @@ import { loadProfile, useProfile } from '@/state/profile';
 import {
   achievementCount, archiveRows, DOCTOR_AGE, doctorName, pctOf, portraitSeed, practiceView, rankLadder, rankName, skillRows, specialtyRows,
 } from '@/state/profileView';
-import { challengeBest } from '@/state/session';
+import { CAREERS, challengeBest, type GameSummary, savedGames } from '@/state/session';
 import { useSettings } from '@/state/settings';
 import { CaseRow } from '@/ui/case/CaseRow';
 import { BarList, Meter, StackBar, StatTile } from '@/ui/charts';
@@ -33,6 +34,13 @@ export default function ProfileScreen() {
     loadProfile();
   }, []);
   const [allCases, setAllCases] = useState(false);
+  // карьеры (часть 99, spec 2026-10-publish-ready): глава, день, основные задания и пройдена ли — из сохранений
+  const [careers, setCareers] = useState<GameSummary[]>([]);
+  useEffect(() => {
+    let live = true;
+    savedGames().then(gs => { if (live) setCareers(gs.filter(g => g.mode === 'campaign' && g.career !== undefined)); }).catch(() => undefined);
+    return () => { live = false; };
+  }, []);
   const t = T.profile;
   const v = practiceView(p);
   const rows = archiveRows(p.archive);
@@ -53,6 +61,8 @@ export default function ProfileScreen() {
         <P muted>{rankLadder()}</P>
         <Button kind="plain" testID="profile-edit" title={t.edit} onPress={() => router.push('/profile/doctor')} />
       </Card>
+
+      {careers.length > 0 ? <CareersCard games={careers} /> : null}
 
       {v ? (
         <>
@@ -144,6 +154,26 @@ export default function ProfileScreen() {
         ) : null}
       </Card>
     </Screen>
+  );
+}
+
+/** Карьеры (часть 99): у каждой — глава, день, основные задания; последняя глава выполнена — «карьера пройдена». */
+function CareersCard({ games }: { games: readonly GameSummary[] }) {
+  const styles = useStyles();
+  const t = T.campaign;
+  const last = Math.max(...Object.values(db.chapters).map(ch => ch.order));
+  return (
+    <Card testID="profile-careers">
+      <Text style={styles.label}>{t.careersTitle}</Text>
+      {CAREERS.flatMap(n => {
+        const g = games.find(x => x.career === n);
+        const ch = g?.chapter ? db.chapters[g.chapter] : undefined;
+        if (!g || !ch) return [];
+        const done = ch.order === last && g.mains !== undefined && g.mains.of > 0 && g.mains.done === g.mains.of;
+        const line = t.careerLine(t.chapter(ch.order, ch.name.ru), Math.max(0, g.day), g.mains?.done ?? 0, g.mains?.of ?? 0, g.short === true);
+        return [<P key={n} testID={`profile-career-${n}`}>{`${t.career(n)}: ${line}${done ? ` · ${t.careerDone}` : ''}`}</P>];
+      })}
+    </Card>
   );
 }
 

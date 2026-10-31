@@ -57,6 +57,9 @@ export function achieved(db: ContentDb, a: Achievement, f: CareerFacts): boolean
       return f.rooms.includes(a.room);
     case 'chapter':
       return f.chapters.includes(a.chapter);
+    // карьера пройдена (часть 99): выполнена каждая глава кампании
+    case 'career':
+      return Object.keys(db.chapters).every(id => f.chapters.includes(id));
     case 'challenge':
       return f.challenges.includes(a.challenge);
     case 'scenario':

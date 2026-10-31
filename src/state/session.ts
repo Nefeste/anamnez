@@ -1592,6 +1592,8 @@ export interface CampaignView {
   complete: boolean;
   /** выполнена: что дальше — следующая глава или «в следующей версии» */
   after?: string;
+  /** последняя глава выполнена (часть 99, spec 2026-10-publish-ready): числа всей карьеры для «Карьера пройдена» */
+  career?: CareerNumbers & { fresh: boolean };
   next?: NextChapterView;
 }
 
@@ -1625,6 +1627,20 @@ function missionText(m: Mission, p: MissionProgress): string {
   }
 }
 
+/** Карьера пройдена (часть 99): дней закрыто, принято вами и верных — суммой по дням (нанятые не в счёт), главы по порядку. */
+export interface CareerNumbers { days: number; seen: number; correct: number; chapters: number; path: string[] }
+
+export function careerNumbers(s: ShiftState): CareerNumbers {
+  const chapters = Object.values(db.chapters).sort((a, b) => a.order - b.order);
+  return {
+    days: s.history.length,
+    seen: s.history.reduce((n, h) => n + h.seen, 0),
+    correct: s.history.reduce((n, h) => n + h.correct, 0),
+    chapters: chapters.length,
+    path: chapters.map(ch => ch.name.ru),
+  };
+}
+
 function buildCampaignView(): CampaignView | undefined {
   const s = session?.s;
   const c = s?.campaign;
@@ -1652,6 +1668,8 @@ function buildCampaignView(): CampaignView | undefined {
   return {
     version, title: t.chapter(ch.order, ch.name.ru), place: ch.place.ru, day: s.day - c.since, letters, missions, complete,
     ...(complete ? { after: next ? t.completeNext : t.completeLast } : {}),
+    // в вечер, когда карьера пройдена, — карточкой наверху; дальше — строкой
+    ...(complete && !next ? { career: { ...careerNumbers(s), fresh: c.complete === s.day } } : {}),
     ...(next ? {
       next: {
         // глава с крылом (часть 45а) — та же больница; при переезде лежащих долечат врачи прежней (spec 2026-10-chapter-4,
