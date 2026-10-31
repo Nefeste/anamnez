@@ -10,7 +10,11 @@ export type ExamPlace = BodyPlace | Shelf;
 export const BODY_PLACES: readonly BodyPlace[] = ['head', 'neck', 'chest', 'back', 'belly', 'arms', 'legs'];
 export const SHELVES: readonly Shelf[] = ['whole', 'bedside'];
 
-/** Каждый осмотр руками (`physical`) и у постели (`bedside`) базы — на своём месте; тест сверяет с базой. */
+/**
+ * Каждый осмотр руками (`physical`) и у постели (`bedside`) базы — на своём месте; тест сверяет с базой. В панели места
+ * осмотры идут в порядке этого списка (`inPlaceOrder`): в «Весь больной» общий осмотр — первым, шкалы — последними
+ * (часть 97, spec 2026-10-publish-ready).
+ */
 export const EXAM_PLACES: Readonly<Record<string, ExamPlace>> = {
   'exam.fundoscopy': 'head',
   'exam.nose_exam': 'head',
@@ -37,13 +41,13 @@ export const EXAM_PLACES: Readonly<Record<string, ExamPlace>> = {
   'exam.ankle_exam': 'legs',
   'exam.foot_exam': 'legs',
   'exam.leg_exam': 'legs',
-  // весь больной: общий и неврологический осмотр, шкалы, кожа — раны и ожоги бывают где угодно
+  // весь больной: общий и неврологический осмотр, кожа — раны и ожоги бывают где угодно, шкалы — последними
   'exam.general_exam': 'whole',
   'exam.neuro_exam': 'whole',
-  'exam.ciwa': 'whole',
   'exam.wound_exam': 'whole',
   'exam.burn_exam': 'whole',
   'exam.burn_depth_tests': 'whole',
+  'exam.ciwa': 'whole',
   // у постели — приборами
   'exam.vitals': 'bedside',
   'exam.bp_both_arms': 'bedside',
@@ -55,3 +59,9 @@ export const EXAM_PLACES: Readonly<Record<string, ExamPlace>> = {
 
 /** Место осмотра; новый осмотр без места — к «Весь больной», пока его не разложили (тест напомнит). */
 export const placeOf = (exam: string): ExamPlace => EXAM_PLACES[exam] ?? 'whole';
+
+const RANK = new Map(Object.keys(EXAM_PLACES).map((id, i) => [id, i]));
+
+/** Осмотры — в порядке `EXAM_PLACES`; не разложенные — после, как пришли. */
+export const inPlaceOrder = (ids: readonly string[]): string[] =>
+  ids.map((id, i) => ({ id, r: RANK.get(id) ?? RANK.size + i })).sort((a, b) => a.r - b.r).map(x => x.id);

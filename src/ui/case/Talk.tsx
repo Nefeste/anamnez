@@ -16,7 +16,9 @@ const question = (id: string) => T.spikes.talk.questions[id] ?? examInfo(id).nam
 
 /**
  * Лента беседы: заданные вопросы по порядку, у каждого — реплика пациента. Новая — целиком и выделена; в прежних
- * найденное — первым и жирным, из «нет» — до трёх, остальное — «ещё N — без особенностей». Касание фразы — справка.
+ * найденное — первым и жирным, из «нет» — до трёх, остальное — «ещё N — без особенностей». Найденное — своим абзацем,
+ * «нет» — под ним, приглушённо: стена «нет» не прячет найденное, а нужные «нет» (при стенокардии — «приступы такие же»)
+ * остаются на виду (часть 97, spec 2026-10-publish-ready). Касание фразы — справка.
  */
 export function Talk({ v, asks, explain, isOpen, toggle, onRow }: {
   v: VisitView; asks: ReadonlySet<string>; explain: (info: TermInfo) => void;
@@ -35,7 +37,8 @@ export function Talk({ v, asks, explain, isOpen, toggle, onRow }: {
         const k = `talk:${g.key}`;
         const open = g.fresh || isOpen(k);
         const { said, more } = replyOf(g.lines, open);
-        const texts = joinSaid(said.map(l => l.text));
+        const yes = said.filter(l => l.shown);
+        const no = said.filter(l => !l.shown);
         return (
           <Animated.View key={g.key} entering={FadeInDown.duration(250)} testID={`done-${g.exam}`} onLayout={e => onRow(g.exam, e)} style={styles.pair}>
             <View style={styles.doc}>
@@ -43,13 +46,19 @@ export function Talk({ v, asks, explain, isOpen, toggle, onRow }: {
               <Text style={styles.docText}>{question(g.exam)}</Text>
             </View>
             <View style={[styles.pt, g.fresh && styles.ptFresh]}>
-              <Text style={styles.ptText}>
-                {said.length === 0 ? t.nothing : said.map((l, i) => (
-                  <Text key={`${l.f}${i}`} onPress={() => explain(findingInfo(l.f))} style={l.shown ? styles.found : undefined}>
-                    {`${texts[i]}${i < said.length - 1 ? ' ' : ''}`}
+              {said.length === 0 ? <Text style={styles.ptText}>{t.nothing}</Text> : null}
+              {[yes, no].filter(part => part.length > 0).map((part, j) => {
+                const texts = joinSaid(part.map(l => l.text));
+                return (
+                  <Text key={j} testID={part === yes ? `said-yes-${g.exam}` : `said-no-${g.exam}`} style={[styles.ptText, part === no && styles.no]}>
+                    {part.map((l, i) => (
+                      <Text key={`${l.f}${i}`} onPress={() => explain(findingInfo(l.f))} style={l.shown ? styles.found : undefined}>
+                        {`${texts[i]}${i < part.length - 1 ? ' ' : ''}`}
+                      </Text>
+                    ))}
                   </Text>
-                ))}
-              </Text>
+                );
+              })}
               {!g.fresh && g.lines.filter(l => !l.shown).length > NO_SAID ? (
                 <Pressable testID={`more-${g.exam}`} accessibilityRole="button" aria-expanded={open} onPress={() => toggle(k)} hitSlop={space.s}
                   style={styles.moreTap}>
@@ -143,6 +152,8 @@ const useStyles = makeStyles(t => ({
   ptFresh: { backgroundColor: t.colors.fresh, borderColor: t.colors.freshLine, borderLeftWidth: 3 },
   ptText: { fontFamily: t.fonts.title, fontStyle: 'italic', fontSize: 15, lineHeight: 21, color: t.colors.ink },
   found: { fontWeight: '700' },
+  // «нет» — под найденным, приглушённо (часть 97)
+  no: { color: t.colors.muted },
   more: { fontSize: 13, color: t.colors.muted },
   // строка в 17 пикселей: с полем сверху и снизу и hitSlop касание — 49 dp (NFR-ACC-1)
   moreTap: { paddingVertical: space.s },
