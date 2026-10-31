@@ -56,6 +56,9 @@ const TUTORIAL_AMBULANCE_MIN = 20;
  * производными параметрами, а обязательное лечение ему можно): инсульт в первые 3 часа — у каждого седьмого
  */
 const TUTORIAL_TRIES = 64;
+/** спокойный учебный день (часть 100): какая доля потока, процентов, и сколько попыток найти больного без «нужно скоро» */
+const TUTORIAL_CALM_FLOW = 50;
+const TUTORIAL_CALM_TRIES = 32;
 /** Без записи — 2–6 человек, больше утром. */
 const WALK_INS: [number, number] = [2, 6];
 
@@ -666,9 +669,11 @@ function planDay(db: ContentDb, s: ShiftState) {
   const d = s.day;
   const base = (d - 1) * DAY;
   const r = branch(s, `day:${d}`);
+  // спокойный учебный день главы (часть 100, spec 2026-10-publish-ready; ответ владельца на вопрос 67): половина потока
+  const calm = !!s.campaign && chapterOf(db, s.campaign)?.tutorialCalm === true && d === tutorialDay(db, s);
   // песочница: с репутацией записываются и приходят чаще или реже (spec 2026-09-own-hospital); «Закрыли соседнюю
   // больницу» (часть 91) — в полтора раза чаще
-  const flow = s.economy ? flowOf(db, s.economy.reputation ?? db.economy.reputation.start) : scenarioFlow(s.meta.scenario);
+  const flow = Math.round(((s.economy ? flowOf(db, s.economy.reputation ?? db.economy.reputation.start) : scenarioFlow(s.meta.scenario)) * (calm ? TUTORIAL_CALM_FLOW : 100)) / 100);
   const plan: { t: number; kind: VisitKind; key: string; ret?: PlannedReturn; to?: string; only?: readonly Id[]; patient?: Patient; interesting?: true }[] = [];
   // какие отделения больница принимает сегодня (часть 30): с работающей смотровой приёмного — и хирургию
   const admits = departmentsOf(db, s);
@@ -727,6 +732,12 @@ function planDay(db: ContentDb, s: ShiftState) {
   // пришёл сам (часть 41а): инсульта у него нет — его привозит скорая; к специалисту — с болезнью профиля (часть 59)
   const selfPatient = (a: { key: string; only?: readonly Id[] }, variety = false) =>
     generatePatient(db, fnv1a(`${s.meta.seed}:${d}:${a.key}`), { ...gen, walkIn: true, ...(a.only ? { only: a.only } : {}), ...(variety ? { variety: true } : {}) });
+  // спокойный учебный день (часть 100): незаданный — из попыток тот, у кого жалобы «в порядке очереди»; не нашлось — последний
+  const calmPatient = (a: { key: string; only?: readonly Id[] }) => {
+    let p = selfPatient(a);
+    for (let n = 1; n < TUTORIAL_CALM_TRIES && p.complaints.some(f => (db.findings[f]?.triage ?? 'green') !== 'green'); n++) p = selfPatient({ ...a, key: `${a.key}:calm:${n}` });
+    return p;
+  };
   // «Главы короче» (часть 93, spec 2026-10-short-chapters): один-два из пришедших сами и записанных к вам — тот же человек,
   // но с более редкой болезнью больницы, жребий со сглаженными весами; своя ветвь дня — остальные те же. В день обучения —
   // нет: у него свои заданные
@@ -774,7 +785,7 @@ function planDay(db: ContentDb, s: ShiftState) {
         )
         : a.kind === 'ambulance'
           ? ambulancePatient(db, s, d, a.key, departments, varied)
-          : (a.patient ?? selfPatient(a));
+          : (a.patient ?? (calm ? calmPatient(a) : selfPatient(a)));
     // вернувшийся — и с теми отделениями, с какими его приняли в первый раз
     const own = a.ret ? [...new Set([...(s.patients[a.ret.of]?.departments ?? []), ...departments])] : departments;
     s.patients[id] = {
