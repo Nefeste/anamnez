@@ -7,6 +7,7 @@ import { Pressable, useWindowDimensions, View } from 'react-native';
 import { T } from '@/i18n';
 import { EcgLine } from '@/render/EcgLine';
 import { Portrait } from '@/render/Portrait';
+import { Meter } from './charts';
 import { Text } from './text';
 import { makeStyles, space, useTheme } from './theme';
 
@@ -45,6 +46,25 @@ export function MenuFoot({ version }: { version: string }) {
 }
 
 /** Место между бейджем и пунктами: на высоком экране пункты — внизу, под большим пальцем. */
+/**
+ * Сводка карьеры между бейджем и пунктами (часть 102, spec 2026-10-publish-ready; ответ владельца на вопрос 69): на высоком
+ * экране там была пустота. Карьера идёт — глава, день, основные задания полосой; нет — путь кампании. Касание — в кампанию.
+ */
+export function CareerStrip({ title, line, progress, onPress }: {
+  title: string; line: string; progress?: { label: string; value: number; max: number; text: string }; onPress: () => void;
+}) {
+  const styles = useStyles();
+  const t = useTheme();
+  return (
+    <Pressable testID="menu-career" accessibilityRole="button" accessibilityLabel={`${title}. ${line}${progress ? `. ${progress.label}: ${progress.text}` : ''}`}
+      onPress={onPress} style={({ pressed }) => [styles.career, pressed && styles.pressed]}>
+      <Text style={t.shape.ruled ? styles.title : styles.panelTitle}>{title}</Text>
+      <Text style={styles.hint}>{line}</Text>
+      {progress ? <Meter label={progress.label} value={progress.value} max={progress.max} text={progress.text} /> : null}
+    </Pressable>
+  );
+}
+
 export function MenuSpacer() {
   const styles = useStyles();
   return <View style={styles.spacer} />;
@@ -239,6 +259,11 @@ const useStyles = makeStyles(t => ({
   title: { fontFamily: t.fonts.title, fontSize: 20, lineHeight: 26, fontWeight: '700', color: t.colors.ink },
   hint: { fontSize: 14, lineHeight: 19, color: t.colors.muted },
   pressed: { opacity: 0.8 },
+  // сводка карьеры (часть 102)
+  career: {
+    backgroundColor: t.colors.card, borderWidth: 1, borderColor: t.colors.edge, borderRadius: t.shape.card,
+    paddingVertical: space.m, paddingHorizontal: space.m + 2, gap: space.xs,
+  },
   // «Монитор»
   monitor: { paddingTop: space.l, gap: space.xs },
   monitorTitle: { fontSize: 34, lineHeight: 42, fontWeight: '700', letterSpacing: 6, color: t.colors.ink },
