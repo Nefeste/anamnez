@@ -87,6 +87,11 @@ export const campaign = {
   // карточка «Карьеры» в профиле
   careersTitle: 'Карьеры',
   careerDone: 'карьера пройдена',
+  // сводка карьеры в меню (часть 102, ответ владельца на вопрос 69)
+  stripLine: (chapter: string, day: number) => `${chapter} · день ${day}`,
+  stripMissions: 'Основные задания',
+  stripOf: (done: number, of: number) => `${done} из ${of}`,
+  stripNew: 'Кампания — четыре главы',
   moveTo: (order: number) => `Перейти в главу ${order}`,
   moveHint: 'между сменами',
   moveTitle: (move: string) => `${move}?`,

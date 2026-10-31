@@ -1136,6 +1136,9 @@ try {
   check(badgeLabel === 'Профиль: Анна Петрова, интерн; пока ни одного приёма' && (await text(page, 'menu-badge')).includes('Анна Петрова'), `меню: бейдж врача — «${badgeLabel}»`);
   const dailyLabel = (await page.getByTestId('menu-daily').getAttribute('aria-label')) ?? '';
   check(dailyLabel.startsWith('Случай дня, ') && dailyLabel.endsWith('один пациент в день, одинаковый у всех'), `меню: «Случай дня» — не в подменю: «${dailyLabel}»`);
+  // сводка карьеры (часть 102, вопрос 69): карьеры ещё нет — путь кампании по главам
+  check((await text(page, 'menu-career')).startsWith('Кампания — четыре главы') && (await text(page, 'menu-career')).includes('Участок → Приёмное'),
+    `меню: сводка карьеры — путь кампании: ${(await text(page, 'menu-career')).replace(/\n/g, ' · ')}`);
   await page.screenshot({ path: join(OUT, '01-menu.png') });
   check(!(await page.getByTestId('menu-campaign').isDisabled()) && await page.getByTestId('menu-quick').isVisible(), 'меню: кампания, быстрая игра, энциклопедия, профиль, настройки');
   await page.goto(base);
@@ -1508,6 +1511,10 @@ try {
   check((await text(page, 'tx-suggested')).includes('Амоксициллин') && (await page.getByTestId('tx-tx.thrombolysis').count()) === 0 && txClosed >= 3
     && (await page.getByTestId('tx-tx.amoxicillin').getAttribute('role')) === 'checkbox',
     `решение, шаг 2: лист назначений — сверху выбор при пневмонии, групп свёрнуто ${txClosed}`);
+  // часть 101 (вопрос 68): выбор при диагнозе — группами в порядке всего листа, антибиотики — своей группой
+  const topGroups = await page.getByTestId('tx-suggested').locator('[data-testid^="tx-top-"]').evaluateAll(xs => xs.map(x => x.getAttribute('data-testid')));
+  check(topGroups.length >= 2 && topGroups.includes('tx-top-antibiotics') && (await page.getByTestId('tx-top-antibiotics').locator('[data-testid="tx-tx.amoxicillin"]').count()) === 1,
+    `решение, шаг 2: выбор при диагнозе — группами: ${topGroups.join(', ')}`);
   await page.getByTestId('tx-search').fill('тромбол');
   check((await page.getByTestId('tx-tx.thrombolysis').count()) === 1 && (await page.getByTestId('tx-tx.cast_splint').count()) === 0,
     'решение, шаг 2: поиск «тромбол» — тромболизис есть, гипса нет');
@@ -3631,6 +3638,10 @@ try {
   await page.goto(base);
   await page.getByTestId('menu-continue').waitFor({ timeout: 10_000 });
   check((await text(page, 'menu-continue')).includes('Карьера 1: Глава 1. Участок'), `меню: «Продолжить» — ${(await text(page, 'menu-continue')).replace(/\n/g, ' · ')}`);
+  // сводка карьеры (часть 102): глава, день и основные задания полосой
+  const strip = await text(page, 'menu-career');
+  check(strip.startsWith('Карьера 1') && strip.includes('Глава 1. Участок · день') && strip.includes('Основные задания') && /\d из 3/.test(strip),
+    `меню: сводка карьеры — ${strip.replace(/\n/g, ' · ')}`);
 
   // глава 2 (spec 2026-09-chapter-2, часть 34): карьера 2 с выполненной главой 1 — «Перейти в
   // районную больницу», лист перехода; глава 2 — письма и задания; смена — в районной больнице

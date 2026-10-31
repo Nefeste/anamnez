@@ -51,6 +51,9 @@ export function DecisionScreen({ view: v, actions }: { view: VisitView; actions:
   };
 
   const top = new Set(v.suggested.map(x => x.id));
+  // «Выбор при этом диагнозе» — теми же группами и в том же порядке, что весь лист (часть 101, ответ владельца на вопрос 68):
+  // порядок от диагноза не зависит и не подсказывает, а длинный лист читается быстрее
+  const topGroups = v.treatmentGroups.map(g => ({ ...g, items: g.items.filter(x => top.has(x.id)) })).filter(g => g.items.length > 0);
   const rest = v.treatmentGroups.map(g => ({ ...g, items: g.items.filter(x => !top.has(x.id)) })).filter(g => g.items.length > 0);
   const found = query.trim() ? v.treatments.filter(x => matchesQuery(query, x.name)) : undefined;
   const chosen = (items: VisitView['treatments']) => items.filter(x => v.draft.treatments.includes(x.id)).length;
@@ -131,7 +134,12 @@ export function DecisionScreen({ view: v, actions }: { view: VisitView; actions:
                   {isOpen('suggested') && (
                     <>
                       <P muted>{d.suggestedNote}</P>
-                      {v.suggested.map(txRow)}
+                      {topGroups.map(g => (
+                        <View key={g.key} testID={`tx-top-${g.key}`} style={styles.sheet}>
+                          <Text style={styles.group}>{g.title}</Text>
+                          {g.items.map(txRow)}
+                        </View>
+                      ))}
                     </>
                   )}
                 </View>
@@ -164,6 +172,8 @@ export function DecisionScreen({ view: v, actions }: { view: VisitView; actions:
 const useStyles = makeStyles(t => ({
   label: { fontSize: 13, fontWeight: '700', letterSpacing: 1.2, color: t.colors.muted, textTransform: 'uppercase', marginTop: space.s },
   sheet: { gap: space.s },
+  // подзаголовок группы внутри «Выбор при этом диагнозе» (часть 101)
+  group: { fontSize: 13, fontWeight: '700', color: t.colors.muted, marginTop: space.xs },
   groupHead: { flexDirection: 'row', alignItems: 'center', gap: space.s, marginTop: space.s },
   groupLabel: { flex: 1, marginTop: 0 },
   search: {

@@ -16,7 +16,7 @@ import { type GameSummary, loadShift, savedGames } from '@/state/session';
 import { loadSettings, updateSettings, useSettings } from '@/state/settings';
 import { Button, Card, H, P, Screen } from '@/ui/components';
 import { Loading } from '@/ui/Loading';
-import { Badge, Cover, DailyCard, MenuFoot, type MenuItem, MenuList, MenuSpacer } from '@/ui/menu';
+import { Badge, CareerStrip, Cover, DailyCard, MenuFoot, type MenuItem, MenuList, MenuSpacer } from '@/ui/menu';
 import { DoctorForm } from '@/ui/profile';
 
 export default function Menu() {
@@ -80,6 +80,7 @@ export default function Menu() {
         name: doctorName(doctor), rank: rankName(profile.stats.cases), first: doctor.first, last: doctor.last, cases: profile.stats.cases,
         correctPct: practiceView(profile)?.correctPct, seed: portraitSeed(doctor), sex: doctor.sex, age: DOCTOR_AGE,
       }} />
+      <CareerStrip {...careerStrip(games)} onPress={() => router.push('/campaign')} />
       <MenuSpacer />
       <DailyCard day={today.getDate()} month={T.daily.monthOf(today.getMonth())} hint={dailyHint}
         label={T.daily.menuLabel(T.daily.date(today.getDate(), today.getMonth()), dailyHint)} onPress={() => router.push('/daily')} />
@@ -90,6 +91,25 @@ export default function Menu() {
       <MenuFoot version={VERSION} />
     </Screen>
   );
+}
+
+/**
+ * Сводка карьеры в меню (часть 102): последняя по записи карьера — глава, день и основные задания; пройдена — так и
+ * сказано; карьеры нет — путь кампании по главам.
+ */
+export function careerStrip(games: readonly GameSummary[]): { title: string; line: string; progress?: { label: string; value: number; max: number; text: string } } {
+  const t = T.campaign;
+  const g = games.find(x => x.mode === 'campaign' && x.career !== undefined && x.chapter !== undefined);
+  const ch = g?.chapter ? db.chapters[g.chapter] : undefined;
+  if (!g || !ch) return { title: t.stripNew, line: t.careerPath(Object.values(db.chapters).sort((a, b) => a.order - b.order).map(c => c.name.ru)) };
+  const of = g.mains?.of ?? 0;
+  const done = g.mains?.done ?? 0;
+  const last = ch.order === Math.max(...Object.values(db.chapters).map(c => c.order));
+  return {
+    title: t.career(g.career ?? 1),
+    line: `${t.stripLine(t.chapter(ch.order, ch.name.ru), Math.max(0, g.day))}${last && of > 0 && done === of ? ` · ${t.careerDone}` : ''}`,
+    ...(of > 0 ? { progress: { label: t.stripMissions, value: done, max: of, text: t.stripOf(done, of) } } : {}),
+  };
 }
 
 /** Что продолжим: практика — день и время; песочница — день и касса; карьера — глава и день. */
