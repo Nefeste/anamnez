@@ -541,18 +541,7 @@ function Summary({ v }: { v: ShiftView }) {
     <Screen footer={footer}>
       {s.scenario && <ScenarioCard r={s.scenario} />}
       {s.single && <SingleCard r={s.single} />}
-      <DayHero s={s} />
-      <Card>
-        <H>{t.title(s.day)}</H>
-        <P testID="summary-seen">{s.theirs > 0 ? t.seenAll(s.seen, s.theirs, s.arrived) : t.seen(s.seen, s.arrived)}</P>
-        {s.left > 0 && <P>{t.left(s.left)}</P>}
-        {s.unseen > 0 && <P>{t.unseen(s.unseen)}</P>}
-        {s.seen > 0 && <P>{t.verdicts(s.correct, s.partly, s.wrong)}</P>}
-        {s.confidence !== undefined && <P>{t.confidence(s.confidence)}</P>}
-        {s.seen > 0 && <P>{t.money(T.common.rub(s.money), T.common.rub(s.rationalMoney))}</P>}
-        <P>{t.returns(s.returnsPlanned, s.returnsToday)}</P>
-        {!own && <P muted>{t.moneyNote}</P>}
-      </Card>
+      <DayCard s={s} own={own} />
 
       {s.achievements.length > 0 && (
         <Card testID="summary-achievements">
@@ -654,24 +643,32 @@ function Summary({ v }: { v: ShiftView }) {
 }
 
 /**
- * Карточка дня (spec 2026-10-premium-polish): «День N закрыт» и главные числа плитками — принято, верных диагнозов,
- * уверенность. Подробности — строками в карточке ниже.
+ * Карточка дня (spec 2026-10-premium-polish): «День N закрыт», главные числа плитками — принято, верных диагнозов,
+ * уверенность идеального врача, ушли не дождавшись — и строками только то, чего в плитках нет: кто сколько принял с
+ * нанятыми врачами, не успели принять, почти верные и неверные диагнозы, обследования против разумного врача, повторные.
+ * Каждое число — один раз.
  */
-function DayHero({ s }: { s: SummaryView }) {
+function DayCard({ s, own }: { s: SummaryView; own: boolean }) {
   const styles = useStyles();
   const t = T.shift.summary;
   const correct = s.seen > 0 ? `${s.correct} · ${t.pct(Math.round((100 * s.correct) / s.seen))}` : t.none;
   const confidence = s.confidence === undefined ? t.none : t.of(s.confidence, 10);
   return (
-    <View testID="summary-hero" style={styles.hero}>
+    <View testID="summary-day" style={styles.hero}>
       <Text accessibilityRole="header" style={styles.heroTitle}>{t.closed(s.day)}</Text>
-      {/* четыре плитки по две в ряд: принято, верный диагноз, уверенность, ушли не дождавшись */}
+      {/* четыре плитки по две в ряд */}
       <View style={styles.tiles}>
-        <StatTile label={t.tileSeen} value={t.of(s.seen + s.theirs, s.arrived)} />
+        <StatTile testID="summary-seen" label={t.tileSeen} value={t.of(s.seen + s.theirs, s.arrived)} />
         <StatTile label={t.tileCorrect} value={correct} />
         <StatTile label={t.tileConfidence} value={confidence} />
         <StatTile label={t.tileLeft} value={String(s.left)} />
       </View>
+      {s.theirs > 0 && <P testID="summary-seen-by">{t.seenBy(s.seen, s.theirs)}</P>}
+      {s.unseen > 0 && <P>{t.unseen(s.unseen)}</P>}
+      {s.seen > 0 && <P>{t.verdictRest(s.partly, s.wrong)}</P>}
+      {s.seen > 0 && <P>{t.money(T.common.rub(s.money), T.common.rub(s.rationalMoney))}</P>}
+      <P>{t.returns(s.returnsPlanned, s.returnsToday)}</P>
+      {!own && <P muted>{t.moneyNote}</P>}
     </View>
   );
 }

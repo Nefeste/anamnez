@@ -8,14 +8,17 @@ import { Portrait } from '@/render/Portrait';
 import { type CampaignView, type MissionView, moveToNextChapter, readLetter, seenTip, tipsOff, useTip } from '@/state/session';
 import type { TipScreen } from '@/state/tips';
 import { Button, Card, H, P, Sheet } from './components';
+import { Icon } from './Icon';
+import { AWARD_ICON } from './iconShapes';
 import { Text } from './text';
-import { makeStyles, space } from './theme';
+import { makeStyles, space, useTheme } from './theme';
 
 /** Первые слова письма — подпись под именем в списке. */
 const opening = (text: string) => (text.length > 60 ? `${text.slice(0, 60).replace(/\s+\S*$/, '')}…` : text);
 
 export function ChapterCard({ c }: { c: CampaignView }) {
   const styles = useStyles();
+  const theme = useTheme();
   const t = T.campaign;
   const [open, setOpen] = useState<string>();
   const [move, setMove] = useState(false);
@@ -31,7 +34,7 @@ export function ChapterCard({ c }: { c: CampaignView }) {
       {c.after && (
         <View testID="chapter-done" style={styles.done}>
           <View style={styles.doneHead}>
-            <View style={styles.medal} aria-hidden importantForAccessibility="no"><View style={styles.medalDot} /></View>
+            <Icon shape={AWARD_ICON} size={26} color={theme.colors.green} />
             <Text accessibilityRole="header" style={styles.doneTitle}>{t.completeTitle}</Text>
           </View>
           <P testID="chapter-complete">{c.after}</P>
@@ -148,8 +151,6 @@ const useStyles = makeStyles(t => ({
   done: { backgroundColor: t.colors.accentSoft, borderRadius: t.shape.card, borderWidth: 1, borderColor: t.colors.accent, padding: space.l, gap: space.s },
   doneHead: { flexDirection: 'row', alignItems: 'center', gap: space.m },
   doneTitle: { fontFamily: t.fonts.title, fontSize: 21, lineHeight: 26, fontWeight: '700', color: t.colors.ink },
-  medal: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: t.colors.accent, alignItems: 'center', justifyContent: 'center' },
-  medalDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: t.colors.accent },
   head: { flexDirection: 'row', alignItems: 'center', gap: space.m },
   headText: { flex: 1, gap: 2 },
   mission: { flexDirection: 'row', gap: space.s, alignItems: 'flex-start', paddingVertical: 2 },

@@ -4,6 +4,8 @@
 // и зелёная кнопка.
 import { type ReactNode, type Ref, useImperativeHandle, useRef, useState } from 'react';
 import { type LayoutChangeEvent, Modal, Pressable, ScrollView, StyleSheet, View, type ViewStyle } from 'react-native';
+import { Icon } from './Icon';
+import { AWARD_ICON } from './iconShapes';
 import type { ItemIcon } from './itemIcons';
 import { RowIcon, type RowState } from './RowIcon';
 import { Text } from './text';
@@ -150,12 +152,16 @@ export function H({ children }: { children: ReactNode }) {
   return <Text style={styles.h}>{children}</Text>;
 }
 
-/** Полученное достижение — строкой с медалью слева (spec 2026-10-premium-polish): на итоге приёма и дня. */
+/**
+ * Полученное достижение — строкой с медалью на ленте слева (spec 2026-10-premium-polish): на итоге приёма и дня; та же
+ * медаль зелёным — у полученных в списке достижений профиля.
+ */
 export function AchievementLine({ text }: { text: string }) {
   const styles = useStyles();
+  const t = useTheme();
   return (
     <View style={styles.achievement}>
-      <View style={styles.medal} aria-hidden importantForAccessibility="no"><View style={styles.medalDot} /></View>
+      <Icon shape={AWARD_ICON} size={24} color={t.colors.green} />
       <Text style={[styles.p, styles.fill]}>{text}</Text>
     </View>
   );
@@ -415,8 +421,6 @@ const useStyles = makeStyles(t => ({
   urgencyBig: { alignSelf: 'flex-start', fontSize: 17, lineHeight: 22, letterSpacing: 1.5, textTransform: 'uppercase', borderWidth: 2, paddingHorizontal: space.m, paddingVertical: space.xs },
   h: { fontFamily: t.fonts.title, fontSize: 19, fontWeight: '700', color: t.colors.ink },
   achievement: { flexDirection: 'row', alignItems: 'center', gap: space.m },
-  medal: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: t.colors.accent, alignItems: 'center', justifyContent: 'center' },
-  medalDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: t.colors.accent },
   p: { fontSize: 15, lineHeight: 21, color: t.colors.ink },
   muted: { color: t.colors.muted },
   btn: { minHeight: touch, backgroundColor: t.colors.accent, borderRadius: t.shape.radius, paddingHorizontal: space.l, paddingVertical: space.m, justifyContent: 'center' },

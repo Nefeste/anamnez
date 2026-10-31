@@ -1954,7 +1954,8 @@ try {
   check(await runClockUntil(page, async () => (await closable.count()) > 0, 180_000), 'песочница: смена дожита до конца дня');
   await closable.first().click();
   await page.getByTestId('summary-cash').waitFor({ timeout: 10_000 });
-  check((await text(page, 'summary-seen')).startsWith('Принято: 1 из'), `песочница с пустого участка, итоги дня: ${await text(page, 'summary-seen')}`);
+  // плитка «Принято» карточки дня (spec 2026-10-premium-polish): подпись и число — строками
+  check(/^Принято\n1 из \d+$/.test(await text(page, 'summary-seen')), `песочница с пустого участка, итоги дня: ${(await text(page, 'summary-seen')).replace('\n', ' ')}`);
   check((await text(page, 'cash-now')).startsWith('В кассе: ') && (await page.getByTestId('cash-oms').count()) + (await page.getByTestId('cash-dms').count()) + (await page.getByTestId('cash-self').count()) === 1,
     `песочница с пустого участка, касса: ${await text(page, 'cash-now')}`);
   await page.goto(base);
@@ -2112,8 +2113,10 @@ try {
   await page.getByTestId('shift-close-day').click();
   await page.getByTestId('summary-colleagues').waitFor({ timeout: 10_000 });
   const colleagues = await text(page, 'summary-colleagues');
-  check(/вами \d+, врачами [1-9]\d*$/.test(await text(page, 'summary-seen')) && /терапевт\nПринято: [1-9]/.test(colleagues),
-    `нанятый врач, итоги дня: ${await text(page, 'summary-seen')} · ${colleagues.replace(/\n/g, ' · ')}`);
+  // с нанятым врачом: в плитке — все вместе, строкой под плитками — кто сколько (spec 2026-10-premium-polish)
+  check(/^Принято\n\d+ из \d+$/.test(await text(page, 'summary-seen')) && /^Вами — \d+, врачами — [1-9]\d*$/.test(await text(page, 'summary-seen-by'))
+    && /терапевт\nПринято: [1-9]/.test(colleagues),
+    `нанятый врач, итоги дня: ${(await text(page, 'summary-seen')).replace('\n', ' ')} · ${await text(page, 'summary-seen-by')} · ${colleagues.replace(/\n/g, ' · ')}`);
   await page.waitForTimeout(1500); // лист меню «Продолжить» ещё уезжает вниз (веб)
   await page.screenshot({ path: join(OUT, '14-hired-summary.png'), fullPage: true });
   // разбор приёма врача — как ваш: кто вёл, его лечение, как прошёл бы разумный
@@ -4291,7 +4294,7 @@ try {
   await p2.getByTestId('shift-close-day').click();
   await p2.getByTestId('summary-seen').waitFor({ timeout: 10_000 });
   const seen = await text(p2, 'summary-seen');
-  check(/^Принято: \d+ из \d+$/.test(seen), `итоги дня: ${seen}`);
+  check(/^Принято\n\d+ из \d+$/.test(seen), `итоги дня: ${seen.replace('\n', ' ')}`);
   await p2.screenshot({ path: join(OUT, '09-shift-summary.png'), fullPage: true });
   await p2.locator('[data-testid^="case-"]').first().click();
   await p2.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
