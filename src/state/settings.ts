@@ -57,11 +57,16 @@ export interface Settings {
    * Включают семь касаний строки версии в «Об игре», выключают в настройках
    */
   devMode: boolean;
+  /**
+   * полосы-подсказки над картой пациента (часть 105, просьба владельца 01.11.2026): «Похоже на» и опасные причины; выключены —
+   * их нет ни у кого, на доске гипотез они остаются
+   */
+  hintStrips: boolean;
 }
 
 export const DEFAULTS: Settings = {
   sound: 1, music: 0.7, ambience: true, vibration: true, pauseOnRed: true, pauseOnResults: true, disclaimerAccepted: false, textScale: 1, theme: 'system', softMode: false, variety: false,
-  skills: true, mine: [], devMode: false,
+  skills: true, mine: [], devMode: false, hintStrips: true,
 };
 
 export interface SettingsView extends Settings {
@@ -99,7 +104,7 @@ export function setSettingsStore(s: RawStore) {
  */
 export function sanitize(data: unknown): Settings {
   const d = (data !== null && typeof data === 'object' ? data : {}) as Record<string, unknown>;
-  const flag = (k: 'ambience' | 'vibration' | 'pauseOnRed' | 'pauseOnResults' | 'disclaimerAccepted' | 'softMode' | 'variety' | 'skills' | 'devMode') => (typeof d[k] === 'boolean' ? (d[k] as boolean) : DEFAULTS[k]);
+  const flag = (k: 'ambience' | 'vibration' | 'pauseOnRed' | 'pauseOnResults' | 'disclaimerAccepted' | 'softMode' | 'variety' | 'skills' | 'devMode' | 'hintStrips') => (typeof d[k] === 'boolean' ? (d[k] as boolean) : DEFAULTS[k]);
   const level = (k: 'sound' | 'music') => (typeof d[k] === 'number' && (d[k] as number) >= 0 && (d[k] as number) <= 1 ? (d[k] as number) : DEFAULTS[k]);
   const textScale = (TEXT_SCALES as readonly number[]).includes(d.textScale as number) ? (d.textScale as number) : DEFAULTS.textScale;
   const theme = (THEME_CHOICES as readonly unknown[]).includes(d.theme) ? (d.theme as ThemeChoice) : DEFAULTS.theme;
@@ -109,6 +114,7 @@ export function sanitize(data: unknown): Settings {
     // группы — только известные, без повторов, в порядке выбора диагноза
     mine: Array.isArray(d.mine) ? SYSTEMS.filter(x => (d.mine as unknown[]).includes(x)) : [],
     devMode: flag('devMode'),
+    hintStrips: flag('hintStrips'),
   };
 }
 

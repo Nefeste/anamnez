@@ -1,13 +1,14 @@
 // Дифференциальный ряд игрока (FR-DX-7, spec 2026-10-differential, 0.5.8; 09-game-design.md §5 «Гипотезы»): болезни,
 // которые подозревает врач, по порядку добавления. Карточка гипотезы — что за неё и против, что типичное не проверено и
 // чем подтвердить; уверенность — по уровню сложности (§14): у «Врача» её нет. Добавить — из «Похоже на» или поиском по
-// болезням больницы; из карточки — сразу к решению с этим диагнозом. У доводов — значки признаков (0.6.8, вопрос 49):
+// болезням больницы; из карточки — сразу к решению с этим диагнозом; «Обновить гипотезы» (часть 105) убирает из ряда то,
+// чего больше нет в «Похоже на». У доводов — значки признаков (0.6.8, вопрос 49):
 // что есть — красным, чего нет — синим, что не проверено — серым пунктиром с «?»; у гипотез ряда — система органов.
 import { router } from 'expo-router';
 import { type ReactNode, useState } from 'react';
 import { View } from 'react-native';
 import { T } from '@/i18n';
-import type { Evidence, HypothesisView, VisitView } from '@/state/caseView';
+import { type Evidence, type HypothesisView, staleHypotheses, type VisitView } from '@/state/caseView';
 import { matchesQuery } from '@/state/encyclopedia';
 import { Button, Card, H, P, Sheet } from '@/ui/components';
 import { conditionIcon, examIcon, findingIcon } from '@/ui/itemIcons';
@@ -84,6 +85,9 @@ export function Differential({ v, actions }: { v: VisitView; actions: CaseAction
   const [query, setQuery] = useState('');
   const card = v.differential.find(h => h.id === open);
   const inRow = new Set(v.differential.map(h => h.id));
+  // «Обновить гипотезы» (часть 105): что выпало из «Похоже на» — убрать разом; есть что убирать — кнопка видна
+  const stale = staleHypotheses(v);
+  const staleNames = v.differential.filter(h => stale.includes(h.id)).map(h => h.name).join(', ');
   const groups = v.diagnoses
     .map(g => ({ ...g, items: g.items.filter(c => matchesQuery(query, c.name)) }))
     .filter(g => g.items.length > 0);
@@ -99,6 +103,10 @@ export function Differential({ v, actions }: { v: VisitView; actions: CaseAction
         <Button key={h.id} testID={`hyp-${h.id}`} kind="plain" title={h.name} hint={rowHint(h)} onPress={() => setOpen(h.id)}
           picture={<RowIcon icon={conditionIcon(h.id)} state="neutral" size={30} />} />
       ))}
+      {stale.length > 0 ? (
+        <Button testID="hyp-refresh" kind="plain" title={t.refresh} hint={t.refreshHint(staleNames)}
+          onPress={() => stale.forEach(id => actions.toggleHypothesis(id))} />
+      ) : null}
       <Button testID="hyp-add" kind="plain" title={t.add} onPress={() => setAdding(true)} />
 
       <Sheet visible={!!card} onClose={() => setOpen(undefined)} closeTitle={t.close} testID="hyp-sheet">

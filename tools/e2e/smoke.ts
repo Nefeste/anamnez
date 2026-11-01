@@ -1158,6 +1158,9 @@ try {
   // «мягкий режим» (spec 2026-09-chapter-2, часть 28б): по умолчанию выключен
   check((await page.getByTestId('settings-soft').getAttribute('aria-checked')) === 'false' && (await text(page, 'settings-soft')).includes('перевод в областную больницу'),
     `настройки: мягкий режим — выключен, ${(await text(page, 'settings-soft')).replace(/\n/g, ' · ')}`);
+  // часть 105: подсказки полосой над картой — включены
+  check((await page.getByTestId('settings-hint-strips').getAttribute('aria-checked')) === 'true' && (await text(page, 'settings-hint-strips')).includes('Похоже на'),
+    `настройки: подсказки полосой — включены, ${(await text(page, 'settings-hint-strips')).replace(/\n/g, ' · ')}`);
   // больные (spec 2026-10-variety): по умолчанию — «Реализм», выбор остаётся после перезапуска
   check((await page.getByTestId('patients-real').getAttribute('aria-checked')) === 'true' && (await text(page, 'patients-varied')).includes('редкие болезни чаще'),
     `настройки: больные — «Реализм»; ${(await text(page, 'patients-varied')).replace(/\n/g, ' · ')}`);
@@ -1711,6 +1714,22 @@ try {
   const firstLikely = ((await likely.first().getAttribute('data-testid')) ?? '').slice('likely-'.length);
   await page.getByTestId(`likely-add-${firstLikely}`).click();
   check((await page.getByTestId(`hyp-${firstLikely}`).count()) === 1 && (await text(page, `likely-add-${firstLikely}`)) === '✓ в ряду', `смена: из «Похоже на» в ряд — ${firstLikely}`);
+  // «Обновить гипотезы» (часть 105): в ряду — то, чего нет в «Похоже на»; кнопка убирает его, из «Похоже на» — остаётся
+  const likelyIds = (await likely.evaluateAll(els => els.map(e => e.getAttribute('data-testid') ?? ''))).map(x => x.slice('likely-'.length));
+  check((await page.getByTestId('hyp-refresh').count()) === 0, 'смена: ряд — только из «Похоже на», обновлять нечего — кнопки нет');
+  await page.getByTestId('hyp-add').click();
+  const picks = await page.locator('[data-testid^="hyp-pick-"]').evaluateAll(els => els.map(e => (e.getAttribute('data-testid') ?? '').slice('hyp-pick-'.length)));
+  const outsider = picks.find(id => !likelyIds.includes(id))!;
+  await page.getByTestId(`hyp-pick-${outsider}`).click();
+  await page.getByTestId('hyp-add-sheet-close').click();
+  const refreshHint = await text(page, 'hyp-refresh');
+  await page.getByTestId('hyp-refresh').click();
+  check(refreshHint.startsWith('Обновить гипотезы') && refreshHint.includes('чего больше нет в «Похоже на»') && (await page.getByTestId(`hyp-${outsider}`).count()) === 0
+    && (await page.getByTestId(`hyp-${firstLikely}`).count()) === 1 && (await page.getByTestId('hyp-refresh').count()) === 0,
+    `смена: «Обновить гипотезы» — ${outsider} убран, ${firstLikely} остался (${refreshHint.replace(/\n/g, ' · ')})`);
+  // полоса «Похоже на» закрывается у этого пациента (часть 105); на доске «Похоже на» остаётся
+  await page.getByTestId('likely-close').click();
+  check((await page.getByTestId('likely-strip').count()) === 0 && (await likely.count()) > 0, 'смена: полоса «Похоже на» закрыта, на доске — на месте');
   await part(page, 'results');
   const roomClock = await text(page, 'visit-clock');
   await page.waitForTimeout(1500);
@@ -2526,6 +2545,9 @@ try {
   await visible(pt, 'visit-decide').waitFor({ timeout: 15_000 });
   // подсказка «Практиканту» (часть 94): при боли в пояснице опасного — реже 1 из 100
   check((await text(pt, 'danger-strip')).startsWith('Опасных причин при этих жалобах почти не бывает'), `«Практикант»: опасных причин нет — ${await text(pt, 'danger-strip')}`);
+  // полоса опасных причин закрывается (часть 105)
+  await pt.getByTestId('danger-close').click();
+  check((await pt.getByTestId('danger-strip').count()) === 0 && (await pt.getByTestId('likely-strip').count()) === 1, '«Практикант»: полоса опасных причин закрыта, «Похоже на» — на месте');
   await pt.getByTestId('tab-order').click();
   // строки бланка с галочкой, без их «?» (`exam-…-info`); раздел «По жалобе» — раскрыт, остальные — свёрнуты
   const exams = () => pt.locator('[data-testid^="exam-"]:not([data-testid$="-info"])').count();

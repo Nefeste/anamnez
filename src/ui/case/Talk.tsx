@@ -95,7 +95,8 @@ export function Questions({ v, ids, rest, restOpen, onRest, onAsk, explain }: {
   if (parts.length === 0 && restLeft === 0) return null;
   return (
     <View style={[styles.panel, { maxHeight: Math.round(height * 0.3) }]}>
-      <ScrollView style={styles.panelScroll} contentContainerStyle={styles.panelContent} testID="talk-questions">
+      {/* край прокрутки затухает (Android): срезанный сверху вопрос читается как прокрутка, а не наезд (Ш4, часть 105) */}
+      <ScrollView style={styles.panelScroll} contentContainerStyle={styles.panelContent} testID="talk-questions" fadingEdgeLength={24}>
         {parts.map(x => (
           <View key={x.key} style={styles.part}>
             <Text style={styles.label}>{x.title}</Text>
@@ -158,7 +159,8 @@ const useStyles = makeStyles(t => ({
   // строка в 17 пикселей: с полем сверху и снизу и hitSlop касание — 49 dp (NFR-ACC-1)
   moreTap: { paddingVertical: space.s },
   // как панель места: сжимается, если с крупным текстом места меньше, — вкладки не уходят за край (NFR-ACC-1)
-  panel: { flexShrink: 1, backgroundColor: t.colors.card, borderTopWidth: 1, borderTopColor: t.colors.edge },
+  // граница с беседой — заметная (Ш4, часть 105): две прокрутки встык не должны читаться как слой поверх слоя
+  panel: { flexShrink: 1, backgroundColor: t.colors.card, borderTopWidth: 2, borderTopColor: t.colors.edge },
   panelScroll: { flexGrow: 0 },
   panelContent: { paddingHorizontal: space.l, paddingVertical: space.s, gap: space.s },
   part: { gap: space.xs },
