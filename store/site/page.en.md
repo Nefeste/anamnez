@@ -3,10 +3,10 @@ name: Anamnesis
 title: "Anamnesis — doctor simulator: diagnose and treat patients"
 description: "A doctor simulator for Android: take the history, examine, order tests, X-rays and ECGs, and make the diagnosis. Works offline, no ads."
 kind: Doctor simulator
-status: dev
+status: live
 lead: "Every patient is a puzzle: ask, examine, order tests and X-rays, make a diagnosis and treat."
 links:
-  - text: Pre-order on RuStore
+  - text: Play on RuStore
     url: https://www.rustore.ru/catalog/app/games.gornitsa.anamnez
 icon: icon/icon-512.png
 feature: graphics/feature-1024x500.png
@@ -59,8 +59,7 @@ facts:
 
 Anamnesis is a doctor simulator with honest diagnostics. Every patient has a real illness or
 injury, sometimes more than one, and almost every sign stays hidden until you ask, examine, or order
-a test or an X-ray. The game is in development; the screenshots are from an early version, which is
-in Russian.
+a test or an X-ray. The game is in Russian, and so are the screenshots.
 
 ## How to play
 
@@ -188,7 +187,5 @@ see a doctor; in an emergency, call your local emergency number (112 in Russia a
 
 ## What’s next
 
-Coming up: new campaign chapters. The game is
-being prepared for release in RuStore for Android, in Russian first; pre-orders are open — the button is at the
-top of the page. Questions:
-support@gornitsa.games.
+The game is out on RuStore for Android, in Russian for now — the button is at the top of the page. Coming up:
+new campaign chapters. Questions: support@gornitsa.games.
