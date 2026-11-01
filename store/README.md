@@ -79,7 +79,7 @@ RuStore: https://www.rustore.ru/catalog/app/games.gornitsa.anamnez (сверен
 Части «Пути к публикации» 97–106 сделаны — 1.1.1–1.1.10
 ([`docs/specs/2026-10-publish-ready.md`](../docs/specs/2026-10-publish-ready.md)); повторная проверка держащих
 публикацию находок не нашла, финальный обход 1.1.10 — там же, в «Журнале проверок». Готова ли 1.1.10 к публикации —
-решает владелец, вопрос 75.
+решает владелец, вопрос 75 ([#221](https://github.com/Nefeste/anamnez/issues/221)).
 
 1. **Тег `v1.1.10`** — сборка по тегу кладёт `anamnez-N.apk` в Releases (ADR
    [0015](../docs/adr/0015-ci-build-signing.md)); теги ставит владелец.
