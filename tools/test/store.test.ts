@@ -52,6 +52,18 @@ describe('store: тексты', () => {
     expect(field(listing, 'Что нового').length).toBeLessThanOrEqual(500);
   });
 
+  // FAQ карточки (просьба владельца 01.11.2026): десять вопросов, вопрос ≤ 120, ответ ≤ 500; те же — на сайте
+  test('вопросы и ответы: десять, вопрос ≤ 120, ответ ≤ 500; те же вопросы — в разделе «Вопросы» сайта', () => {
+    const start = listing.indexOf('## Вопросы и ответы');
+    const section = listing.slice(start, listing.indexOf('\n## ', start + 1));
+    const faq = [...section.matchAll(/^### (.+)\n\n```\n([\s\S]*?)\n```/gm)].map(m => ({ q: m[1], a: m[2] }));
+    expect(faq.length).toBe(10);
+    for (const { q, a } of faq) expect({ q, long: q.length > 120 || a.length > 500 || a.length < 20 }).toEqual({ q, long: false });
+    const site = read('site/page.ru.md');
+    const asked = site.slice(site.indexOf('## Вопросы'), site.indexOf('## Что дальше')).match(/^### .+$/gm)!.map(h => h.slice(4));
+    expect(asked).toEqual(faq.map(x => x.q));
+  });
+
   test('оговорка — в полном описании и на странице сайта', () => {
     expect(field(listing, 'Полное описание').trimEnd().endsWith(DISCLAIMER)).toBe(true);
     expect(read('site/page.ru.md')).toContain(DISCLAIMER);

@@ -167,23 +167,64 @@ chronic illnesses that run in the background of the main one.
 
 ## Questions
 
-### How much does it cost?
+### How much does Anamnesis cost?
 
-It’s free, with no ads and no purchases.
+It is free. There are no ads, purchases or subscriptions.
 
 ### Do I need the internet?
 
-No. The game doesn’t even have permission to access the network: it sends nothing anywhere.
+No. The game works offline and sends nothing anywhere — it doesn’t even have permission to access
+the network. Saves stay on the phone; to move them to another phone, use a file — the transfer
+screen in Settings.
 
-### Is this a medical app?
+### Is this a medical app? Can I treat myself with it?
 
-No, it’s a game. The medical information in it is simplified and serves the game; it is not a
-reference, not a self-diagnosis tool and not a substitute for a doctor. If something worries you,
-see a doctor; in an emergency, call your local emergency number (112 in Russia and across Europe).
+No. Anamnesis is a game, not a medical device, and it does not replace a doctor. Diseases, tests and
+treatment follow clinical guidelines but are simplified for the game, and the medical articles are
+still drafts. If you or someone close to you feels unwell, see a doctor; in an emergency call 112
+(103 is the ambulance in Russia).
 
 ### What age is it for?
 
-16+.
+16+. The game has serious illnesses, injuries, poisonings and patient deaths — not graphic, but not
+played down either. If you’d rather not lose patients, turn on soft mode in Settings: instead of
+dying, a patient is transferred to the regional hospital in a critical condition.
+
+### Do I need medical training to play?
+
+No. Every sign, test and disease is explained in plain words: tap “?” for a short note, and read
+more in the in-game encyclopedia. The first campaign shift is with a mentor, and the easier
+difficulty levels hint at what the illness looks like.
+
+### How do the difficulty levels differ?
+
+Trainee: hints, and what matters for the complaint comes first. Student: a “looks like”
+hint with frequencies; tests and examination never err. Resident: up to three diseases in that hint,
+confidence in words; tests sometimes err. Doctor: no hints; tests and examination sometimes err, as
+in real life.
+
+### What is the case of the day?
+
+One patient a day, the same for every player. You can play any of the last 30 days; the first
+attempt counts, and afterwards there is a review of what it really was.
+
+### Can I build my own hospital?
+
+Yes. In the campaign the hospital grows chapter by chapter, and after chapter 2 the sandbox opens:
+your own hospital on an empty plot or from a ready clinic — offices, a lab, X-ray, ultrasound, CT,
+wards, an operating room, hiring doctors and running the budget.
+
+### How many chapters are there, and how does the campaign end?
+
+Four chapters: from a village clinic to a city hospital with intensive care. Each has letters and
+tasks without deadlines; after chapter 4 comes a look back at the whole career and a letter from the
+mentor. You can run three careers, each at its own difficulty, and keep working in the hospital
+after the finale.
+
+### Found a bug or have an idea — where do I write?
+
+The bug report in Settings gathers the version, phone and the day’s log, and you send it yourself.
+Or write from the About screen. Email: support@gornitsa.games. We read RuStore reviews too.
 
 ## What’s next
 
