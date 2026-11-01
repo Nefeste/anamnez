@@ -79,6 +79,14 @@ export interface Palette {
   present: string;
   absent: string;
   unknown: string;
+  /**
+   * клавиша (часть 106, вопрос 74): губа под главной кнопкой — на тон темнее, светлая кромка сверху; у обычной кнопки —
+   * свои губа и кромка
+   */
+  keyLip: string;
+  keyLight: string;
+  keyLipPlain: string;
+  keyLightPlain: string;
 }
 
 export interface Fonts {
@@ -119,6 +127,7 @@ export const LIGHT: Theme = {
     figure: '#E7DFCE', figureLine: '#A99E87',
     chart: '#2B4E8C', chartTrack: '#DCE5F4', good: '#2F7A40', warn: '#D9A21B', bad: '#B8392F',
     present: '#B8392F', absent: '#2B4E8C', unknown: '#857B69',
+    keyLip: '#1D355F', keyLight: '#6680AC', keyLipPlain: '#B1AB9D', keyLightPlain: '#FFFFFF',
   },
   fonts: { title: 'PT Serif', body: 'PT Sans', mono: 'PT Mono' },
   shape: { radius: 6, card: 3, stamp: true, folderTabs: true, doubleRule: true, ruled: true },
@@ -137,6 +146,7 @@ export const DARK: Theme = {
     chart: '#2B9FC4', chartTrack: '#173B47', good: '#0CA30C', warn: '#FAB219', bad: '#D03B3B',
     // «есть» — коралловым, как тревога монитора; «нет» — голубым, как кривая сатурации
     present: '#FF6B5E', absent: '#56C8E8', unknown: '#7C9592',
+    keyLip: '#29965A', keyLight: '#73E6A6', keyLipPlain: '#0C1517', keyLightPlain: '#364448',
   },
   fonts: { title: 'Golos Text', body: 'Golos Text', mono: 'JetBrains Mono' },
   shape: { radius: 12, card: 12, stamp: false, folderTabs: false, doubleRule: false, ruled: false },

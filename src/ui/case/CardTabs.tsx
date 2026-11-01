@@ -1,7 +1,8 @@
 // Вкладки карты пациента внизу, под большим пальцем (spec 2026-10-patient-card, 0.6.0): «Карта · Спросить · Осмотреть ·
-// Назначить» и «Решение» — пятой, шире и цвета главной кнопки. На «Карте» — сколько пришло нового.
+// Назначить» и «Решение» — пятой, шире, клавишей цвета главной кнопки (часть 106). На «Карте» — сколько пришло нового.
 import { Pressable, View } from 'react-native';
 import { T } from '@/i18n';
+import { Key } from '@/ui/components';
 import { Icon } from '@/ui/Icon';
 import { CARD_ICONS } from '@/ui/iconShapes';
 import { makeStyles, space, touch, useTheme } from '@/ui/theme';
@@ -38,13 +39,12 @@ export function CardTabs({ value, onChange, fresh, decide }: {
           );
         })}
       </View>
-      <Pressable testID="visit-decide" accessibilityRole="button" accessibilityHint={decide.hint} onPress={decide.onPress} hitSlop={DECIDE_SLOP}
-        style={({ pressed }) => [styles.decide, pressed && styles.pressed]}>
-        {/* оттиск штампа «Медкарты», как у главной кнопки */}
-        {theme.shape.stamp ? <View style={styles.stamp} /> : null}
+      {/* клавиша, как главная кнопка (часть 106, вопрос 74) */}
+      <Key testID="visit-decide" accessibilityRole="button" accessibilityHint={decide.hint} onPress={decide.onPress} hitSlop={DECIDE_SLOP}
+        accent radius={theme.shape.radius + 2} style={styles.decide} face={styles.decideFace}>
         <Icon shape={CARD_ICONS.decide} size={22} color={theme.colors.onAccent} />
         <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={styles.decideText}>{decide.title}</Text>
-      </Pressable>
+      </Key>
     </View>
   );
 }
@@ -63,11 +63,8 @@ const useStyles = makeStyles(t => ({
     position: 'absolute', top: space.xs, left: '50%', marginLeft: 6, minWidth: 16, paddingHorizontal: 5, borderRadius: 8, overflow: 'hidden',
     backgroundColor: t.colors.freshLine, color: t.colors.onYellow, fontSize: 11, fontWeight: '700', lineHeight: 16, textAlign: 'center',
   },
-  decide: {
-    flex: 1.15, margin: space.s - 2, marginLeft: 2, borderRadius: t.shape.radius, backgroundColor: t.colors.accent,
-    alignItems: 'center', justifyContent: 'center', gap: 2, paddingHorizontal: space.xs,
-  },
-  stamp: { position: 'absolute', top: 3, right: 3, bottom: 3, left: 3, pointerEvents: 'none', borderWidth: 1, borderColor: t.colors.onAccentHint, borderRadius: Math.max(0, t.shape.radius - 2) },
+  decide: { flex: 1.15, margin: space.s - 2, marginLeft: 2 },
+  decideFace: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 2, paddingHorizontal: space.xs },
   decideText: { fontSize: 13, fontWeight: '700', color: t.colors.onAccent },
   pressed: { opacity: 0.75 },
 }));
