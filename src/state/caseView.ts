@@ -467,8 +467,13 @@ const TX_GROUPS: [string, string[]][] = [
   ['consult', ['consult']],
 ];
 
-/** Порядок групп лечения — для решения и энциклопедии. */
-export const TX_GROUP_ORDER = [...TX_GROUPS.map(([k]) => k), 'regimen'];
+/**
+ * Порядок групп лечения — для решения и энциклопедии. Ответ владельца на вопрос 73 (#215, вариант 2): сначала то, что
+ * облегчает, — режим, жаропонижающие, нос, бронхи, — потом противовирусные и антибиотики, остальное — как в
+ * `TX_GROUPS`. Порядок один для всех диагнозов: ответа он не подсказывает, а лист не начинается с антибиотиков.
+ */
+const TX_FIRST = ['regimen', 'pain', 'nose', 'breathing', 'antivirals', 'antibiotics'];
+export const TX_GROUP_ORDER = [...TX_FIRST, ...TX_GROUPS.map(([k]) => k).filter(k => !TX_FIRST.includes(k))];
 
 /** Группа по классу лечения; без класса — режим и советы. */
 export function txGroupOfClass(cls: string | undefined): string {
