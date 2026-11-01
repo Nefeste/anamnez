@@ -1516,7 +1516,8 @@ try {
     `решение, шаг 2: лист назначений — сверху выбор при пневмонии, групп свёрнуто ${txClosed}`);
   // часть 101 (вопрос 68): выбор при диагнозе — группами в порядке всего листа, антибиотики — своей группой
   const topGroups = await page.getByTestId('tx-suggested').locator('[data-testid^="tx-top-"]').evaluateAll(xs => xs.map(x => x.getAttribute('data-testid')));
-  check(topGroups.length >= 2 && topGroups.includes('tx-top-antibiotics') && (await page.getByTestId('tx-top-antibiotics').locator('[data-testid="tx-tx.amoxicillin"]').count()) === 1,
+  // вопрос 73 (#215, вариант 2): антибиотики — не первой группой, сначала режим и то, что облегчает
+  check(topGroups.length >= 2 && topGroups.indexOf('tx-top-antibiotics') > 0 && (await page.getByTestId('tx-top-antibiotics').locator('[data-testid="tx-tx.amoxicillin"]').count()) === 1,
     `решение, шаг 2: выбор при диагнозе — группами: ${topGroups.join(', ')}`);
   await page.getByTestId('tx-search').fill('тромбол');
   check((await page.getByTestId('tx-tx.thrombolysis').count()) === 1 && (await page.getByTestId('tx-tx.cast_splint').count()) === 0,

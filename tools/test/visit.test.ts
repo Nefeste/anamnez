@@ -1,7 +1,7 @@
 // Приём пациента прототипа П4 (spec 2026-09-spikes): модуль грузится, часы идут делами,
 // результаты приходят в свой срок, правда видна только в разборе после диагноза.
 import { describe, expect, test } from 'bun:test';
-import { outcomeText, suggestedTreatments } from '../../src/state/caseView';
+import { outcomeText, suggestedTreatments, TX_GROUP_ORDER } from '../../src/state/caseView';
 import { act, chooseDiagnosis, chooseSetting, conditionChoices, conditionTerm, diagnosisGroups, examInfo, examsByAction, examTerm, findingInfo, finish, nextPatient, toggleTreatment, treatmentTerm, visitView, waitForResults } from '../../src/state/visit';
 
 describe('приём', () => {
@@ -146,6 +146,11 @@ describe('приём', () => {
     expect(group('tx.aspirin_acs')).toBe('heart');
     expect(group('tx.rest_fluids')).toBe('regimen');
     expect(v.treatmentGroups.every(g => g.title.length > 0)).toBe(true);
+    // вопрос 73 (#215, вариант 2): сначала режим и то, что облегчает, потом противовирусные и антибиотики
+    expect(TX_GROUP_ORDER.slice(0, 6)).toEqual(['regimen', 'pain', 'nose', 'breathing', 'antivirals', 'antibiotics']);
+    expect(new Set(TX_GROUP_ORDER).size).toBe(TX_GROUP_ORDER.length);
+    const keys = v.treatmentGroups.map(g => g.key);
+    expect(keys).toEqual(TX_GROUP_ORDER.filter(k => keys.includes(k)));
   });
 
   // вопрос 34 (замечание владельца 12.10.2026): при ОРВИ «Режим и обильное питьё» был в самом низу, рядом с прививками и гипсом
