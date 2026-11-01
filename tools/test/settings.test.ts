@@ -17,7 +17,7 @@ describe('настройки', () => {
     await loadSettings();
     // с 0.5.18 — и умения врача, включены (spec 2026-10-skills); с 0.5.19 — «свои больные», ничего (spec 2026-10-own-patients)
     // с 0.6.3 — режим разработчика, выключен: «Проверки на телефоне» в настройках скрыты
-    expect(settings()).toEqual({ sound: 1, music: 0.7, ambience: true, vibration: true, pauseOnRed: true, pauseOnResults: true, disclaimerAccepted: false, textScale: 1, theme: 'system', softMode: false, variety: false, skills: true, mine: [], devMode: false });
+    expect(settings()).toEqual({ sound: 1, music: 0.7, ambience: true, vibration: true, pauseOnRed: true, pauseOnResults: true, disclaimerAccepted: false, textScale: 1, theme: 'system', softMode: false, variety: false, skills: true, mine: [], devMode: false, hintStrips: true });
   });
 
   test('поменяли — записано; после «перезапуска» — те же', async () => {
@@ -58,6 +58,10 @@ describe('настройки', () => {
     expect(sanitize({ sound: 0.35 }).softMode).toBe(false);
     expect(sanitize({ softMode: true }).softMode).toBe(true);
     expect(sanitize({ softMode: 'yes' }).softMode).toBe(false);
+    // часть 105: полосы-подсказки над картой — по умолчанию есть; прежние настройки без поля — тоже
+    expect(sanitize({ sound: 0.35 }).hintStrips).toBe(true);
+    expect(sanitize({ hintStrips: false }).hintStrips).toBe(false);
+    expect(sanitize({ hintStrips: 'no' }).hintStrips).toBe(true);
     // музыка (часть 62) — в файле прежней версии её нет: средне; громкость — от 0 до 1, иначе по умолчанию
     expect(sanitize({ sound: 0.35 }).music).toBe(0.7);
     expect(sanitize({ music: 0 }).music).toBe(0);

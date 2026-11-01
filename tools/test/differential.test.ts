@@ -10,7 +10,7 @@ import type { Observation } from '../../src/engine/med/types';
 import { apply, current, newShift } from '../../src/engine/shift/engine';
 import type { ShiftState } from '../../src/engine/shift/types';
 import { T } from '../../src/i18n';
-import { makeCaseView } from '../../src/state/caseView';
+import { makeCaseView, staleHypotheses } from '../../src/state/caseView';
 import { createVisit } from '../../src/state/visit';
 
 const PNEUMONIA = 'cond.pneumonia_cap';
@@ -109,6 +109,21 @@ describe('ряд в черновике приёма', () => {
     v.finish();
     v.toggleHypothesis(PNEUMONIA);
     expect(v.view().differential.map(h => h.id)).toEqual(['cond.arvi']);
+  });
+
+  // часть 105 (spec 2026-10-publish-ready, просьба владельца 01.11.2026): убрать из ряда то, чего нет в «Похоже на»
+  test('«Обновить гипотезы»: выпавшие из «Похоже на» — по порядку ряда; без «Похоже на» — нечего обновлять', () => {
+    const v = createVisit(77);
+    v.act('exam.ask_complaints');
+    const likely = v.view().hints.map(h => h.id);
+    const other = v.view().diagnoses.flatMap(g => g.items.map(c => c.id)).filter(id => !likely.includes(id)).slice(0, 2);
+    expect(likely.length > 0 && other.length === 2).toBe(true);
+    for (const id of [other[0], likely[0], other[1]]) v.toggleHypothesis(id);
+    expect(staleHypotheses(v.view())).toEqual(other);
+    for (const id of staleHypotheses(v.view())) v.toggleHypothesis(id);
+    expect(v.view().differential.map(h => h.id)).toEqual([likely[0]]);
+    expect(staleHypotheses(v.view())).toEqual([]);
+    expect(staleHypotheses({ ...v.view(), hints: [] })).toEqual([]);
   });
 });
 

@@ -12,6 +12,7 @@ import { T } from '@/i18n';
 import type { StaffPortrait } from '@/render/look';
 import { Portrait } from '@/render/Portrait';
 import { examInfo, examsByAction, findingInfo, type Line, type ResultGroup, type TermInfo, type VisitView } from '@/state/caseView';
+import { useSettings } from '@/state/settings';
 import { Button, Card, Chip, Chips, H, P, Pane, Screen, type ScreenScroll, Tabs } from '@/ui/components';
 import { examIcon } from '@/ui/itemIcons';
 import { TermSheet } from '@/ui/TermSheet';
@@ -73,6 +74,9 @@ const lastTab = recent<CardTab>();
 const lastPlace = recent<ExamPlace>();
 const lastMarked = recent<string[]>();
 const lastPart = recent<CardPart>();
+/** закрытые полосы над картой (часть 105): «Похоже на» и опасные причины — у этого пациента */
+type Strip = 'likely' | 'danger';
+const lastClosed = recent<Strip[]>();
 const startTab = (v: VisitView, readOnly: boolean): CardTab => lastTab.get(v.portrait.key) ?? firstTab(v, readOnly);
 
 /**
@@ -106,6 +110,17 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
     lastPlace.set(key, open);
     setWhere({ patient: key, place: open });
   };
+  // полосы над картой закрываются (часть 105, просьба владельца 01.11.2026): подсказки — у этого пациента, «За это время»
+  // — до следующего события; выключены в настройках — подсказок полосой нет ни у кого
+  const hintStrips = useSettings().hintStrips;
+  const [closed, setClosed] = useState<{ patient: number; strips: Strip[] }>(() => ({ patient: key, strips: lastClosed.get(key) ?? [] }));
+  const closedNow = closed.patient === key ? closed.strips : lastClosed.get(key) ?? [];
+  const closeStrip = (x: Strip) => {
+    lastClosed.set(key, [...closedNow, x]);
+    setClosed({ patient: key, strips: [...closedNow, x] });
+  };
+  const shown = (x: Strip) => hintStrips && !closedNow.includes(x);
+  const [heard, setHeard] = useState<readonly string[]>();
   // отмеченное в бланке направления, по порядку отметки, — у этого пациента; сделанное и недоступное — не в счёт
   const [marks, setMarks] = useState<{ patient: number; ids: string[] }>(() => ({ patient: key, ids: lastMarked.get(key) ?? [] }));
   const marked = (marks.patient === key ? marks.ids : lastMarked.get(key) ?? []).filter(id => !v.done.includes(id) && !v.unavailable[id]);
@@ -258,30 +273,37 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
       <View style={styles.page}>
         <Head v={v} readOnly={readOnly} open={isOpen('complaints')} onToggle={() => toggle('complaints')} explain={explain} />
         {/* «Похоже на» — полосой под шапкой: видно с любой вкладки; в ряд — на «Карте» */}
-        {v.hints.length > 0 && !v.decision && !readOnly ? (
+        {v.hints.length > 0 && !v.decision && !readOnly && shown('likely') ? (
           <View testID="likely-strip" style={styles.likely}>
             <Text style={styles.likelyLabel}>{t.likelyShort}</Text>
             <Text numberOfLines={2} style={styles.likelyText}>{v.hints.map(h => `${h.name} — ${h.word ?? t.outOf10(h.outOf10)}`).join(' · ')}</Text>
+            <CloseStrip testID="likely-close" label={t.closeStrip(t.likelyShort)} onPress={() => closeStrip('likely')} />
           </View>
         ) : null}
         {/* подсказка «Практиканту» (часть 94): опасные причины жалобы — строкой; касание — к ним, на доску гипотез */}
-        {v.danger && !v.decision && !readOnly ? (
-          <Pressable testID="danger-strip" accessibilityRole="button" accessibilityHint={t.dangerShow} onPress={() => {
-            setTab('card');
-            setPart('board');
-          }} style={({ pressed }) => [styles.likely, pressed && styles.pressed]}>
-            <Text numberOfLines={2} style={styles.likelyText}>{dangerLine(v.danger)}</Text>
-          </Pressable>
+        {v.danger && !v.decision && !readOnly && shown('danger') ? (
+          <View style={styles.likely}>
+            <Pressable testID="danger-strip" accessibilityRole="button" accessibilityHint={t.dangerShow} onPress={() => {
+              setTab('card');
+              setPart('board');
+            }} style={({ pressed }) => [styles.stripMain, pressed && styles.pressed]}>
+              <Text numberOfLines={2} style={styles.likelyText}>{dangerLine(v.danger)}</Text>
+            </Pressable>
+            <CloseStrip testID="danger-close" label={t.closeStrip(t.stripDanger)} onPress={() => closeStrip('danger')} />
+          </View>
         ) : null}
         {/* за это время (смена): пришёл срочный, у больного в смотровой остановилось сердце — сразу, с любой вкладки */}
-        {v.meanwhile.length > 0 ? (
+        {v.meanwhile.length > 0 && v.meanwhile !== heard ? (
           <View style={styles.meanwhile}>
-            {v.meanwhile.map((m, i) => (
-              <Text key={i} testID={`meanwhile-${i}`} style={styles.stripLine}>
-                {i === 0 ? <Text style={styles.meanwhileLabel}>{`${t.meanwhile}: `}</Text> : null}
-                {m}
-              </Text>
-            ))}
+            <View style={styles.stripMain}>
+              {v.meanwhile.map((m, i) => (
+                <Text key={i} testID={`meanwhile-${i}`} style={styles.stripLine}>
+                  {i === 0 ? <Text style={styles.meanwhileLabel}>{`${t.meanwhile}: `}</Text> : null}
+                  {m}
+                </Text>
+              ))}
+            </View>
+            <CloseStrip testID="meanwhile-close" label={t.closeStrip(t.meanwhile)} onPress={() => setHeard(v.meanwhile)} />
           </View>
         ) : null}
 
@@ -561,6 +583,17 @@ function KnownGroup({ g, open, onToggle, explain, onLayout }: {
   );
 }
 
+/** «×» полосы над картой (часть 105): закрыть её. */
+function CloseStrip({ testID, label, onPress }: { testID: string; label: string; onPress: () => void }) {
+  const styles = useStyles();
+  return (
+    <Pressable testID={testID} accessibilityRole="button" accessibilityLabel={label} hitSlop={14} onPress={onPress}
+      style={({ pressed }) => [styles.stripClose, pressed && styles.pressed]}>
+      <Text style={styles.stripCloseText}>×</Text>
+    </Pressable>
+  );
+}
+
 const useStyles = makeStyles(t => ({
   // на широком экране — колонкой посередине, как остальные экраны
   page: { flex: 1, width: '100%', maxWidth: 640, alignSelf: 'center' },
@@ -576,13 +609,20 @@ const useStyles = makeStyles(t => ({
   said: { fontFamily: t.fonts.title, fontStyle: 'italic', fontSize: 15, lineHeight: 20, color: t.colors.ink },
   toggle: { fontSize: 13, lineHeight: 20, color: t.colors.accent, fontWeight: '700' },
   likely: {
-    flexDirection: 'row', gap: space.s, alignItems: 'baseline', paddingHorizontal: space.l, paddingVertical: space.xs + 2,
+    flexDirection: 'row', gap: space.s, alignItems: 'baseline', paddingLeft: space.l, paddingRight: space.xs, paddingVertical: space.xs + 2,
     backgroundColor: t.colors.accentSoft, borderBottomWidth: 1, borderBottomColor: t.colors.edge,
   },
   likelyLabel: { fontSize: 13, fontWeight: '700', color: t.colors.accent },
   parts: { paddingHorizontal: space.l, paddingTop: space.s },
   likelyText: { flex: 1, fontSize: 13, lineHeight: 18, color: t.colors.ink },
-  meanwhile: { gap: 2, paddingHorizontal: space.l, paddingVertical: space.xs + 2, backgroundColor: t.colors.fresh, borderBottomWidth: 1, borderBottomColor: t.colors.freshLine },
+  meanwhile: {
+    flexDirection: 'row', alignItems: 'center', gap: space.s, paddingLeft: space.l, paddingRight: space.xs, paddingVertical: space.xs + 2,
+    backgroundColor: t.colors.fresh, borderBottomWidth: 1, borderBottomColor: t.colors.freshLine,
+  },
+  stripMain: { flex: 1, gap: 2 },
+  // «×» полосы (часть 105): в строку высотой — полоса от него не растёт; касание с hitSlop — 56 × 48 dp (NFR-ACC-1)
+  stripClose: { alignSelf: 'center', width: 28, height: 20, alignItems: 'center', justifyContent: 'center', borderRadius: 10 },
+  stripCloseText: { fontSize: 18, lineHeight: 20, color: t.colors.muted },
   meanwhileLabel: { fontWeight: '700' },
   footer: { paddingHorizontal: space.l, paddingVertical: space.s, borderTopWidth: 1, borderTopColor: t.colors.edge, backgroundColor: t.colors.bg },
   strip: {

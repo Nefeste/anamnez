@@ -1004,6 +1004,16 @@ function differentialOf(p: Patient, obs: readonly Observation[], c: CaseInput, c
 }
 
 /**
+ * «Обновить гипотезы» (spec 2026-10-publish-ready, часть 105): гипотезы ряда, которых больше нет в «Похоже на», — по
+ * порядку ряда. Где «Похоже на» нет («Врач»), обновлять не по чему — пусто.
+ */
+export function staleHypotheses(v: Pick<VisitView, 'hints' | 'differential'>): Id[] {
+  if (v.hints.length === 0) return [];
+  const likely = new Set(v.hints.map(h => h.id));
+  return v.differential.filter(h => !likely.has(h.id)).map(h => h.id);
+}
+
+/**
  * Ответ без повторов (spec 2026-10-publish-ready, часть 103): «нет», которое целиком сказано другим «нет» того же
  * ответа, не пишется — «Зрачки обычной ширины» при «Зрачки обычной ширины, на свет реагируют живо»; одинаковое — один
  * раз. Найденное не трогается.

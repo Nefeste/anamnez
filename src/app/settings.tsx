@@ -68,6 +68,7 @@ export default function SettingsScreen() {
         <Toggle testID="settings-pause-red" title={t.pauseOnRed} hint={t.pauseHint} value={s.pauseOnRed} onChange={v => updateSettings({ pauseOnRed: v })} />
         <Toggle testID="settings-pause-results" title={t.pauseOnResults} value={s.pauseOnResults} onChange={v => updateSettings({ pauseOnResults: v })} />
         <Toggle testID="settings-soft" title={t.softMode} hint={t.softModeHint} value={s.softMode} onChange={v => updateSettings({ softMode: v })} />
+        <Toggle testID="settings-hint-strips" title={t.hintStrips} hint={t.hintStripsHint} value={s.hintStrips} onChange={v => updateSettings({ hintStrips: v })} />
         <P muted>{t.patients}</P>
         <Choice<Patients>
           testPrefix="patients"
