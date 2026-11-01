@@ -2,12 +2,13 @@
 // 2026-10-menu). «Медкарта» — обложка карты: «АНАМНЕЗ» прописными над двойной чертой, бейдж — карточка с прорезью для
 // зажима и личной печатью врача, пункты — строки журнала на одном листе, номер на поле за красной линией, версия — внизу.
 // «Монитор» — название, под ним кривая ЭКГ и версия, бейдж — панель с цифрами, как на мониторе у постели, пункты —
-// панели с полосой.
+// панели с полосой, клавишами (часть 106, вопрос 74).
 import { Pressable, useWindowDimensions, View } from 'react-native';
 import { T } from '@/i18n';
 import { EcgLine } from '@/render/EcgLine';
 import { Portrait } from '@/render/Portrait';
 import { Meter } from './charts';
+import { Key } from './components';
 import { Text } from './text';
 import { makeStyles, space, useTheme } from './theme';
 
@@ -148,9 +149,8 @@ export function DailyCard({ day, month, hint, label, onPress }: { day: number; m
   const styles = useStyles();
   const t = useTheme();
   const ruled = t.shape.ruled;
-  return (
-    <Pressable testID="menu-daily" accessibilityRole="button" accessibilityLabel={label} onPress={onPress}
-      style={({ pressed }) => [ruled ? styles.daily : styles.panel, pressed && styles.pressed]}>
+  const inner = (
+    <>
       <View style={styles.leaf} aria-hidden importantForAccessibility="no-hide-descendants">
         <Text style={styles.leafDay}>{String(day)}</Text>
         <Text style={styles.leafMonth}>{month}</Text>
@@ -160,7 +160,18 @@ export function DailyCard({ day, month, hint, label, onPress }: { day: number; m
         <Text style={styles.hint}>{hint}</Text>
       </View>
       {ruled ? null : <Text style={styles.chevron} aria-hidden>›</Text>}
+    </>
+  );
+  // «Монитор» — клавишей, как пункты меню (часть 106); «Медкарта» — листок календаря, как был
+  return ruled ? (
+    <Pressable testID="menu-daily" accessibilityRole="button" accessibilityLabel={label} onPress={onPress}
+      style={({ pressed }) => [styles.daily, pressed && styles.pressed]}>
+      {inner}
     </Pressable>
+  ) : (
+    <Key testID="menu-daily" accessibilityRole="button" accessibilityLabel={label} onPress={onPress} radius={t.shape.card} face={styles.panel}>
+      {inner}
+    </Key>
   );
 }
 
@@ -192,15 +203,15 @@ export function MenuList({ items }: { items: MenuItem[] }) {
   return (
     <View style={styles.panels}>
       {items.map((it, i) => (
-        <Pressable key={it.testID} testID={it.testID} accessibilityRole="button" onPress={it.onPress}
-          style={({ pressed }) => [styles.panel, pressed && styles.pressed]}>
+        // панель-клавиша (часть 106, вопрос 74)
+        <Key key={it.testID} testID={it.testID} accessibilityRole="button" onPress={it.onPress} radius={t.shape.card} face={styles.panel}>
           <View style={[styles.bar, i === 0 && styles.barFirst]} />
           <View style={styles.body}>
             <Text style={styles.panelTitle}>{it.title}</Text>
             {it.hint ? <Text style={styles.hint}>{it.hint}</Text> : null}
           </View>
           <Text style={styles.chevron} aria-hidden>›</Text>
-        </Pressable>
+        </Key>
       ))}
     </View>
   );
@@ -279,10 +290,8 @@ const useStyles = makeStyles(t => ({
   readCases: { color: t.colors.accent },
   readCorrect: { color: t.colors.info },
   panels: { gap: space.s },
-  panel: {
-    flexDirection: 'row', alignItems: 'center', minHeight: 64, paddingRight: space.m, paddingLeft: space.m + 2,
-    borderRadius: t.shape.card, borderWidth: 1, borderColor: t.colors.edge, backgroundColor: t.colors.card,
-  },
+  // лицо панели-клавиши: фон, рамку и губу даёт `Key` (часть 106)
+  panel: { flexDirection: 'row', alignItems: 'center', minHeight: 64, paddingRight: space.m, paddingLeft: space.m + 2 },
   bar: { alignSelf: 'stretch', width: 4, marginVertical: space.m, borderRadius: 2, backgroundColor: t.colors.edge },
   barFirst: { backgroundColor: t.colors.info },
   panelTitle: { fontSize: 18, lineHeight: 24, fontWeight: '700', color: t.colors.ink },

@@ -3,7 +3,7 @@
 // рамкой внутри, листы — бумага, вкладки действий — закладки картотеки; в «Мониторе» — панели
 // и зелёная кнопка.
 import { type ReactNode, type Ref, useImperativeHandle, useRef, useState } from 'react';
-import { type LayoutChangeEvent, Modal, Pressable, ScrollView, StyleSheet, View, type ViewStyle } from 'react-native';
+import { type LayoutChangeEvent, Modal, Pressable, type PressableProps, ScrollView, type StyleProp, StyleSheet, View, type ViewStyle } from 'react-native';
 import { Icon } from './Icon';
 import { AWARD_ICON } from './iconShapes';
 import type { ItemIcon } from './itemIcons';
@@ -200,26 +200,49 @@ export function Button({ title, onPress, hint, kind = 'primary', disabled, testI
       {hint ? <Text style={[styles.btnHint, !primary && styles.muted, hintMono && styles.btnHintMono]}>{hint}</Text> : null}
     </>
   );
+  // клавиша (часть 106, ответ владельца на вопрос 74) — в обеих темах; оттиска штампа у главной кнопки больше нет
   return (
     <View style={styles.btnRow}>
-      <Pressable
+      <Key
         testID={testID}
         accessibilityRole={checked !== undefined ? 'checkbox' : 'button'}
         {...(checked !== undefined ? { 'aria-checked': checked } : {})}
         disabled={disabled}
         onPress={onPress}
-        style={({ pressed }) => [styles.btn, styles.fill, !primary && styles.btnPlain, disabled && styles.btnDisabled, pressed && styles.btnPressed]}>
-        {/* оттиск штампа: тонкая светлая рамка внутри главной кнопки «Медкарты» */}
-        {primary && t.shape.stamp ? <View style={styles.stamp} /> : null}
+        accent={primary}
+        radius={t.shape.radius + 2}
+        style={styles.fill}
+        face={styles.btnFace}>
         {picture ? (
           <View style={styles.pictureRow}>
             {picture}
             <View style={styles.fill}>{label}</View>
           </View>
         ) : label}
-      </Pressable>
+      </Key>
       {onInfo ? <InfoButton testID={testID ? `${testID}-info` : undefined} label={infoLabel} onPress={onInfo} /> : null}
     </View>
+  );
+}
+
+/** Губа клавиши в точках: нажатие вдавливает кнопку на губу без одной точки. */
+export const KEY_LIP = 5;
+
+/**
+ * Клавиша (spec 2026-11-buttons, часть 106, ответ владельца на вопрос 74): под кнопкой — губа на тон темнее, сверху —
+ * светлая кромка; нажатие вдавливает кнопку в губу, а высота клавиши не меняется — соседи не сдвигаются. `style` —
+ * место клавиши в раскладке (flex, поля), `face` — сама кнопка (отступы, раскладка содержимого).
+ */
+export function Key({ accent, radius, style, face, children, disabled, ...press }: Omit<PressableProps, 'style' | 'children'> & {
+  accent?: boolean; radius: number; style?: StyleProp<ViewStyle>; face?: StyleProp<ViewStyle>; children: ReactNode;
+}) {
+  const styles = useStyles();
+  return (
+    <Pressable {...press} disabled={disabled}
+      style={({ pressed }) => [styles.key, { borderRadius: radius }, accent ? styles.keyLip : styles.keyLipPlain, pressed && !disabled && styles.keyDown,
+        disabled && styles.btnDisabled, style]}>
+      <View style={[{ borderRadius: radius }, accent ? styles.keyFace : styles.keyFacePlain, face]}>{children}</View>
+    </Pressable>
   );
 }
 
@@ -427,9 +450,17 @@ const useStyles = makeStyles(t => ({
   achievement: { flexDirection: 'row', alignItems: 'center', gap: space.m },
   p: { fontSize: 15, lineHeight: 21, color: t.colors.ink },
   muted: { color: t.colors.muted },
-  btn: { minHeight: touch, backgroundColor: t.colors.accent, borderRadius: t.shape.radius, paddingHorizontal: space.l, paddingVertical: space.m, justifyContent: 'center' },
-  stamp: { position: 'absolute', top: 3, right: 3, bottom: 3, left: 3, pointerEvents: 'none', borderWidth: 1, borderColor: t.colors.onAccentHint, borderRadius: Math.max(0, t.shape.radius - 2) },
-  btnPlain: { backgroundColor: t.colors.card, borderWidth: 1.5, borderColor: t.shape.stamp ? t.colors.accent : t.colors.edge },
+  // кнопка-клавиша: лицо — без губы не ниже 43 dp, с губой — 48 (NFR-ACC-1)
+  btnFace: { minHeight: touch - KEY_LIP, paddingHorizontal: space.l, paddingVertical: space.m - 2, justifyContent: 'center' },
+  key: { paddingBottom: KEY_LIP },
+  keyDown: { paddingTop: KEY_LIP - 1, paddingBottom: 1 },
+  keyLip: { backgroundColor: t.colors.keyLip },
+  keyLipPlain: { backgroundColor: t.colors.keyLipPlain },
+  keyFace: { backgroundColor: t.colors.accent, borderWidth: 1, borderColor: t.colors.keyLip, borderTopWidth: 1.5, borderTopColor: t.colors.keyLight },
+  keyFacePlain: {
+    backgroundColor: t.colors.card, borderWidth: 1, borderColor: t.shape.ruled ? t.colors.edge : t.colors.keyLipPlain, borderTopWidth: 1.5,
+    borderTopColor: t.colors.keyLightPlain,
+  },
   btnDisabled: { opacity: 0.45 },
   btnPressed: { opacity: 0.8 },
   btnText: { color: t.colors.onAccent, fontSize: 16, fontWeight: '700' },

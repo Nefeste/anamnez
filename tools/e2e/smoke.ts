@@ -1207,7 +1207,8 @@ try {
   await page.getByTestId('text-size-0').click();
   // тема (spec 2026-09-own-look): по умолчанию — как в телефоне, у сценария телефон светлый;
   // «Тёмная» меняет вид сразу, без перезапуска, и остаётся после перезапуска
-  const sheetBg = () => page.getByTestId('settings-about').evaluate(el => getComputedStyle(el).backgroundColor);
+  // кнопка — клавиша (часть 106): снаружи губа, цвет листа — у лица кнопки, первого вложенного блока
+  const sheetBg = () => page.getByTestId('settings-about').evaluate(el => getComputedStyle(el.firstElementChild ?? el).backgroundColor);
   const LIGHT_CARD = 'rgb(255, 253, 248)';
   const DARK_CARD = 'rgb(21, 38, 42)';
   check((await page.getByTestId('theme-system').getAttribute('aria-checked')) === 'true' && (await sheetBg()) === LIGHT_CARD, `настройки: тема как в телефоне — светлая «Медкарта» (${await sheetBg()})`);
@@ -1224,7 +1225,7 @@ try {
     const dark = await browser.newPage({ viewport: { width: 412, height: 915 }, colorScheme: 'dark' });
     await dark.goto(`${base}/settings`);
     await dark.getByTestId('settings-about').waitFor({ timeout: 30_000 });
-    const bg = await dark.getByTestId('settings-about').evaluate(el => getComputedStyle(el).backgroundColor);
+    const bg = await dark.getByTestId('settings-about').evaluate(el => getComputedStyle(el.firstElementChild ?? el).backgroundColor);
     check(bg === DARK_CARD && (await dark.getByTestId('theme-system').getAttribute('aria-checked')) === 'true', `настройки: тёмный телефон — «Монитор» по умолчанию (${bg})`);
     await dark.close();
   }
