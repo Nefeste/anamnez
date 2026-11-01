@@ -5,7 +5,7 @@
 // Студия — по брендбуку (ADR 0017): знак, строка «Игра студии „Горница“», сайт и почта, внизу — полоса-рушник.
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Linking, Pressable, View } from 'react-native';
+import { Linking, Pressable, Text, View } from 'react-native';
 import { db } from '@/content';
 import { T } from '@/i18n';
 import { PRIVACY_URL, SITE_URL, SUPPORT_EMAIL, VERSION } from '@/info';
@@ -28,6 +28,7 @@ export default function About() {
   const dark = useTheme().name === 'dark';
   const version = VERSION;
   const [failed, setFailed] = useState<string | null>(null);
+  const [before, setBefore] = useState(false);
   // ширина полосы-рушника — по ширине листа, когда он разложен
   const [band, setBand] = useState(0);
   const open = (url: string, shown: string) => {
@@ -61,9 +62,17 @@ export default function About() {
         {devNote ? <P muted testID="about-dev">{devNote}</P> : null}
         <P muted>{t.tagline}</P>
       </Card>
-      <Card>
+      <Card testID="about-news">
         <H>{t.whatsNew}</H>
         {t.news.map(line => <P key={line}>{`• ${line}`}</P>)}
+        {/* прежние версии — под кнопкой (1.1.7, просьба владельца 01.11.2026): новые сверху, с первого выпуска */}
+        <Button testID="about-news-before" kind="plain" title={before ? t.newsBeforeClose : t.newsBeforeOpen} onPress={() => setBefore(!before)} />
+        {before && t.newsBefore.map(v => (
+          <View key={v.version} testID={`about-news-${v.version}`} style={styles.before}>
+            <Text style={styles.beforeTitle}>{t.newsVersion(v.version, v.title)}</Text>
+            {v.items.map(line => <P key={line} muted>{`• ${line}`}</P>)}
+          </View>
+        ))}
       </Card>
       <Card>
         <H>{T.common.disclaimerTitle}</H>
@@ -108,6 +117,8 @@ export default function About() {
 
 const useStyles = makeStyles(t => ({
   studio: { flexDirection: 'row', alignItems: 'center', gap: space.m },
+  before: { gap: space.xs },
+  beforeTitle: { fontFamily: t.fonts.title, fontSize: 16, lineHeight: 21, fontWeight: '700', color: t.colors.ink },
   studioText: { flex: 1 },
   // рушник — на бумаге между двумя тонкими линиями (брендбук студии, «Орнамент и канва»)
   band: { backgroundColor: t.colors.card, borderTopWidth: 1, borderBottomWidth: 1, borderColor: t.colors.line, paddingVertical: 10 },

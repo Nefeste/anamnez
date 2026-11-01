@@ -47,7 +47,7 @@ export function OutcomeScreen({ view, next, back, more }: { view: VisitView | un
         {view.firstTry && <P muted testID="visit-first-try">{view.firstTry}</P>}
       </Card>
 
-      {view.achievements && (
+      {view.achievements && view.achievements.length > 0 && (
         <Card testID="visit-achievements">
           {view.achievements.map(a => <AchievementLine key={a} text={T.profile.achievementLine(a)} />)}
         </Card>

@@ -55,7 +55,8 @@ export function BodyMap({ v, ids, place, onPlace, focus }: {
               onPress={() => onPlace(sh)} style={({ pressed }) => [styles.shelf, on && styles.shelfOn, !s.hot && !on && styles.cold, pressed && styles.pressed]}>
               <Icon shape={SHELF_ICONS[sh]} size={22} color={on ? theme.colors.accent : theme.colors.muted} />
               <View style={styles.shelfText}>
-                <Text numberOfLines={1} style={styles.shelfTitle}>{t.places[sh]}</Text>
+                {/* на 360 точках «Весь больной» в одну строку не входил (часть 103) — две строки, если надо */}
+                <Text numberOfLines={2} style={styles.shelfTitle}>{t.places[sh]}</Text>
                 <Text numberOfLines={1} style={styles.shelfHint}>{t.doneOf(s.done, s.all)}</Text>
               </View>
               {s.found ? <View style={styles.foundMark} /> : null}

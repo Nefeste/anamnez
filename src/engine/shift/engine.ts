@@ -732,10 +732,13 @@ function planDay(db: ContentDb, s: ShiftState) {
   // пришёл сам (часть 41а): инсульта у него нет — его привозит скорая; к специалисту — с болезнью профиля (часть 59)
   const selfPatient = (a: { key: string; only?: readonly Id[] }, variety = false) =>
     generatePatient(db, fnv1a(`${s.meta.seed}:${d}:${a.key}`), { ...gen, walkIn: true, ...(a.only ? { only: a.only } : {}), ...(variety ? { variety: true } : {}) });
-  // спокойный учебный день (часть 100): незаданный — из попыток тот, у кого жалобы «в порядке очереди»; не нашлось — последний
+  // спокойный учебный день (часть 100): незаданный — из попыток тот, у кого жалобы «в порядке очереди» и все — от его
+  // болезни, без фона (часть 103: у «лёгкого» цистита не бывает поноса с кровью раз по восемь в сутки); не нашлось —
+  // последний
   const calmPatient = (a: { key: string; only?: readonly Id[] }) => {
+    const loud = (p: Patient) => p.complaints.some(f => (db.findings[f]?.triage ?? 'green') !== 'green' || p.truth.findings.some(x => x.f === f && x.cause === 'leak'));
     let p = selfPatient(a);
-    for (let n = 1; n < TUTORIAL_CALM_TRIES && p.complaints.some(f => (db.findings[f]?.triage ?? 'green') !== 'green'); n++) p = selfPatient({ ...a, key: `${a.key}:calm:${n}` });
+    for (let n = 1; n < TUTORIAL_CALM_TRIES && loud(p); n++) p = selfPatient({ ...a, key: `${a.key}:calm:${n}` });
     return p;
   };
   // «Главы короче» (часть 93, spec 2026-10-short-chapters): один-два из пришедших сами и записанных к вам — тот же человек,

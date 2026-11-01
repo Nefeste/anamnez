@@ -379,6 +379,12 @@ export const dailyVisit = visit;
 
 let cache: { base: VisitView; view: VisitView } | null = null;
 
+/** Достижения, что принёс приём дня; не принёс — поля нет, пустой рамки на итоге нет (часть 103). */
+function achievementsOf(key: string): Pick<VisitView, 'achievements'> {
+  const names = achievementsBy(key).map(id => db.achievements[id].name.ru);
+  return names.length > 0 ? { achievements: names } : {};
+}
+
 /** Приём дня: к виду — достижения, что он принёс, и при повторе — чем засчитана первая попытка. */
 export function dailyView(): VisitView {
   const base = visit.view();
@@ -386,7 +392,7 @@ export function dailyView(): VisitView {
   const view: VisitView = !base.decision ? base : {
     ...base,
     ...(before ? { firstTry: T.daily.firstTry(before.grade, verdictOf(before)) } : {}),
-    ...(before ? {} : { achievements: achievementsBy(dailyKey(open)).map(id => db.achievements[id].name.ru) }),
+    ...(before ? {} : achievementsOf(dailyKey(open))),
   };
   cache = { base, view };
   return view;

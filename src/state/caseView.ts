@@ -1003,6 +1003,24 @@ function differentialOf(p: Patient, obs: readonly Observation[], c: CaseInput, c
   });
 }
 
+/**
+ * Ответ без повторов (spec 2026-10-publish-ready, часть 103): «нет», которое целиком сказано другим «нет» того же
+ * ответа, не пишется — «Зрачки обычной ширины» при «Зрачки обычной ширины, на свет реагируют живо»; одинаковое — один
+ * раз. Найденное не трогается.
+ */
+export function withoutRepeats<L extends Pick<Line, 'text' | 'shown'>>(lines: readonly L[]): L[] {
+  const key = (l: L) => l.text.toLowerCase().replace(/[.\s]+$/, '');
+  const said = lines.filter(l => !l.shown).map(key);
+  const kept = new Set<string>();
+  return lines.filter(l => {
+    if (l.shown) return true;
+    const k = key(l);
+    if (kept.has(k) || said.some(o => o !== k && (o.startsWith(`${k},`) || o.startsWith(`${k} `)))) return false;
+    kept.add(k);
+    return true;
+  });
+}
+
 export function makeCaseView(c: CaseInput): VisitView {
   const p = c.patient;
   const line = (o: Observation): Line => ({
@@ -1037,7 +1055,7 @@ export function makeCaseView(c: CaseInput): VisitView {
         const image = imageOf(a.exam, a.obs, obs, fnv1a(`${p.seed}:${a.exam}`), p.seed);
         return {
           key: `${i}:${a.exam}`, exam: a.exam, name: a.card ? T.challenges.fromCard(resultName(a.exam)) : resultName(a.exam, a.repeat), at: hhmm(a.at),
-          fresh: c.step > 0 && a.step === c.step, lines: a.obs.filter(visible).map(line), ...(image ? { image } : {}), ...(a.card ? { card: true as const } : {}),
+          fresh: c.step > 0 && a.step === c.step, lines: withoutRepeats(a.obs.filter(visible).map(line)), ...(image ? { image } : {}), ...(a.card ? { card: true as const } : {}),
         };
       })
       .reverse(),

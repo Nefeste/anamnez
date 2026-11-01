@@ -97,6 +97,20 @@ export function missionsOf(ch: Chapter, short: boolean | undefined): Mission[] {
  */
 export const tutorialDayOf = (ch: Chapter, c: CampaignProgress): number | undefined => (ch.tutorialRoom ? c.tutorialDay : c.since + 1);
 
+/**
+ * Выполненные главы карьеры (spec 2026-10-publish-ready, часть 103): карьера начинается с главы 1 и переходит к
+ * следующей только после выполненной, поэтому все главы до текущей выполнены; текущая — когда выполнены её основные
+ * задания. По ним — медали глав и «Карьера пройдена».
+ */
+export function chaptersDone(db: ContentDb, c: CampaignProgress | undefined): Id[] {
+  const ch = c ? chapterOf(db, c) : undefined;
+  if (!c || !ch) return [];
+  return Object.values(db.chapters)
+    .filter(x => x.order < ch.order || (x.id === ch.id && c.complete !== undefined))
+    .sort((a, b) => a.order - b.order)
+    .map(x => x.id);
+}
+
 /** Следующая глава по порядку (spec 2026-09-chapter-2, часть 34); последняя — undefined. */
 export function nextChapterOf(db: ContentDb, c: CampaignProgress): Chapter | undefined {
   const ch = chapterOf(db, c);

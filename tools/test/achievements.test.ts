@@ -3,16 +3,18 @@
 // в профиле и переживают перезапуск; строка — на итоге приёма и в итогах дня.
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
+import { chaptersDone, startChapter } from '../../src/engine/campaign/campaign';
 import { achieved, type CareerFacts, caseFacts, newAchievements } from '../../src/engine/career/achievements';
-import { apply, newShift } from '../../src/engine/shift/engine';
-import type { ShiftPatient, ShiftState } from '../../src/engine/shift/types';
+import { apply, newCampaign, newShift } from '../../src/engine/shift/engine';
+import { SHIFT_SCHEMA_VERSION, type ShiftPatient, type ShiftState } from '../../src/engine/shift/types';
 import {
   achievementsBy, caseKey, type DayRecord, forgetProfile, loadProfile, profile, profileSaved, recordCases, recordDay, sanitizeProfile, setProfileStore,
 } from '../../src/state/profile';
 import { achievementCount, achievementGroups } from '../../src/state/profileView';
-import { memoryStore } from '../../src/state/saves';
+import { memoryStore, saveSlot } from '../../src/state/saves';
 import {
-  callPatient, chooseDiagnosis, closeDay, examine, finishCase, forgetShift, setStore, shiftCaseView, shiftView, skipIdle, startShift, toggleTreatment,
+  callPatient, chooseDiagnosis, closeDay, examine, finishCase, forgetShift, loadShift, nextDay, setStore, shiftCaseView, shiftView, skipIdle, startShift,
+  toggleTreatment,
 } from '../../src/state/session';
 
 const facts = (x: Partial<CareerFacts> = {}): CareerFacts => ({
@@ -67,6 +69,19 @@ describe('достижения: условия', () => {
     expect(achieved(db, ach('ach.career'), facts({ chapters }))).toBe(true);
     expect(achieved(db, ach('ach.career'), facts({ chapters: chapters.slice(1) }))).toBe(false);
     expect(achieved(db, ach('ach.career'), facts({ chapters: ['chapter.city'] }))).toBe(false);
+  });
+
+  // часть 103: в факты дня — все главы карьеры до текущей и текущая, если выполнена; иначе медаль недостижима
+  test('выполненные главы карьеры — до текущей и текущая, когда выполнена', () => {
+    const at = (chapter: string, complete?: number) => ({ ...startChapter(db, chapter, 0), ...(complete !== undefined ? { complete } : {}) });
+    expect(chaptersDone(db, undefined)).toEqual([]);
+    expect(chaptersDone(db, at('chapter.district'))).toEqual([]);
+    expect(chaptersDone(db, at('chapter.district', 3))).toEqual(['chapter.district']);
+    expect(chaptersDone(db, at('chapter.vascular'))).toEqual(['chapter.district', 'chapter.hospital']);
+    const all = chaptersDone(db, at('chapter.city', 9));
+    expect(all).toEqual(['chapter.district', 'chapter.hospital', 'chapter.vascular', 'chapter.city']);
+    expect(achieved(db, ach('ach.career'), facts({ chapters: all }))).toBe(true);
+    expect(achieved(db, ach('ach.career'), facts({ chapters: chaptersDone(db, at('chapter.city')) }))).toBe(false);
   });
 
   test('новые — только ещё не полученные, по порядку записи', () => {
@@ -191,12 +206,25 @@ describe('достижения в смене', () => {
     closeDay();
     expect(shiftView().summary!.achievements).toContain('Первая смена');
   });
+
+  // часть 103 (spec 2026-10-publish-ready): медаль — от закрытого дня карьеры, где выполнена глава 4
+  test('закрытый день карьеры с выполненной главой 4 — «Карьера пройдена» и медали всех глав', async () => {
+    await loadProfile();
+    const s = newCampaign(db, { seed: 125, season: 'winter', career: 3, chapter: 'chapter.city' });
+    s.campaign!.complete = 0;
+    await saveSlot(store, 'campaign-3', s, SHIFT_SCHEMA_VERSION, 'x');
+    await loadShift('campaign', 3);
+    nextDay();
+    closeDay();
+    const got = Object.keys(profile().achievements.got);
+    expect(got).toEqual(expect.arrayContaining(['ach.district', 'ach.hospital', 'ach.vascular', 'ach.city', 'ach.career']));
+    expect(shiftView().summary!.achievements).toContain(ach('ach.career').name.ru);
+  });
 });
 
 describe('достижения и прежняя практика', () => {
   test('профиль из версии до достижений: по приёмам и болезням — сразу при чтении, без строки у следующего приёма', async () => {
     const { PROFILE_SLOT, EARLIER } = await import('../../src/state/profile');
-    const { saveSlot } = await import('../../src/state/saves');
     const seen = Object.fromEntries(Object.keys(db.conditions).slice(0, 12).map(id => [id, 2]));
     await saveSlot(store, PROFILE_SLOT, { stats: { cases: 60 }, seen, archive: [] }, 1, 'x');
     await loadProfile();
