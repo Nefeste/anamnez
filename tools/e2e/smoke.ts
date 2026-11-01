@@ -4157,6 +4157,13 @@ try {
   await page.goto(base);
   await page.getByTestId('menu-daily').waitFor({ timeout: 10_000 });
   check((await text(page, 'menu-daily')).includes('сегодня сыгран: '), `случай дня: в главном меню — ${(await text(page, 'menu-daily')).replace(/\n/g, ' · ')}`);
+  // и в «Быстрой игре» (1.1.7, просьба владельца 01.11.2026) — с той же подсказкой; касание — к списку дней
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('quick-daily').waitFor({ timeout: 10_000 });
+  const quickDaily = (await text(page, 'quick-daily')).replace(/\n/g, ' · ');
+  await page.getByTestId('quick-daily').click();
+  await page.getByTestId('daily-base').waitFor({ timeout: 10_000 });
+  check(quickDaily.startsWith('Случай дня') && quickDaily.includes('сегодня сыгран: '), `случай дня: в «Быстрой игре» — ${quickDaily}`);
 
   // «Разобрать случай» (spec 2026-10-study-case, часть 74): из статьи инсульта — больной в больнице с сосудистым
   // отделением, привезённый скорой; разбор, «К статье»; в практику приём не идёт

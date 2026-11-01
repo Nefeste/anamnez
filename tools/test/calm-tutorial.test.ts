@@ -1,5 +1,6 @@
 // Спокойный учебный день главы 1 (часть 100, spec 2026-10-publish-ready; ответ владельца на вопрос 67): половина потока,
-// у пришедших сами и записанных, кроме заданных, — жалобы только «в порядке очереди»; со второго дня — как было.
+// у пришедших сами и записанных, кроме заданных, — жалобы только «в порядке очереди» и от болезни (часть 103); со второго
+// дня — как было.
 import { describe, expect, test } from 'bun:test';
 import { db } from '../../src/content';
 import type { ContentDb } from '../../src/content/types';
@@ -20,7 +21,9 @@ function day(base: ContentDb, seed: number, days = 1): ShiftState {
   return s;
 }
 const today = (s: ShiftState) => Object.values(s.patients).filter(p => p.id.startsWith(`${s.day}-`));
-const calmOf = (p: ShiftState['patients'][string]) => p.patient.complaints.every(f => db.findings[f]?.triage === undefined);
+// часть 103: и все жалобы — от болезни, без фона популяции
+const calmOf = (p: ShiftState['patients'][string]) =>
+  p.patient.complaints.every(f => db.findings[f]?.triage === undefined && !p.patient.truth.findings.some(x => x.f === f && x.cause === 'leak'));
 const SEEDS = Array.from({ length: 12 }, (_, i) => 900 + i);
 
 describe('спокойный учебный день главы 1', () => {
@@ -35,7 +38,7 @@ describe('спокойный учебный день главы 1', () => {
     expect(calm / before).toBeLessThan(0.65);
   });
 
-  test('незаданные — без «нужно скоро» и «срочно»; заданные — как глава велит', () => {
+  test('незаданные — без «нужно скоро» и «срочно», жалобы — от болезни; заданные — как глава велит', () => {
     for (const seed of SEEDS) {
       const ps = today(day(db, seed));
       const taught = ps.filter(p => p.taught);

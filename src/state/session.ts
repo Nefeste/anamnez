@@ -18,7 +18,7 @@ import { build, type BuildCommand, type BuildError, type HospitalState, type Pla
 import { type Block, DOCTOR, doctorRoom, examWhere, openBlocks, type Problem, problemsOf, standInOf, standInsOf, workingRooms } from '@/engine/hospital/requirements';
 import { type ClinicLayout, cropPlan, layoutOf } from '@/engine/hospital/clinic';
 import { memberAt, presetStaff, type StaffMember, staffingOf } from '@/engine/hospital/staff';
-import { type MissionProgress, missionProgress, missionsOf, nextChapterOf, tutorialDayOf } from '@/engine/campaign/campaign';
+import { chaptersDone, type MissionProgress, missionProgress, missionsOf, nextChapterOf, tutorialDayOf } from '@/engine/campaign/campaign';
 import { levelOf } from '@/engine/economy/economy';
 import { askMinutes, skillsFor } from '@/engine/career/skills';
 import {
@@ -1209,6 +1209,8 @@ export function nextDay() {
   sess.focus = undefined;
   sess.paused = false;
   sess.pauseReason = undefined;
+  // новый день — на обычной скорости (часть 103): закрывший день на ×4 не начинает утро на бегу, до письма и главы
+  sess.speed = 1;
   save();
   changed();
 }
@@ -1239,7 +1241,7 @@ function dayRecord(s: ShiftState): DayRecord {
     seen: h.seen,
     noLeft: h.seen > 0 && h.left === 0 && h.unseen === 0,
     rooms: ctx ? [...new Set(ctx.plan.rooms.filter(r => ctx.working.has(r.id)).map(r => r.type))] : [],
-    chapters: s.campaign?.complete !== undefined ? [s.campaign.chapter] : [],
+    chapters: chaptersDone(db, s.campaign),
     // испытания «Смены» (часть 91): пройдены — все испытания дня
     ...(s.meta.mode === 'single' && s.meta.challenges && challengePassed(singleResult(s)) ? { challenges: [...s.meta.challenges] } : {}),
     // сценарий (часть 91): неделя закончена и цели выполнены

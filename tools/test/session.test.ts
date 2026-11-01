@@ -278,6 +278,7 @@ describe('смена на экране: день', () => {
     chooseDiagnosis(shiftCaseView()!.hints[0].id);
     finishCase();
     leaveCase();
+    setSpeed(4);
     closeDay();
     const v = shiftView();
     expect(v.dayOpen).toBe(false);
@@ -290,6 +291,8 @@ describe('смена на экране: день', () => {
     expect(shiftView().day).toBe(2);
     expect(shiftView().clock).toBe('08:00');
     expect(shiftView().summary).toBeUndefined();
+    // часть 103: новый день — на ×1, а не на скорости, на которой закрыли прошлый
+    expect(shiftView().speed).toBe(1);
   });
 });
 

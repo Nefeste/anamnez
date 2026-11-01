@@ -78,7 +78,10 @@ describe('случай дня: первая попытка', () => {
     for (const d of days.slice(0, 6)) {
       openDaily(d);
       play();
+      // часть 103: не принёс достижений — поля нет, на итоге нет пустой рамки
+      expect(dailyView().achievements).not.toEqual([]);
     }
+    expect(dailyView().achievements).toBeUndefined();
     expect(profile().achievements.got['ach.daily_7']).toBeUndefined();
     openDaily(days[6]);
     play();
