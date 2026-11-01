@@ -8,7 +8,7 @@
 | Цена | бесплатно, без рекламы и покупок, без интернета |
 | Возраст | 16+ |
 | Разработчик | Горница, gornitsa.games |
-| Статус | в разработке; выход — в RuStore, предзаказ открыт: https://www.rustore.ru/catalog/app/games.gornitsa.anamnez |
+| Статус | вышла в RuStore: https://www.rustore.ru/catalog/app/games.gornitsa.anamnez |
 | Контакт | support@gornitsa.games |
 
 **Одной строкой.** Симулятор врача с честной диагностикой: каждый пациент — загадка, а
