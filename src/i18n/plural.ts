@@ -1,4 +1,4 @@
-// из votchina: src/i18n/plural.ts @ 82b0096 (только pluralRu, без pluralEn)
+// из votchina: src/i18n/plural.ts @ c3ecd1a (только pluralRu, без pluralEn)
 // Множественное число по правилам языка — перенос из «Вотчины». Свои правила, а не
 // Intl.PluralRules: на него в Hermes под Android полагаться нельзя.
 
