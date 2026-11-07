@@ -204,3 +204,28 @@ describe('вид: шрифты — в сборке, с лицензией', () =
     }
   });
 });
+
+describe('вид: заставка — два фона одного цвета (правило устава «Вид и тексты»)', () => {
+  test('у темы заставки фон окна — цвет заставки; плагин — перед expo-splash-screen', () => {
+    type Styles = { resources: { style: { $: { name: string }; item?: { $: { name: string }; _: string }[] }[] } };
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { transforms: t } = require('../../plugins/with-splash-window.js') as {
+      transforms: { styles: (x: Styles) => Styles; THEME: string; ITEM: string; VALUE: string };
+    };
+    const xml: Styles = { resources: { style: [
+      { $: { name: 'AppTheme' }, item: [{ $: { name: 'android:windowBackground' }, _: '@color/activityBackground' }] },
+      { $: { name: t.THEME }, item: [{ $: { name: 'windowSplashScreenBackground' }, _: '@color/splashscreen_background' }] },
+    ] } };
+    const out = t.styles(xml).resources.style;
+    expect(out.find(s => s.$.name === t.THEME)!.item!.filter(i => i.$.name === t.ITEM).map(i => i._)).toEqual(['@color/splashscreen_background']);
+    expect(out.find(s => s.$.name === 'AppTheme')!.item![0]._).toBe('@color/activityBackground');
+    const app = JSON.parse(readFileSync(join(ROOT, 'app.json'), 'utf8')) as { expo: { plugins: unknown[] } };
+    const names = app.expo.plugins.map(p => (Array.isArray(p) ? p[0] : p));
+    expect(names.indexOf('./plugins/with-splash-window')).toBeGreaterThanOrEqual(0);
+    expect(names.indexOf('./plugins/with-splash-window')).toBeLessThan(names.indexOf('expo-splash-screen'));
+    // два варианта заставки — для светлой и тёмной темы телефона
+    const splash = app.expo.plugins.find(p => Array.isArray(p) && p[0] === 'expo-splash-screen') as [string, { backgroundColor: string; dark?: { backgroundColor: string } }];
+    expect(splash[1].dark?.backgroundColor).toBeDefined();
+    expect(splash[1].dark!.backgroundColor.toLowerCase()).not.toBe(splash[1].backgroundColor.toLowerCase());
+  });
+});
