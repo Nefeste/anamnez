@@ -12,6 +12,7 @@ import Animated, { useAnimatedStyle, useDerivedValue, useSharedValue, withTiming
 import { scheduleOnRN } from 'react-native-worklets';
 import type { Cell } from '@/content/types';
 import type { Plan } from '@/engine/hospital/build';
+import { useReduceMotion } from '@/ui/motion';
 import { useTheme } from '@/ui/theme';
 import { SHADOW, SHADOW_DX, SHADOW_DY } from './ClinicMap';
 import { CELL_PX, recordFloor, recordGridLines } from './floor';
@@ -101,6 +102,8 @@ export function BuildMap({ plan, width, height, tool, ghost, selected, labels, l
   onTapCell: (x: number, y: number) => void;
 }) {
   const t = useTheme();
+  // «Меньше движения» (ADR 0023 устава): двойное касание приближает сразу, без плавного зума
+  const reduceMotion = useReduceMotion();
   const plotW = plan.grid.w * CELL_PX;
   const plotH = plan.grid.h * CELL_PX;
   const fit = Math.min(width / plotW, height / plotH);
@@ -248,9 +251,9 @@ export function BuildMap({ plan, width, height, tool, ghost, selected, labels, l
       if (!ok) return;
       const z = Math.min(fit * MAX_ZOOM, zoom.get() * 2);
       const k = z / zoom.get();
-      tx.set(withTiming(clampPan(e.x - (e.x - tx.get()) * k, plotW, width, z)));
-      ty.set(withTiming(clampPan(e.y - (e.y - ty.get()) * k, plotH, height, z)));
-      zoom.set(withTiming(z));
+      tx.set(withTiming(clampPan(e.x - (e.x - tx.get()) * k, plotW, width, z), { reduceMotion }));
+      ty.set(withTiming(clampPan(e.y - (e.y - ty.get()) * k, plotH, height, z), { reduceMotion }));
+      zoom.set(withTiming(z, { reduceMotion }));
     });
   const gesture = Gesture.Simultaneous(pan, pinch, Gesture.Exclusive(doubleTap, tap));
 

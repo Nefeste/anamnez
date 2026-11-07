@@ -15,6 +15,7 @@ import { examInfo, examsByAction, findingInfo, type Line, type ResultGroup, type
 import { useSettings } from '@/state/settings';
 import { Button, Card, Chip, Chips, H, P, Pane, Screen, type ScreenScroll, Tabs } from '@/ui/components';
 import { examIcon } from '@/ui/itemIcons';
+import { useReduceMotion } from '@/ui/motion';
 import { TermSheet } from '@/ui/TermSheet';
 import { makeStyles, space, touch } from '@/ui/theme';
 import { Text } from '../text';
@@ -564,11 +565,12 @@ function KnownGroup({ g, open, onToggle, explain, onLayout }: {
   g: ResultGroup; open: boolean; onToggle?: () => void; explain: (info: TermInfo) => void; onLayout?: (e: LayoutChangeEvent) => void;
 }) {
   const styles = useStyles();
+  const motion = useReduceMotion();
   const t = T.spikes.patient;
   const lines = open ? g.lines : g.lines.filter(l => l.shown);
   const hidden = g.lines.length - lines.length;
   return (
-    <Animated.View entering={FadeInDown.duration(350)} testID={g.fresh ? 'visit-fresh' : undefined} onLayout={onLayout} style={[styles.group, g.fresh && styles.groupFresh]}>
+    <Animated.View entering={FadeInDown.duration(350).reduceMotion(motion)} testID={g.fresh ? 'visit-fresh' : undefined} onLayout={onLayout} style={[styles.group, g.fresh && styles.groupFresh]}>
       <View style={styles.groupHead}>
         <Text style={styles.groupTitle}>{`${g.name} · ${t.at(g.at)}`}</Text>
         {g.fresh && <Text style={styles.badge}>{t.fresh}</Text>}

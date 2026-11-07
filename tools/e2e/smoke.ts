@@ -1195,6 +1195,18 @@ try {
   await page.getByTestId('settings-mine-clear').click();
   check((await page.locator('[data-testid^="mine-"][aria-checked="true"]').count()) === 0 && (await page.getByTestId('settings-mine-clear').count()) === 0,
     'настройки: «Снять все отметки» — ничего не отмечено');
+  // «Меньше движения» (ADR 0023 устава): у сценария в телефоне движение не уменьшено — выключено; включённое — то же
+  // после перезапуска; дальше сценарий — с движением
+  const lessMotion = () => page.getByTestId('settings-less-motion').getAttribute('aria-checked');
+  check((await lessMotion()) === 'false' && (await text(page, 'settings-less-motion')).includes('как в телефоне'),
+    `настройки: меньше движения — выключено, ${(await text(page, 'settings-less-motion')).replace(/\n/g, ' · ')}`);
+  await page.getByTestId('settings-less-motion').click();
+  await page.waitForFunction(() => Object.keys(localStorage).some(k => k.includes('settings') && /"lessMotion":\s*true/.test(localStorage.getItem(k) ?? '')), undefined, { timeout: 10_000 });
+  await page.goto(`${base}/settings`);
+  await page.getByTestId('settings-less-motion').waitFor({ timeout: 10_000 });
+  check((await lessMotion()) === 'true', 'настройки: меньше движения — включено и после перезапуска');
+  await page.getByTestId('settings-less-motion').click();
+  await page.waitForFunction(() => Object.keys(localStorage).some(k => k.includes('settings') && /"lessMotion":\s*false/.test(localStorage.getItem(k) ?? '')), undefined, { timeout: 10_000 });
   await page.getByTestId('settings-vibration').click();
   await page.getByTestId('sound-3').click();
   await page.getByTestId('music-2').click();

@@ -1,12 +1,13 @@
 // Экран загрузки (spec 2026-10-premium-polish): название игры и кривая ЭКГ, по которой бежит отрезок, — вместо пустого
-// экрана, пока читаются сохранения, партия или считается разбор. Цвета и шрифт — из темы; при «уменьшить движение» в
-// телефоне отрезок не бежит — кривая целиком.
+// экрана, пока читаются сохранения, партия или считается разбор. Цвета и шрифт — из темы; при «Меньше движения» (выбор в
+// настройках, без него — «уменьшить движение» в телефоне; ADR 0023 устава) отрезок не бежит — кривая целиком.
 import { useEffect } from 'react';
 import { View } from 'react-native';
-import { cancelAnimation, Easing, useDerivedValue, useReducedMotion, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
+import { cancelAnimation, Easing, useDerivedValue, useSharedValue, withRepeat, withTiming } from 'react-native-reanimated';
 import { T } from '@/i18n';
 import { EcgLine } from '@/render/EcgLine';
 import { Screen } from './components';
+import { useLessMotion } from './motion';
 import { Text } from './text';
 import { makeStyles, space, useTheme } from './theme';
 
@@ -23,7 +24,7 @@ const HEIGHT = 56;
 export function Loading({ caption, bare, testID }: { caption?: string; bare?: boolean; testID?: string }) {
   const styles = useStyles();
   const t = useTheme();
-  const reduced = useReducedMotion();
+  const reduced = useLessMotion();
   const end = useSharedValue(reduced ? 1 : 0);
   // хвост отрезка — отстаёт от головы; при неподвижной кривой — с начала
   const start = useDerivedValue(() => (reduced ? 0 : Math.max(0, end.value - TAIL)));

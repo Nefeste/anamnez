@@ -7,6 +7,7 @@ import { T } from '@/i18n';
 import { examInfo, examTerm, findingInfo, lifeHistory, type TermInfo, type VisitView } from '@/state/caseView';
 import { examIcon } from '@/ui/itemIcons';
 import { RowIcon } from '@/ui/RowIcon';
+import { useReduceMotion } from '@/ui/motion';
 import { makeStyles, space } from '@/ui/theme';
 import { Text } from '../text';
 import { joinSaid, NO_SAID, replyOf } from './reply';
@@ -25,6 +26,7 @@ export function Talk({ v, asks, explain, isOpen, toggle, onRow }: {
   isOpen: (key: string) => boolean; toggle: (key: string) => void; onRow: (exam: string, e: LayoutChangeEvent) => void;
 }) {
   const styles = useStyles();
+  const motion = useReduceMotion();
   const t = T.spikes.talk;
   // «Известно» — новые сверху; беседа — по порядку; из карты («Нелюдимый врач», часть 91) — не беседа
   const asked = [...v.groups].reverse().filter(g => asks.has(g.exam) && !g.card);
@@ -40,7 +42,7 @@ export function Talk({ v, asks, explain, isOpen, toggle, onRow }: {
         const yes = said.filter(l => l.shown);
         const no = said.filter(l => !l.shown);
         return (
-          <Animated.View key={g.key} entering={FadeInDown.duration(250)} testID={`done-${g.exam}`} onLayout={e => onRow(g.exam, e)} style={styles.pair}>
+          <Animated.View key={g.key} entering={FadeInDown.duration(250).reduceMotion(motion)} testID={`done-${g.exam}`} onLayout={e => onRow(g.exam, e)} style={styles.pair}>
             <View style={styles.doc}>
               <Text style={styles.when}>{g.at}</Text>
               <Text style={styles.docText}>{question(g.exam)}</Text>

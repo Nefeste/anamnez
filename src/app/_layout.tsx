@@ -1,7 +1,8 @@
 // Корень: стек Expo Router (ADR 0003) внутри корня жестов. Здесь же смене, настройкам и
 // профилю даётся хранилище платформы, и смена сохраняется, когда приложение уходит в фон; музыка — по экрану:
 // на приёме своя, тише, в остальном — меню (часть 62).
-// Шапка, строка состояния и фон окна — по теме (spec 2026-09-own-look).
+// Шапка, строка состояния и фон окна — по теме (spec 2026-09-own-look); переход экранов при «Меньше движения» — без
+// анимации (ADR 0023 устава).
 import { Stack, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SystemUI from 'expo-system-ui';
@@ -19,6 +20,7 @@ import { saveNow, setStore, timeInParts } from '@/state/session';
 import { loadSettings, setSettingsStore } from '@/state/settings';
 import { rawStore } from '@/state/storage';
 import { installFonts } from '@/ui/fonts';
+import { useLessMotion } from '@/ui/motion';
 import { hideSplash } from '@/ui/splash';
 import { useTheme } from '@/ui/theme';
 
@@ -41,6 +43,7 @@ installFonts();
 export default function RootLayout() {
   const t = useTheme();
   const path = usePathname();
+  const lessMotion = useLessMotion();
   // музыка — когда прочитаны настройки: выключившему её она не заиграет на миг
   useEffect(() => {
     loadSettings().then(startMusic);
@@ -77,8 +80,9 @@ export default function RootLayout() {
             headerShadowVisible: false,
             contentStyle: { backgroundColor: t.colors.bg },
             headerBackTitle: T.common.back,
-            // экраны выезжают справа, как в системных приложениях Android (spec 2026-10-premium-polish)
-            animation: 'slide_from_right',
+            // экраны выезжают справа, как в системных приложениях Android (spec 2026-10-premium-polish); при «Меньше
+            // движения» — сразу
+            animation: lessMotion ? 'none' : 'slide_from_right',
           }}>
           <Stack.Screen name="index" options={{ title: T.common.appName, headerShown: false }} />
           <Stack.Screen name="settings" options={{ title: T.settings.title }} />

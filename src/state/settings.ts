@@ -1,6 +1,6 @@
 // Настройки игрока (09-game-design.md §12, spec 2026-09-first-shift): громкость звуков и музыки (часть 62), фон
-// амбулатории, вибрация, автопауза смены, «мягкий режим», больные — реализм или разнообразие (spec
-// 2026-10-variety), размер текста, тема (spec 2026-09-own-look), режим разработчика (0.6.3) и отметка, что оговорка
+// амбулатории, вибрация, «меньше движения» (ADR 0023 устава), автопауза смены, «мягкий режим», больные — реализм или
+// разнообразие (spec 2026-10-variety), размер текста, тема (spec 2026-09-own-look), режим разработчика (0.6.3) и отметка, что оговорка
 // первого запуска прочитана
 // (12-publishing.md §3). Лежат в слоте `settings` тем же сырым хранилищем, что и смена
 // (ADR 0010): запись атомарная, с копиями. Модуль, как session.ts, не знает про платформу —
@@ -28,6 +28,12 @@ export interface Settings {
   /** фон амбулатории на экране смены: вентиляция, шаги, двери */
   ambience: boolean;
   vibration: boolean;
+  /**
+   * «Меньше движения» (ADR 0023 устава, правило 6): декоративные анимации — выезд экранов, появление строк, бег отрезка
+   * по ЭКГ загрузки, плавный зум плана — не играются. null — как в телефоне («уменьшить движение» Android); касание
+   * выключателя — свой выбор
+   */
+  lessMotion: boolean | null;
   /** автопауза смены: пришёл срочный пациент */
   pauseOnRed: boolean;
   /** автопауза смены: пациент вернулся с результатами */
@@ -65,7 +71,7 @@ export interface Settings {
 }
 
 export const DEFAULTS: Settings = {
-  sound: 1, music: 0.7, ambience: true, vibration: true, pauseOnRed: true, pauseOnResults: true, disclaimerAccepted: false, textScale: 1, theme: 'system', softMode: false, variety: false,
+  sound: 1, music: 0.7, ambience: true, vibration: true, lessMotion: null, pauseOnRed: true, pauseOnResults: true, disclaimerAccepted: false, textScale: 1, theme: 'system', softMode: false, variety: false,
   skills: true, mine: [], devMode: false, hintStrips: true,
 };
 
@@ -109,7 +115,10 @@ export function sanitize(data: unknown): Settings {
   const textScale = (TEXT_SCALES as readonly number[]).includes(d.textScale as number) ? (d.textScale as number) : DEFAULTS.textScale;
   const theme = (THEME_CHOICES as readonly unknown[]).includes(d.theme) ? (d.theme as ThemeChoice) : DEFAULTS.theme;
   return {
-    sound: level('sound'), music: level('music'), ambience: flag('ambience'), vibration: flag('vibration'), pauseOnRed: flag('pauseOnRed'), pauseOnResults: flag('pauseOnResults'), disclaimerAccepted: flag('disclaimerAccepted'),
+    sound: level('sound'), music: level('music'), ambience: flag('ambience'), vibration: flag('vibration'),
+    // в файле прежней версии поля нет, испорчено — как в телефоне
+    lessMotion: typeof d.lessMotion === 'boolean' ? d.lessMotion : DEFAULTS.lessMotion,
+    pauseOnRed: flag('pauseOnRed'), pauseOnResults: flag('pauseOnResults'), disclaimerAccepted: flag('disclaimerAccepted'),
     textScale, theme, softMode: flag('softMode'), variety: flag('variety'), skills: flag('skills'),
     // группы — только известные, без повторов, в порядке выбора диагноза
     mine: Array.isArray(d.mine) ? SYSTEMS.filter(x => (d.mine as unknown[]).includes(x)) : [],
@@ -155,6 +164,11 @@ export function updateSettings(patch: Partial<Settings>): Promise<unknown> {
       .catch(() => undefined); // не записалось — настройка действует до перезапуска
   }
   return saving;
+}
+
+/** «Меньше движения» сейчас: выбор игрока, а без него — флаг телефона. */
+export function lessMotionOf(choice: boolean | null, system: boolean): boolean {
+  return choice ?? system;
 }
 
 /** Настройки сейчас — для звука и часов смены; экранам — useSettings. */
