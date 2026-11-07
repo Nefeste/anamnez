@@ -151,6 +151,7 @@
       ],
       "./plugins/with-release-signing",
       "./plugins/with-release-no-internet",
+      "./plugins/with-splash-window",
       [
         "expo-splash-screen",
         {
