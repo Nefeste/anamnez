@@ -9,6 +9,7 @@ import { examInfo, examTerm, findingInfo, type TermInfo, type VisitView } from '
 import { Button, Chip, Chips } from '@/ui/components';
 import { examIcon } from '@/ui/itemIcons';
 import { RowIcon } from '@/ui/RowIcon';
+import { useReduceMotion } from '@/ui/motion';
 import { makeStyles, space } from '@/ui/theme';
 import { Text } from '../text';
 import { examMark, lineMark } from './marks';
@@ -23,6 +24,7 @@ export function ExamRow({ v, id, open: opened, onToggle, onExam, explain, onLayo
   indent?: boolean;
 }) {
   const styles = useStyles();
+  const motion = useReduceMotion();
   const t = T.spikes.patient;
   const info = examInfo(id);
   if (v.done.includes(id)) {
@@ -36,7 +38,7 @@ export function ExamRow({ v, id, open: opened, onToggle, onExam, explain, onLayo
     const summary = g ? (ready ? `${seen} · ${t.readyAt(ready.at)}` : seen) : ready ? t.readyAt(ready.at) : t.done;
     const mark = examMark(v, id);
     return (
-      <Animated.View entering={FadeInDown.duration(250)} testID={`done-${id}`} onLayout={onLayout} style={[styles.done, indent && styles.indent, g?.fresh && styles.fresh]}>
+      <Animated.View entering={FadeInDown.duration(250).reduceMotion(motion)} testID={`done-${id}`} onLayout={onLayout} style={[styles.done, indent && styles.indent, g?.fresh && styles.fresh]}>
         <Pressable accessibilityRole="button" aria-expanded={open} accessibilityLabel={`${info.name}: ${open ? t.collapse : t.expand}`} disabled={!g || g.fresh}
           hitSlop={HEAD_SLOP} onPress={onToggle} style={({ pressed }) => [styles.head, pressed && styles.pressed]}>
           <RowIcon icon={mark.icon} state={mark.state} size={20} testID={`ic-${mark.state}`} />

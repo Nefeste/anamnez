@@ -2,7 +2,7 @@
 // испорченный файл — предыдущая копия, испорченные и чужие поля — по умолчанию.
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { memoryStore } from '../../src/state/saves';
-import { DEFAULTS, forgetSettings, loadSettings, sanitize, setSettingsStore, settings, settingsSaved, updateSettings } from '../../src/state/settings';
+import { DEFAULTS, forgetSettings, lessMotionOf, loadSettings, sanitize, setSettingsStore, settings, settingsSaved, updateSettings } from '../../src/state/settings';
 
 let store = memoryStore();
 
@@ -16,8 +16,9 @@ describe('настройки', () => {
   test('файла нет — умолчания: звук полный, музыка средне, фон и вибрация включены, автопауза тоже, оговорка не прочитана, текст обычный, тема как в телефоне, мягкий режим выключен, больные — как в жизни', async () => {
     await loadSettings();
     // с 0.5.18 — и умения врача, включены (spec 2026-10-skills); с 0.5.19 — «свои больные», ничего (spec 2026-10-own-patients)
-    // с 0.6.3 — режим разработчика, выключен: «Проверки на телефоне» в настройках скрыты
-    expect(settings()).toEqual({ sound: 1, music: 0.7, ambience: true, vibration: true, pauseOnRed: true, pauseOnResults: true, disclaimerAccepted: false, textScale: 1, theme: 'system', softMode: false, variety: false, skills: true, mine: [], devMode: false, hintStrips: true });
+    // с 0.6.3 — режим разработчика, выключен: «Проверки на телефоне» в настройках скрыты; «меньше движения» (ADR 0023
+    // устава) — не выбрано, как в телефоне
+    expect(settings()).toEqual({ sound: 1, music: 0.7, ambience: true, vibration: true, lessMotion: null, pauseOnRed: true, pauseOnResults: true, disclaimerAccepted: false, textScale: 1, theme: 'system', softMode: false, variety: false, skills: true, mine: [], devMode: false, hintStrips: true });
   });
 
   test('поменяли — записано; после «перезапуска» — те же', async () => {
@@ -71,7 +72,30 @@ describe('настройки', () => {
     expect(sanitize({ sound: 0.35 }).devMode).toBe(false);
     expect(sanitize({ devMode: true }).devMode).toBe(true);
     expect(sanitize({ devMode: 1 }).devMode).toBe(false);
+    // «меньше движения» (ADR 0023 устава): в файле прежней версии поля нет, испорчено — как в телефоне
+    expect(sanitize({ sound: 0.35 }).lessMotion).toBe(null);
+    expect(sanitize({ lessMotion: true }).lessMotion).toBe(true);
+    expect(sanitize({ lessMotion: false }).lessMotion).toBe(false);
+    expect(sanitize({ lessMotion: 'yes' }).lessMotion).toBe(null);
     expect(sanitize(null)).toEqual(DEFAULTS);
     expect(sanitize([1, 2])).toEqual(DEFAULTS);
+  });
+});
+
+describe('«меньше движения» (ADR 0023 устава)', () => {
+  test('не выбрано — как в телефоне; выбор игрока главнее телефона', () => {
+    expect(lessMotionOf(null, false)).toBe(false);
+    expect(lessMotionOf(null, true)).toBe(true);
+    expect(lessMotionOf(true, false)).toBe(true);
+    expect(lessMotionOf(false, true)).toBe(false);
+  });
+
+  test('выбор записан и после «перезапуска» тот же', async () => {
+    await loadSettings();
+    updateSettings({ lessMotion: true });
+    await settingsSaved();
+    forgetSettings();
+    await loadSettings();
+    expect(settings().lessMotion).toBe(true);
   });
 });

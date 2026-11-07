@@ -1,5 +1,5 @@
-// Настройки (09-game-design.md §12, spec 2026-09-first-shift): звук и музыка (часть 62), вибрация, автопауза
-// смены, мягкий режим, больные — реализм или разнообразие (spec 2026-10-variety), тема (spec
+// Настройки (09-game-design.md §12, spec 2026-09-first-shift): звук и музыка (часть 62), вибрация, «меньше движения»
+// (ADR 0023 устава), автопауза смены, мягкий режим, больные — реализм или разнообразие (spec 2026-10-variety), тема (spec
 // 2026-09-own-look) и размер текста; перенос на другой телефон; «Сообщить об ошибке»; «Об игре»; прототипы первого этапа — ими на телефоне меряют отпечаток движка,
 // кадры карты и запись сохранения.
 import { type Href, router } from 'expo-router';
@@ -10,6 +10,7 @@ import { T } from '@/i18n';
 import { SYSTEMS } from '@/content/types';
 import { loadSettings, TEXT_SCALES, THEME_CHOICES, type ThemeChoice, updateSettings, useSettings, VOLUMES } from '@/state/settings';
 import { Button, Card, Choice, H, P, Screen, Tabs, Toggle } from '@/ui/components';
+import { useLessMotion } from '@/ui/motion';
 import { SystemTiles } from '@/ui/SystemTiles';
 
 type Level = '0' | '1' | '2' | '3';
@@ -29,6 +30,8 @@ const levelOf = (volume: number): Level => {
 export default function SettingsScreen() {
   const s = useSettings();
   const scheme = useColorScheme();
+  // без выбора игрока — как в телефоне; касание записывает свой выбор
+  const lessMotion = useLessMotion();
   useEffect(() => {
     loadSettings();
   }, []);
@@ -105,6 +108,7 @@ export default function SettingsScreen() {
           onChange={k => updateSettings({ textScale: TEXT_SCALES[Number(k)] })}
           items={t.textSizes.map((title, i) => ({ key: String(i) as Size, title }))}
         />
+        <Toggle testID="settings-less-motion" title={t.lessMotion} hint={t.lessMotionHint} value={lessMotion} onChange={v => updateSettings({ lessMotion: v })} />
       </Card>
       <Button testID="settings-transfer" kind="plain" title={T.transfer.title} hint={T.transfer.menuHint} onPress={() => router.push('/transfer')} />
       <Button testID="settings-report" kind="plain" title={t.report} hint={t.reportHint} onPress={() => router.push('/report')} />
