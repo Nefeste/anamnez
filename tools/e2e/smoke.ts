@@ -3242,6 +3242,10 @@ try {
     const label = Object.keys(spots).find(l => ask.includes(l));
     if (label && !hitLabel) {
       const pt = at(spots[label]);
+      // вопрос включает жест касания, а в вебе обработчик жеста обновляется не сразу: касание быстрее 100 мс после
+      // вопроса уходит старому, выключенному (на экране с плотностью 2 — каждый раз). Человек так быстро не касается —
+      // ждём, как он
+      await page.waitForTimeout(300);
       await page.mouse.click(pt.x, pt.y);
       await page.waitForTimeout(700);
       if ((await page.getByTestId('viewer-said').innerText()).startsWith('Нашли сами')) hitLabel = label;
