@@ -1155,7 +1155,9 @@ export interface Skill {
   effect:
     | { kind: 'examSens'; exams: Id[]; pp: number }
     | { kind: 'askTime'; minutes: number }
-    | { kind: 'mentor'; role: Id; forget: number };
+    | { kind: 'mentor'; role: Id; forget: number }
+    /** «Чтение снимков» (spec 2026-11-xray-marks): снимки и срезы — без ожидания описания */
+    | { kind: 'imageReport' };
 }
 
 /**

@@ -1,6 +1,7 @@
 // Значки строк карты пациента по виду приёма (0.6.8, вопрос 49): признак — есть у пациента или нет; обследование — что
 // показало: не сделано или ещё не пришло — неизвестно, пришло и что-то нашло — есть, ничего не нашло — нет.
 import type { Id } from '@/content/types';
+import { T } from '@/i18n';
 import type { Known, Line, VisitView } from '@/state/caseView';
 import { examIcon, findingIcon, type ItemIcon } from '@/ui/itemIcons';
 
@@ -11,6 +12,9 @@ export interface Mark {
 
 /** Строка результата: найденное — есть, «без особенностей» — нет. */
 export const lineMark = (l: Pick<Line, 'f' | 'shown'>): Mark => ({ icon: findingIcon(l.f), state: l.shown ? 'present' : 'absent' });
+
+/** Текст строки результата: находку снимка игрок показал сам (spec 2026-11-xray-marks) — так и написано. */
+export const lineText = (l: Pick<Line, 'text' | 'self'>): string => (l.self ? `${l.text} · ${T.spikes.patient.viewer.self}` : l.text);
 
 /** Обследование по тому, что пришло. */
 export function examMark(v: Pick<VisitView, 'done' | 'groups'>, id: Id): Mark {

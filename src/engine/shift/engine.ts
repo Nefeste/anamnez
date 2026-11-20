@@ -27,7 +27,7 @@ import { type DoctorRun, examCost, indicated, ORDER_MINUTES, type Parts, startRa
 import { type CaseHardness, hardnessOf } from '../med/difficulty';
 import { buildReview, type ReviewData, reviewBeliefs } from '../med/review';
 import { type Grade, scoreBase, type ScoreBase, scoreThrift, worstGrade } from '../med/score';
-import { askMinutes, examSkillWith, mentorOf } from '../career/skills';
+import { askMinutes, examSkillWith, mentorOf, reportMinutes } from '../career/skills';
 import type { Observation, Patient } from '../med/types';
 import {
   type ClosedCase, type ColleagueDay, type Command, DAY, type DaySummary, type Desk, type Difficulty, easyLevel, HANDOFF, hospitalDay, type MeasureResult, type Notice, type PendingResult, type PlannedReturn, REGISTRATION, SHIFT_END, SHIFT_SCHEMA_VERSION,
@@ -489,6 +489,15 @@ function command(db: ContentDb, s: ShiftState, cmd: Command): Notice[] {
       if (p && db.conditions[cmd.id]?.presenting && (p.departments ?? [s.meta.department]).includes(db.conditions[cmd.id].department)) {
         const row = p.draft.hypotheses ?? [];
         p.draft.hypotheses = row.includes(cmd.id) ? row.filter(x => x !== cmd.id) : [...row, cmd.id];
+      }
+      return [];
+    }
+    case 'look': {
+      // задача «Найдите на снимке» (spec 2026-11-xray-marks): только показанная находка пришедшего результата, одна попытка
+      const p = current(s);
+      if (p && !p.closed && !p.by && !(p.looked ?? []).some(x => x.f === cmd.f)
+        && p.results.some(r => r.at <= s.t && r.obs.some(o => o.f === cmd.f && o.shown))) {
+        p.looked = [...(p.looked ?? []), { f: cmd.f, hit: cmd.hit }];
       }
       return [];
     }
@@ -1204,7 +1213,8 @@ function orderExam(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: Id, pc
     p.results.push({ exam: examId, obs, at: s.t + away + cost, step: p.step });
     return away + cost;
   }
-  const after = (e.time.report ?? 0) + (e.time.turnaround ?? 0);
+  // «Чтение снимков» (spec 2026-11-xray-marks): свой снимок игрок смотрит сам, не дожидаясь описания
+  const after = (p.by ? (e.time.report ?? 0) : reportMinutes(db, s.meta.skills, e)) + (e.time.turnaround ?? 0);
   if (queued && room) {
     const order = ORDER_MINUTES * MIN;
     // к аппарату — назначить, и пациент идёт туда сразу (0.5.12): из кабинета или прямо с прошлого обследования
@@ -1310,7 +1320,8 @@ export function atDoctor(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: 
   const { e, ctx, bed, queued, room, to } = how;
   if (bed) return true;
   if (queued && room) return false;
-  const after = (e.time.report ?? 0) + (e.time.turnaround ?? 0);
+  // «Чтение снимков» (spec 2026-11-xray-marks): свой снимок игрок смотрит сам, не дожидаясь описания
+  const after = (p.by ? (e.time.report ?? 0) : reportMinutes(db, s.meta.skills, e)) + (e.time.turnaround ?? 0);
   return !(after > 0 && room && to !== undefined && to !== fromRoom(ctx, p));
 }
 
@@ -1400,7 +1411,8 @@ export function readyIn(db: ContentDb, s: ShiftState, p: ShiftPatient, examId: I
   // ушёл на другое обследование (0.5.12): при нём — когда вернётся, в другой кабинет — оттуда
   const away = Math.max(0, (p.out?.back ?? 0) - s.t) / MIN;
   if (bed) return away + bed.time.procedure;
-  const after = (e.time.report ?? 0) + (e.time.turnaround ?? 0);
+  // «Чтение снимков» (spec 2026-11-xray-marks): свой снимок игрок смотрит сам, не дожидаясь описания
+  const after = (p.by ? (e.time.report ?? 0) : reportMinutes(db, s.meta.skills, e)) + (e.time.turnaround ?? 0);
   if (queued && room) {
     const go = outFrom(ctx, s, p, room.id, s.t + ORDER_MINUTES * MIN);
     return (Math.max(go.at + go.walk, s.rooms[room.id] ?? 0) - s.t) / MIN + (e.time.procedure * roomPct) / 100 + after;

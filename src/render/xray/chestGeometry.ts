@@ -108,6 +108,11 @@ export function hemithorax(s: FilmSide, f: XrayFindings): Pt[] {
   return pts;
 }
 
+/** Середина облака инфильтрата (часть 4 рисунка): нижняя доля, над куполом своей стороны. */
+export function infiltrateCenter(s: FilmSide, f: XrayFindings): Pt {
+  return [mirror(s === -1 ? 0.26 : 0.24, s), domeY(s, f) - 0.06];
+}
+
 /** Корни лёгких: отсюда расходятся сосуды. */
 export const HILUM: Record<FilmSide, Pt> = { [-1]: [0.43, 0.41], [1]: [0.58, 0.38] };
 

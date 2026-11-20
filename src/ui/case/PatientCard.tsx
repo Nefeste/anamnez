@@ -25,7 +25,8 @@ import { Dangers, dangerLine } from './Dangers';
 import { Differential } from './Differential';
 import { BodyMap, PlacePanel } from './Examine';
 import { FirstMeasures } from './FirstMeasures';
-import { lineMark } from './marks';
+import { CaseImagesContext } from './caseImages';
+import { lineMark, lineText } from './marks';
 import type { ExamPlace } from './places';
 import { longestOf, partsOf, Referral } from './Referral';
 import { ResultPicture } from './ResultPicture';
@@ -269,7 +270,11 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
   // ждать нечего, а ждёт кто-то срочнее (часть 37): привезли с болью в груди — к нему
   const stepOut = !waiting && !!v.canStepOut && !!sendAway && !readOnly && !v.decision;
 
+  // разметка снимков (spec 2026-11-xray-marks): чужой приём — только смотреть, задачи нет
+  const images = { mode: v.marks, looked: v.looked, ...(actions.look && !readOnly ? { look: actions.look } : {}) };
+
   return (
+    <CaseImagesContext.Provider value={images}>
     <Screen scroll={false}>
       <View style={styles.page}>
         <Head v={v} readOnly={readOnly} open={isOpen('complaints')} onToggle={() => toggle('complaints')} explain={explain} />
@@ -491,6 +496,7 @@ export function PatientCard({ view: v, actions, readOnly }: { view: VisitView; a
 
       <TermSheet term={term} onClose={() => setTerm(null)} label={t.whatIsIt} closeTitle={t.gotIt} />
     </Screen>
+    </CaseImagesContext.Provider>
   );
 }
 
@@ -575,9 +581,9 @@ function KnownGroup({ g, open, onToggle, explain, onLayout }: {
         <Text style={styles.groupTitle}>{`${g.name} · ${t.at(g.at)}`}</Text>
         {g.fresh && <Text style={styles.badge}>{t.fresh}</Text>}
       </View>
-      {g.image && <ResultPicture image={g.image} title={g.name} lines={g.lines} />}
+      {g.image && <ResultPicture image={g.image} title={g.name} lines={g.lines} marks={g.marks} />}
       <Chips>
-        {lines.map((r, i) => <Chip key={`${r.f}${i}`} text={r.text} strong={r.shown} icon={lineMark(r)} onPress={() => explain(findingInfo(r.f))} />)}
+        {lines.map((r, i) => <Chip key={`${r.f}${i}`} text={lineText(r)} strong={r.shown} icon={lineMark(r)} onPress={() => explain(findingInfo(r.f))} />)}
         {hidden > 0 && onToggle && <Chip testID={`more-${g.exam}`} text={t.moreQuiet(hidden)} icon={{ icon: examIcon(g.exam), state: 'absent' }} onPress={onToggle} />}
         {open && !g.fresh && onToggle && found(g) && g.lines.some(l => !l.shown) && <Chip text={t.collapse} onPress={onToggle} />}
       </Chips>

@@ -3,7 +3,7 @@
 // session.ts.
 import { db } from '@/content';
 import type { AchievementCategory, Id } from '@/content/types';
-import { LEVELS, levelOf, skillsFor, specialtiesOf, toNextLevel } from '@/engine/career/skills';
+import { LEVELS, levelOf, RADIOLOGY, skillsFor, specialtiesOf, toNextLevel } from '@/engine/career/skills';
 import type { Grade } from '@/engine/med/score';
 import { T } from '@/i18n';
 import { patientName } from './caseView';
@@ -162,12 +162,14 @@ export function specialtyRows(p: Pick<Profile, 'experience'>): {
   department: Id; name: string; level: string; hint: string; points: number; from: number; of?: number;
 }[] {
   const t = T.profile;
-  return specialtiesOf(db).map(department => {
+  // лучевая диагностика (spec 2026-11-xray-marks) — последней: её опыт — находки, показанные на снимках самим
+  return [...specialtiesOf(db), RADIOLOGY].map(department => {
     const points = p.experience[department] ?? 0;
     const next = toNextLevel(points);
     const of = LEVELS.find(x => points < x);
+    const hint = next === 0 ? t.topLevel : department === RADIOLOGY ? t.toNextFound(Math.ceil(next)) : t.toNext(Math.ceil(next));
     return {
-      department, name: t.specialty[department] ?? department, level: t.levelShort(levelOf(points)), hint: next > 0 ? t.toNext(Math.ceil(next)) : t.topLevel,
+      department, name: t.specialty[department] ?? department, level: t.levelShort(levelOf(points)), hint,
       points, from: [0, ...LEVELS].filter(x => x <= points).at(-1) ?? 0, ...(of !== undefined ? { of } : {}),
     };
   });

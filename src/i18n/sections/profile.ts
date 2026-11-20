@@ -75,10 +75,14 @@ export const profile = {
     'dept.trauma': 'Травматология',
     'dept.neurology': 'Неврология',
     'dept.infectious': 'Инфекционные болезни',
+    // spec 2026-11-xray-marks: опыт — находки, показанные на снимках самим
+    'dept.radiology': 'Лучевая диагностика',
   } as Record<string, string>,
   levelShort: (n: number) => `уровень ${n}`,
   // очки опыта бывают и с половиной (почти верный диагноз): до уровня — целым числом верных
   toNext: (n: number) => `до следующего — ${n} ${pluralRu(n, 'верный диагноз', 'верных диагноза', 'верных диагнозов')}`,
+  // лучевая диагностика (spec 2026-11-xray-marks): опыт — находки, которые игрок сам показал на снимках
+  toNextFound: (n: number) => `до следующего — ${n}\u00a0${pluralRu(n, 'находка', 'находки', 'находок')}, показанных на снимках самим`,
   topLevel: 'высший уровень',
   skills: 'Умения',
   skillLine: (name: string, text: string) => `«${name}»: ${lowerFirst(text)}`,

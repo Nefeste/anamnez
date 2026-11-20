@@ -11,6 +11,8 @@ import { openArticle } from '@/ui/encyclopedia';
 import { Loading } from '@/ui/Loading';
 import { makeStyles, space, type Theme, useTheme } from '@/ui/theme';
 import type { FooterAction } from './actions';
+import { CaseImagesContext } from './caseImages';
+import { ResultPicture } from './ResultPicture';
 
 /** `more` — ещё одно действие под разбором («Разобрать случай», часть 74: ещё один такой больной). */
 export function OutcomeScreen({ view, next, back, more }: { view: VisitView | undefined; next: FooterAction; back: FooterAction; more?: FooterAction }) {
@@ -46,6 +48,21 @@ export function OutcomeScreen({ view, next, back, more }: { view: VisitView | un
         <P testID="visit-outcome">{x.outcome}</P>
         {view.firstTry && <P muted testID="visit-first-try">{view.firstTry}</P>}
       </Card>
+
+      {/* что было на снимках (spec 2026-11-xray-marks, вопрос 76): в разборе контуры находок — на любом уровне */}
+      {view.groups.some(g => g.image && g.marks) && (
+        <CaseImagesContext.Provider value={{ mode: 'show', looked: view.looked }}>
+          <Card testID="visit-images">
+            <Text style={styles.label}>{t.imagesLabel}</Text>
+            {view.groups.filter(g => g.image && g.marks).map(g => (
+              <View key={g.key} style={styles.image}>
+                <P muted>{g.name}</P>
+                <ResultPicture image={g.image!} title={g.name} lines={g.lines} marks={g.marks} overlay />
+              </View>
+            ))}
+          </Card>
+        </CaseImagesContext.Provider>
+      )}
 
       {view.achievements && view.achievements.length > 0 && (
         <Card testID="visit-achievements">
@@ -140,4 +157,5 @@ const useStyles = makeStyles(t => ({
   gradeTotal: { backgroundColor: t.colors.accentSoft },
   gradeLetter: { fontSize: 24, fontWeight: '800' },
   gradeName: { fontSize: 12, color: t.colors.muted, textAlign: 'center' },
+  image: { gap: space.xs },
 }));

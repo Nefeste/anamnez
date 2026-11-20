@@ -1072,6 +1072,11 @@ export function toggleHypothesis(id: Id) {
   draft({ kind: 'hypothesis', id });
 }
 
+/** Задача «Найдите на снимке» (spec 2026-11-xray-marks): игрок показал находку — попал или нет; одна попытка на находку. */
+export function lookOnImage(f: Id, hit: boolean) {
+  draft({ kind: 'look', f, hit });
+}
+
 /**
  * Завершить приём: случай закрыт, его итог — на экране итога (фокус). Разбор не успели посчитать заранее (0.5.13,
  * NFR-PRF-1) — он досчитывается в следующих кадрах, по `partMs` за кадр, а приём закрывается, когда разбор готов; экран
@@ -2817,6 +2822,7 @@ function buildCaseView(): VisitView | undefined {
     ...(waits ? { urgentWaiting: seen.pending.length > 0 && moreUrgent(db, s, p), waitMinutes: Math.max(1, Math.ceil((waitUntil(s, p) - now) / 60)) } : {}),
     returnNote: p.returnReason && prev?.closed ? T.shift.returnNote(p.returnReason, closedDay(prev), female(p)) : undefined,
     difficulty: s.meta.difficulty ?? 'doctor',
+    ...(p.looked ? { looked: p.looked } : {}),
     // и в практике: кабинета УЗИ в амбулатории нет (часть 29)
     unavailable,
     // испытания (часть 91): какие — карте; у «Скупого главврача» — сколько осталось на пациента

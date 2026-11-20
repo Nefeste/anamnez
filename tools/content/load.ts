@@ -1292,7 +1292,8 @@ function checkSkills(db: ContentDb, errors: string[]) {
   const levels = new Set<string>();
   for (const x of Object.values(db.skills)) {
     const at = (what: string) => errors.push(`${x.id}: ${what}`);
-    if (!Object.values(db.conditions).some(c => c.presenting && c.department === x.department)) at(`в отделении ${x.department} нет болезней`);
+    // лучевая диагностика (spec 2026-11-xray-marks) — без своих болезней: её опыт — находки, показанные на снимках
+    if (x.department !== 'dept.radiology' && !Object.values(db.conditions).some(c => c.presenting && c.department === x.department)) at(`в отделении ${x.department} нет болезней`);
     const key = `${x.department}:${x.level}`;
     if (levels.has(key)) at(`у ${x.department} на уровне ${x.level} уже есть умение`);
     levels.add(key);

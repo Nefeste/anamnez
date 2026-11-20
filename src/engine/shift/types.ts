@@ -175,6 +175,11 @@ export interface ShiftPatient {
   spent: { seconds: number; money: number };
   /** `hypotheses` — дифференциальный ряд игрока (FR-DX-7, spec 2026-10-differential): болезни, которые он подозревает */
   draft: { diagnosis?: Id; treatments: Id[]; setting: Setting; hypotheses?: Id[] };
+  /**
+   * задача «Найдите на снимке» (spec 2026-11-xray-marks): какие находки снимков игрок пробовал показать сам и попал ли; нет
+   * поля — не пробовал. Попадания копят умение «Чтение снимков» в профиле
+   */
+  looked?: { f: Id; hit: boolean }[];
   closed?: ClosedCase;
   /** ведёт нанятый врач — номер человека из штата (spec 2026-09-hired-doctors); нет — вы */
   by?: string;
@@ -330,6 +335,11 @@ export type Command =
   | { kind: 'setting'; setting: Setting }
   /** дифференциальный ряд (spec 2026-10-differential): добавить гипотезу или убрать её — времени не тратит */
   | { kind: 'hypothesis'; id: Id }
+  /**
+   * задача «Найдите на снимке» (spec 2026-11-xray-marks, вопрос 76): игрок показал находку снимка — попал или нет; одна
+   * попытка на находку, времени не тратит
+   */
+  | { kind: 'look'; f: Id; hit: boolean }
   | { kind: 'finish' }
   /** время на карте: часы идут сами (ADR 0005) */
   | { kind: 'advance'; seconds: number }

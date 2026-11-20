@@ -11,7 +11,7 @@
 import { BlendMode, BlurStyle, ClipOp, PaintStyle, Skia, type SkPaint, type SkPath, type SkPicture, StrokeCap, TileMode } from '@shopify/react-native-skia';
 import { Rng } from '@/engine/core/rng';
 import {
-  batWing, bezier, collapsedLung, domeY, type FilmSide as Side, filmSide, fluidTop, heartScale, hemithorax, kerleyLines, lungScale,
+  batWing, bezier, collapsedLung, domeY, type FilmSide as Side, filmSide, fluidTop, heartScale, hemithorax, infiltrateCenter, kerleyLines, lungScale,
   mediastinalShift, mirror, type Pt, ribBack, ribFractureAt, ribFront, ribLayout, sinusFluid, XRAY_ASPECT, type XrayFindings,
 } from './chestGeometry';
 
@@ -217,9 +217,7 @@ export function recordChestXray(width: number, findings: XrayFindings, seed: num
     const sides: Side[] = inf.side === 'both' ? [-1, 1] : [inf.side === 'right' ? -1 : 1];
     const d = Math.max(0, Math.min(1, inf.density));
     for (const s of sides) {
-      const dome = s === -1 ? domeR : domeL;
-      const cx = mirror(s === -1 ? 0.26 : 0.24, s);
-      const cy = dome - 0.06;
+      const [cx, cy] = infiltrateCenter(s, findings);
       c.save();
       c.clipPath(lungs[s], ClipOp.Intersect, true);
       const n = Math.round(12 + 10 * d);

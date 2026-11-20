@@ -28,6 +28,7 @@ import type { EgdFindings } from '@/render/egd/geometry';
 import type { DiscLevel, SpineFindings } from '@/render/mri/spineGeometry';
 import type { BoneFindings, BoneFracture } from '@/render/xray/boneGeometry';
 import { fracturedRibs, type XrayFindings } from '@/render/xray/chestGeometry';
+import { type AbdomenMarkKey, abdomenMarks, boneMarks, type ChestMarkKey, chestMarks, type MarkArea } from '@/render/xray/marks';
 import { T } from '@/i18n';
 import { lowerFirst } from '@/i18n/case';
 
@@ -38,6 +39,8 @@ export interface Line {
   text: string;
   shown: boolean;
   exam: Id | 'complaint';
+  /** задача «Найдите на снимке» (spec 2026-11-xray-marks): игрок сам показал эту находку на снимке */
+  self?: true;
 }
 
 /**
@@ -100,8 +103,23 @@ export interface ResultGroup {
   fresh: boolean;
   lines: Line[];
   image?: ResultImage;
+  /** где на снимке то, что нашёл рентгенолог (spec 2026-11-xray-marks): у рентгена груди, живота и костей */
+  marks?: ImageMark[];
   /** из карты (часть 91, «Нелюдимый врач»): ответы без расспроса — в беседе их нет */
   card?: true;
+}
+
+/** Обведённая находка на снимке (spec 2026-11-xray-marks): строка результата, короткая подпись и где она на кадре. */
+export interface ImageMark {
+  f: Id;
+  label: string;
+  area: MarkArea;
+}
+
+/** Попытка задачи «Найдите на снимке»: какая находка и попал ли игрок. Одна на находку. */
+export interface Look {
+  f: Id;
+  hit: boolean;
 }
 
 /** Справка о термине для «Что это?»: только знания из базы, не правда о пациенте. `id` — статья энциклопедии. */
@@ -291,6 +309,13 @@ export interface VisitView {
   /** закрытый приём нанятого врача — строка «Приём вёл…»; есть — на экране итога и «лечение врача» */
   byDoctor?: string;
   decision?: Decision;
+  /**
+   * разметка снимков (spec 2026-11-xray-marks, вопрос 76): `show` — контуры с подписями видны сразу («Практикант» и
+   * «Студент», разбор, чужой приём), `find` — задача «Найдите на снимке» («Ординатор», «Врач»)
+   */
+  marks: 'show' | 'find';
+  /** попытки задачи «Найдите на снимке» в этом приёме */
+  looked: Look[];
 }
 
 /** Результаты, пришедшие разом: шаг — номер действия игрока, за которое они пришли. */
@@ -346,6 +371,8 @@ export interface CaseInput {
   returnNote?: string;
   /** сложность: «Похоже на» — только у «Студента» (09-game-design.md §14); нет — «Студент» (прототип П4) */
   difficulty?: Difficulty;
+  /** попытки задачи «Найдите на снимке» (spec 2026-11-xray-marks) */
+  looked?: readonly Look[];
   /** испытания «Смены» (часть 91) и деньги «Скупого главврача» — как у вида */
   challenges?: readonly Challenge[];
   budget?: { left: number; of: number };
@@ -815,6 +842,68 @@ const BONE_EXAMS: Record<Id, { view: BoneFindings['view']; fractures: [Id, BoneF
   },
 };
 
+/** Плотность инфильтрата на снимке — одна: вид знает сторону, а не тяжесть. */
+const DENSITY = 0.75;
+
+/** Находки обзорного снимка груди — из результата обследования: и рисунку, и разметке. */
+export function chestFindingsOf(image: Extract<ResultImage, { kind: 'xray' }>): XrayFindings {
+  return {
+    ...(image.infiltrate ? { infiltrate: { side: image.infiltrate, density: DENSITY } } : {}),
+    hyperinflation: image.hyperinflation,
+    ...(image.pneumothorax ? { pneumothorax: image.pneumothorax } : {}),
+    ...(image.effusion ? { effusion: image.effusion } : {}),
+    ...(image.ribFractures ? { ribFractures: image.ribFractures } : {}),
+    wideMediastinum: image.wideMediastinum,
+    ...(image.congestion ? { congestion: { edema: image.congestion === 'edema' } } : {}),
+    cardiomegaly: image.cardiomegaly,
+  };
+}
+
+/** Находки обзорного снимка живота: то, что нашёл рентгенолог, — крупно. */
+export const abdomenFindingsOf = (image: Extract<ResultImage, { kind: 'abdomen' }>) => ({ freeGas: image.freeGas ? 0.8 : 0, levels: image.levels ? 0.8 : 0 });
+
+/** Какие находки базы обводит каждое место снимка груди и живота — первая показанная. */
+const CHEST_MARKS: Record<ChestMarkKey, Id[]> = {
+  infiltrate: ['img.cxr_infiltrate'],
+  air: ['img.cxr_pneumothorax', 'img.cxr_pneumothorax_large'],
+  fluid: ['img.cxr_hemothorax', 'img.cxr_hemothorax_large'],
+  rib: ['img.xr_rib_fracture', 'img.xr_rib_multiple'],
+  mediastinum: ['img.cxr_wide_mediastinum'],
+  heart: ['img.cxr_cardiomegaly'],
+  congestion: ['img.cxr_congestion'],
+  edema: ['img.cxr_edema'],
+};
+const ABDOMEN_MARKS: Record<AbdomenMarkKey, Id[]> = { freeGas: ['img.xr_free_gas'], levels: ['img.xr_bowel_levels'] };
+
+/**
+ * Разметка снимка (spec 2026-11-xray-marks): каждое место, которое есть на рисунке и о котором есть показанная строка
+ * результата. Контуры — из той же геометрии и того же зерна, что рисунок.
+ */
+function marksOf(exam: Id, image: ResultImage, lines: readonly Line[]): ImageMark[] {
+  const label = T.spikes.patient.viewer.marks;
+  const shownOf = (ids: readonly Id[]) => ids.find(f => lines.some(l => l.f === f && l.shown));
+  const out: ImageMark[] = [];
+  const add = (ids: readonly Id[], text: string, area: MarkArea | undefined) => {
+    const f = shownOf(ids);
+    if (f && area && !out.some(m => m.f === f)) out.push({ f, label: text, area });
+  };
+  if (image.kind === 'xray') {
+    const m = chestMarks(chestFindingsOf(image), image.seed);
+    for (const k of Object.keys(CHEST_MARKS) as ChestMarkKey[]) add(CHEST_MARKS[k], label[k], m[k]);
+  } else if (image.kind === 'abdomen') {
+    const m = abdomenMarks(abdomenFindingsOf(image), image.seed);
+    for (const k of Object.keys(ABDOMEN_MARKS) as AbdomenMarkKey[]) add(ABDOMEN_MARKS[k], label[k], m[k]);
+  } else if (image.kind === 'bone') {
+    const bone = BONE_EXAMS[exam];
+    const m = boneMarks(image, image.seed);
+    for (const [site, area] of Object.entries(m)) {
+      if (!bone || !area) continue;
+      add(bone.fractures.filter(([, fr]) => fr.some(x => x.site === site)).map(([f]) => f), label.fracture, area);
+    }
+  }
+  return out;
+}
+
 /** «Студенту» — до пяти гипотез с частотой (09-game-design.md §14). */
 const HINTS = 5;
 /** «Ординатор» (spec 2026-10-resident): «Похоже на» — до трёх, словами (09-game-design.md §14). */
@@ -1038,11 +1127,13 @@ export function withoutRepeats<L extends Pick<Line, 'text' | 'shown'>>(lines: re
 
 export function makeCaseView(c: CaseInput): VisitView {
   const p = c.patient;
+  const found = new Set((c.looked ?? []).filter(x => x.hit).map(x => x.f));
   const line = (o: Observation): Line => ({
     f: o.f,
     shown: o.shown,
     exam: o.exam,
     text: o.exam === 'complaint' ? complaintText(db, o, p.sex, p.seed) : observationText(db, o, p.sex, p.seed),
+    ...(o.shown && found.has(o.f) ? { self: true as const } : {}),
   });
   // уточнения, которых нет, отдельной строкой не пишутся (часть 32в): у такого признака нет текста
   // «нет» — «пневмоторакса нет» скажет основной признак, а «средостение не смещено» уже лишнее
@@ -1068,9 +1159,12 @@ export function makeCaseView(c: CaseInput): VisitView {
     groups: c.arrived
       .map((a, i) => {
         const image = imageOf(a.exam, a.obs, obs, fnv1a(`${p.seed}:${a.exam}`), p.seed);
+        const lines = withoutRepeats(a.obs.filter(visible).map(line));
+        const marks = image ? marksOf(a.exam, image, lines) : [];
         return {
           key: `${i}:${a.exam}`, exam: a.exam, name: a.card ? T.challenges.fromCard(resultName(a.exam)) : resultName(a.exam, a.repeat), at: hhmm(a.at),
-          fresh: c.step > 0 && a.step === c.step, lines: withoutRepeats(a.obs.filter(visible).map(line)), ...(image ? { image } : {}), ...(a.card ? { card: true as const } : {}),
+          fresh: c.step > 0 && a.step === c.step, lines, ...(image ? { image } : {}), ...(marks.length > 0 ? { marks } : {}),
+          ...(a.card ? { card: true as const } : {}),
         };
       })
       .reverse(),
@@ -1115,6 +1209,9 @@ export function makeCaseView(c: CaseInput): VisitView {
     ...(c.colleague ? { colleague: c.colleague } : {}),
     ...(c.byDoctor ? { byDoctor: c.byDoctor } : {}),
     decision: c.decision,
+    // разметка (вопрос 76): на лёгких уровнях — подсказкой, в разборе и у чужого приёма — всегда; иначе — задачей
+    marks: c.decision || c.colleague || c.difficulty === undefined || c.difficulty === 'trainee' || c.difficulty === 'student' ? 'show' : 'find',
+    looked: [...(c.looked ?? [])],
   };
 }
 

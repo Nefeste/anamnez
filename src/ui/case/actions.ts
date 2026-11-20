@@ -17,6 +17,8 @@ export interface CaseActions {
   toggleHypothesis(id: Id): void;
   /** смена: первая мера лежащему в смотровой (spec 2026-10-first-measures, часть 95) — делает медсестра */
   measure?(tx: Id): void;
+  /** смена: задача «Найдите на снимке» (spec 2026-11-xray-marks) — показал находку, попал или нет; нет — задачи нет */
+  look?(f: Id, hit: boolean): void;
   finish(): void;
   routes: { decision: Href; outcome: Href };
 }

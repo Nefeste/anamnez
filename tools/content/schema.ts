@@ -1029,6 +1029,7 @@ export const skillSchema = z.strictObject({
     z.strictObject({ kind: z.literal('examSens'), exams: z.array(z.string()).min(1), pp: z.number().int().min(1).max(20) }),
     z.strictObject({ kind: z.literal('askTime'), minutes: z.number().int().min(1).max(5) }),
     z.strictObject({ kind: z.literal('mentor'), role: z.string().regex(/^role\.[a-z0-9_]+$/), forget: z.number().min(1).max(10) }),
+    z.strictObject({ kind: z.literal('imageReport') }),
   ]),
 });
 
