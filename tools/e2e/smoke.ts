@@ -760,12 +760,12 @@ function peSave(): { save: string; id: string } {
  * недостаточности с отёком лёгких, сатурация 90 и выше; расспрос, пульс и давление, лёгкие, NT-proBNP и снимок груди
  * готовы.
  */
-function adhfSave(): { save: string; id: string } {
+function adhfSave(difficulty: 'student' | 'doctor' = 'student'): { save: string; id: string } {
   const fits = (x: ReturnType<typeof generatePatient>) => {
     const k = x.truth.conditions[0].params;
     return x.age >= 50 && k.type === 'edema' && k.spo2_below90 === 'no' && x.truth.risks.length <= 3 && x.complaints.includes('sym.dyspnea');
   };
-  return neuroSave('cond.adhf', fits, ['exam.ask_chronic', 'exam.ask_complaints', 'exam.vitals', 'exam.lung_auscultation', 'exam.nt_probnp', 'exam.xray_chest']);
+  return neuroSave('cond.adhf', fits, ['exam.ask_chronic', 'exam.ask_complaints', 'exam.vitals', 'exam.lung_auscultation', 'exam.nt_probnp', 'exam.xray_chest'], { difficulty });
 }
 
 /**
@@ -840,9 +840,9 @@ function statusSave(): { save: string; id: string } {
  * Больница с приёмным, КТ и ПИТ; первую машину скорой подменяет больной `primary`, для которого верно `fits`; сделаны
  * `exams`. С `ultrasound` (часть 43д) — ещё кабинет УЗИ под старым зданием, коридор к нему продлён влево.
  */
-function neuroSave(primary: string, fits: (x: ReturnType<typeof generatePatient>) => boolean, exams: string[], extra: { ultrasound?: boolean } = {}): { save: string; id: string } {
+function neuroSave(primary: string, fits: (x: ReturnType<typeof generatePatient>) => boolean, exams: string[], extra: { ultrasound?: boolean; difficulty?: 'student' | 'doctor' } = {}): { save: string; id: string } {
   const { db } = buildDb();
-  const s = newSandbox(db, { seed: 25, season: 'winter', difficulty: 'student', start: 'clinic', budget: db.economy.sandbox.budgets.generous });
+  const s = newSandbox(db, { seed: 25, season: 'winter', difficulty: extra.difficulty ?? 'student', start: 'clinic', budget: db.economy.sandbox.budgets.generous });
   // томограф дороже «щедрого» бюджета
   s.economy!.cash = 8_000_000;
   const cells: [number, number][] = [];
@@ -3175,6 +3175,15 @@ try {
   await visible(page, 'result-xray').scrollIntoViewIfNeeded();
   check((await visible(page, 'result-xray').boundingBox() ?? { height: 0 }).height > 150, 'ОДСН: рентген груди — снимком');
   await page.screenshot({ path: join(OUT, '26-adhf-card.png'), fullPage: true });
+  // разметка находок (spec 2026-11-xray-marks): у «Студента» в снимке крупно отёк обведён и подписан сразу, задачи нет
+  await visible(page, 'result-open').click();
+  await page.getByTestId('viewer').waitFor({ timeout: 5000 });
+  await page.waitForTimeout(500);
+  check(await page.getByTestId('viewer-mark-img.cxr_edema').isVisible() && (await page.getByTestId('viewer-task').count()) === 0,
+    `ОДСН, «Студент»: в снимке крупно — контур «${await page.getByTestId('viewer-mark-img.cxr_edema').innerText().catch(() => '—')}», задачи нет`);
+  await page.screenshot({ path: join(OUT, '26-adhf-xray-marks.png') });
+  await page.getByTestId('viewer-close').click();
+  await page.getByTestId('viewer').waitFor({ state: 'detached', timeout: 5000 });
   await visible(page, 'visit-decide').click();
   await visible(page, 'dx-cond.adhf').click();
   await visible(page, 'decision-to-plan').click();
@@ -3187,6 +3196,9 @@ try {
   await page.getByTestId('visit-finish').click();
   await page.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
   const hfReview = await page.locator('body').innerText();
+  // подпись карточки — заглавными: innerText отдаёт текст с преобразованием регистра
+  check(await visible(page, 'visit-images').isVisible() && /что было на снимках/i.test(hfReview) && hfReview.includes('Отёк лёгких'),
+    'ОДСН: в разборе — «Что было на снимках», отёк обведён и подписан');
   check(hfReview.includes('Острая декомпенсация сердечной недостаточности') && !/[Нн]е назначено|не показано|вредно|Недооценили тяжесть/.test(hfReview),
     `ОДСН с отёком лёгких: фуросемид, нитроглицерин, CPAP, НМГ и ПИТ, разбор — «${hfReview.replace(/\n/g, ' · ').slice(0, 300)}»`);
   await page.screenshot({ path: join(OUT, '26-adhf-review.png'), fullPage: true });
@@ -3197,6 +3209,53 @@ try {
     && hfArticle.includes('При отёке лёгких, гипоперфузии, частоте дыхания выше 25 или сатурации ниже 90 % — палата интенсивной терапии.')
     && hfArticle.includes('при гипоперфузии — холодной влажной коже'),
     `энциклопедия, ОДСН: ${await visibleText(page, 'enc-article-title')} — ПИТ по признакам, лечение по формам`);
+
+  // задача «Найдите на снимке» (spec 2026-11-xray-marks): тот же больной у «Врача» — контуров сразу нет; игрок касается
+  // места находки: попал — «Нашли сами», строка карты отмечена; «Показать» — промах, контур виден
+  const hfDoc = adhfSave('doctor');
+  await page.goto(base);
+  await page.getByTestId('menu-quick').waitFor({ timeout: 10_000 });
+  await page.evaluate(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/sandbox.json', hfDoc.save]);
+  await page.goto(base);
+  await page.getByTestId('menu-quick').click();
+  await page.getByTestId('menu-sandbox').click();
+  await page.getByTestId('restart-continue').click();
+  await page.getByTestId('shift-continue').waitFor({ timeout: 15_000 });
+  await page.getByTestId('tab-pause').click();
+  await page.getByTestId('shift-continue').click();
+  await visible(page, 'visit-decide').waitFor({ timeout: 10_000 });
+  await visible(page, 'result-open').scrollIntoViewIfNeeded();
+  await visible(page, 'result-open').click();
+  await page.getByTestId('viewer').waitFor({ timeout: 5000 });
+  await page.waitForTimeout(500);
+  check(await page.getByTestId('viewer-find').isVisible() && (await page.getByTestId('viewer-mark-img.cxr_edema').count()) === 0,
+    'ОДСН, «Врач»: в снимке крупно — «Найдите на снимке», контуров сразу нет');
+  // места находок в долях снимка: отёк — «крыло» у правого корня, застой — правый корень, большое сердце — его тень
+  const spots: Record<string, [number, number]> = { 'Отёк лёгких': [0.355, 0.43], 'Застой': [0.43, 0.41], 'Большое сердце': [0.565, 0.585] };
+  const field = (await page.getByTestId('viewer-picture').boundingBox())!;
+  const pw = Math.min(field.width, field.height / 1.1), ph = pw * 1.1;
+  const at = ([x, y]: [number, number]) => ({ x: field.x + (field.width - pw) / 2 + x * pw, y: field.y + (field.height - ph) / 2 + y * ph });
+  let hitLabel = '';
+  for (let k = 0; k < 3 && (await page.getByTestId('viewer-find').count()) > 0; k++) {
+    await page.getByTestId('viewer-find').click();
+    const ask = await page.getByTestId('viewer-ask').innerText();
+    const label = Object.keys(spots).find(l => ask.includes(l));
+    if (label && !hitLabel) {
+      const pt = at(spots[label]);
+      await page.mouse.click(pt.x, pt.y);
+      await page.waitForTimeout(700);
+      if ((await page.getByTestId('viewer-said').innerText()).startsWith('Нашли сами')) hitLabel = label;
+    } else {
+      await page.getByTestId('viewer-reveal').click();
+    }
+  }
+  const viewerText = await page.getByTestId('viewer').innerText();
+  check(hitLabel !== '' && viewerText.includes('Все находки снимка показаны') && viewerText.includes('нашли сами'),
+    `ОДСН, «Врач»: показали сами «${hitLabel}», остальное — «Показать»; после — все контуры`);
+  await page.screenshot({ path: join(OUT, '26-adhf-xray-find.png') });
+  await page.getByTestId('viewer-close').click();
+  await page.getByTestId('viewer').waitFor({ state: 'detached', timeout: 5000 });
+  check((await page.locator('body').innerText()).includes('нашли сами'), 'ОДСН, «Врач»: строка снимка в карте — «нашли сами»');
 
   // гипертонический криз (часть 43г): у вас — энцефалопатия; в карте — «Давление очень высокое: 180/110 и выше»,
   // оглушение по шкале Глазго и глазное дно; препарат в вену и «В ПИТ» — разбор без замечаний; в энциклопедии — ПИТ у

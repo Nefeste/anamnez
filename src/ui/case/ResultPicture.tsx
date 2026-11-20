@@ -2,7 +2,7 @@
 // обследование, — как в спецификации карты пациента (рентген, ЭКГ, УЗИ, КТ, МРТ и ЭГДС кодом, ADR 0013). Снимок
 // касанием открывается крупно (spec 2026-11-xray, ImageViewer.tsx); ЭКГ — нет: лента и так во всю ширину, а подписи
 // отведений — текстом поверх.
-import { useMemo, useState } from 'react';
+import { useContext, useMemo, useState } from 'react';
 import { Pressable, useWindowDimensions, View } from 'react-native';
 import { T } from '@/i18n';
 import { ChestSlice } from '@/render/ChestSlice';
@@ -16,19 +16,17 @@ import { recordSpineSlice } from '@/render/mri/spine';
 import { SpineSlice } from '@/render/SpineSlice';
 import { recordUsSector } from '@/render/us/sector';
 import { type UsImage, UsSector } from '@/render/UsSector';
-import { Xray, type XrayFindings } from '@/render/Xray';
+import { Xray } from '@/render/Xray';
 import { ABDOMEN_ASPECT, recordAbdomenXray } from '@/render/xray/abdomen';
 import { BONE_ASPECT } from '@/render/xray/boneGeometry';
 import { recordBoneXray } from '@/render/xray/bones';
 import { recordChestXray, XRAY_ASPECT } from '@/render/xray/chest';
 import { XrayAbdomen } from '@/render/XrayAbdomen';
 import { XrayBone } from '@/render/XrayBone';
-import type { Line, ResultImage } from '@/state/caseView';
+import { abdomenFindingsOf, chestFindingsOf, type ImageMark, type Line, type ResultImage } from '@/state/caseView';
 import { space } from '@/ui/theme';
-import { ImageViewer, type ViewerPicture, ZoomBadge } from './ImageViewer';
-
-/** Плотность инфильтрата на снимке — одна: вид знает сторону, а не тяжесть. */
-const DENSITY = 0.75;
+import { CaseImagesContext } from './caseImages';
+import { ImageViewer, MarksOverlay, type ViewerPicture, ZoomBadge } from './ImageViewer';
 
 /** Что рисует УЗИ по результату: вид и что нашли; вены ноги — линейным датчиком (часть 33а). */
 function usImageOf(image: Extract<ResultImage, { kind: 'us' }>): UsImage {
@@ -39,29 +37,15 @@ function usImageOf(image: Extract<ResultImage, { kind: 'us' }>): UsImage {
   return { view: 'gallbladder', foci: { count: image.stones ?? 0, size: 0.5 }, wall: image.wall ?? 0, fluid: image.wall ? 0.4 : 0 };
 }
 
-/** Находки снимка груди — из результата обследования. */
-function chestOf(image: Extract<ResultImage, { kind: 'xray' }>): XrayFindings {
-  return {
-    ...(image.infiltrate ? { infiltrate: { side: image.infiltrate, density: DENSITY } } : {}),
-    hyperinflation: image.hyperinflation,
-    ...(image.pneumothorax ? { pneumothorax: image.pneumothorax } : {}),
-    ...(image.effusion ? { effusion: image.effusion } : {}),
-    ...(image.ribFractures ? { ribFractures: image.ribFractures } : {}),
-    wideMediastinum: image.wideMediastinum,
-    ...(image.congestion ? { congestion: { edema: image.congestion === 'edema' } } : {}),
-    cardiomegaly: image.cardiomegaly,
-  };
-}
-
 /** Тот же рисунок для просмотра крупно: запись по ширине и высота к ширине. ЭКГ — без просмотра. */
 function viewerOf(image: ResultImage): ViewerPicture | undefined {
   switch (image.kind) {
     case 'xray': {
-      const f = chestOf(image);
+      const f = chestFindingsOf(image);
       return { record: w => recordChestXray(w, f, image.seed), aspect: XRAY_ASPECT, sideMark: true };
     }
     case 'abdomen': {
-      const f = { freeGas: image.freeGas ? 0.8 : 0, levels: image.levels ? 0.8 : 0 };
+      const f = abdomenFindingsOf(image);
       return { record: w => recordAbdomenXray(w, f, image.seed), aspect: ABDOMEN_ASPECT };
     }
     case 'bone':
@@ -83,9 +67,16 @@ function viewerOf(image: ResultImage): ViewerPicture | undefined {
   }
 }
 
-export function ResultPicture({ image, title, lines }: { image: ResultImage; title: string; lines: readonly Line[] }) {
+/**
+ * `marks` — где на снимке находки (spec 2026-11-xray-marks); `overlay` — контуры видны и на самом снимке в строке: в
+ * разборе.
+ */
+export function ResultPicture({ image, title, lines, marks, overlay }: {
+  image: ResultImage; title: string; lines: readonly Line[]; marks?: readonly ImageMark[]; overlay?: boolean;
+}) {
   const { width } = useWindowDimensions();
   const [open, setOpen] = useState(false);
+  const how = useContext(CaseImagesContext);
   // ширина группы результатов: экран без отступов экрана, карточки и группы; колонка — до 640
   const w = Math.round(Math.min(width, 640) - 2 * (space.l + space.l + space.s));
   // запись для просмотра — одна на снимок: иначе каждая перерисовка карты перезаписывала бы рисунок
@@ -99,9 +90,11 @@ export function ResultPicture({ image, title, lines }: { image: ResultImage; tit
       <Pressable testID="result-open" accessibilityRole="button" accessibilityLabel={T.spikes.patient.viewer.open(title)}
         onPress={() => setOpen(true)} style={square ? { alignSelf: 'center' } : undefined}>
         {inline}
+        {overlay && marks && <MarksOverlay marks={marks} w={w} aspect={viewer.aspect} />}
         <ZoomBadge />
       </Pressable>
-      <ImageViewer visible={open} onClose={() => setOpen(false)} title={title} picture={viewer} lines={lines} />
+      <ImageViewer visible={open} onClose={() => setOpen(false)} title={title} picture={viewer} lines={lines}
+        marks={marks && marks.length > 0 ? { marks, mode: how.mode, looked: how.looked, ...(how.look ? { onLook: how.look } : {}) } : undefined} />
     </>
   );
 }
@@ -119,7 +112,7 @@ function pictureOf(image: ResultImage, w: number) {
     // то, что нашёл рентгенолог, — крупно: серп газа и уровни должны быть видны на телефоне
     return (
       <View testID="result-xray-abdomen" style={{ borderRadius: 6, overflow: 'hidden' }}>
-        <XrayAbdomen width={w} seed={image.seed} findings={{ freeGas: image.freeGas ? 0.8 : 0, levels: image.levels ? 0.8 : 0 }} />
+        <XrayAbdomen width={w} seed={image.seed} findings={abdomenFindingsOf(image)} />
       </View>
     );
   }
@@ -167,7 +160,7 @@ function pictureOf(image: ResultImage, w: number) {
   if (image.kind === 'xray') {
     return (
       <View testID="result-xray" style={{ borderRadius: 6, overflow: 'hidden' }}>
-        <Xray width={w} seed={image.seed} findings={chestOf(image)} />
+        <Xray width={w} seed={image.seed} findings={chestFindingsOf(image)} />
       </View>
     );
   }

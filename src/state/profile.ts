@@ -9,7 +9,7 @@ import { useSyncExternalStore } from 'react';
 import { db } from '@/content';
 import type { Id } from '@/content/types';
 import { type CareerFacts, caseFacts, newAchievements } from '@/engine/career/achievements';
-import { pointsFor } from '@/engine/career/skills';
+import { pointsFor, RADIOLOGY } from '@/engine/career/skills';
 import type { Grade } from '@/engine/med/score';
 import { type Challenge, CHALLENGES } from '@/engine/shift/challenges';
 import { type Scenario, SCENARIOS } from '@/engine/shift/scenarios';
@@ -387,6 +387,9 @@ export function recordCases(cases: readonly Omit<CaseRecord, 'key'>[]): number {
     // опыт специальности (spec 2026-10-skills): отделение настоящей болезни, за верный и почти верный диагноз
     const dept = db.conditions[c.patient.patient.truth.conditions[0]?.id ?? '']?.department;
     if (dept && pointsFor(closed.verdict) > 0) experience[dept] = (experience[dept] ?? 0) + pointsFor(closed.verdict);
+    // лучевая диагностика (spec 2026-11-xray-marks): находки, которые игрок сам показал на снимках этого приёма
+    const found = (c.patient.looked ?? []).filter(x => x.hit).length;
+    if (found > 0) experience[RADIOLOGY] = (experience[RADIOLOGY] ?? 0) + found;
     const f = caseFacts(db, c.patient);
     stats.minutes += Math.round(c.patient.spent.seconds / 60);
     stats.timed++;

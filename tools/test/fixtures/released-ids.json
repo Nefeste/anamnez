@@ -1,5 +1,5 @@
 {
-  "version": "1.1.7",
+  "version": "1.1.13",
   "base": 87,
   "ids": {
     "achievements": [
@@ -1303,6 +1303,7 @@
     "skills": [
       "skill.infectious_history",
       "skill.neurology_hammer",
+      "skill.radiology_reading",
       "skill.surgery_hands",
       "skill.therapy_hearing",
       "skill.therapy_mentor",

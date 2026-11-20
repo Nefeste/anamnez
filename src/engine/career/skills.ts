@@ -4,6 +4,12 @@
 import type { ContentDb, Exam, Id } from '../../content/types';
 import type { ExamSkill } from '../med/exams';
 
+/**
+ * Лучевая диагностика (spec 2026-11-xray-marks, вопрос 76): специальность без своих болезней — её опыт не диагнозы, а
+ * находки, которые игрок сам показал на снимках в задаче «Найдите на снимке», по одной за находку.
+ */
+export const RADIOLOGY = 'dept.radiology';
+
 /** Пороги уровней 2–5 (spec 2026-09-profile, часть 17): очки опыта отделения. */
 export const LEVELS = [10, 40, 100, 250] as const;
 
@@ -47,6 +53,16 @@ export function examSkillWith(db: ContentDb, skills: readonly Id[] | undefined, 
     if (e?.kind === 'examSens' && e.exams.includes(exam)) pp += e.pp;
   }
   return pp === 0 ? base : { ...base, sensPp: (base.sensPp ?? 0) + pp };
+}
+
+/**
+ * Минуты описания снимка с умениями дня (spec 2026-11-xray-marks): «Чтение снимков» — снимок и срез игрок смотрит сам,
+ * не дожидаясь описания; остальное — как в базе.
+ */
+export function reportMinutes(db: ContentDb, skills: readonly Id[] | undefined, exam: Exam): number {
+  const report = exam.time.report ?? 0;
+  if (exam.kind !== 'imaging' || report === 0) return report;
+  return (skills ?? []).some(id => db.skills[id]?.effect.kind === 'imageReport') ? 0 : report;
 }
 
 /** Минуты вопроса расспроса с умениями дня: короче, но не меньше минуты; не расспрос — как в базе. */
