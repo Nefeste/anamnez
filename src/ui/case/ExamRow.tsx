@@ -45,7 +45,7 @@ export function ExamRow({ v, id, open: opened, onToggle, onExam, explain, onLayo
           <Text style={styles.title}>{info.name}</Text>
           {g?.fresh ? <Text style={styles.badge}>{t.fresh}</Text> : g ? <Text style={styles.chevron}>{open ? '▴' : '▾'}</Text> : null}
         </Pressable>
-        {g?.image ? <ResultPicture image={g.image} /> : null}
+        {g?.image ? <ResultPicture image={g.image} title={info.name} lines={lines} /> : null}
         {open ? <Chips>{lines.map((r, i) => <Chip key={`${r.f}${i}`} text={r.text} strong={r.shown} icon={lineMark(r)} onPress={() => explain(findingInfo(r.f))} />)}</Chips>
           : !g && ready ? <Text testID={`stamp-${id}`} style={styles.stamp}>{t.readyAt(ready.at)}</Text>
           : <Text numberOfLines={2} style={styles.summary}>{summary}</Text>}

@@ -174,6 +174,16 @@ export const AWARD_ICON: IconShape = {
   ],
 };
 
+/** Лупа с плюсом — открыть снимок крупно (spec 2026-11-xray): на углу снимка и в подписи кнопки. */
+export const ZOOM_ICON: IconShape = {
+  stroke: [
+    'M10.5 4A6.5 6.5 0 1 0 10.5 17A6.5 6.5 0 1 0 10.5 4Z',
+    'M15.3 15.3L20 20',
+    'M10.5 7.8V13.2',
+    'M7.8 10.5H13.2',
+  ],
+};
+
 /** Полки под фигурой в «Осмотреть» (0.6.0): весь больной и приборы у постели. */
 export const SHELF_ICONS: Record<'whole' | 'bedside', IconShape> = {
   // человек в рост

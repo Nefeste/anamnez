@@ -87,6 +87,13 @@ export interface Palette {
   keyLight: string;
   keyLipPlain: string;
   keyLightPlain: string;
+  /**
+   * просмотр снимка крупно (spec 2026-11-xray): чёрный фон негатоскопа и надписи на нём — одни в обеих темах, как сами
+   * снимки
+   */
+  film: string;
+  onFilm: string;
+  onFilmMuted: string;
 }
 
 export interface Fonts {
@@ -128,6 +135,7 @@ export const LIGHT: Theme = {
     chart: '#2B4E8C', chartTrack: '#DCE5F4', good: '#2F7A40', warn: '#D9A21B', bad: '#B8392F',
     present: '#B8392F', absent: '#2B4E8C', unknown: '#857B69',
     keyLip: '#1D355F', keyLight: '#6680AC', keyLipPlain: '#B1AB9D', keyLightPlain: '#FFFFFF',
+    film: '#050708', onFilm: '#E8EEEE', onFilmMuted: '#9AA6A8',
   },
   fonts: { title: 'PT Serif', body: 'PT Sans', mono: 'PT Mono' },
   shape: { radius: 6, card: 3, stamp: true, folderTabs: true, doubleRule: true, ruled: true },
@@ -147,6 +155,7 @@ export const DARK: Theme = {
     // «есть» — коралловым, как тревога монитора; «нет» — голубым, как кривая сатурации
     present: '#FF6B5E', absent: '#56C8E8', unknown: '#7C9592',
     keyLip: '#29965A', keyLight: '#73E6A6', keyLipPlain: '#0C1517', keyLightPlain: '#364448',
+    film: '#050708', onFilm: '#E8EEEE', onFilmMuted: '#9AA6A8',
   },
   fonts: { title: 'Golos Text', body: 'Golos Text', mono: 'JetBrains Mono' },
   shape: { radius: 12, card: 12, stamp: false, folderTabs: false, doubleRule: false, ruled: false },

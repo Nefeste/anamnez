@@ -41,6 +41,9 @@ const TEXT: [Key, Key[]][] = [
   ['onRed', ['red']],
   ['onYellow', ['yellow']],
   ['onGreen', ['green']],
+  // просмотр снимка крупно (spec 2026-11-xray)
+  ['onFilm', ['film']],
+  ['onFilmMuted', ['film']],
 ];
 
 /**
