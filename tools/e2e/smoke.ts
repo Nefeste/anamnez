@@ -1466,6 +1466,21 @@ try {
   await page.waitForTimeout(500);
   check((await page.getByTestId('result-xray').count()) === 1 && (await page.getByTestId('result-xray').isVisible()), 'П4: рентген в карте — снимком');
   await page.screenshot({ path: join(OUT, '04-xray.png') });
+  // снимок крупно (spec 2026-11-xray): касание открывает его на весь экран, на чёрном фоне; двойное касание приближает,
+  // «Закрыть» возвращает в карту
+  await page.getByTestId('done-exam.xray_chest').getByTestId('result-open').click();
+  await page.getByTestId('viewer').waitFor({ timeout: 5000 });
+  await page.waitForTimeout(500);
+  const viewerBox = await page.getByTestId('viewer-picture').boundingBox();
+  check(viewerBox !== null && viewerBox.width >= 380 && (await page.getByTestId('viewer').innerText()).includes('правая сторона пациента'),
+    `П4: снимок крупно — поле ${Math.round(viewerBox?.width ?? 0)} × ${Math.round(viewerBox?.height ?? 0)}, с меткой стороны`);
+  await page.screenshot({ path: join(OUT, '04-xray-viewer.png') });
+  await page.getByTestId('viewer-picture').dblclick({ position: { x: 120, y: 200 } });
+  await page.waitForTimeout(600);
+  await page.screenshot({ path: join(OUT, '04-xray-viewer-zoom.png') });
+  await page.getByTestId('viewer-close').click();
+  await page.getByTestId('viewer').waitFor({ state: 'detached', timeout: 5000 });
+  check((await page.getByTestId('viewer').count()) === 0 && (await page.getByTestId('result-xray').isVisible()), 'П4: «Закрыть» — снова карта со снимком');
   // обзорный снимок живота стоя — тоже рисунком (0.0.49): кадр выше, чем шире
   await order(page, 'exam.xray_abdomen');
   for (let i = 0; i < 5 && (await page.getByTestId('visit-wait').count()) > 0; i++) await page.getByTestId('visit-wait').click();

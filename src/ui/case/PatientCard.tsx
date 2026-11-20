@@ -575,7 +575,7 @@ function KnownGroup({ g, open, onToggle, explain, onLayout }: {
         <Text style={styles.groupTitle}>{`${g.name} · ${t.at(g.at)}`}</Text>
         {g.fresh && <Text style={styles.badge}>{t.fresh}</Text>}
       </View>
-      {g.image && <ResultPicture image={g.image} />}
+      {g.image && <ResultPicture image={g.image} title={g.name} lines={g.lines} />}
       <Chips>
         {lines.map((r, i) => <Chip key={`${r.f}${i}`} text={r.text} strong={r.shown} icon={lineMark(r)} onPress={() => explain(findingInfo(r.f))} />)}
         {hidden > 0 && onToggle && <Chip testID={`more-${g.exam}`} text={t.moreQuiet(hidden)} icon={{ icon: examIcon(g.exam), state: 'absent' }} onPress={onToggle} />}
