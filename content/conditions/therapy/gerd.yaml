@@ -29,6 +29,8 @@ findings:
   - { f: sym.epigastric_pain, band: sometimes }
   - { f: sym.cough, band: always, when: { cough: [yes] }, attrs: { character: { dry: 90, productive: 10 } } }
   - { f: sym.cough_long, band: always, when: { cough: [yes] } }
+  # кашель при рефлюксе — долгий, обычно и дольше трёх недель (часть 110); доля — игровая оценка
+  - { f: sym.cough_3w, band: usually, when: { cough: [yes] } }
   - { f: sym.chronic_cough, band: rarely }
   - { f: sym.sore_throat, band: rarely }
   - { f: sym.nausea, band: rarely }

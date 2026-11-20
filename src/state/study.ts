@@ -92,6 +92,7 @@ function settingsHere(p: StudyPlace, diagnosis: Id | undefined, obs: readonly Ob
     ...(p.box ? [{ key: 'box' as const, title: t.box }] : []),
     ...(p.or ? [orOption(p, diagnosis, obs, patient)] : []),
     { key: 'ward', title: t.refer },
+    { key: 'phthisiatry', title: setting.phthisiatry },
     { key: 'ambulance', title: setting.ambulance },
   ];
 }

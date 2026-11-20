@@ -78,9 +78,10 @@ const required = z.array(z.union([txId, z.array(txId).min(2)])).min(1);
  * `icu` — палата интенсивной терапии (spec 2026-10-chapter-3, часть 38а): своя — «В ПИТ», нет её —
  * перевод, из амбулатории — скорая; `ricu` — реанимация с ИВЛ (spec 2026-10-chapter-4, часть 47): своя —
  * «В ОРИТ», нет её — перевод; `box` — бокс инфекционного отделения (часть 49а): заразного кладут отдельно, свой бокс —
- * «В бокс», нет его — перевод в инфекционную больницу, общая палата — меньше нужного.
+ * «В бокс», нет его — перевод в инфекционную больницу, общая палата — меньше нужного. `phthisiatry` (часть 110, spec
+ * 2026-11-tb) — направить к фтизиатру в противотуберкулёзный диспансер: лечит не наша больница.
  */
-export const SETTINGS = ['home', 'ward', 'ambulance', 'surgery', 'transfer', 'icu', 'ricu', 'box'] as const;
+export const SETTINGS = ['home', 'ward', 'ambulance', 'surgery', 'transfer', 'icu', 'ricu', 'box', 'phthisiatry'] as const;
 const setting = z.enum(SETTINGS);
 const season = z.strictObject({ winter: z.number(), spring: z.number(), summer: z.number(), autumn: z.number() });
 

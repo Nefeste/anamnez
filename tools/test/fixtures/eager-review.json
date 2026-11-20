@@ -3,30 +3,30 @@
     "venue": "preset.city",
     "seed": 1,
     "atNoon": {
-      "count": 22,
-      "hash": "bb17e17e15e82930"
+      "count": 23,
+      "hash": "85b64aacf86bbe06"
     },
-    "hired": 46,
-    "closed": "44f5b182400314af"
+    "hired": 48,
+    "closed": "2085162988558976"
   },
   {
     "venue": "preset.city",
     "seed": 2,
     "atNoon": {
-      "count": 23,
-      "hash": "4a390db0e03de9b1"
+      "count": 22,
+      "hash": "6767eba1d8dda88d"
     },
     "hired": 45,
-    "closed": "1068f31164e27e1d"
+    "closed": "6ac2f255e028f819"
   },
   {
     "venue": "preset.city",
     "seed": 3,
     "atNoon": {
       "count": 25,
-      "hash": "7f10a0bc1a8e2c64"
+      "hash": "cf6975ed301f3d1d"
     },
     "hired": 42,
-    "closed": "acb6c79bc3b70df1"
+    "closed": "db7d1ba77ea179a3"
   }
 ]

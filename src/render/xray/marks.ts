@@ -5,7 +5,7 @@ import { abdomenGeometry, type AbdomenFindings } from './abdomenGeometry';
 import { type BoneFindings, boneFilm, type FractureSite, panelPoint } from './boneGeometry';
 import {
   batWing, domeY, type FilmSide, filmSide, fluidTop, HILUM, heartScale, hemithorax, infiltrateCenter, type Pt, ribFractureAt,
-  ribLayout, type XrayFindings,
+  ribLayout, tbCavity, tbCenter, XRAY_ASPECT, type XrayFindings,
 } from './chestGeometry';
 
 /** Обведённое место: один или несколько контуров (обе стороны, две проекции) и точка подписи над ними. */
@@ -14,7 +14,7 @@ export interface MarkArea {
   anchor: Pt;
 }
 
-export type ChestMarkKey = 'infiltrate' | 'air' | 'fluid' | 'rib' | 'mediastinum' | 'heart' | 'congestion' | 'edema';
+export type ChestMarkKey = 'infiltrate' | 'air' | 'fluid' | 'rib' | 'mediastinum' | 'heart' | 'congestion' | 'edema' | 'tb' | 'cavity';
 export type AbdomenMarkKey = 'freeGas' | 'levels';
 
 /** Овал из `n` точек: середина и полуоси в долях кадра. */
@@ -42,7 +42,8 @@ const sidesOf = (side: 'right' | 'left' | 'both'): FilmSide[] => (side === 'both
 /**
  * Обзорный снимок груди: инфильтрат — облако в нижней доле; воздух — плевральная полость стороны; жидкость — от её
  * верхней границы до купола; переломы рёбер — места переломов; расширенное средостение — тень над сердцем; большое
- * сердце — его тень; застой — корни; отёк — «крылья бабочки». Эмфизема — по всему лёгкому, места у неё нет.
+ * сердце — его тень; застой — корни; отёк — «крылья бабочки»; туберкулёз (часть 110) — затенение с очагами в верхнем
+ * отделе, полость — её кольцо. Эмфизема — по всему лёгкому, места у неё нет.
  */
 export function chestMarks(f: XrayFindings, seed: number): Partial<Record<ChestMarkKey, MarkArea>> {
   const out: Partial<Record<ChestMarkKey, MarkArea>> = {};
@@ -80,6 +81,18 @@ export function chestMarks(f: XrayFindings, seed: number): Partial<Record<ChestM
     }));
   } else if (f.congestion) {
     out.congestion = area(([-1, 1] as FilmSide[]).map(s => ellipse(HILUM[s][0], HILUM[s][1], 0.07, 0.085)));
+  }
+  if (f.tb) {
+    const sides = sidesOf(f.tb.side);
+    out.tb = area(sides.map(s => {
+      const [cx, cy] = tbCenter(s);
+      return ellipse(cx, cy - 0.01, 0.12, 0.1);
+    }));
+    // кольцо полости: радиус — в долях ширины, по высоте — в долях высоты кадра
+    if (f.tb.cavity) out.cavity = area(sides.map(s => {
+      const { center, r } = tbCavity(s);
+      return ellipse(center[0], center[1], r * 1.6, (r * 1.6) / XRAY_ASPECT);
+    }));
   }
   return out;
 }

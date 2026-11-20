@@ -44,6 +44,11 @@ export interface XrayFindings {
   congestion?: { edema?: boolean };
   /** Тень сердца шире половины грудной клетки (часть 43в): кардиоторакальный индекс больше 50 %. */
   cardiomegaly?: boolean;
+  /**
+   * Туберкулёз лёгких (часть 110, spec 2026-11-tb): в верхнем отделе под ключицей — неоднородное затенение с очагами
+   * вокруг и тяжами к корню; `cavity` — полость распада в нём, кольцо с воздухом внутри.
+   */
+  tb?: { side: 'right' | 'left' | 'both'; cavity?: boolean };
 }
 
 export const XRAY_ASPECT = 1.1;
@@ -111,6 +116,17 @@ export function hemithorax(s: FilmSide, f: XrayFindings): Pt[] {
 /** Середина облака инфильтрата (часть 4 рисунка): нижняя доля, над куполом своей стороны. */
 export function infiltrateCenter(s: FilmSide, f: XrayFindings): Pt {
   return [mirror(s === -1 ? 0.26 : 0.24, s), domeY(s, f) - 0.06];
+}
+
+/** Середина затенения при туберкулёзе (часть 110): верхний отдел, под ключицей, в наружной половине поля. */
+export function tbCenter(s: FilmSide): Pt {
+  return [mirror(s === -1 ? 0.3 : 0.29, s), 0.22];
+}
+
+/** Полость распада (часть 110): в затенении, кнаружи и выше середины; радиус — в долях ширины кадра. */
+export function tbCavity(s: FilmSide): { center: Pt; r: number } {
+  const [cx, cy] = tbCenter(s);
+  return { center: [cx + s * 0.012, cy - 0.012], r: 0.026 };
 }
 
 /** Корни лёгких: отсюда расходятся сосуды. */

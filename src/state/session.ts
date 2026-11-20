@@ -2708,6 +2708,8 @@ function settingOptions(s: ShiftState, p: ShiftPatient): SettingOption[] {
     ...(hasBox ? [{ key: 'box' as const, title: t.box, hint: boxFree > 0 ? t.freeBoxBeds(boxFree, boxAll) : t.noBeds, disabled: boxFree === 0 }] : []),
     ...(hasOr ? [orOption(s, p, diagnosis, free, all)] : []),
     { key: 'ward', title: t.refer },
+    // к фтизиатру (часть 110) — и в больнице: туберкулёз лечит противотуберкулёзный диспансер
+    { key: 'phthisiatry', title: setting.phthisiatry },
     { key: 'ambulance', title: setting.ambulance },
   ];
 }

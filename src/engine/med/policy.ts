@@ -510,13 +510,14 @@ const invasive = (db: ContentDb, tx: Id) => db.treatments[tx]?.class?.startsWith
  * подтверждающего обследования из рекомендации ещё нет —
  * самое дешёвое из доступных (часть 32; пункцию и дренирование не выполняют, не убедившись в
  * характере содержимого плевральной полости, — 728_2, раздел 2.4). Без них его не требуем: грипп
- * лечат и без экспресс-теста.
+ * лечат и без экспресс-теста. С частью 110 (spec 2026-11-tb) — и до направления к фтизиатру: при подозрении на
+ * туберкулёз сначала рентген груди (приказ № 932н, пункт 9), направляют по его результату (пункт 12).
  */
 function confirmBeforeInvasive(db: ContentDb, diagnosis: Id, obs: readonly Observation[], age: Who, done: readonly Id[], exams: readonly Id[]): Id | undefined {
   const c = db.conditions[diagnosis];
   if (!c || c.confirm === 'clinical' || c.confirm.some(id => done.includes(id))) return undefined;
   const plan = choosePlan(db, diagnosis, obs, age, { ward: true, or: true });
-  if (plan.setting !== 'surgery' && !plan.treatments.some(tx => invasive(db, tx))) return undefined;
+  if (plan.setting !== 'surgery' && plan.setting !== 'phthisiatry' && !plan.treatments.some(tx => invasive(db, tx))) return undefined;
   return c.confirm.filter(id => exams.includes(id)).sort((a, b) => examCost(db, a) - examCost(db, b) || (a < b ? -1 : 1))[0];
 }
 

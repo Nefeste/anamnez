@@ -906,6 +906,35 @@ function anginaSave(): { save: string; id: string } {
   }
 }
 
+/**
+ * «Смена» в амбулатории, «Студент» (часть 110, spec 2026-11-tb): первым в очереди — туберкулёз лёгких справа с распадом,
+ * кашель дольше трёх недель, в мокроте — КУМ. Готовы расспрос о начале, общий расспрос, снимок груди и мокрота.
+ */
+function tbSave(): { save: string; id: string } {
+  const { db } = buildDb();
+  const s = newShift(db, { seed: 46, season: 'winter', difficulty: 'student' });
+  for (let i = 0; i < 600 && s.queue.length === 0; i++) apply(db, s, { kind: 'advance', seconds: 60 });
+  const id = s.queue[0];
+  const make = (seed: number) => generatePatient(db, seed, { department: 'dept.therapy', season: 'winter', primary: 'cond.pulmonary_tb' });
+  const fits = (x: ReturnType<typeof generatePatient>) => {
+    const k = x.truth.conditions[0].params;
+    const has = (f: string) => x.truth.findings.some(y => y.f === f);
+    return x.age >= 25 && k.cavity === 'yes' && k.side === 'right' && x.truth.conditions.length === 1 && x.truth.risks.length <= 2
+      && ['img.cxr_tb', 'img.cxr_cavity', 'lab.afb_sputum', 'sym.cough_3w'].every(has) && x.complaints.includes('sym.cough');
+  };
+  let seed = 9900;
+  while (!fits(make(seed))) seed++;
+  s.patients[id].patient = make(seed);
+  apply(db, s, { kind: 'call', id });
+  const p = s.patients[id];
+  const exams = ['exam.ask_onset', 'exam.ask_general', 'exam.xray_chest', 'exam.sputum_afb'];
+  for (const exam of exams) apply(db, s, { kind: 'exam', exam });
+  for (let i = 0; i < 20 && p.pending.length > 0; i++) apply(db, s, { kind: 'waitResults' });
+  const missing = exams.filter(e => !p.results.some(r => r.exam === e));
+  if (missing.length > 0) throw new Error(`tbSave: не пришло ${missing.join(', ')}`);
+  return { save: JSON.stringify({ schemaVersion: SHIFT_SCHEMA_VERSION, savedAt: 'e2e', data: s }), id };
+}
+
 /** Практика на «Практиканте» (spec 2026-10-trainee): первый в очереди — с жалобой. */
 function traineeSave(): { save: string; id: string } {
   const { db } = buildDb();
@@ -1614,9 +1643,9 @@ try {
   // срез груди на КТ-ангиографии (часть 43а): без расслоения, тип A и тип B; с частью 43б — тромбоэмболия
   const ctChest = await drawn('[data-testid^="cta-chest-"] canvas');
   const allImages = await drawn('canvas');
-  check(heads.length === 9 && heads.every(Boolean) && us.length === 17 && us.every(Boolean) && abd.length === 3 && abd.every(Boolean) && chest.length === 10 && chest.every(Boolean)
+  check(heads.length === 9 && heads.every(Boolean) && us.length === 17 && us.every(Boolean) && abd.length === 3 && abd.every(Boolean) && chest.length === 12 && chest.every(Boolean)
     && ctChest.length === 5 && ctChest.every(Boolean) && allImages.every(Boolean),
-    `П5: срезы головы нарисованы — ${heads.filter(Boolean).length} из 9, УЗИ — ${us.filter(Boolean).length} из 17 (с венами и артерией ног, отёком почки), снимки живота — ${abd.filter(Boolean).length} из 3, груди — ${chest.filter(Boolean).length} из 10, срезы груди на КТ — ${ctChest.filter(Boolean).length} из 5; все рисунки экрана — ${allImages.filter(Boolean).length} из ${allImages.length} (смотреть 06-head-*.png, 06-us.png, 06-abdomen.png, 06-chest.png, 06-cta-chest.png)`);
+    `П5: срезы головы нарисованы — ${heads.filter(Boolean).length} из 9, УЗИ — ${us.filter(Boolean).length} из 17 (с венами и артерией ног, отёком почки), снимки живота — ${abd.filter(Boolean).length} из 3, груди — ${chest.filter(Boolean).length} из 12 (с туберкулёзом), срезы груди на КТ — ${ctChest.filter(Boolean).length} из 5; все рисунки экрана — ${allImages.filter(Boolean).length} из ${allImages.length} (смотреть 06-head-*.png, 06-us.png, 06-abdomen.png, 06-chest.png, 06-cta-chest.png)`);
   // ЭКГ в двенадцати отведениях (spec 2026-10-chapter-3, часть 36): ритмы, проведение, стенки инфаркта; с частью 56в
   // (spec 2026-10-chapter-4) — и удлинённый QT
   const ecg = await drawn('[data-testid^="ecg-"] canvas');
@@ -2561,6 +2590,57 @@ try {
   await pa.waitForTimeout(500);
   await pa.screenshot({ path: join(OUT, '19-angina.png'), fullPage: true });
   await ac.close();
+  // туберкулёз лёгких (часть 110, spec 2026-11-tb): в карте — кашель дольше трёх недель, тени в верхних отделах с полостью
+  // и КУМ в мокроте; у «Студента» в снимке крупно тени и полость обведены; «К фтизиатру» — разбор без замечаний о месте,
+  // исход — направлен в противотуберкулёзный диспансер; в энциклопедии — где лечить и путь передачи
+  const tb = tbSave();
+  const tbc = await browser.newContext({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2 });
+  await tbc.addInitScript(([key, value]) => localStorage.setItem(key, value), ['anamnez:saves/shift.json', tb.save]);
+  const ptb = await tbc.newPage();
+  ptb.on('pageerror', e => errors.push(String(e)));
+  await ptb.goto(`${base}/shift`);
+  // больной уже на приёме: смена открывается его картой или паузой перед ней
+  const tbFirst = await Promise.race([
+    visible(ptb, 'visit-decide').waitFor({ timeout: 15_000 }).then(() => 'visit'),
+    ptb.getByTestId('shift-continue').waitFor({ timeout: 15_000 }).then(() => 'continue'),
+  ]);
+  if (tbFirst === 'continue') await ptb.getByTestId('shift-continue').click();
+  await visible(ptb, 'visit-decide').waitFor({ timeout: 15_000 });
+  const tbCard = (await ptb.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  check(tbCard.includes('Кашель четвёртую неделю не проходит') || tbCard.includes('Кашляю уже почти месяц'), `туберкулёз: в карте — кашель дольше трёх недель`);
+  check(tbCard.includes('В верхних отделах справа — неоднородная инфильтрация и очаговые тени') && tbCard.includes('В инфильтрате справа — полость распада')
+    && tbCard.includes('найдены кислотоустойчивые микобактерии'), `туберкулёз: в карте — тени, полость и КУМ («${tbCard.replace(/\n/g, ' · ').slice(0, 300)}»)`);
+  await visible(ptb, 'result-xray').scrollIntoViewIfNeeded();
+  await ptb.screenshot({ path: join(OUT, '19-tb-card.png'), fullPage: true });
+  await visible(ptb, 'result-open').click();
+  await ptb.getByTestId('viewer').waitFor({ timeout: 5000 });
+  await ptb.waitForTimeout(500);
+  check(await ptb.getByTestId('viewer-mark-img.cxr_tb').isVisible() && await ptb.getByTestId('viewer-mark-img.cxr_cavity').isVisible(),
+    'туберкулёз, «Студент»: в снимке крупно — «Очаги и инфильтрация» и «Полость распада» обведены');
+  await ptb.screenshot({ path: join(OUT, '19-tb-xray.png') });
+  await ptb.getByTestId('viewer-close').click();
+  await ptb.getByTestId('viewer').waitFor({ state: 'detached', timeout: 5000 });
+  await visible(ptb, 'visit-decide').click();
+  await ptb.getByTestId('dx-cond.pulmonary_tb').click();
+  await ptb.getByTestId('decision-to-plan').click();
+  check((await ptb.getByTestId('setting-phthisiatry').innerText()).includes('К фтизиатру'), 'туберкулёз: на экране решения — «К фтизиатру»');
+  await ptb.getByTestId('setting-phthisiatry').click();
+  await ptb.screenshot({ path: join(OUT, '19-tb-decision.png'), fullPage: true });
+  await ptb.getByTestId('visit-finish').click();
+  await ptb.getByTestId('visit-truth').waitFor({ timeout: 10_000 });
+  const tbReview = (await ptb.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  check(tbReview.includes('Туберкулёз лёгких') && /Направлена? в противотуберкулёзный диспансер/.test(tbReview),
+    `туберкулёз: исход — направлен в противотуберкулёзный диспансер («${tbReview.replace(/\n/g, ' · ').slice(0, 300)}»)`);
+  // «ничего не назначено» — сам лист: лечит фтизиатр; замечание «не назначено» — о пропущенном обязательном
+  check(tbReview.includes('Место лечения · A') || /Место лечения\s+A/.test(tbReview), 'туберкулёз: «К фтизиатру» — место лечения A');
+  check(!/Нужно было|Хватило бы|вредно/.test(tbReview) && !/(?<!ничего )не назначено/.test(tbReview), 'туберкулёз: «К фтизиатру» — без замечаний о месте и лечении');
+  await ptb.screenshot({ path: join(OUT, '19-tb-review.png'), fullPage: true });
+  await ptb.goto(`${base}/encyclopedia/article/cond.pulmonary_tb`);
+  await visible(ptb, 'enc-article-title').waitFor({ timeout: 10_000 });
+  const tbArticle = (await ptb.locator('body').innerText()).replace(/\u00a0/g, ' ');
+  check((await visibleText(ptb, 'enc-article-title')) === 'Туберкулёз лёгких' && tbArticle.includes('Обычно — к фтизиатру, в противотуберкулёзный диспансер.')
+    && tbArticle.includes('Заразна: передаётся по воздуху.'), `энциклопедия, туберкулёз: где лечить и путь передачи`);
+  await tbc.close();
   // «Практикант» (spec 2026-10-trainee): в карте сверху — то, что относится к жалобе, остальное — «Остальное — N»
   const trainee = traineeSave();
   const tc = await browser.newContext({ viewport: { width: 412, height: 915 }, deviceScaleFactor: 2 });

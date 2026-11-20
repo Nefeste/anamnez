@@ -223,7 +223,8 @@ export function scoreBase(x: Omit<CaseInput, 'rationalCost'>): ScoreBase {
   if (fit === 'under') { setting = 'D'; notes.push({ code: 'setting.under', recommended: should }); }
   else if (fit === 'over') { setting = 'C'; notes.push({ code: 'setting.over', recommended: should }); }
   // заразный в общей палате (spec 2026-10-chapter-4, часть 49а): кроме места — и соседи
-  if (recommended === 'box' && chosen === 'admit') notes.push({ code: 'setting.contacts' });
+  // туберкулёз (часть 110) — так же: в общей палате соседи становятся контактными
+  if ((recommended === 'box' || recommended === 'phthisiatry') && chosen === 'admit') notes.push({ code: 'setting.contacts' });
 
   // безопасность
   let safety: Grade = safety0;

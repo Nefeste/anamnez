@@ -125,6 +125,9 @@ export const CHEST_CASES: ChestCase[] = [
   // часть 43в: застой и отёк лёгких при сердечной недостаточности, большая тень сердца
   { key: 'chest-congestion', findings: { congestion: {}, cardiomegaly: true }, seed: 12, label: ch.congestion },
   { key: 'chest-edema', findings: { congestion: { edema: true }, cardiomegaly: true }, seed: 13, label: ch.edema },
+  // часть 110: туберкулёз — тени в верхнем отделе, с распадом — полость
+  { key: 'chest-tb', findings: { tb: { side: 'right' } }, seed: 14, label: ch.tb },
+  { key: 'chest-cavity', findings: { tb: { side: 'left', cavity: true } }, seed: 15, label: ch.cavity },
 ];
 
 export interface BoneCase {

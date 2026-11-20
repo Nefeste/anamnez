@@ -396,10 +396,11 @@ export function buildDb(dir = CONTENT_DIR): BuildResult {
     if (c.course.settles && c.course.selfLimiting) errors.push(`${owner}: и «проходит само», и «острый период проходит в стационаре» — что-то одно`);
     // с чем спутать по рекомендации (часть 33б): то, с чем приходят, и не сама болезнь
     for (const d of c.differential ?? []) if (d === c.id || !conditions[d]?.presenting) errors.push(`${owner}: с чем спутать — ${d} не найдено, не приходят с ним или это оно само`);
-    // заразна (spec 2026-10-chapter-4, часть 49а): бокс нужен заразному, а заразному в стационаре нужен бокс
+    // заразна (spec 2026-10-chapter-4, часть 49а): бокс нужен заразному, а заразному в стационаре нужен бокс; туберкулёз
+    // (часть 110) изолирует и лечит противотуберкулёзный диспансер — место «К фтизиатру» вместо бокса
     const places = c.treatment ? placesOf(c.treatment.setting) : [];
     if (places.includes('box') && !c.isolation) errors.push(`${owner}: место — бокс, а путь передачи (isolation) не назван`);
-    if (c.isolation && !places.includes('box')) errors.push(`${owner}: заразна, а места «бокс» в правиле места нет`);
+    if (c.isolation && !places.includes('box') && !places.includes('phthisiatry')) errors.push(`${owner}: заразна, а места «бокс» в правиле места нет`);
     // источник по параметру (spec 2026-10-chapter-4, часть 48а): у каждого значения — болезнь, с которой приходят, и не сама
     if (c.source) {
       const values = c.params?.[c.source.param];

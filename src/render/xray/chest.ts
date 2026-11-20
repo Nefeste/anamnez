@@ -12,6 +12,7 @@ import { BlendMode, BlurStyle, ClipOp, PaintStyle, Skia, type SkPaint, type SkPa
 import { Rng } from '@/engine/core/rng';
 import {
   batWing, bezier, collapsedLung, domeY, type FilmSide as Side, filmSide, fluidTop, heartScale, hemithorax, infiltrateCenter, kerleyLines, lungScale,
+  tbCavity, tbCenter,
   mediastinalShift, mirror, type Pt, ribBack, ribFractureAt, ribFront, ribLayout, sinusFluid, XRAY_ASPECT, type XrayFindings,
 } from './chestGeometry';
 
@@ -249,6 +250,69 @@ export function recordChestXray(width: number, findings: XrayFindings, seed: num
           tube.quadTo(X(mx + s * 0.02), Y(my - 0.004), X(mx + s * 0.045), Y(my + 0.002));
           c.drawPath(tube, paint('#262626', { alpha: 0.32 * d, stroke: 0.0045, blur: 0.0025 }));
         }
+      }
+      c.restore();
+    }
+  }
+
+  // 5г. Туберкулёз (часть 110, spec 2026-11-tb): в верхнем отделе — неоднородное затенение из небольших пятен разной
+  // плотности, вокруг — мелкие плотные очаги, к корню — тонкие тяжи; с распадом — кольцо полости с воздухом внутри. Своё
+  // зерно: рисунок остальных находок от него не меняется.
+  if (findings.tb) {
+    const tr = Rng.seeded(seed).fork('xray-tb');
+    const tj = (amp: number) => ((tr.int(1000) / 1000) - 0.5) * 2 * amp;
+    const sides: Side[] = findings.tb.side === 'both' ? [-1, 1] : [filmSide(findings.tb.side)];
+    for (const s of sides) {
+      const [cx, cy] = tbCenter(s);
+      c.save();
+      c.clipPath(lungs[s], ClipOp.Intersect, true);
+      // тяжи к корню — под затенением
+      const root = hila[s];
+      for (let k = 0; k < 3; k++) {
+        const p = Skia.Path.Make();
+        const sx = cx + tj(0.03), sy = cy + 0.03 + tj(0.02);
+        p.moveTo(X(sx), Y(sy));
+        p.quadTo(X((sx + root[0]) / 2 + tj(0.02)), Y((sy + root[1]) / 2 - 0.02), X(root[0] - s * 0.02), Y(root[1] - 0.03 + tj(0.015)));
+        c.drawPath(p, paint('#9a9a9a', { alpha: 0.22, blend: BlendMode.Screen, stroke: 0.004, blur: 0.002 }));
+      }
+      // затенение: пятна плотности мягких тканей, неровнее и мельче, чем облако пневмонии; к верхушке — плотнее
+      for (let i = 0; i < 20; i++) {
+        const r = 0.016 + (tr.int(1000) / 1000) * 0.03;
+        const ox = tj(0.065), oy = tj(0.055) - 0.008;
+        c.drawOval(Skia.XYWHRect(X(cx + ox - r), Y(cy + oy - r * 0.85), X(2 * r), Y(1.7 * r)),
+          paint('#a6a6a6', { alpha: 0.16 + (tr.int(1000) / 1000) * 0.16, blur: 0.011 }));
+      }
+      // очаги: мелкие и плотные, с чётким краем, кучками вокруг затенения — бронхогенный отсев
+      for (let g = 0; g < 4; g++) {
+        const a = (tr.int(1000) / 1000) * Math.PI * 2;
+        const d = 0.05 + (tr.int(1000) / 1000) * 0.035;
+        const gx = cx + Math.cos(a) * d * 1.15, gy = cy + Math.sin(a) * d * 0.95;
+        const n = 3 + tr.int(4);
+        for (let i = 0; i < n; i++) {
+          const r = 0.004 + (tr.int(1000) / 1000) * 0.0055;
+          const x = gx + tj(0.022), y = gy + tj(0.02);
+          c.drawOval(Skia.XYWHRect(X(x - r), Y(y) - X(r), X(2 * r), X(2 * r)), paint('#b0b0b0', { alpha: 0.24 + (tr.int(1000) / 1000) * 0.14, blur: 0.0035 }));
+        }
+      }
+      if (findings.tb.cavity) {
+        const { center, r } = tbCavity(s);
+        // контур неровный: радиус гуляет по кругу; в пикселях — одинаково по ширине и высоте
+        const blob = (k: number, wobble: number) => {
+          const p = Skia.Path.Make();
+          const n = 18;
+          for (let i = 0; i <= n; i++) {
+            const a = (i / n) * Math.PI * 2;
+            const rr = r * k * (1 + (i === n ? 0 : tj(wobble)));
+            const x = X(center[0]) + Math.cos(a) * X(rr), y = Y(center[1]) + Math.sin(a) * X(rr);
+            if (i === 0) p.moveTo(x, y);
+            else p.lineTo(x, y);
+          }
+          p.close();
+          return p;
+        };
+        // стенка — толстая неровная тень вокруг; внутри — воздух, темнее лёгкого вокруг, с размытым краем
+        c.drawPath(blob(1.5, 0.12), paint('#acacac', { alpha: 0.42, blur: 0.008 }));
+        c.drawPath(blob(0.8, 0.14), paint('#151515', { alpha: 0.78, blur: 0.005 }));
       }
       c.restore();
     }
