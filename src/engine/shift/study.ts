@@ -93,10 +93,10 @@ function treatmentsOf(t: Tactics): Id[] {
   return [...new Set([...lists(t), ...(t.byParam ?? []).flatMap(lists)])];
 }
 
-/** Место есть здесь: «скорая», «направить» и «перевести» — везде, остальное — своё. */
+/** Место есть здесь: «скорая», «направить», «перевести» и «к фтизиатру» (часть 110) — везде, остальное — своё. */
 function settingHere(p: StudyPlace, s: Setting): boolean {
   switch (s) {
-    case 'home': case 'ambulance': case 'transfer': return true;
+    case 'home': case 'ambulance': case 'transfer': case 'phthisiatry': return true;
     case 'ward': case 'admit': return p.ward;
     case 'icu': return p.icu || p.ricu;
     case 'ricu': return p.ricu;

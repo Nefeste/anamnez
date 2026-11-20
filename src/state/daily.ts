@@ -195,7 +195,7 @@ export interface DailyStarted {
 const sameCase = (s: DailyStarted | undefined): s is DailyStarted => s?.base === db.contentVersion && s.pick === DAILY_PICK;
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
-const SETTINGS: readonly string[] = ['home', 'ward', 'ambulance', 'admit', 'surgery', 'transfer', 'icu', 'ricu', 'box'];
+const SETTINGS: readonly string[] = ['home', 'ward', 'ambulance', 'admit', 'surgery', 'transfer', 'icu', 'ricu', 'box', 'phthisiatry'];
 const isObject = (x: unknown): x is Record<string, unknown> => x !== null && typeof x === 'object' && !Array.isArray(x);
 const isId = (x: unknown): x is Id => typeof x === 'string' && x.length > 0;
 

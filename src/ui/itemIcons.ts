@@ -22,7 +22,7 @@ export function iconShape(icon: ItemIcon): IconShape {
 /** Жалобы, находки осмотра и анамнез: значок — и строки этого значка. */
 export const FINDINGS: Partial<Record<ItemIcon, readonly Id[]>> = {
   cough: [
-    'sym.chronic_cough', 'sym.cough', 'sym.cough_long', 'sym.hemoptysis', 'sym.purulent_sputum', 'sign.weak_cough',
+    'sym.chronic_cough', 'sym.cough', 'sym.cough_long', 'sym.cough_3w', 'sym.hemoptysis', 'sym.purulent_sputum', 'sign.weak_cough',
   ],
   breath: [
     'sym.dyspnea', 'sym.dyspnea_sudden', 'sym.orthopnea', 'sym.wheezing', 'sign.interrupted_inspiration', 'sign.kussmaul',
@@ -151,7 +151,7 @@ export const FINDINGS: Partial<Record<ItemIcon, readonly Id[]>> = {
   weight: ['sym.weight_gain', 'sym.weight_loss', 'sign.obesity'],
   food: ['sym.anorexia', 'sym.appetite_high', 'sym.fatty_food', 'sym.hunger', 'hx.home_canned', 'hx.missed_meal'],
   thirst: ['sym.dry_mouth', 'sym.thirst', 'sign.dehydration', 'sign.dry_mucosa', 'sign.dry_skin'],
-  temp: ['sym.fever_hx', 'sym.heat_intolerance', 'sym.sweating'],
+  temp: ['sym.fever_hx', 'sym.heat_intolerance', 'sym.sweating', 'sym.night_sweats'],
   cold: ['sym.chills', 'sym.cold_intolerance', 'sign.cold_clammy'],
   spo2: ['sign.cyanosis'],
   pressure: ['sym.bp_surge', 'sym.high_bp_readings', 'sign.bp_arm_difference', 'hx.hypertension'],
@@ -175,7 +175,7 @@ export const FINDINGS: Partial<Record<ItemIcon, readonly Id[]>> = {
   ],
   chronic: ['hx.adrenal_insufficiency', 'hx.cancer_active'],
   scalpel: ['hx.abdominal_surgery', 'hx.thyroidectomy'],
-  family: ['hx.family_crc', 'hx.jaundice_contact', 'hx.pregnancy', 'hx.sick_contact'],
+  family: ['hx.family_crc', 'hx.jaundice_contact', 'hx.pregnancy', 'hx.sick_contact', 'hx.tb_contact'],
   bag: ['hx.dust_work', 'hx.heavy_labor', 'hx.heavy_lifting', 'hx.outdoor_work', 'hx.travel'],
   bed: ['hx.bed_rest'],
   clock: ['sym.abrupt_onset', 'sym.double_worsening', 'hx.onset_hours', 'hx.seasonal_pain', 'hx.tick_hours'],
@@ -220,6 +220,8 @@ export const EXAMS: Partial<Record<ItemIcon, readonly Id[]>> = {
   pulse: ['exam.pulsus_paradoxus'],
   bedside: ['exam.vitals'],
   stool: ['exam.cdiff_stool', 'exam.hp_stool'],
+  // мокрота на КУМ (часть 110) — анализ того, что из лёгких
+  'sys.lungs': ['exam.sputum_afb'],
 };
 
 /** Обследования, которых нет в EXAMS: анализы, экспресс-тесты, ЭКГ и снимки — по способу и кабинету. */

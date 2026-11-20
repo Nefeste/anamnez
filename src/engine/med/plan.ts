@@ -23,9 +23,11 @@ const ROLES: ListRole[] = ['firstLine', 'acceptable', 'supportive', 'notIndicate
 
 /**
  * Насколько серьёзна помощь: чем выше, тем срочнее и сложнее; реанимация с ИВЛ (часть 47) — между ПИТ и операцией; бокс
- * (spec 2026-10-chapter-4, часть 49а) — стационар с изоляцией: выше палаты, ниже скорой и ПИТ.
+ * (spec 2026-10-chapter-4, часть 49а) — стационар с изоляцией: выше палаты, ниже скорой и ПИТ. К фтизиатру (часть 110,
+ * spec 2026-11-tb) — направление в диспансер: больше, чем дома, меньше стационара — кому нужна палата, тому мало, а
+ * больного туберкулёзом в общей палате держать незачем.
  */
-export const SETTING_ORDER: Record<Setting, number> = { home: 0, ward: 1, admit: 1, box: 1.5, ambulance: 2, icu: 2, ricu: 2.5, surgery: 3, transfer: 3 };
+export const SETTING_ORDER: Record<Setting, number> = { home: 0, phthisiatry: 0.5, ward: 1, admit: 1, box: 1.5, ambulance: 2, icu: 2, ricu: 2.5, surgery: 3, transfer: 3 };
 
 /** Где больного оставляют у себя: своя палата, операционная, ПИТ, реанимация (часть 47) и бокс (spec 2026-10-chapter-4, часть 49а). */
 export const STAYS: readonly Setting[] = ['admit', 'surgery', 'icu', 'ricu', 'box'];
@@ -48,6 +50,8 @@ const COVERS: Record<Setting, readonly Setting[]> = {
   icu: ['ward', 'ambulance', 'icu'],
   ricu: ['ward', 'ambulance', 'icu', 'ricu'],
   box: ['ward', 'ambulance', 'box'],
+  // направление к фтизиатру (часть 110) закрывает только себя: лечит диспансер, а не наша больница
+  phthisiatry: ['phthisiatry'],
 };
 
 /**
@@ -153,10 +157,10 @@ export function txAvailable(db: ContentDb, tx: Id, venue: Venue = {}): boolean {
  * неё, со своей операционной — оперировать, со своей ПИТ — в неё; центра, которого в районе нет, и
  * ПИТ, которой в больнице нет, — скорая. С частью 47 (spec 2026-10-chapter-4): ПИТ нет, а реанимация
  * есть — в неё; кому нужна ИВЛ — в свою реанимацию, нет её — скорая («Перевести»). Заразному в стационаре (часть 49а) —
- * свой бокс, нет его — скорая в инфекционную больницу.
+ * свой бокс, нет его — скорая в инфекционную больницу. К фтизиатру (часть 110) направляют отовсюду.
  */
 export function choiceFor(need: Setting, venue: Venue = {}): Setting {
-  if (need === 'home') return 'home';
+  if (need === 'home' || need === 'phthisiatry') return need;
   if (need === 'box') return venue.box ? 'box' : 'ambulance';
   if (need === 'icu') return venue.icu ? 'icu' : venue.ricu ? 'ricu' : 'ambulance';
   if (need === 'ricu') return venue.ricu ? 'ricu' : 'ambulance';

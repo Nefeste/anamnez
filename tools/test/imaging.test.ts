@@ -964,13 +964,24 @@ describe('снимок груди при травме: рисунок без э�
     expect(Math.abs(at(on, [0.15, 0.4]) - at(off, [0.15, 0.4]))).toBeLessThan(3);
   });
 
+  test('туберкулёз (часть 110): верхний отдел своей стороны светлее нормы, другой — тот же; полость темнее тени без неё', async () => {
+    const off = (await draw({}, 3)).rgba;
+    const tb = (await draw({ tb: { side: 'right' } }, 3)).rgba;
+    const cav = (await draw({ tb: { side: 'right', cavity: true } }, 3)).rgba;
+    const near: [number, number] = [chest.tbCenter(-1)[0] + 0.02, chest.tbCenter(-1)[1] + 0.02];
+    expect(at(tb, near) - at(off, near)).toBeGreaterThan(10);
+    expect(Math.abs(at(tb, chest.tbCenter(1)) - at(off, chest.tbCenter(1)))).toBeLessThan(3);
+    const hole = chest.tbCavity(-1).center;
+    expect(at(tb, hole) - at(cav, hole)).toBeGreaterThan(15);
+  });
+
   test('то же зерно — те же байты; все варианты «Проверок» рисуются', async () => {
     const a = await draw({ ribFractures: { side: 'right', ribs: [5, 6, 7] } }, 9);
     const b = await draw({ ribFractures: { side: 'right', ribs: [5, 6, 7] } }, 9);
     expect(Buffer.from(a.png).equals(Buffer.from(b.png))).toBe(true);
     const plain = await draw({}, 9);
     expect(Buffer.from(a.png).equals(Buffer.from(plain.png))).toBe(false);
-    expect(CHEST_CASES.map(k => k.key)).toEqual(['chest-small', 'chest-large', 'chest-tension', 'chest-fluid', 'chest-massive', 'chest-level', 'chest-rib', 'chest-mediastinum', 'chest-congestion', 'chest-edema']);
+    expect(CHEST_CASES.map(k => k.key)).toEqual(['chest-small', 'chest-large', 'chest-tension', 'chest-fluid', 'chest-massive', 'chest-level', 'chest-rib', 'chest-mediastinum', 'chest-congestion', 'chest-edema', 'chest-tb', 'chest-cavity']);
     for (const k of CHEST_CASES) {
       expect((await draw(k.findings, k.seed)).png.length).toBeGreaterThan(1000);
       expect(k.label.length).toBeGreaterThan(0);

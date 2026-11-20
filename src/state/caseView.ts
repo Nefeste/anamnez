@@ -56,7 +56,9 @@ export type ResultImage =
   | {
     kind: 'xray'; infiltrate?: 'right' | 'left' | 'both'; hyperinflation: boolean;
     pneumothorax?: XrayFindings['pneumothorax']; effusion?: XrayFindings['effusion']; ribFractures?: XrayFindings['ribFractures'];
-    wideMediastinum?: boolean; congestion?: 'congestion' | 'edema'; cardiomegaly?: boolean; seed: number;
+    wideMediastinum?: boolean; congestion?: 'congestion' | 'edema'; cardiomegaly?: boolean;
+    /** туберкулёз (часть 110): очаги и инфильтрация в верхних отделах, полость распада */
+    tb?: XrayFindings['tb']; seed: number;
   }
   /** лента в двенадцати отведениях (spec 2026-10-chapter-3, часть 36): ритм, частота и находки, которые показало обследование */
   | { kind: 'ecg'; seed: number; ecg: EcgFindings }
@@ -610,6 +612,8 @@ function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observat
   };
   if (exam === 'exam.xray_chest') {
     const side = shown('img.cxr_infiltrate')?.attrs?.side;
+    // полость без описанных теней вокруг (тени не увидели) — рисуют и тени: полость в пустом лёгком не бывает
+    const tb = shown('img.cxr_tb')?.attrs?.side ?? shown('img.cxr_cavity')?.attrs?.side;
     // травма груди: смещение средостения — при напряжённом пневмотораксе или массивной крови
     const air = sideOf('img.cxr_pneumothorax');
     const blood = sideOf('img.cxr_hemothorax');
@@ -626,6 +630,8 @@ function imageOf(exam: Id, obs: readonly Observation[], known: readonly Observat
       // сердечная недостаточность (часть 43в): отёк лёгких — с застоем, застой — без него
       ...(shown('img.cxr_edema') ? { congestion: 'edema' as const } : shown('img.cxr_congestion') ? { congestion: 'congestion' as const } : {}),
       ...(shown('img.cxr_cardiomegaly') ? { cardiomegaly: true } : {}),
+      // туберкулёз (часть 110): сторона — из строки находки; полость — если её тоже показало
+      ...(tb === 'right' || tb === 'left' || tb === 'both' ? { tb: { side: tb, ...(shown('img.cxr_cavity') ? { cavity: true } : {}) } } : {}),
       seed,
     };
   }
@@ -856,6 +862,7 @@ export function chestFindingsOf(image: Extract<ResultImage, { kind: 'xray' }>): 
     wideMediastinum: image.wideMediastinum,
     ...(image.congestion ? { congestion: { edema: image.congestion === 'edema' } } : {}),
     cardiomegaly: image.cardiomegaly,
+    ...(image.tb ? { tb: image.tb } : {}),
   };
 }
 
@@ -872,6 +879,8 @@ const CHEST_MARKS: Record<ChestMarkKey, Id[]> = {
   heart: ['img.cxr_cardiomegaly'],
   congestion: ['img.cxr_congestion'],
   edema: ['img.cxr_edema'],
+  tb: ['img.cxr_tb'],
+  cavity: ['img.cxr_cavity'],
 };
 const ABDOMEN_MARKS: Record<AbdomenMarkKey, Id[]> = { freeGas: ['img.xr_free_gas'], levels: ['img.xr_bowel_levels'] };
 
@@ -1178,7 +1187,8 @@ export function makeCaseView(c: CaseInput): VisitView {
     ...(c.alarm ? { alarm: true } : {}),
     done: c.done,
     unavailable: c.unavailable ?? {},
-    settings: c.settings ?? (['home', 'ward', 'ambulance'] as const).map(key => ({ key, title: T.spikes.patient.setting[key] })),
+    // к фтизиатру (часть 110) — у любого врача: направить в противотуберкулёзный диспансер
+    settings: c.settings ?? (['home', 'ward', 'phthisiatry', 'ambulance'] as const).map(key => ({ key, title: T.spikes.patient.setting[key] })),
     // «0 из 10» ничего не подсказывает — такие не показываем, первую — всегда
     diagnoses: diagnosisGroups(c.departments),
     hints: beliefs ? beliefs.slice(0, c.difficulty === 'resident' ? RESIDENT_HINTS : HINTS)
@@ -1323,7 +1333,7 @@ export function outcomeText(outcome: Outcome, setting: Setting, female: boolean)
     case 'reaction': return outcome.reaction ? out.reaction(db.treatments[outcome.reaction.tx].name.ru, riskName(outcome.reaction.by)) : out.unchanged;
     case 'transferred':
       if (outcome.severe) return out.transferredSevere(female);
-      return setting === 'ambulance' ? out.ambulance : STAYS.includes(setting) ? out.transferred(female) : out.ward(female);
+      return setting === 'ambulance' ? out.ambulance : setting === 'phthisiatry' ? out.phthisiatry(female) : STAYS.includes(setting) ? out.transferred(female) : out.ward(female);
     // своя палата интенсивной терапии (spec 2026-10-chapter-3, часть 38а) и реанимация (spec 2026-10-chapter-4, часть 47)
     case 'admitted': return setting === 'surgery' ? out.operated : setting === 'icu' ? out.icu : setting === 'ricu' ? out.ricu : setting === 'box' ? out.box : out.admitted;
     case 'died': return out.died(outcome.day, female);

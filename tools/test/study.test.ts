@@ -79,19 +79,20 @@ describe('приём', () => {
     expect(studyCondition()).toBe('cond.stroke_ischemic');
     expect(v.done).toEqual(['exam.vitals']);
     expect(v.meanwhile).toEqual([T.study.paramedic, T.study.bay]);
-    expect(v.settings.map(s => s.key)).toEqual(['home', 'admit', 'icu', 'surgery', 'ward', 'ambulance']);
+    // к фтизиатру (часть 110) — у любого врача
+    expect(v.settings.map(s => s.key)).toEqual(['home', 'admit', 'icu', 'surgery', 'ward', 'phthisiatry', 'ambulance']);
     expect(v.treatments.find(t => t.id === 'tx.thrombolysis_stroke')?.disabled).toBeFalsy();
     studyVisit.toggleTreatment('tx.thrombolysis_stroke');
     expect(studyVisit.view().draft.treatments).toContain('tx.thrombolysis_stroke');
   });
 
-  test('в амбулатории КТ нет: кнопка серая с причиной, назначить нельзя; где лечить — домой, в стационар, скорая', () => {
+  test('в амбулатории КТ нет: кнопка серая с причиной, назначить нельзя; где лечить — домой, в стационар, к фтизиатру, скорая', () => {
     openStudy('cond.arvi', 74_002);
     const v = studyVisit.view();
     expect(v.unavailable['exam.ct_head']).toBeDefined();
     studyVisit.act('exam.ct_head');
     expect(studyVisit.view().done).not.toContain('exam.ct_head');
-    expect(v.settings.map(s => s.key)).toEqual(['home', 'ward', 'ambulance']);
+    expect(v.settings.map(s => s.key)).toEqual(['home', 'ward', 'phthisiatry', 'ambulance']);
     expect(v.meanwhile).toEqual([]);
   });
 

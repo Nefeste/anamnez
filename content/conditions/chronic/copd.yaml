@@ -18,6 +18,9 @@ findings:
   - { f: hx.copd, band: usually }
   - { f: sym.chronic_cough, band: usually }
   - { f: sym.cough_long, band: usually }
+  # кашель месяцами — это и «дольше трёх недель» (часть 110): иначе больной ХОБЛ отвечал бы, что кашляет меньше; доля — как
+  # у долгого кашля, игровая оценка
+  - { f: sym.cough_3w, band: usually }
   - { f: sign.wheezes, band: sometimes }
   - { f: sym.dyspnea, band: sometimes }
   - { f: img.cxr_hyperinflation, band: often }

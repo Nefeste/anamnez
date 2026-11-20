@@ -15,6 +15,8 @@ checks:
   - { f: sym.polyuria, sens: 88, spec: 95 }
   - { f: sym.weight_gain, sens: 88, spec: 95 }
   - { f: sym.weight_loss, sens: 90, spec: 97 }
+  # ночные поты (КР «Туберкулез у взрослых», 16_4, раздел 1.6) — точность игровая
+  - { f: sym.night_sweats, sens: 88, spec: 95 }
   - { f: sym.cold_intolerance, sens: 80, spec: 94 }
   - { f: sym.constipation, sens: 88, spec: 95 }
   # запоры месяцами (spec 2026-10-chapter-4, часть 55б): стул реже трёх раз в неделю, твёрдый (274_3, раздел 2); точность —

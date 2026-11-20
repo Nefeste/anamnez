@@ -95,7 +95,7 @@ describe('обновление с 0.0.42', () => {
     expect(shiftView().inpatients).toBe(0);
     expect(wardBeds(db, s)).toEqual([]);
     const c = shiftCaseView()!;
-    expect(c.settings.map(o => o.key)).toEqual(['home', 'ward', 'ambulance']);
+    expect(c.settings.map(o => o.key)).toEqual(['home', 'ward', 'phthisiatry', 'ambulance']);
     chooseDiagnosis(c.hints[0]?.id ?? 'cond.arvi');
     finishCase();
     closeDay();
